@@ -1,0 +1,810 @@
+{
+  "version": "2026.02.22",
+  "source": "refrax-bundled",
+  "rules": [
+    {
+      "name": "OneTrust",
+      "match": ["*"],
+      "detect": ["#onetrust-consent-sdk", "#onetrust-banner-sdk", ".onetrust-pc-dark-filter"],
+      "reject": [
+        "#onetrust-reject-all-handler",
+        "button[aria-label*='Reject']",
+        "button[aria-label*='reject']",
+        ".ot-pc-refuse-all-handler"
+      ],
+      "accept": [
+        "#onetrust-accept-btn-handler",
+        "button[aria-label*='Accept']"
+      ],
+      "hide": [
+        "#onetrust-consent-sdk",
+        ".onetrust-pc-dark-filter",
+        "#onetrust-banner-sdk"
+      ]
+    },
+    {
+      "name": "CookieBot",
+      "match": ["*"],
+      "detect": ["#CybotCookiebotDialog", "#CybotCookiebotDialogBody"],
+      "reject": [
+        "#CybotCookiebotDialogBodyButtonDecline",
+        "#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll",
+        "a[id*='decline']"
+      ],
+      "accept": [
+        "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+        "#CybotCookiebotDialogBodyButtonAccept"
+      ],
+      "hide": [
+        "#CybotCookiebotDialog",
+        "#CybotCookiebotDialogBodyUnderlay"
+      ]
+    },
+    {
+      "name": "Quantcast",
+      "match": ["*"],
+      "detect": [".qc-cmp2-container", "#qc-cmp2-ui", ".qc-cmp-ui-container"],
+      "reject": [
+        "button[mode='secondary']",
+        ".qc-cmp2-summary-buttons button:first-child",
+        "button[class*='reject']"
+      ],
+      "accept": [
+        "button[mode='primary']",
+        ".qc-cmp2-summary-buttons button:last-child"
+      ],
+      "hide": [
+        ".qc-cmp2-container",
+        ".qc-cmp-ui-container"
+      ]
+    },
+    {
+      "name": "TrustArc",
+      "match": ["*"],
+      "detect": ["#truste-consent-track", "#consent-banner", ".truste_overlay"],
+      "reject": [
+        "#truste-consent-required",
+        "a.required",
+        ".pdynamicbutton .call"
+      ],
+      "accept": [
+        "#truste-consent-button",
+        ".truste-button2"
+      ],
+      "hide": [
+        "#truste-consent-track",
+        ".truste_overlay",
+        ".truste_box_overlay"
+      ]
+    },
+    {
+      "name": "Didomi",
+      "match": ["*"],
+      "detect": ["#didomi-host", "#didomi-popup", ".didomi-popup-container"],
+      "reject": [
+        "button[aria-label*='Disagree']",
+        "button[aria-label*='Refuse']",
+        "#didomi-notice-disagree-button",
+        ".didomi-continue-without-agreeing"
+      ],
+      "accept": [
+        "button[aria-label*='Agree']",
+        "#didomi-notice-agree-button"
+      ],
+      "hide": [
+        "#didomi-host",
+        "#didomi-popup"
+      ]
+    },
+    {
+      "name": "Sourcepoint",
+      "match": ["*"],
+      "detect": [".sp_message_container", "[id^='sp_message_container']", "div[class*='sp_message']"],
+      "reject": [
+        "button[title*='Reject']",
+        "button[title*='reject']",
+        "button[aria-label*='Reject']",
+        ".sp_choice_type_11"
+      ],
+      "accept": [
+        "button[title*='Accept']",
+        "button[title*='accept']",
+        ".sp_choice_type_12"
+      ],
+      "hide": [
+        ".sp_message_container",
+        "[id^='sp_message_container']"
+      ],
+      "delay": 1000
+    },
+    {
+      "name": "Usercentrics",
+      "match": ["*"],
+      "detect": ["#usercentrics-root", ".uc-banner", "#uc-center-container"],
+      "reject": [
+        "button[data-testid='uc-deny-all-button']",
+        "#uc-btn-deny-banner",
+        "button.sc-dcJsrY"
+      ],
+      "accept": [
+        "button[data-testid='uc-accept-all-button']",
+        "#uc-btn-accept-banner"
+      ],
+      "hide": [
+        "#usercentrics-root",
+        ".uc-banner-overlay"
+      ]
+    },
+    {
+      "name": "Klaro",
+      "match": ["*"],
+      "detect": [".klaro", ".cookie-modal", ".klaro-cookie-notice"],
+      "reject": [
+        "button.cm-btn-decline",
+        "button[class*='decline']",
+        ".cn-decline"
+      ],
+      "accept": [
+        "button.cm-btn-accept-all",
+        "button.cm-btn-accept",
+        ".cn-accept"
+      ],
+      "hide": [
+        ".klaro"
+      ]
+    },
+    {
+      "name": "CookieYes",
+      "match": ["*"],
+      "detect": [".cky-consent-container", "#cookie-law-info-bar", ".cli-modal-container"],
+      "reject": [
+        ".cky-btn-reject",
+        "#cookie_action_close_header_reject",
+        "a[data-cli_action='reject']"
+      ],
+      "accept": [
+        ".cky-btn-accept",
+        "#cookie_action_close_header",
+        "a[data-cli_action='accept']"
+      ],
+      "hide": [
+        ".cky-consent-container",
+        "#cookie-law-info-bar"
+      ]
+    },
+    {
+      "name": "Complianz",
+      "match": ["*"],
+      "detect": [".cmplz-cookiebanner", "#cmplz-cookiebanner-container"],
+      "reject": [
+        ".cmplz-deny",
+        "button.cmplz-btn.cmplz-deny"
+      ],
+      "accept": [
+        ".cmplz-accept",
+        "button.cmplz-btn.cmplz-accept"
+      ],
+      "hide": [
+        ".cmplz-cookiebanner",
+        "#cmplz-cookiebanner-container"
+      ]
+    },
+    {
+      "name": "GDPR Cookie Consent",
+      "match": ["*"],
+      "detect": [".gdpr-cookie-consent-bar", "#gdpr-cookie-consent-bar"],
+      "reject": [
+        "button.gdpr-cookie-consent-decline",
+        ".cookie_action_close_header_reject"
+      ],
+      "accept": [
+        "button.gdpr-cookie-consent-accept",
+        ".gdpr-cookie-consent-accept"
+      ],
+      "hide": [
+        ".gdpr-cookie-consent-bar",
+        "#gdpr-cookie-consent-bar"
+      ]
+    },
+    {
+      "name": "Borlabs Cookie",
+      "match": ["*"],
+      "detect": ["#BorlabsCookieBox", ".BorlabsCookie"],
+      "reject": [
+        "a._brlbs-refuse-btn",
+        "button._brlbs-refuse-btn"
+      ],
+      "accept": [
+        "a._brlbs-accept-btn",
+        "button._brlbs-accept-btn"
+      ],
+      "hide": [
+        "#BorlabsCookieBox",
+        ".BorlabsCookie"
+      ]
+    },
+    {
+      "name": "Osano",
+      "match": ["*"],
+      "detect": [".osano-cm-window", ".osano-cm-dialog"],
+      "reject": [
+        ".osano-cm-deny",
+        "button.osano-cm-denyAll"
+      ],
+      "accept": [
+        ".osano-cm-accept",
+        "button.osano-cm-acceptAll"
+      ],
+      "hide": [
+        ".osano-cm-window",
+        ".osano-cm-dialog--type_bar"
+      ]
+    },
+    {
+      "name": "Termly",
+      "match": ["*"],
+      "detect": ["#termly-code-snippet-support", ".t-consentPrompt"],
+      "reject": [
+        "button.t-declineAllButton",
+        ".t-decline-all"
+      ],
+      "accept": [
+        "button.t-acceptAllButton",
+        ".t-accept-all"
+      ],
+      "hide": [
+        ".t-consentPrompt"
+      ]
+    },
+    {
+      "name": "Iubenda",
+      "match": ["*"],
+      "detect": ["#iubenda-cs-banner", ".iubenda-cs-container"],
+      "reject": [
+        ".iubenda-cs-reject-btn",
+        "a.iubenda-cs-close-btn[href='#refuse']"
+      ],
+      "accept": [
+        ".iubenda-cs-accept-btn",
+        "a.iubenda-cs-close-btn[href='#accept']"
+      ],
+      "hide": [
+        "#iubenda-cs-banner",
+        ".iubenda-cs-container"
+      ]
+    },
+    {
+      "name": "Consent Manager",
+      "match": ["*"],
+      "detect": ["#cmpbox", "#cmpbox2", ".cmpboxBG"],
+      "reject": [
+        "#cmpbox .cmpboxbtn.cmpboxbtnno",
+        "#cmpbox .cmptxt_btn_no",
+        ".cmpboxbtnno"
+      ],
+      "accept": [
+        "#cmpbox .cmpboxbtn.cmpboxbtnyes",
+        ".cmpboxbtnyes"
+      ],
+      "hide": [
+        "#cmpbox",
+        "#cmpbox2",
+        ".cmpboxBG"
+      ]
+    },
+    {
+      "name": "Cookie Information",
+      "match": ["*"],
+      "detect": ["#coiOverlay", "#coiConsentBanner", "#coi-banner-wrapper"],
+      "reject": [
+        "#coiConsentBanner #declineButton",
+        "#coiOverlay #declineButton",
+        "#declineButton"
+      ],
+      "accept": [
+        "#coiOverlay button.coi-banner__accept",
+        "#coiConsentBanner .bottom-bar__update-consent"
+      ],
+      "hide": [
+        "#CoiBannerOverlay",
+        "#coiOverlay",
+        "#coiConsentBanner"
+      ]
+    },
+    {
+      "name": "CookieScript",
+      "match": ["*"],
+      "detect": ["#cookiescript_injected", "#cookiescript_description"],
+      "reject": [
+        "#cookiescript_reject",
+        "#cookiescript_close"
+      ],
+      "accept": [
+        "#cookiescript_accept"
+      ],
+      "hide": [
+        "#cookiescript_wrapper"
+      ]
+    },
+    {
+      "name": "CookieWow",
+      "match": ["*"],
+      "detect": [".cwc-banner-container"],
+      "reject": [
+        ".cwc-reject-button",
+        ".cwc-save-setting-wrapper button"
+      ],
+      "accept": [
+        ".cwc-accept-button"
+      ],
+      "hide": [
+        ".cwc-sdk-container"
+      ]
+    },
+    {
+      "name": "Tarte au Citron",
+      "match": ["*"],
+      "detect": ["#tarteaucitronAlertBig", "#tarteaucitronAlertSmall"],
+      "reject": [
+        "#tarteaucitronAllDenied2",
+        ".tarteaucitronDeny"
+      ],
+      "accept": [
+        "#tarteaucitronPersonalize2",
+        ".tarteaucitronAllow"
+      ],
+      "hide": [
+        "#tarteaucitron"
+      ]
+    },
+    {
+      "name": "Sirdata",
+      "match": ["*"],
+      "detect": ["#sd-cmp"],
+      "reject": [
+        "#sd-cmp button.sd-cmp-3cRQ2",
+        "button[class*='sd-cmp'][class*='refuse']"
+      ],
+      "accept": [
+        "#sd-cmp button.sd-cmp-1oBJJ",
+        "button[class*='sd-cmp'][class*='accept']"
+      ],
+      "hide": [
+        "#sd-cmp"
+      ]
+    },
+    {
+      "name": "Clickio",
+      "match": ["*"],
+      "detect": ["#cl-consent", ".cl-consent__inner"],
+      "reject": [
+        ".cl-consent__btn--outline"
+      ],
+      "accept": [
+        ".cl-consent__btn--primary"
+      ],
+      "hide": [
+        "#cl-consent"
+      ]
+    },
+    {
+      "name": "Gravito",
+      "match": ["*"],
+      "detect": ["#cmp-modal", "[class*='gravito'][class*='CMP-background-overlay']"],
+      "reject": [
+        "#modalAcceptSelectedBtn",
+        "#selectedSettingBtn"
+      ],
+      "accept": [
+        "#modalAcceptAllBtn"
+      ],
+      "hide": [
+        "[class*='gravito'][class*='CMP-background-overlay']",
+        "[class*='gravitoCMP-modal-layer']"
+      ]
+    },
+    {
+      "name": "Truendo",
+      "match": ["*"],
+      "detect": ["#truendo_container div[class*='tru_cookie-dialog']"],
+      "reject": [
+        "#truendo_container [data-cy='action-button-save']"
+      ],
+      "accept": [
+        "#truendo_container [data-cy='action-button-accept']"
+      ],
+      "hide": [
+        "#truendo_container .truendo_panel"
+      ]
+    },
+    {
+      "name": "Civic Cookie Control",
+      "match": ["*"],
+      "detect": ["#ccc-notify", "#ccc-content", "#ccc[open]"],
+      "reject": [
+        "#ccc-reject-settings",
+        ".ccc-reject-button"
+      ],
+      "accept": [
+        "#ccc-recommended-settings",
+        ".ccc-accept-button"
+      ],
+      "hide": [
+        "#ccc-overlay",
+        "#ccc"
+      ]
+    },
+    {
+      "name": "CookieLab",
+      "match": ["*"],
+      "detect": ["#cookieLab"],
+      "reject": [
+        "#cookieLab #chooseSaveSettings"
+      ],
+      "accept": [
+        "#cookieLab #consentAllCookies"
+      ],
+      "hide": [
+        "#cookieLab"
+      ]
+    },
+    {
+      "name": "Piwik PRO Consent",
+      "match": ["*"],
+      "detect": ["#ppms_cm_popup_overlay", "#ppms_cm_bar_overlay"],
+      "reject": [
+        "#ppms_cm_save-choices"
+      ],
+      "accept": [
+        "#ppms_cm_accept-all"
+      ],
+      "hide": [
+        "#ppms_cm_popup_overlay",
+        "#ppms_cm_bar_overlay"
+      ]
+    },
+    {
+      "name": "Snigel",
+      "match": ["*"],
+      "detect": ["#snigel-cmp-framework"],
+      "reject": [
+        "#sn-b-save"
+      ],
+      "accept": [
+        "#sn-b-all"
+      ],
+      "hide": [
+        "#snigel-cmp-framework"
+      ]
+    },
+    {
+      "name": "FastCMP",
+      "match": ["*"],
+      "detect": ["#fast-cmp-container"],
+      "reject": [
+        ".fast-cmp-button-primary[value='save']"
+      ],
+      "accept": [
+        ".fast-cmp-button-primary[value='acceptall']"
+      ],
+      "hide": [
+        "#fast-cmp-container"
+      ]
+    },
+    {
+      "name": "WordPress GDPR",
+      "match": ["*"],
+      "detect": [".wpgdprc-consent-bar"],
+      "reject": [
+        ".wpgdprc-consent-bar__settings"
+      ],
+      "accept": [
+        ".wpgdprc-consent-bar__accept"
+      ],
+      "hide": [
+        ".wpgdprc-consent-bar"
+      ]
+    },
+    {
+      "name": "Drupal EU Cookie Compliance",
+      "match": ["*"],
+      "detect": [".eu-cookie-compliance-banner", "#sliding-popup"],
+      "reject": [
+        ".eu-cookie-compliance-save-preferences-button"
+      ],
+      "accept": [
+        ".eu-cookie-compliance-agree-button",
+        ".agree-button"
+      ],
+      "hide": [
+        "#sliding-popup",
+        ".eu-cookie-compliance-banner"
+      ]
+    },
+    {
+      "name": "EZ Cookie",
+      "match": ["*"],
+      "detect": ["#ez-cookie-dialog"],
+      "reject": [
+        "#ez-save-settings"
+      ],
+      "accept": [
+        "#ez-accept-all"
+      ],
+      "hide": [
+        "#ez-cookie-dialog-wrapper"
+      ]
+    },
+    {
+      "name": "ContentPass",
+      "match": ["*"],
+      "detect": [".privacy-cp-wall", ".privacy-cp-wall__wrapper_cmp"],
+      "reject": [
+        "#rcs_save"
+      ],
+      "accept": [
+        "#rcs_acceptall"
+      ],
+      "hide": [
+        ".privacy-cp-wall",
+        "#ac-notice",
+        "#ac-Overlay"
+      ]
+    },
+    {
+      "name": "Facebook",
+      "match": ["*.facebook.com", "*.messenger.com"],
+      "detect": ["[data-testid='cookie-policy-manage-dialog']"],
+      "reject": [
+        "[data-cookiebanner='accept_only_essential_button']"
+      ],
+      "accept": [
+        "[data-cookiebanner='accept_button']"
+      ],
+      "hide": [
+        "[data-testid='cookie-policy-manage-dialog']"
+      ]
+    },
+    {
+      "name": "Bing",
+      "match": ["*.bing.com"],
+      "detect": ["#bnp_cookie_banner", "#bnp_container"],
+      "reject": [
+        "#bnp_btn_reject"
+      ],
+      "accept": [
+        "#bnp_btn_accept"
+      ],
+      "hide": [
+        "#bnp_cookie_banner",
+        "#mcp_container"
+      ]
+    },
+    {
+      "name": "Amazon",
+      "match": ["*.amazon.*"],
+      "detect": ["#sp-cc", "[data-testid='consent-manager-main-content']"],
+      "reject": [
+        "#sp-cc-rejectall-link"
+      ],
+      "accept": [
+        "#sp-cc-accept"
+      ],
+      "hide": [
+        "#sp-cc"
+      ]
+    },
+    {
+      "name": "Evidon",
+      "match": ["*"],
+      "detect": ["#_evidon_banner", "#evidon-barrier-wrapper"],
+      "reject": [
+        ".evidon-prefdiag-declinebtn"
+      ],
+      "accept": [
+        "button#_evidon-accept-button"
+      ],
+      "hide": [
+        "#evidon-prefdiag-background",
+        "#evidon-prefdiag-overlay",
+        "#_evidon_banner"
+      ]
+    },
+    {
+      "name": "Cookiesjsr",
+      "match": ["*"],
+      "detect": ["#cookiesjsr"],
+      "reject": [
+        ".cookiesjsr-btn-reject",
+        "button[data-action='reject']"
+      ],
+      "accept": [
+        ".cookiesjsr-btn-accept",
+        "button[data-action='accept']"
+      ],
+      "hide": [
+        "#cookiesjsr"
+      ]
+    },
+    {
+      "name": "Typo3 CookieMan",
+      "match": ["*"],
+      "detect": [".cookieman-modal", "#cookieman-modal"],
+      "reject": [
+        "button[data-cookieman-accept-none]",
+        ".cookieman-deny"
+      ],
+      "accept": [
+        "button[data-cookieman-accept-all]",
+        ".cookieman-accept"
+      ],
+      "hide": [
+        ".cookieman-modal"
+      ]
+    },
+    {
+      "name": "Tealium",
+      "match": ["*"],
+      "detect": ["#__tealiumGDPRecModal", "#__tealiumDNS_banner", "#consent-preferences"],
+      "reject": [
+        "#__tealiumGDPRcpPrefs #preferences_prompt_submit",
+        "#preferences_prompt_settings_submit",
+        "#consentAcceptChoice"
+      ],
+      "accept": [
+        "#__tealiumGDPRecModal .consent_prefs_button"
+      ],
+      "hide": [
+        "#__tealiumGDPRecModal"
+      ]
+    },
+    {
+      "name": "Yahoo Consent",
+      "match": ["*.yahoo.com", "*.yahoo.co.*"],
+      "detect": ["#consent-page .consent-form"],
+      "reject": [
+        ".page-footer .actions button.secondary[value='save']",
+        "button[name='reject']"
+      ],
+      "accept": [
+        ".page-footer .actions button.primary[value='agree']",
+        "button[name='agree']"
+      ],
+      "hide": [
+        "#consent-page"
+      ]
+    },
+    {
+      "name": "OIL.js",
+      "match": ["*"],
+      "detect": [".as-oil-content-overlay", ".as-oil"],
+      "reject": [
+        ".as-oil__btn-optin"
+      ],
+      "accept": [
+        ".as-oil__btn-optin"
+      ],
+      "hide": [
+        "div.as-oil"
+      ]
+    },
+    {
+      "name": "ShareThis",
+      "match": ["*"],
+      "detect": ["#st-cmp-v2", ".st-cmp-app"],
+      "reject": [
+        ".st-cmp-permanent-close"
+      ],
+      "accept": [
+        ".st-cmp-btn-agree"
+      ],
+      "hide": [
+        "#st-cmp-v2"
+      ]
+    },
+    {
+      "name": "PubTech",
+      "match": ["*"],
+      "detect": ["#pubtech-cmp", "#pt-msg"],
+      "reject": [
+        "#pt-actions button:first-child"
+      ],
+      "accept": [
+        "#pt-actions button:last-child"
+      ],
+      "hide": [
+        "#pubtech-cmp"
+      ]
+    },
+    {
+      "name": "UniConsent",
+      "match": ["*"],
+      "detect": [".unic .unic-box", ".unic .unic-bar"],
+      "reject": [
+        ".unic .unic-box button:first-child"
+      ],
+      "accept": [
+        ".unic .unic-box button:last-child"
+      ],
+      "hide": [
+        ".unic"
+      ]
+    },
+    {
+      "name": "Autodesk",
+      "match": ["*.autodesk.com"],
+      "detect": ["#adsk-eprivacy-body"],
+      "reject": [
+        "#adsk-eprivacy-continue-btn"
+      ],
+      "accept": [
+        "#adsk-eprivacy-continue-btn"
+      ],
+      "hide": [
+        "#adsk-eprivacy-body"
+      ]
+    },
+    {
+      "name": "LiveRamp PrivacyManager",
+      "match": ["*"],
+      "detect": [".PrivacyManager-modal", "#notice-ok-btn"],
+      "reject": [
+        "#saveAndExit"
+      ],
+      "accept": [
+        "#notice-ok-btn"
+      ],
+      "hide": [
+        ".PrivacyManager-modal"
+      ]
+    },
+    {
+      "name": "Generic Cookie Banner",
+      "match": ["*"],
+      "detect": [
+        "[class*='cookie-banner']",
+        "[class*='cookie-consent']",
+        "[class*='cookie-notice']",
+        "[class*='cookie-popup']",
+        "[id*='cookie-banner']",
+        "[id*='cookie-consent']",
+        "[id*='cookie-notice']",
+        "[id*='gdpr']",
+        "[class*='consent-banner']",
+        "[class*='gdpr-banner']"
+      ],
+      "reject": [
+        "button[aria-label*='reject' i]",
+        "button[aria-label*='decline' i]",
+        "button[aria-label*='deny' i]",
+        "button[aria-label*='refuse' i]",
+        "button[class*='reject' i]",
+        "button[class*='decline' i]",
+        "button[class*='deny' i]",
+        "a[class*='reject' i]",
+        "a[class*='decline' i]",
+        "button:contains('Reject')",
+        "button:contains('Decline')",
+        "button:contains('Deny')"
+      ],
+      "accept": [
+        "button[aria-label*='accept' i]",
+        "button[aria-label*='agree' i]",
+        "button[class*='accept' i]",
+        "button[class*='agree' i]",
+        "a[class*='accept' i]",
+        "button:contains('Accept')",
+        "button:contains('OK')",
+        "button:contains('Got it')"
+      ],
+      "hide": [
+        "[class*='cookie-banner']",
+        "[class*='cookie-consent']",
+        "[class*='cookie-notice']",
+        "[class*='consent-banner']",
+        "[class*='cookie-overlay']",
+        "[class*='consent-overlay']"
+      ]
+    }
+  ]
+}

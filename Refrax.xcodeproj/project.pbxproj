@@ -1,0 +1,926 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 100;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B2DACC02EDAE4C700584C0B /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 0B2DACBF2EDAE4C700584C0B /* Algorithms */; };
+		0B2DACFC2EE0EA5300584C0B /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 0B2DACFB2EE0EA5300584C0B /* Collections */; };
+		0B46D1132EAC14400018F45B /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D1122EAC14400018F45B /* WebKit.framework */; };
+		0B46D1152EAC14470018F45B /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D1142EAC14470018F45B /* UniformTypeIdentifiers.framework */; };
+		0B46D1172EAC144D0018F45B /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D1162EAC144D0018F45B /* Security.framework */; };
+		0B46D1192EAC14540018F45B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D1182EAC14540018F45B /* Accelerate.framework */; };
+		0B46D11B2EAC145B0018F45B /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D11A2EAC145B0018F45B /* MetalKit.framework */; };
+		0B46D11D2EAC14630018F45B /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D11C2EAC14630018F45B /* CloudKit.framework */; };
+		0B66EAB12F1BDD5500D42D3C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B66EAB02F1BDD5500D42D3C /* WidgetKit.framework */; };
+		0B66EAB32F1BDD5500D42D3C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B66EAB22F1BDD5500D42D3C /* SwiftUI.framework */; };
+		0B66EABE2F1BDD5600D42D3C /* RefraxWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0B66EAAF2F1BDD5500D42D3C /* RefraxWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0BA40BE12F5B96E4006575D1 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 0BA40BE02F5B96E4006575D1 /* ArgumentParser */; };
+		0BA40BE32F5B9700006575D1 /* RefraxProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 0BA40BE22F5B9700006575D1 /* RefraxProtocol */; };
+		0BA40BE62F5B9743006575D1 /* refrax-ctl in CopyFiles */ = {isa = PBXBuildFile; fileRef = 0BA406C12F5B93DA006575D1 /* refrax-ctl */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		0BFAA0012F44000000584C0B /* RefraxProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 0BFAA0032F44000000584C0B /* RefraxProtocol */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0B66EABC2F1BDD5600D42D3C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B46D0F42EAC10FF0018F45B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0B66EAAE2F1BDD5500D42D3C;
+			remoteInfo = RefraxWidgetsExtension;
+		};
+		0BA40BE42F5B9721006575D1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B46D0F42EAC10FF0018F45B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0BA406C02F5B93DA006575D1;
+			remoteInfo = "refrax-ctl";
+		};
+		0BED3DF02F07758000885D12 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B46D0F42EAC10FF0018F45B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0B46D0FB2EAC10FF0018F45B;
+			remoteInfo = Refrax;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0B66EAC32F1BDD5600D42D3C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				0B66EABE2F1BDD5600D42D3C /* RefraxWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+		0BA406BF2F5B93DA006575D1 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolder = None;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		0BA40BDE2F5B967B006575D1 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = Contents/Helpers;
+			dstSubfolder = Wrapper;
+			files = (
+				0BA40BE62F5B9743006575D1 /* refrax-ctl in CopyFiles */,
+			);
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0B46D0FC2EAC10FF0018F45B /* Refrax.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Refrax.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B46D1122EAC14400018F45B /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		0B46D1142EAC14470018F45B /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
+		0B46D1162EAC144D0018F45B /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		0B46D1182EAC14540018F45B /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		0B46D11A2EAC145B0018F45B /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		0B46D11C2EAC14630018F45B /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
+		0B66EAAF2F1BDD5500D42D3C /* RefraxWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RefraxWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B66EAB02F1BDD5500D42D3C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		0B66EAB22F1BDD5500D42D3C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		0BA406C12F5B93DA006575D1 /* refrax-ctl */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "refrax-ctl"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0BED3DEC2F07758000885D12 /* RefraxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefraxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0B2DACC12EDC3E6200584C0B /* Exceptions for "Refrax" folder in "Refrax" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/Info.plist,
+			);
+			target = 0B46D0FB2EAC10FF0018F45B /* Refrax */;
+		};
+		0B66EAC22F1BDD5600D42D3C /* Exceptions for "RefraxWidgets" folder in "RefraxWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0B46D0FE2EAC10FF0018F45B /* Refrax */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0B2DACC12EDC3E6200584C0B /* Exceptions for "Refrax" folder in "Refrax" target */,
+			);
+			path = Refrax;
+			sourceTree = "<group>";
+		};
+		0B66EAB42F1BDD5500D42D3C /* RefraxWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0B66EAC22F1BDD5600D42D3C /* Exceptions for "RefraxWidgets" folder in "RefraxWidgetsExtension" target */,
+			);
+			path = RefraxWidgets;
+			sourceTree = "<group>";
+		};
+		0BA406C22F5B93DA006575D1 /* refrax-ctl */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "refrax-ctl";
+			sourceTree = "<group>";
+		};
+		0BED3DED2F07758000885D12 /* RefraxTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RefraxTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0B46D0F92EAC10FF0018F45B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				0B46D11D2EAC14630018F45B /* CloudKit.framework in Frameworks */,
+				0B46D11B2EAC145B0018F45B /* MetalKit.framework in Frameworks */,
+				0B46D1192EAC14540018F45B /* Accelerate.framework in Frameworks */,
+				0B2DACC02EDAE4C700584C0B /* Algorithms in Frameworks */,
+				0B46D1172EAC144D0018F45B /* Security.framework in Frameworks */,
+				0B2DACFC2EE0EA5300584C0B /* Collections in Frameworks */,
+				0BFAA0012F44000000584C0B /* RefraxProtocol in Frameworks */,
+				0B46D1152EAC14470018F45B /* UniformTypeIdentifiers.framework in Frameworks */,
+				0B46D1132EAC14400018F45B /* WebKit.framework in Frameworks */,
+			);
+		};
+		0B66EAAC2F1BDD5500D42D3C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				0B66EAB32F1BDD5500D42D3C /* SwiftUI.framework in Frameworks */,
+				0B66EAB12F1BDD5500D42D3C /* WidgetKit.framework in Frameworks */,
+			);
+		};
+		0BA406BE2F5B93DA006575D1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				0BA40BE32F5B9700006575D1 /* RefraxProtocol in Frameworks */,
+				0BA40BE12F5B96E4006575D1 /* ArgumentParser in Frameworks */,
+			);
+		};
+		0BED3DE92F07758000885D12 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0B46D0F32EAC10FF0018F45B = {
+			isa = PBXGroup;
+			children = (
+				0B46D0FE2EAC10FF0018F45B /* Refrax */,
+				0BED3DED2F07758000885D12 /* RefraxTests */,
+				0B66EAB42F1BDD5500D42D3C /* RefraxWidgets */,
+				0BA406C22F5B93DA006575D1 /* refrax-ctl */,
+				0B46D1112EAC14400018F45B /* Frameworks */,
+				0B46D0FD2EAC10FF0018F45B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0B46D0FD2EAC10FF0018F45B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0B46D0FC2EAC10FF0018F45B /* Refrax.app */,
+				0BED3DEC2F07758000885D12 /* RefraxTests.xctest */,
+				0B66EAAF2F1BDD5500D42D3C /* RefraxWidgetsExtension.appex */,
+				0BA406C12F5B93DA006575D1 /* refrax-ctl */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0B46D1112EAC14400018F45B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0B46D11C2EAC14630018F45B /* CloudKit.framework */,
+				0B46D11A2EAC145B0018F45B /* MetalKit.framework */,
+				0B46D1182EAC14540018F45B /* Accelerate.framework */,
+				0B46D1162EAC144D0018F45B /* Security.framework */,
+				0B46D1142EAC14470018F45B /* UniformTypeIdentifiers.framework */,
+				0B46D1122EAC14400018F45B /* WebKit.framework */,
+				0B66EAB02F1BDD5500D42D3C /* WidgetKit.framework */,
+				0B66EAB22F1BDD5500D42D3C /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0B46D0FB2EAC10FF0018F45B /* Refrax */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0B46D1092EAC11010018F45B /* Build configuration list for PBXNativeTarget "Refrax" */;
+			buildPhases = (
+				0B46D0F82EAC10FF0018F45B /* Sources */,
+				0B46D0F92EAC10FF0018F45B /* Frameworks */,
+				0B46D0FA2EAC10FF0018F45B /* Resources */,
+				0B66EAC32F1BDD5600D42D3C /* Embed Foundation Extensions */,
+				0BA40BDE2F5B967B006575D1 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0BA40BE52F5B9721006575D1 /* PBXTargetDependency */,
+				0B66EABD2F1BDD5600D42D3C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0B46D0FE2EAC10FF0018F45B /* Refrax */,
+			);
+			name = Refrax;
+			packageProductDependencies = (
+				0B2DACBF2EDAE4C700584C0B /* Algorithms */,
+				0B2DACFB2EE0EA5300584C0B /* Collections */,
+				0BFAA0032F44000000584C0B /* RefraxProtocol */,
+			);
+			productName = Refrax;
+			productReference = 0B46D0FC2EAC10FF0018F45B /* Refrax.app */;
+			productType = "com.apple.product-type.application";
+		};
+		0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0B66EABF2F1BDD5600D42D3C /* Build configuration list for PBXNativeTarget "RefraxWidgetsExtension" */;
+			buildPhases = (
+				0B66EAAB2F1BDD5500D42D3C /* Sources */,
+				0B66EAAC2F1BDD5500D42D3C /* Frameworks */,
+				0B66EAAD2F1BDD5500D42D3C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				0B66EAB42F1BDD5500D42D3C /* RefraxWidgets */,
+			);
+			name = RefraxWidgetsExtension;
+			productName = RefraxWidgetsExtension;
+			productReference = 0B66EAAF2F1BDD5500D42D3C /* RefraxWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		0BA406C02F5B93DA006575D1 /* refrax-ctl */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0BA406C72F5B93DA006575D1 /* Build configuration list for PBXNativeTarget "refrax-ctl" */;
+			buildPhases = (
+				0BA406BD2F5B93DA006575D1 /* Sources */,
+				0BA406BE2F5B93DA006575D1 /* Frameworks */,
+				0BA406BF2F5B93DA006575D1 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				0BA406C22F5B93DA006575D1 /* refrax-ctl */,
+			);
+			name = "refrax-ctl";
+			packageProductDependencies = (
+				0BA40BE02F5B96E4006575D1 /* ArgumentParser */,
+				0BA40BE22F5B9700006575D1 /* RefraxProtocol */,
+			);
+			productName = "refrax-ctl";
+			productReference = 0BA406C12F5B93DA006575D1 /* refrax-ctl */;
+			productType = "com.apple.product-type.tool";
+		};
+		0BED3DEB2F07758000885D12 /* RefraxTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0BED3DF42F07758000885D12 /* Build configuration list for PBXNativeTarget "RefraxTests" */;
+			buildPhases = (
+				0BED3DE82F07758000885D12 /* Sources */,
+				0BED3DE92F07758000885D12 /* Frameworks */,
+				0BED3DEA2F07758000885D12 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0BED3DF12F07758000885D12 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0BED3DED2F07758000885D12 /* RefraxTests */,
+			);
+			name = RefraxTests;
+			productName = RefraxTests;
+			productReference = 0BED3DEC2F07758000885D12 /* RefraxTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0B46D0F42EAC10FF0018F45B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					0B46D0FB2EAC10FF0018F45B = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
+					0B66EAAE2F1BDD5500D42D3C = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					0BA406C02F5B93DA006575D1 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					0BED3DEB2F07758000885D12 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 0B46D0FB2EAC10FF0018F45B;
+					};
+				};
+			};
+			buildConfigurationList = 0B46D0F72EAC10FF0018F45B /* Build configuration list for PBXProject "Refrax" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0B46D0F32EAC10FF0018F45B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0B2DACBE2EDAE4C700584C0B /* XCRemoteSwiftPackageReference "swift-algorithms" */,
+				0B2DACFA2EE0EA5300584C0B /* XCRemoteSwiftPackageReference "swift-collections" */,
+				0BFAA0022F44000000584C0B /* XCLocalSwiftPackageReference "Packages/refrax-protocol" */,
+				0BA40BDF2F5B96E4006575D1 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
+			preferredProjectObjectVersion = 100;
+			productRefGroup = 0B46D0FD2EAC10FF0018F45B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0B46D0FB2EAC10FF0018F45B /* Refrax */,
+				0BED3DEB2F07758000885D12 /* RefraxTests */,
+				0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */,
+				0BA406C02F5B93DA006575D1 /* refrax-ctl */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0B46D0FA2EAC10FF0018F45B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		0B66EAAD2F1BDD5500D42D3C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		0BED3DEA2F07758000885D12 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0B46D0F82EAC10FF0018F45B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		0B66EAAB2F1BDD5500D42D3C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		0BA406BD2F5B93DA006575D1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		0BED3DE82F07758000885D12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0B66EABD2F1BDD5600D42D3C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */;
+			targetProxy = 0B66EABC2F1BDD5600D42D3C /* PBXContainerItemProxy */;
+		};
+		0BA40BE52F5B9721006575D1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0BA406C02F5B93DA006575D1 /* refrax-ctl */;
+			targetProxy = 0BA40BE42F5B9721006575D1 /* PBXContainerItemProxy */;
+		};
+		0BED3DF12F07758000885D12 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0B46D0FB2EAC10FF0018F45B /* Refrax */;
+			targetProxy = 0BED3DF02F07758000885D12 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0B46D1072EAC11010018F45B /* Debug configuration for PBXProject "Refrax" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		0B46D1082EAC11010018F45B /* Release configuration for PBXProject "Refrax" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		0B46D10A2EAC11010018F45B /* Debug configuration for PBXNativeTarget "Refrax" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Refrax;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CLANG_ANALYZER_SECURITY_FLOATLOOPCOUNTER = YES;
+				CLANG_ANALYZER_SECURITY_INSECUREAPI_RAND = YES;
+				CLANG_ANALYZER_SECURITY_INSECUREAPI_STRCPY = YES;
+				CLANG_TIDY_BUGPRONE_REDUNDANT_BRANCH_CONDITION = YES;
+				CLANG_TIDY_MISC_REDUNDANT_EXPRESSION = YES;
+				CODE_SIGN_ENTITLEMENTS = Refrax/Resources/Debug.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 31;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
+				ENABLE_RESOURCE_ACCESS_PRINTING = YES;
+				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_SECURITY_COMPILER_WARNINGS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = CLAUDE.md;
+				GCC_WARN_SHADOW = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Refrax/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Refrax;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				OTHER_SWIFT_FLAGS = "-DREFRAX_TESTS";
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.debug;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Refrax/Core/Extensions/Private/RefraxBridgingHeader.h";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_STRICT_MEMORY_SAFETY = NO;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		0B46D10B2EAC11010018F45B /* Release configuration for PBXNativeTarget "Refrax" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Refrax;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CLANG_ANALYZER_SECURITY_FLOATLOOPCOUNTER = YES;
+				CLANG_ANALYZER_SECURITY_INSECUREAPI_RAND = YES;
+				CLANG_ANALYZER_SECURITY_INSECUREAPI_STRCPY = YES;
+				CLANG_TIDY_BUGPRONE_REDUNDANT_BRANCH_CONDITION = YES;
+				CLANG_TIDY_MISC_REDUNDANT_EXPRESSION = YES;
+				CODE_SIGN_ENTITLEMENTS = Refrax/Resources/Release.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 31;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
+				ENABLE_RESOURCE_ACCESS_PRINTING = YES;
+				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_SECURITY_COMPILER_WARNINGS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = CLAUDE.md;
+				GCC_WARN_SHADOW = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Refrax/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Refrax;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Refrax/Core/Extensions/Private/RefraxBridgingHeader.h";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_STRICT_MEMORY_SAFETY = NO;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		0B66EAC02F1BDD5600D42D3C /* Debug configuration for PBXNativeTarget "RefraxWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RefraxWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RefraxWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.debug.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		0B66EAC12F1BDD5600D42D3C /* Release configuration for PBXNativeTarget "RefraxWidgetsExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RefraxWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RefraxWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		0BA406C52F5B93DA006575D1 /* Debug configuration for PBXNativeTarget "refrax-ctl" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.debug.ctl;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		0BA406C62F5B93DA006575D1 /* Release configuration for PBXNativeTarget "refrax-ctl" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.ctl;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		0BED3DF22F07758000885D12 /* Debug configuration for PBXNativeTarget "RefraxTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				OTHER_SWIFT_FLAGS = "-DREFRAX_TESTS";
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Refrax.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Refrax";
+			};
+			name = Debug;
+		};
+		0BED3DF32F07758000885D12 /* Release configuration for PBXNativeTarget "RefraxTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 31;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 0.24;
+				OTHER_SWIFT_FLAGS = "-DREFRAX_TESTS";
+				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Refrax.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Refrax";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0B46D0F72EAC10FF0018F45B /* Build configuration list for PBXProject "Refrax" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B46D1072EAC11010018F45B /* Debug configuration for PBXProject "Refrax" */,
+				0B46D1082EAC11010018F45B /* Release configuration for PBXProject "Refrax" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		0B46D1092EAC11010018F45B /* Build configuration list for PBXNativeTarget "Refrax" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B46D10A2EAC11010018F45B /* Debug configuration for PBXNativeTarget "Refrax" */,
+				0B46D10B2EAC11010018F45B /* Release configuration for PBXNativeTarget "Refrax" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		0B66EABF2F1BDD5600D42D3C /* Build configuration list for PBXNativeTarget "RefraxWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B66EAC02F1BDD5600D42D3C /* Debug configuration for PBXNativeTarget "RefraxWidgetsExtension" */,
+				0B66EAC12F1BDD5600D42D3C /* Release configuration for PBXNativeTarget "RefraxWidgetsExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		0BA406C72F5B93DA006575D1 /* Build configuration list for PBXNativeTarget "refrax-ctl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0BA406C52F5B93DA006575D1 /* Debug configuration for PBXNativeTarget "refrax-ctl" */,
+				0BA406C62F5B93DA006575D1 /* Release configuration for PBXNativeTarget "refrax-ctl" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		0BED3DF42F07758000885D12 /* Build configuration list for PBXNativeTarget "RefraxTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0BED3DF22F07758000885D12 /* Debug configuration for PBXNativeTarget "RefraxTests" */,
+				0BED3DF32F07758000885D12 /* Release configuration for PBXNativeTarget "RefraxTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		0BFAA0022F44000000584C0B /* XCLocalSwiftPackageReference "Packages/refrax-protocol" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Packages/refrax-protocol";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0B2DACBE2EDAE4C700584C0B /* XCRemoteSwiftPackageReference "swift-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.1;
+			};
+		};
+		0B2DACFA2EE0EA5300584C0B /* XCRemoteSwiftPackageReference "swift-collections" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-collections.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+		0BA40BDF2F5B96E4006575D1 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0B2DACBF2EDAE4C700584C0B /* Algorithms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0B2DACBE2EDAE4C700584C0B /* XCRemoteSwiftPackageReference "swift-algorithms" */;
+			productName = Algorithms;
+		};
+		0B2DACFB2EE0EA5300584C0B /* Collections */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0B2DACFA2EE0EA5300584C0B /* XCRemoteSwiftPackageReference "swift-collections" */;
+			productName = Collections;
+		};
+		0BA40BE02F5B96E4006575D1 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0BA40BDF2F5B96E4006575D1 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
+		0BA40BE22F5B9700006575D1 /* RefraxProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0BFAA0022F44000000584C0B /* XCLocalSwiftPackageReference "Packages/refrax-protocol" */;
+			productName = RefraxProtocol;
+		};
+		0BFAA0032F44000000584C0B /* RefraxProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RefraxProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0B46D0F42EAC10FF0018F45B /* Project object */;
+}

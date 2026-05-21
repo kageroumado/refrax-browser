@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ========================================== -->
+    <!-- 1. APP IDENTITY                            -->
+    <!-- ========================================== -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Refrax</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- ========================================== -->
+    <!-- 2. SYSTEM INTEGRATION (HANDOFF & QUARANTINE) -->
+    <!-- ========================================== -->
+    <!-- Tells macOS to tag downloaded files as "Quarantined" (Security Best Practice) -->
+    <key>LSFileQuarantineEnabled</key>
+    <true/>
+    
+    <!-- Supports Handoff and System Activities -->
+    <key>NSUserActivityTypes</key>
+    <array>
+        <string>NSUserActivityTypeBrowsingWeb</string>
+        <string>com.refrax.browsing</string>
+    </array>
+    
+    <!-- Allows AppleScript control -->
+    <key>NSAppleScriptEnabled</key>
+    <true/>
+    <key>OSAScriptingDefinition</key>
+    <string>Refrax.sdef</string>
+    
+    <!-- System Services Menu Items -->
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Search With Refrax</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>searchWithWebSearchProvider</string>
+            <key>NSPortName</key>
+            <string>Refrax</string>
+            <key>NSRequiredContext</key>
+            <array>
+                <dict>
+                    <key>NSTextContent</key>
+                    <string>URL</string>
+                </dict>
+            </array>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.utf8-plain-text</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Open URL in Refrax</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>openURLFromService</string>
+            <key>NSPortName</key>
+            <string>Refrax</string>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSTextContent</key>
+                <string>URL</string>
+            </dict>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.url</string>
+                <string>public.utf8-plain-text</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Download with Refrax</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>downloadWithRefrax</string>
+            <key>NSPortName</key>
+            <string>Refrax</string>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSTextContent</key>
+                <string>URL</string>
+            </dict>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.url</string>
+                <string>public.utf8-plain-text</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Add to Refrax Bookmarks</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>addToBookmarks</string>
+            <key>NSPortName</key>
+            <string>Refrax</string>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSTextContent</key>
+                <string>URL</string>
+            </dict>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.url</string>
+                <string>public.utf8-plain-text</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- ========================================== -->
+    <!-- 3. FILE & URL HANDLING                     -->
+    <!-- ========================================== -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Web Site URL</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>http</string>
+                <string>https</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Local File URL</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>file</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Email Address URL</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>mailto</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Magnet Link</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>magnet</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+        </dict>
+    </array>
+
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>HTML document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.html</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>XHTML document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.xhtml</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>PDF document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.adobe.pdf</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Plain text document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.text</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Web archive</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.apple.webarchive</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>URL file</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.apple.internet-location</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+            <key>NSDocumentClass</key>
+            <string>BrowserDocument</string>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>BitTorrent File</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>org.bittorrent.torrent</string>
+            </array>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+        </dict>
+    </array>
+
+    <!-- ========================================== -->
+    <!-- 4. PERMISSIONS & USAGE DESCRIPTIONS        -->
+    <!-- ========================================== -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+
+    <!-- Camera & Mic -->
+    <key>NSCameraUsageDescription</key>
+    <string>This allows websites to use your camera for video conferencing and capturing photos.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This allows you to use voice search, video conferencing, and audio recording features on websites.</string>
+    
+    <!-- Location -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>This allows websites to provide localized content, such as maps, directions, and weather, based on your current location.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>This allows websites to provide localized content, such as maps, directions, and weather, based on your current location.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>This allows websites to provide localized content, such as maps, directions, and weather, based on your current location.</string>
+    
+    <!-- Bluetooth -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>This allows websites to connect to and communicate with Bluetooth accessories via the Web Bluetooth API.</string>
+
+    <!-- Local Network -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>This allows websites to access devices and services on your local network.</string>
+    
+    <!-- File System -->
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Refrax needs access to save files you download from the web.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Refrax needs access to upload files from your Desktop.</string>
+
+    <!-- Calendar -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>This allows Refrax to check your schedule and add meeting links to your calendar.</string>
+    
+    <!-- Contacts (Address Book) -->
+    <key>NSContactsUsageDescription</key>
+    <string>This allows Refrax to suggest contact information for autofilling forms on websites.</string>
+    
+    <!-- Speech -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>This allows you to control websites using your voice.</string>
+    
+    <!-- Photos -->
+    <key>NSPhotoLibraryUsageDescription</key>
+	<string>This allows you to save and upload photos from your library to websites.</string>
+
+    <!-- ========================================== -->
+    <!-- 5. GRAPHICS, PERFORMANCE & STABILITY       -->
+    <!-- ========================================== -->
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    
+    <key>GPUEjectPolicy</key>
+    <string>wait</string>
+    
+    <!-- Fixes specific WebKit memory allocation bugs -->
+    <key>LSEnvironment</key>
+    <dict>
+        <key>MallocNanoZone</key>
+        <string>0</string>
+    </dict>
+    
+    <!-- Fixes HEIF/AVIF crashes by moving decoding to a helper process -->
+    <key>NSImageIOEnableOutOfProcess</key>
+    <true/>
+
+    <!-- Prevents database corruption on system shutdown -->
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+
+    <!-- Always save and restore window state, regardless of system preference -->
+    <key>NSQuitAlwaysKeepsWindows</key>
+    <true/>
+
+    <!-- ========================================== -->
+    <!-- 6. TYPE IMPORTS                            -->
+    <!-- ========================================== -->
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>BitTorrent File</string>
+            <key>UTTypeIdentifier</key>
+            <string>org.bittorrent.torrent</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>torrent</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/x-bittorrent</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+
+    <!-- ========================================== -->
+    <!-- 7. CUSTOM EXPORTS                          -->
+    <!-- ========================================== -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.content</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>Refrax Bookmark</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.refrax.bookmark-drag</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>refraxbookmark</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

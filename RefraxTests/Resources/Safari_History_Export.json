@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "browser_name": "Safari",
+    "browser_version": "26.1",
+    "data_type": "history",
+    "export_time_usec": 1768318571108128,
+    "schema_version": 1
+  },
+  "history": [
+    {
+      "url": "https://github.com/",
+      "time_usec": 1768318500000000,
+      "visit_count": 25,
+      "title": "GitHub"
+    },
+    {
+      "url": "https://developer.apple.com/documentation/swiftui",
+      "time_usec": 1768318400000000,
+      "visit_count": 15,
+      "title": "SwiftUI | Apple Developer Documentation"
+    },
+    {
+      "url": "https://stackoverflow.com/questions/swift",
+      "time_usec": 1768318300000000,
+      "visit_count": 10,
+      "title": "Swift Questions - Stack Overflow"
+    },
+    {
+      "url": "https://duckduckgo.com/?q=swift+concurrency+async+await&t=osx",
+      "time_usec": 1768318200000000,
+      "visit_count": 5,
+      "title": "swift concurrency async await at DuckDuckGo"
+    },
+    {
+      "url": "https://www.reddit.com/r/SwiftUI/",
+      "time_usec": 1768318100000000,
+      "visit_count": 8,
+      "title": "SwiftUI - Reddit"
+    },
+    {
+      "url": "https://example.com/path%20with%20spaces",
+      "time_usec": 1768318000000000,
+      "visit_count": 1,
+      "title": "Path With Spaces"
+    },
+    {
+      "url": "https://example.com/日本語ページ",
+      "time_usec": 1768317900000000,
+      "visit_count": 2,
+      "title": "Japanese Page Title"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "time_usec": 1768317800000000,
+      "visit_count": 3,
+      "title": "Never Gonna Give You Up - YouTube"
+    }
+  ]
+}

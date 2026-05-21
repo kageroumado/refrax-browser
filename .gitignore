@@ -1,0 +1,102 @@
+# Xcode
+#
+# Build and user data
+build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# User-specific settings
+xcuserdata/
+*.xcuserdatad
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# IDE indexes
+index.noindex/
+*.xcindexdb*
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Package.pins
+
+# Xcode-resolved SPM packages (not our local packages)
+# Our local packages live in Packages/ and are tracked
+Packages/refrax-protocol/.build/
+Packages/refrax-protocol/.swiftpm/
+
+# CocoaPods
+Pods/
+!Podfile
+!Podfile.lock
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# Accio dependency manager
+Dependencies/
+.accio/
+
+# Tuist
+Tuist/Cache/
+Tuist/Dependencies/
+
+# Xcode Server & continuous integration
+.xcresult/
+*.xcactivitylog
+
+# LLVM profiling data
+*.profraw
+*.profdata
+
+# App artifacts
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.app
+*.framework
+*.xcarchive
+
+# Swift playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Build tools / environment files
+.env
+.env.*
+*.crt
+*.pem
+*.p12
+*.mobileprovision
+
+# Editor / system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go compiled binaries
+Server/telemetry-service/refrax-telemetry-service
+
+# Auto-generated folder context files (claude-mem)
+**/CLAUDE.md
+!CLAUDE.md

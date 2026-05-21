@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Sphere positioned so edge passes through junction at (500, 560)
+    Center: (920, 1280)
+    Radius: 834 = distance from center to junction
+    This creates the lens surface where refraction occurs
+  -->
+  <circle cx="920" cy="1280" r="834" fill="#e8e4f0" fill-opacity="0.85"/>
+</svg>
