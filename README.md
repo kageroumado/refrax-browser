@@ -1,10 +1,16 @@
 # Refrax
 
-A WebKit-based browser for macOS power users. Native Swift and SwiftUI,
-Liquid Glass design, targets the latest macOS.
+refrax is a maximalist browser. while everyone else was removing
+features and calling it design, i kept adding them — natively,
+properly, in Swift and WebKit, the way Apple would if Apple still
+shipped weird software. vertical tabs, spaces with Touch ID locks, a
+command palette that takes plain language, a CLI that scripts the
+entire browser, an MCP server so your agent browses beside you. it has
+more features than any browser you've used and several that exist
+nowhere else. seventeen people use it every week. i'm one of them.
 
 <p align="center">
-  <img src=".github/screenshot.avif" alt="Refrax browser: sidebar with grouped tabs, Command Lens, and the Refrax marketing site in the main pane" width="800">
+  <img src=".github/screenshot.avif" alt="Refrax browser: sidebar with grouped tabs and spaces, Liquid Glass interface, with a webpage in the main pane" width="800">
 </p>
 
 The website is at <https://refrax.browser>. Builds and updates are
