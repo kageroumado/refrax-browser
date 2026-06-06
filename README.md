@@ -1,20 +1,20 @@
 # Refrax
 
-refrax is a maximalist browser. while everyone else was removing
-features and calling it design, i kept adding them — natively,
+Refrax is a maximalist browser. While everyone else was removing
+features and calling it design, I kept adding them — natively,
 properly, in Swift and WebKit, the way Apple would if Apple still
-shipped weird software. vertical tabs, spaces with Touch ID locks, a
+shipped weird software. Vertical tabs, spaces with Touch ID locks, a
 command palette that takes plain language, a CLI that scripts the
-entire browser, an MCP server so your agent browses beside you. it has
+entire browser, an MCP server so your agent browses beside you. It has
 more features than any browser you've used and several that exist
-nowhere else. seventeen people use it every week. i'm one of them.
+nowhere else. Seventeen people use it every week. I'm one of them.
 
 <p align="center">
   <img src=".github/screenshot.avif" alt="Refrax browser: sidebar with grouped tabs and spaces, Liquid Glass interface, with a webpage in the main pane" width="800">
 </p>
 
-The website is at <https://refrax.browser>. Builds and updates are
-distributed from there.
+The website is at <https://kagerou.glass/refrax/>. Builds and updates
+are distributed from there.
 
 ## License
 
