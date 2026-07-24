@@ -33,11 +33,6 @@ enum Constants {
             self == .alpha
         }
 
-        /// Alpha and beta enforce the build expiry kill switch.
-        var enforcesUpdateExpiry: Bool {
-            self != .release
-        }
-
         var displayName: String {
             rawValue.capitalized
         }
