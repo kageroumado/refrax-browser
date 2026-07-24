@@ -640,16 +640,30 @@ extension RecyclingTabListView {
             updateGeometryState()
         }
 
+        /// Coalesces deferred geometry syncs so at most one is queued at a time.
+        private var isGeometrySyncScheduled = false
+
         private func updateGeometryState() {
-            let clipOriginY = scrollView.contentView.bounds.origin.y
-            let topInset = scrollView.contentInsets.top
-            // NSTableView distributes intercellSpacing evenly: half above, half below
-            // each cell. The cell content starts at intercellSpacing.height/2 within
-            // each row slot. Add this offset so GeometryState's frame calculations
-            // match the actual cell positions, not the row rect origins.
-            let cellInsetTop = tableView.intercellSpacing.height / 2
-            let documentToSidebarOffset = -clipOriginY + cellInsetTop
-            onScrollChange?(documentToSidebarOffset, topInset)
+            // Reached synchronously from updateNSView and from boundsDidChange
+            // while AppKit's constraint pass is running. Writing observable
+            // GeometryState there invalidates SwiftUI views mid-layout, which
+            // macOS 27 escalates to a fatal NSException (it was tolerated up to
+            // macOS 26). Defer the writes one runloop turn, past the layout pass.
+            guard !isGeometrySyncScheduled else { return }
+            isGeometrySyncScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                isGeometrySyncScheduled = false
+                let clipOriginY = scrollView.contentView.bounds.origin.y
+                let topInset = scrollView.contentInsets.top
+                // NSTableView distributes intercellSpacing evenly: half above, half below
+                // each cell. The cell content starts at intercellSpacing.height/2 within
+                // each row slot. Add this offset so GeometryState's frame calculations
+                // match the actual cell positions, not the row rect origins.
+                let cellInsetTop = tableView.intercellSpacing.height / 2
+                let documentToSidebarOffset = -clipOriginY + cellInsetTop
+                onScrollChange?(documentToSidebarOffset, topInset)
+            }
         }
 
         // MARK: - Scroll To Item
