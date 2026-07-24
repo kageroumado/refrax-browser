@@ -661,7 +661,18 @@ final class BrowserSettings {
     /// Whether to persist all log levels to disk (not just warning+).
     var verboseLoggingEnabled: Bool = false
 
-    // MARK: - Onboarding
+    // MARK: - Updates
+
+    /// Whether to automatically check for updates on the hourly schedule.
+    var checkForUpdatesAutomatically: Bool = true
+
+    // MARK: - Activation & Telemetry
+
+    /// Whether the app has been activated with a valid invite code.
+    var isActivated: Bool = false
+
+    /// The invite code used to activate this device.
+    var activationCode: String?
 
     /// Whether the user has completed the onboarding flow.
     ///
@@ -674,6 +685,14 @@ final class BrowserSettings {
     /// that already have browsing data. This flag prevents it from
     /// re-triggering after a debug reset.
     var hasRunOnboardingMigration: Bool = false
+
+    /// Whether anonymous telemetry is enabled (opt-out).
+    var telemetryEnabled: Bool = true
+
+    /// Timestamp of the last heartbeat ping sent to the server.
+    ///
+    /// Used to throttle heartbeats to once per 24 hours.
+    var lastHeartbeatDate: Date?
 
     // MARK: - Feature Flags
 
@@ -799,8 +818,13 @@ final class BrowserSettings {
         self.feedbackName = ""
         self.feedbackEmail = ""
         self.verboseLoggingEnabled = false
+        self.checkForUpdatesAutomatically = true
+        self.isActivated = false
+        self.activationCode = nil
         self.hasCompletedOnboarding = false
         self.hasRunOnboardingMigration = false
+        self.telemetryEnabled = false
+        self.lastHeartbeatDate = nil
         self.featureFlagOverridesJSON = "{}"
         self.iCloudSyncEnabled = false
     }
@@ -1196,6 +1220,9 @@ final class BrowserSettings {
         feedbackName = ""
         feedbackEmail = ""
         verboseLoggingEnabled = false
+        checkForUpdatesAutomatically = true
+        telemetryEnabled = false
+        lastHeartbeatDate = nil
         featureFlagOverridesJSON = "{}"
         iCloudSyncEnabled = false
 

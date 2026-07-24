@@ -100,3 +100,14 @@ Server/telemetry-service/refrax-telemetry-service
 # Auto-generated folder context files (claude-mem)
 **/CLAUDE.md
 !CLAUDE.md
+# Private local-only files (kept in the working copy, never published;
+# content lives in the private infrastructure repo under refrax-meta/)
+CLAUDE.md
+MEMORY.md
+SOUL.md
+.claude/
+Docs/
+Marketing/
+CHANGELOG.md
+Scripts/session-start-memory.sh
+Scripts/session-stop-reminder.sh

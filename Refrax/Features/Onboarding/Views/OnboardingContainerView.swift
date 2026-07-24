@@ -10,6 +10,7 @@ struct OnboardingContainerView: View {
 
     enum OnboardingStep: Int, CaseIterable {
         case welcome
+        case alphaInfo
         case `import`
     }
 
@@ -18,6 +19,12 @@ struct OnboardingContainerView: View {
             switch step {
             case .welcome:
                 OnboardingWelcomeView {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        step = .alphaInfo
+                    }
+                }
+            case .alphaInfo:
+                OnboardingAlphaInfoView {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         step = .import
                     }

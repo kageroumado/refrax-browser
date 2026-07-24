@@ -46,7 +46,7 @@ struct AboutView: View {
     }
 
     private var copyright: some View {
-        Text("Copyright \u{00A9} 2026 kageroumado. Licensed under GPL-3.0.")
+        Text("Copyright \u{00A9} 2026 kageroumado. All rights reserved.")
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

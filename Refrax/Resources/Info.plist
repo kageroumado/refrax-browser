@@ -23,6 +23,11 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
+    <!-- Server API token, injected at archive time by kagerou publish.
+         Empty in dev and open-source builds: server-channel features
+         (updates, activation, telemetry, feedback) disable at runtime. -->
+    <key>RefraxAPIToken</key>
+    <string>$(REFRAX_API_TOKEN)</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

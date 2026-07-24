@@ -72,6 +72,12 @@ enum SuggestionType: Hashable, Sendable {
 
 /// App-level actions triggered from the Command Lens.
 nonisolated enum AppAction: Hashable, Sendable {
+    /// Open the feedback composition window.
+    case feedback
+
+    /// Check for application updates.
+    case checkForUpdates
+
     /// Open the browser data import wizard.
     case importBrowserData
 }

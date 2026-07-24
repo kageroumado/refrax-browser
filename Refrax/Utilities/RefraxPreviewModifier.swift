@@ -289,6 +289,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             thoughtStreamStore: ThoughtStreamStore(),
             humanInterventionManager: HumanInterventionManager(),
             customSearchEngineManager: customSearchEngineManager,
+            appUpdateManager: AppUpdateManager(settings: settings),
             guidedTourManager: GuidedTourManager(),
         )
     }

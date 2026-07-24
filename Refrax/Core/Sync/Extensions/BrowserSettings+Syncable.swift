@@ -210,10 +210,18 @@ extension BrowserSettings: Syncable {
         record["feedbackEmail"] = feedbackEmail as NSString
         record["verboseLoggingEnabled"] = verboseLoggingEnabled as NSNumber
 
-        // MARK: - Onboarding
+        // MARK: - Updates
 
+        record["checkForUpdatesAutomatically"] = checkForUpdatesAutomatically as NSNumber
+
+        // MARK: - Activation & Telemetry
+
+        record["isActivated"] = isActivated as NSNumber
+        record["activationCode"] = activationCode as NSString?
         record["hasCompletedOnboarding"] = hasCompletedOnboarding as NSNumber
         record["hasRunOnboardingMigration"] = hasRunOnboardingMigration as NSNumber
+        record["telemetryEnabled"] = telemetryEnabled as NSNumber
+        record["lastHeartbeatDate"] = lastHeartbeatDate as NSDate?
 
         // PrivacyProtectionSettings is synced independently — not followed here.
     }
@@ -446,10 +454,18 @@ extension BrowserSettings: Syncable {
         settings.feedbackEmail = record["feedbackEmail"] as? String ?? ""
         settings.verboseLoggingEnabled = (record["verboseLoggingEnabled"] as? Bool) ?? false
 
-        // MARK: - Onboarding
+        // MARK: - Updates
 
+        settings.checkForUpdatesAutomatically = (record["checkForUpdatesAutomatically"] as? Bool) ?? true
+
+        // MARK: - Activation & Telemetry
+
+        settings.isActivated = (record["isActivated"] as? Bool) ?? false
+        settings.activationCode = record["activationCode"] as? String
         settings.hasCompletedOnboarding = (record["hasCompletedOnboarding"] as? Bool) ?? false
         settings.hasRunOnboardingMigration = (record["hasRunOnboardingMigration"] as? Bool) ?? false
+        settings.telemetryEnabled = (record["telemetryEnabled"] as? Bool) ?? false
+        settings.lastHeartbeatDate = record["lastHeartbeatDate"] as? Date
 
         return settings
     }

@@ -17,6 +17,26 @@ extension MenuBarManager {
         aboutItem.target = self
         appMenu.addItem(aboutItem)
 
+        // Check for Updates
+        let updateItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: "",
+        )
+        updateItem.target = self
+        updateItem.tag = MenuItemTag.checkForUpdates.rawValue
+        appMenu.addItem(updateItem)
+
+        // Send Feedback
+        let feedbackItem = NSMenuItem(
+            title: "Send Feedback…",
+            action: #selector(showFeedback(_:)),
+            keyEquivalent: "",
+        )
+        feedbackItem.image = NSImage(systemSymbolName: "envelope", accessibilityDescription: nil)
+        feedbackItem.target = self
+        appMenu.addItem(feedbackItem)
+
         appMenu.addItem(.separator())
 
         // Preferences
@@ -82,5 +102,15 @@ extension MenuBarManager {
     @objc
     func openPreferences(_: Any?) {
         NSApplication.shared.typedDelegate.settingsWindowController.showWindow()
+    }
+
+    @objc
+    func checkForUpdates(_: Any?) {
+        let manager = NSApp.typedDelegate.appUpdateManager
+        if case .readyToInstall = manager.phase {
+            Task { await manager.restartToUpdate() }
+        } else {
+            Task { await manager.checkForUpdates(manual: true) }
+        }
     }
 }

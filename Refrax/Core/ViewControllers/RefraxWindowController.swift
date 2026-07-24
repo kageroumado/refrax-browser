@@ -345,6 +345,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             thoughtStreamStore: appDelegate.thoughtStreamStore,
             humanInterventionManager: appDelegate.humanInterventionManager,
             customSearchEngineManager: appDelegate.customSearchEngineManager,
+            appUpdateManager: appDelegate.appUpdateManager,
             guidedTourManager: GuidedTourManager(),
         )
 

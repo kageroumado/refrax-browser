@@ -26,6 +26,7 @@ struct OnboardingWelcomeView: View {
             Spacer()
 
             Button {
+                settings.isActivated = true
                 onNext()
             } label: {
                 Text("Get Started")

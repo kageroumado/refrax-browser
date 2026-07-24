@@ -1623,6 +1623,12 @@ final class CommandLensManager {
 
         case let .appAction(action):
             switch action {
+            case .feedback:
+                NSApp.typedDelegate.feedbackWindowController.showWindow()
+            case .checkForUpdates:
+                Task {
+                    await NSApp.typedDelegate.appUpdateManager.checkForUpdates(manual: true)
+                }
             case .importBrowserData:
                 windowState.showsBrowserImport = true
             }

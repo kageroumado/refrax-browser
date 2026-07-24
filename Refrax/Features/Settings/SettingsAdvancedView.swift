@@ -155,13 +155,17 @@ struct AdvancedSettingsView: View {
             Text("This will reset all settings to their default values. This action cannot be undone.")
         }
         #if DEBUG
-        .alert("Reset Onboarding", isPresented: $showResetActivationAlert) {
+        .alert("Reset Activation", isPresented: $showResetActivationAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {
+                settings.isActivated = false
+                settings.activationCode = nil
                 settings.hasCompletedOnboarding = false
+                settings.telemetryEnabled = false
+                settings.lastHeartbeatDate = nil
             }
         } message: {
-            Text("This will clear onboarding state. Restart the app to see the onboarding flow.")
+            Text("This will clear activation and onboarding state. Restart the app to see the onboarding flow.")
         }
         #endif
         .sheet(isPresented: $showJavaScriptSitesSheet, onDismiss: refreshWhitelistCount) {

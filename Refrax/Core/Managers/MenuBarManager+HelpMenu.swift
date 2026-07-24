@@ -26,6 +26,17 @@ extension MenuBarManager {
 
         helpMenu.addItem(.separator())
 
+        let feedbackItem = NSMenuItem(
+            title: "Send Feedback…",
+            action: #selector(showFeedback(_:)),
+            keyEquivalent: "",
+        )
+        feedbackItem.image = NSImage(systemSymbolName: "envelope", accessibilityDescription: nil)
+        feedbackItem.target = self
+        helpMenu.addItem(feedbackItem)
+
+        helpMenu.addItem(.separator())
+
         let acknowledgementsItem = NSMenuItem(
             title: "Acknowledgements",
             action: #selector(showAcknowledgements(_:)),
@@ -43,6 +54,11 @@ extension MenuBarManager {
     @objc
     func showHelp(_: Any?) {
         // TODO: Implement help
+    }
+
+    @objc
+    func showFeedback(_: Any?) {
+        NSApp.typedDelegate.feedbackWindowController.showWindow()
     }
 
     @objc

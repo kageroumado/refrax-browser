@@ -127,6 +127,8 @@ final class AgentToolBridge {
             return executeUserStyleList(input)
         case "user_style_delete":
             return executeUserStyleDelete(input)
+        case "send_feedback":
+            return executeSendFeedback(input)
         default:
             return .error("Unknown tool: \(toolName)")
         }
@@ -197,6 +199,8 @@ final class AgentToolBridge {
             (.scan, "Listing user styles...")
         case "user_style_delete":
             (.act, "Deleting user style...")
+        case "send_feedback":
+            (.act, "Opening feedback window...")
         default:
             (.act, "Using \(toolName)...")
         }
@@ -842,6 +846,27 @@ final class AgentToolBridge {
             return "\(style.displayName) [\(status)] (id: \(style.id.uuidString)) — \(scope)"
         }
         return .success("User styles:\n\(lines.joined(separator: "\n"))")
+    }
+
+    private func executeSendFeedback(_ input: [String: AnthropicJSONValue]) -> ToolOutput {
+        let feedbackManager = NSApp.typedDelegate.feedbackManager
+
+        if let subject = input["subject"]?.stringValue {
+            feedbackManager.subject = subject
+        }
+        if let body = input["body"]?.stringValue {
+            feedbackManager.body = body
+        }
+        if let categoryRaw = input["category"]?.stringValue {
+            switch categoryRaw {
+            case "bug": feedbackManager.category = .bug
+            case "feature": feedbackManager.category = .feature
+            default: feedbackManager.category = .general
+            }
+        }
+
+        NSApp.typedDelegate.feedbackWindowController.showWindow()
+        return .success("Feedback window opened")
     }
 
     private func executeUserStyleDelete(_ input: [String: AnthropicJSONValue]) -> ToolOutput {

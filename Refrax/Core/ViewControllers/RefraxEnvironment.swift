@@ -57,6 +57,7 @@ struct RefraxEnvironment {
     let thoughtStreamStore: ThoughtStreamStore
     let humanInterventionManager: HumanInterventionManager
     let customSearchEngineManager: CustomSearchEngineManager
+    let appUpdateManager: AppUpdateManager
     let guidedTourManager: GuidedTourManager
 }
 
@@ -124,6 +125,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.thoughtStreamStore)
             .environment(environment.humanInterventionManager)
             .environment(environment.customSearchEngineManager)
+            .environment(environment.appUpdateManager)
             .environment(environment.guidedTourManager)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)

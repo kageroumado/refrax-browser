@@ -426,7 +426,17 @@ struct StorageSettingsView: View {
         isClearing = true
         activeClearTier = .fullReset
 
-        // 1. Clear all WebKit data from all stores
+        // 1. Preserve activation status
+        let isActivated = settings.isActivated
+        let activationCode = settings.activationCode
+
+        // Write activation info to a separate UserDefaults suite that survives the wipe
+        let restoreSuite = UserDefaults(suiteName: "website.refrax.browser.activation-restore")
+        restoreSuite?.set(isActivated, forKey: "isActivated")
+        restoreSuite?.set(activationCode, forKey: "activationCode")
+        restoreSuite?.synchronize()
+
+        // 2. Clear all WebKit data from all stores
         await WKWebsiteDataStore.default().removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
             modifiedSince: .distantPast

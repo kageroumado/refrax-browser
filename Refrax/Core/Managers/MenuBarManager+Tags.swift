@@ -16,6 +16,9 @@ enum MenuItemTag: Int {
     case opacity60 = 2_012
     case opacity40 = 2_013
 
+    // App menu
+    case checkForUpdates = 2_100
+
     // View menu - sidebar mode
     case sidebarModeOverlay = 3_001
     case sidebarModeCompact = 3_002

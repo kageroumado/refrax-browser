@@ -23,7 +23,8 @@ nonisolated enum HTTPClientError: Error, LocalizedError {
 
 /// Lightweight HTTP client for non-WebKit networking.
 ///
-/// Used for API calls that don't involve web content rendering.
+/// Used by `FeedbackSubmissionService` and `AppUpdateChecker` for
+/// API calls that don't involve web content rendering.
 nonisolated enum HTTPClient: Sendable {
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default

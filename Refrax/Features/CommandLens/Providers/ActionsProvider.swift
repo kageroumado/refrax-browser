@@ -1,7 +1,8 @@
 import Foundation
 
-/// Provides app-level action suggestions.
+/// Provides app-level action suggestions: Send Feedback and Check for Updates.
 ///
+/// These are global actions not tied to any tab or page context.
 /// Uses fuzzy matching against natural language terms so users can
 /// discover actions by typing related words.
 struct ActionsProvider: CommandLensSuggestionProvider {
@@ -18,6 +19,18 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         let query = context.input.lowercased()
         var results: [CommandLensSuggestion] = []
 
+        // Feedback is always shown when user has typed anything
+        results.append(CommandLensSuggestion(
+            type: .appAction(.feedback),
+            text: "Send Feedback",
+            description: "Report bugs, suggest features, or share thoughts",
+            iconName: "envelope",
+            groupHeader: groupHeader,
+            isRemovable: false,
+            keywordAction: nil,
+            url: nil,
+        ))
+
         // Import from Another Browser
         let importTerms = [
             "import", "import browser", "import bookmarks", "import passwords",
@@ -32,7 +45,27 @@ struct ActionsProvider: CommandLensSuggestionProvider {
                 text: "Import from Another Browser",
                 description: "Import bookmarks, history, and passwords",
                 iconName: "square.and.arrow.down",
-                groupHeader: groupHeader,
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
+
+        // Check for Updates
+        let updateTerms = [
+            "update", "check for updates", "version", "upgrade",
+            "new version",
+        ]
+        let updateScore = FuzzyMatcher.match(query: query, against: updateTerms)
+
+        if updateScore >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.checkForUpdates),
+                text: "Check for Updates",
+                description: "Check if a newer version is available",
+                iconName: "arrow.triangle.2.circlepath",
+                groupHeader: nil,
                 isRemovable: false,
                 keywordAction: nil,
                 url: nil,

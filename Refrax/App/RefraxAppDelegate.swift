@@ -141,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let faviconCache: FaviconCache
     let sharingCoordinator: SharingCoordinator
 
+    // Feedback & Updates
+    let feedbackManager: FeedbackManager
+    let appUpdateManager: AppUpdateManager
+
     // iCloud Sync
     /// Separate container for sync metadata (CloudKit system fields, history tokens).
     private(set) var syncContainer: ModelContainer?
@@ -199,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dedicated Passwords window controller.
     lazy var passwordsWindowController = PasswordsWindowController(
         passwordsManager: passwordsManager,
+    )
+
+    /// Dedicated Feedback window controller.
+    lazy var feedbackWindowController = FeedbackWindowController(
+        feedbackManager: feedbackManager,
     )
 
     /// Acknowledgements window controller.
@@ -270,6 +279,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.settings = BrowserSettings.fetchOrCreate(in: modelContainer.mainContext)
 
+        // Restore activation status after a full reset (Tier 4).
+        // The reset writes activation info to a separate UserDefaults suite before
+        // wiping the main suite and database. On relaunch, we restore it here.
+        let restoreSuite = UserDefaults(suiteName: "website.refrax.browser.activation-restore")
+        if let restored = restoreSuite?.object(forKey: "isActivated") as? Bool, restored {
+            settings.isActivated = true
+            settings.activationCode = restoreSuite?.string(forKey: "activationCode")
+            restoreSuite?.removePersistentDomain(forName: "website.refrax.browser.activation-restore")
+            restoreSuite?.synchronize()
+            Logger.info("Restored activation status after full reset", category: Logger.storage)
+        }
+
         self.siteSettingsManager = SiteSettingsManager(modelContext: modelContainer.mainContext)
         self.autoFillState = AutoFillState()
         self.dialogState = DialogState()
@@ -285,6 +306,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.historyActivityManager = HistoryActivityManager()
         self.passwordsManager = PasswordsManager()
         self.sharingCoordinator = SharingCoordinator()
+        self.feedbackManager = FeedbackManager(settings: settings)
+        self.appUpdateManager = AppUpdateManager(settings: settings)
         self.modifierKeysState = ModifierKeysState()
         self.downloadManager = DownloadManager(modelContext: modelContainer.mainContext)
 
@@ -416,6 +439,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bookmarksManager.offlineContentManager = offlineContentManager
         tabManager.archiveManager = archiveManager
         tabManager.autoArchiveManager = autoArchiveManager
+
+        feedbackManager.browserState = browserState
+        feedbackManager.extensionManager = extensionManager
 
         archiveManager.pagePool = pagePool
         archiveManager.activationObserver = activationObserver
@@ -568,6 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 if hasExistingData {
                     browserState.settings.hasCompletedOnboarding = true
+                    browserState.settings.isActivated = true
                 }
             }
 
@@ -733,11 +760,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await PersistentLogWriter.shared.pruneOldLogs()
         }
 
+        // Post-update detection (shows notification if app was just updated)
+        appUpdateManager.detectPostUpdate()
+
+        // App update checking
+        let appUpdateManager = appUpdateManager
+        scheduledTasksManager.registerTask { @MainActor in
+            await appUpdateManager.checkForUpdates()
+        }
+
         // Database backup
         let storeURL = modelContainer.configurations.first.flatMap(\.url) ?? Directories.appStorage.appendingPathComponent("default.store")
         scheduledTasksManager.registerTask { @MainActor in
             DatabaseBackupService.performScheduledBackup(storeURL: storeURL)
             DatabaseBackupService.pruneOldBackups()
+        }
+
+        // Crash detection — auto-submit crash report if previous session crashed
+        if CrashMonitor.didCrashPreviously() {
+            let crashReports = CrashMonitor.collectCrashReports()
+            CrashMonitor.clearSentinel()
+
+            if !crashReports.isEmpty {
+                Logger.warning(
+                    "Previous session terminated abnormally — sending crash report (\(crashReports.count) report(s))",
+                    category: Logger.system
+                )
+                Task.detached(priority: .utility) { [appUpdateManager] in
+                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: crashReports)
+                    CrashMonitor.markReportsSent(crashReports)
+                    await MainActor.run {
+                        appUpdateManager.crashReportSent = true
+                    }
+                }
+            }
         }
 
         scheduledTasksManager.start()
@@ -786,6 +842,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await controlHost.start() }
             CLISkillInstaller.install()
         }
+        TelemetryService.sendHeartbeatIfNeeded(settings: settings)
 
         observeControlAccessMode()
     }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Displays Refrax's license and trademark notice.
+/// Displays the Refrax End User License Agreement.
 struct LicenseAgreementView: View {
     var body: some View {
         ScrollView {
@@ -15,45 +15,56 @@ struct LicenseAgreementView: View {
 
     // swiftformat:disable indent
     private static let licenseText = """
-Refrax
-======
+Refrax End User License Agreement
+==================================
 
-Copyright (C) 2026 kageroumado
+Copyright (c) 2026 kageroumado. All rights reserved.
 
-Refrax is free software: you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by
-the Free Software Foundation, version 3 of the License.
+1. LICENSE GRANT
 
-Refrax is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-General Public License for more details.
+This software is licensed, not sold. kageroumado grants you a limited,
+non-exclusive, non-transferable, revocable license to use Refrax for
+personal or commercial purposes, subject to the terms of this agreement.
 
-The full license text is in the LICENSE file in the source
-distribution, and online at <https://www.gnu.org/licenses/gpl-3.0.txt>.
+2. RESTRICTIONS
 
-THIRD-PARTY SOFTWARE
-====================
+You may not:
+- Copy, modify, or distribute this software without prior written consent
+- Remove or alter any proprietary notices or labels
+- Use the software for any unlawful purpose
+
+3. DISCLAIMER OF WARRANTIES
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. THE ENTIRE RISK
+ARISING OUT OF THE USE OR PERFORMANCE OF THE SOFTWARE REMAINS WITH YOU.
+
+4. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL KAGEROUMADO BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+5. THIRD-PARTY SOFTWARE
 
 Refrax includes third-party open-source software components. Their
-respective licenses are available in the Acknowledgements section
-of the application.
+respective licenses are available in the Acknowledgements section of
+the application.
 
-TRADEMARK
-=========
+6. TERMINATION
 
-"Refrax" and the Refrax icon are trademarks of kageroumado. The
-GPL grants rights to the source code, not to the trademarks.
+This license is effective until terminated. It will terminate automatically
+if you fail to comply with any term of this agreement. Upon termination,
+you must cease all use of the software and destroy all copies.
 
-You may build and use Refrax from source for any purpose. If you
-distribute a modified version, you must rebrand: choose a different
-name and replace the Refrax icon. See the TRADEMARK file in the
-source distribution for the full policy.
+7. CONTACT
 
-CONTACT
-=======
-
-For inquiries: requests@refrax.website
+For inquiries, contact: requests@refrax.website
 """
     // swiftformat:enable indent
 }

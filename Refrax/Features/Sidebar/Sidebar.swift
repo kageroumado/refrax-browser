@@ -55,8 +55,10 @@ struct Sidebar: View {
     @Environment(Sidebar.MiddleClickCoordinator.self) private var middleClickCoordinator
     @Environment(Sidebar.DependencyContainer.self) private var dependencyContainer
     @Environment(Sidebar.GeometryState.self) private var geometryState
+    @Environment(AppUpdateManager.self) private var appUpdateManager
 
     // UI state
+    @State private var showUpdateSheet = false
     @State private var showCreateSpaceSheet = false
     @State private var showSpaceManagementSheet = false
     @State private var spaceToEdit: Space?
@@ -475,6 +477,13 @@ struct Sidebar: View {
     /// ```
     private var bottomControls: some View {
         VStack(spacing: Constants.Spacing.small) {
+            // Crash report or post-update notification (only one at a time, crash takes priority)
+            if appUpdateManager.crashReportSent {
+                CrashReportPanel()
+            } else {
+                UpdateNotificationPanel()
+            }
+
             // Media controls panel (expands upward when active)
             MediaControlsPanel()
 
@@ -540,6 +549,48 @@ struct Sidebar: View {
 
                 // Calendar widget button
                 CalendarWidgetButton()
+
+                // Update phase indicator
+                switch appUpdateManager.phase {
+                case .downloading(let progress):
+                    SidebarControlButton(
+                        icon: "arrow.down.circle",
+                        accessibilityID: "sidebar-update-downloading",
+                        action: {},
+                    )
+                    .overlay {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.5)
+                    }
+                    .accessibilityLabel("Downloading update: \(Int(progress * 100))%")
+
+                case .readyToInstall:
+                    SidebarControlButton(
+                        icon: "arrow.trianglehead.2.clockwise.rotate.90",
+                        accessibilityID: "sidebar-restart-to-update",
+                        action: { showUpdateSheet = true },
+                    )
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("Restart to update")
+
+                case .failed:
+                    SidebarControlButton(
+                        icon: "exclamationmark.triangle.fill",
+                        accessibilityID: "sidebar-update-failed",
+                        action: {
+                            appUpdateManager.showFailedPanel = true
+                        },
+                    )
+                    .foregroundStyle(.yellow)
+                    .accessibilityLabel("Update failed — tap for details")
+
+                default:
+                    EmptyView()
+                }
+            }
+            .sheet(isPresented: $showUpdateSheet) {
+                UpdateAvailableView()
             }
         }
         .padding(Constants.Layout.sidebarPadding)

@@ -51,6 +51,8 @@ enum AgentTools {
         userStyleCreate,
         userStyleList,
         userStyleDelete,
+        // App actions
+        sendFeedback,
     ]
 
     // MARK: - Tool Definitions
@@ -841,4 +843,33 @@ enum AgentTools {
         ],
     )
 
+    // MARK: - App Actions
+
+    static let sendFeedback = AgentToolDefinition(
+        name: "send_feedback",
+        description: """
+        Open the feedback window for the user, optionally pre-filled with context. \
+        Use this when the user reports an issue or when you detect a problem \
+        that should be reported.
+        """,
+        inputSchema: [
+            "type": "object",
+            "properties": [
+                "subject": [
+                    "type": "string",
+                    "description": "Pre-filled subject line",
+                ],
+                "body": [
+                    "type": "string",
+                    "description": "Pre-filled body text describing the issue",
+                ],
+                "category": [
+                    "type": "string",
+                    "enum": ["bug", "feature", "general"],
+                    "description": "Feedback category (default: general)",
+                ],
+            ],
+            "required": [] as [String],
+        ],
+    )
 }
