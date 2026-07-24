@@ -40,7 +40,7 @@ This is similar to how Firefox and Chromium handle their forks
 ## Permission requests
 
 If you'd like to use the Refrax name or icon in a way this policy
-doesn't allow, write to <requests@refrax.website>.
+doesn't allow, write to <mail@kagerou.glass>.
 
 ## Why this exists
 

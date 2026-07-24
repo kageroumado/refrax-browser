@@ -98,4 +98,4 @@ Also: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Contact
 
-<requests@refrax.website>
+<mail@kagerou.glass>

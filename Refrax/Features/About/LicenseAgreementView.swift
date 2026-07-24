@@ -64,7 +64,7 @@ you must cease all use of the software and destroy all copies.
 
 7. CONTACT
 
-For inquiries, contact: requests@refrax.website
+For inquiries, contact: mail@kagerou.glass
 """
     // swiftformat:enable indent
 }

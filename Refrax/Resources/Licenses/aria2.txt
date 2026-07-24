@@ -39,7 +39,7 @@ https://github.com/aria2/aria2
 
 In compliance with the GNU General Public License, we offer to provide the
 complete corresponding source code for the aria2 binary bundled with this
-application. To request source code, contact: requests@refrax.website
+application. To request source code, contact: mail@kagerou.glass
 
 Alternatively, you may obtain the source code directly from the aria2 project
 at the URL above.
