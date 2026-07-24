@@ -325,6 +325,11 @@ actor RefraxControlHost {
                 continue
             }
 
+            // A client that disconnects mid-request (e.g. CLI timeout) must surface
+            // EPIPE from write(2) rather than raise SIGPIPE, which kills the process.
+            var nosigpipe: Int32 = 1
+            setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
+
             Task.detached(priority: .utility) { [weak self] in
                 await self?.handleClient(fd: clientFD)
             }
