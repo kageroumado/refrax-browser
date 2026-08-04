@@ -21,10 +21,23 @@ struct DownloadsButton: View {
     @State private var previousActiveCount = 0
 
     private var shouldShow: Bool {
-        downloadManager.hasActiveDownloads || showAfterCompletion
+        downloadManager.hasActiveDownloads || showAfterCompletion || isInCompletionWindow
+    }
+
+    /// Whether a download completed within the post-completion visibility window.
+    ///
+    /// Makes the button appear for instantly completed downloads (e.g. PDF
+    /// HUD saves), which never pass through the active state that
+    /// `handleDownloadCountChange` reacts to.
+    private var isInCompletionWindow: Bool {
+        guard let date = downloadManager.latestCompletionDate else { return false }
+        return Date().timeIntervalSince(date) < Layout.completionVisibilitySeconds
     }
 
     private var progress: Double {
+        guard downloadManager.hasActiveDownloads else {
+            return 1 // Everything done: show a full circle
+        }
         let aggregate = downloadManager.aggregateProgress
         // aggregateProgress is -1 when indeterminate, 0-1 when determinate
         if aggregate < 0 {
@@ -57,6 +70,21 @@ struct DownloadsButton: View {
             .onChange(of: downloadManager.activeDownloadCount) { oldValue, newValue in
                 handleDownloadCountChange(from: oldValue, to: newValue)
             }
+            .onChange(of: downloadManager.latestCompletionDate) { _, _ in
+                if !downloadManager.hasActiveDownloads {
+                    scheduleHide(after: Layout.completionVisibilitySeconds)
+                }
+            }
+            .onAppear {
+                // Appearing via isInCompletionWindow: nothing else will flip
+                // state when the window elapses, so arm the hide timer for
+                // the remaining time.
+                if !downloadManager.hasActiveDownloads, !showAfterCompletion,
+                   let date = downloadManager.latestCompletionDate {
+                    let remaining = Layout.completionVisibilitySeconds - Date().timeIntervalSince(date)
+                    scheduleHide(after: max(remaining, 0.1))
+                }
+            }
             .onDisappear {
                 hideTimer?.invalidate()
                 hideTimer = nil
@@ -83,15 +111,23 @@ struct DownloadsButton: View {
             showAfterCompletion = true
         }
 
-        // All downloads completed - start 15 second timer
+        // All downloads completed - start the hide timer
         if oldValue > 0, newValue == 0 {
-            showAfterCompletion = true
-            hideTimer?.invalidate()
-            hideTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: false) { _ in
-                DispatchQueue.main.async {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showAfterCompletion = false
-                    }
+            scheduleHide(after: Layout.completionVisibilitySeconds)
+        }
+    }
+
+    /// Keeps the button visible, then hides it after the given delay.
+    ///
+    /// The delay must outlast `isInCompletionWindow` so the visibility
+    /// re-evaluation on hide actually removes the button.
+    private func scheduleHide(after delay: TimeInterval) {
+        showAfterCompletion = true
+        hideTimer?.invalidate()
+        hideTimer = Timer.scheduledTimer(withTimeInterval: delay + 0.1, repeats: false) { _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showAfterCompletion = false
                 }
             }
         }
@@ -103,4 +139,5 @@ struct DownloadsButton: View {
 private enum Layout {
     static let buttonSize: CGFloat = 32
     static let buttonCornerRadius: CGFloat = 16
+    static let completionVisibilitySeconds: TimeInterval = 15
 }

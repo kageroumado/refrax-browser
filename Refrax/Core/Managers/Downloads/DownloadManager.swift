@@ -99,6 +99,13 @@ final class DownloadManager {
     /// Total progress for Dock icon (0.0-1.0).
     private(set) var aggregateProgress: Double = 0
 
+    /// When the most recent download entered the completed list.
+    ///
+    /// Drives the sidebar downloads indicator for instantly completed
+    /// downloads (e.g. PDF HUD saves), which never pass through the
+    /// active state that normally makes the indicator appear.
+    private(set) var latestCompletionDate: Date?
+
     /// Number of active downloads.
     var activeDownloadCount: Int {
         activeTasks.count
@@ -1262,6 +1269,7 @@ final class DownloadManager {
     func addCompletedDownload(_ download: Download) {
         modelContext.insert(download)
         downloads.insert(download, at: 0)
+        latestCompletionDate = Date()
         scheduleSave()
         onDownloadCompleted?(download)
 
