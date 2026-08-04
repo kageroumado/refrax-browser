@@ -3,19 +3,61 @@ import Foundation
 import RefraxProtocol
 
 nonisolated enum ControlClient {
-    static let socketPath: String = {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let fm = FileManager.default
+    private static let debugSocketPath =
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support/website.refrax.browser.debug/ctl.sock"
+    private static let releaseSocketPath =
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support/website.refrax.browser/ctl.sock"
 
-        // Try debug build first (more likely during development), then release
-        let debugPath = "\(home)/Library/Application Support/website.refrax.browser.debug/ctl.sock"
-        let releasePath = "\(home)/Library/Application Support/website.refrax.browser/ctl.sock"
-
-        if fm.fileExists(atPath: debugPath) {
-            return debugPath
+    /// The control socket to talk to, resolved fresh on every access.
+    ///
+    /// A socket file outlives its server process (the app only unlinks it on
+    /// clean shutdown), so mere existence proves nothing — a stale debug
+    /// ctl.sock would shadow a running release Refrax forever, and every
+    /// invocation would then auto-launch the debug build. Prefer whichever
+    /// socket actually accepts a connection; with neither alive, return the
+    /// release path so the connect attempt and the auto-launch flow agree
+    /// on a target.
+    static var socketPath: String {
+        if isSocketAlive(debugSocketPath) {
+            return debugSocketPath
         }
-        return releasePath
-    }()
+        if isSocketAlive(releaseSocketPath) {
+            return releaseSocketPath
+        }
+        return releaseSocketPath
+    }
+
+    /// Whether a control server is currently accepting connections.
+    static var isServerReachable: Bool {
+        isSocketAlive(debugSocketPath) || isSocketAlive(releaseSocketPath)
+    }
+
+    /// Attempts a connection to a Unix socket and reports success.
+    private static func isSocketAlive(_ path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        let copied = path.withCString { cstr -> Int in
+            withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
+                pathPtr.withMemoryRebound(to: CChar.self, capacity: capacity) { dest in
+                    strlcpy(dest, cstr, capacity)
+                }
+            }
+        }
+        guard copied < capacity else { return false }
+        addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        return result == 0
+    }
 
     static let maxMessageBytes = 64 * 1_024 * 1_024 // 64MB
     static var timeoutSec: TimeInterval {
@@ -63,23 +105,20 @@ nonisolated enum ControlClient {
         throw lastError
     }
 
-    /// Launches Refrax and waits for the control socket to appear.
+    /// Launches Refrax and waits for the control socket to accept connections.
     ///
-    /// Tries debug build first (for developers), then release. Polls for
-    /// the socket for up to 10 seconds after a successful `open` call.
+    /// Launches the release build first — a developer working against a debug
+    /// build has it running already (its live socket wins in `socketPath`), so
+    /// reaching this point means no server is up and the release app is the
+    /// right thing to start. The debug bundle is only a fallback for machines
+    /// with no installed release build.
     ///
-    /// - Returns: `true` if the socket becomes available.
+    /// - Returns: `true` if a socket becomes available.
     @discardableResult
     static func tryLaunch() -> Bool {
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser.path
-        let debugSocket = "\(home)/Library/Application Support/website.refrax.browser.debug/ctl.sock"
-        let releaseSocket = "\(home)/Library/Application Support/website.refrax.browser/ctl.sock"
-
         printInfo("Refrax is not running. Launching...")
 
-        // Try debug build first (for developers), then release
-        let bundleIDs = ["website.refrax.browser.debug", "website.refrax.browser"]
+        let bundleIDs = ["website.refrax.browser", "website.refrax.browser.debug"]
         var launched = false
 
         for bundleID in bundleIDs {
@@ -109,12 +148,11 @@ nonisolated enum ControlClient {
             return false
         }
 
-        // Poll for the socket to appear (up to 10 seconds)
+        // Poll until a server accepts connections (up to 10 seconds).
+        // Existence checks would be fooled by a stale socket file.
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-            if fm.fileExists(atPath: debugSocket) || fm.fileExists(atPath: releaseSocket) {
-                // Socket file exists — give the server a moment to start accepting
-                Thread.sleep(forTimeInterval: 0.5)
+            if isServerReachable {
                 return true
             }
             Thread.sleep(forTimeInterval: 0.5)

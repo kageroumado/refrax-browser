@@ -9,7 +9,7 @@ struct LaunchCommand: AsyncParsableCommand {
 
     func run() async throws {
         // Quick check if Refrax is already reachable
-        if FileManager.default.fileExists(atPath: ControlClient.socketPath) {
+        if ControlClient.isServerReachable {
             print("Refrax is already running.")
             return
         }
