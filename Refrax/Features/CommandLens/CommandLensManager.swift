@@ -968,8 +968,8 @@ final class CommandLensManager {
             return CommandLensSuggestion(
                 type: .url,
                 text: inputText,
-                description: "Go to website",
-                iconName: "globe",
+                description: url.isFileURL ? "Open local file" : "Go to website",
+                iconName: url.isFileURL ? "doc" : "globe",
                 groupHeader: nil,
                 isRemovable: false,
                 keywordAction: nil,
@@ -1188,6 +1188,13 @@ final class CommandLensManager {
             return true
         }
 
+        // file://, about:, and data: URLs are navigable but have no host,
+        // so the host-based check above misclassifies them as searches.
+        // An explicit scheme is navigation intent, never a query.
+        if hasHostlessNavigableScheme(string) {
+            return true
+        }
+
         // Check if it's an IP address (with optional port)
         if isIPAddress(string) {
             return true
@@ -1301,6 +1308,19 @@ final class CommandLensManager {
             return url
         }
 
+        if hasHostlessNavigableScheme(string) {
+            if let url = URL(string: string) {
+                return url
+            }
+            // Recover file:// paths typed with unescaped spaces,
+            // which make URL(string:) fail.
+            if string.lowercased().hasPrefix("file://") {
+                let path = String(string.dropFirst("file://".count))
+                return URL(fileURLWithPath: path)
+            }
+            return nil
+        }
+
         if isValidURL(string) {
             // Use http:// for localhost and private IP addresses (local dev servers)
             let scheme = isLocalAddress(string) ? "http" : "https"
@@ -1308,6 +1328,17 @@ final class CommandLensManager {
         }
 
         return nil
+    }
+
+    /// Whether the input starts with a navigable scheme that has no host.
+    ///
+    /// `URL.host` is nil for these schemes, so host-based URL validation
+    /// cannot recognize them.
+    private func hasHostlessNavigableScheme(_ string: String) -> Bool {
+        let lowercased = string.lowercased()
+        return lowercased.hasPrefix("file://")
+            || lowercased.hasPrefix("about:")
+            || lowercased.hasPrefix("data:")
     }
 
     /// Checks if a string represents a local/private network address.
