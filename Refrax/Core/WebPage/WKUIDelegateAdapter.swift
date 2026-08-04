@@ -467,6 +467,46 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         owner?.backingWebView.geometryDidChange(adapter)
     }
 
+    // MARK: - Direct Data Save
+
+    /// Saves web content that WebKit already holds in memory.
+    ///
+    /// The PDF viewer HUD's download button delivers the document through this
+    /// private delegate method — no `WKDownload` is created, so the
+    /// `didBecome download` interception in `WKNavigationDelegateAdapter`
+    /// never sees it. WebKit drops the click silently when this selector is
+    /// missing (`UIDelegate::UIClient::saveDataToFileInDownloadsFolder`).
+    @objc(_webView:saveDataToFile:suggestedFilename:mimeType:originatingURL:)
+    func _webView(
+        _: WKWebView,
+        saveDataToFile data: Data,
+        suggestedFilename: String,
+        mimeType: String,
+        originatingURL: URL,
+    ) {
+        guard let downloadManager = pagePool?.state.downloadManager else {
+            Logger.warning("DownloadManager unavailable, cannot save data", category: Logger.downloads)
+            return
+        }
+
+        let space = owner?.tabPage.tab?.space
+        do {
+            _ = try downloadManager.saveCompletedData(
+                data,
+                suggestedFilename: suggestedFilename,
+                mimeType: mimeType,
+                sourceURL: originatingURL,
+                originatingTitle: owner?.title,
+                customDownloadPath: space?.customDownloadPath,
+                spaceID: space?.id,
+                spaceName: space?.name,
+                colorTag: space?.downloadColorTag,
+            )
+        } catch {
+            Logger.error("Failed to save data to file: \(error)", category: Logger.downloads)
+        }
+    }
+
     // MARK: - Mouse Tracking
 
     /// Notifies the owner when the mouse moves over an element.

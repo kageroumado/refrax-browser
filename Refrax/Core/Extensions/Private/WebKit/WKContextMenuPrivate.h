@@ -422,6 +422,33 @@ API_AVAILABLE(macos(10.12))
 - (void)_webView:(WKWebView *)webView
     contextMenuDidCreateDownload:(WKDownload *)download;
 
+/**
+ * Called when the user saves content WebKit already holds in memory.
+ *
+ * The PDF viewer HUD's download button delivers the document through this
+ * method — no WKDownload is created. WebKit drops the action silently when
+ * the delegate does not implement this selector
+ * (`UIDelegate::UIClient::saveDataToFileInDownloadsFolder`).
+ *
+ * @param webView The web view the content belongs to.
+ * @param data The file contents.
+ * @param suggestedFilename Sanitized filename to save under.
+ * @param mimeType MIME type of the data.
+ * @param url The URL the content was loaded from.
+ *
+ * ## Source
+ * WebKit/Source/WebKit/UIProcess/API/Cocoa/WKUIDelegatePrivate.h
+ *
+ * ## Availability
+ * macOS 10.13.4+
+ */
+- (void)_webView:(WKWebView *)webView
+    saveDataToFile:(NSData *)data
+    suggestedFilename:(NSString *)suggestedFilename
+    mimeType:(NSString *)mimeType
+    originatingURL:(NSURL *)url
+    API_AVAILABLE(macos(10.13.4));
+
 #endif /* TARGET_OS_OSX */
 
 #pragma mark Mouse Tracking

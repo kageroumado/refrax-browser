@@ -1268,6 +1268,82 @@ final class DownloadManager {
         Logger.info("Added completed download: \(download.destinationFilename)", category: Logger.downloads)
     }
 
+    /// Saves data that WebKit already fetched as a completed download.
+    ///
+    /// Some WebKit callbacks deliver the file contents directly instead of
+    /// creating a `WKDownload` — the PDF viewer HUD's download button arrives
+    /// as `_webView:saveDataToFile:suggestedFilename:mimeType:originatingURL:`.
+    /// The file lands in the resolved download folder with conflict-free
+    /// naming and quarantine attributes, and appears in history as a
+    /// completed download.
+    ///
+    /// - Parameters:
+    ///   - data: The file contents.
+    ///   - suggestedFilename: Filename hint from WebKit.
+    ///   - mimeType: MIME type of the data.
+    ///   - sourceURL: The URL the data was originally loaded from.
+    ///   - originatingTitle: Title of the originating page.
+    ///   - customDownloadPath: Optional custom download path (from space settings).
+    ///   - spaceID: Optional ID of the space initiating the save.
+    ///   - spaceName: Optional name of the space (cached for display after deletion).
+    ///   - colorTag: Optional Finder color tag to apply (1-7).
+    /// - Returns: The completed Download model.
+    @discardableResult
+    func saveCompletedData(
+        _ data: Data,
+        suggestedFilename: String,
+        mimeType: String?,
+        sourceURL: URL,
+        originatingTitle: String? = nil,
+        customDownloadPath: String? = nil,
+        spaceID: UUID? = nil,
+        spaceName: String? = nil,
+        colorTag: Int? = nil,
+    ) throws -> Download {
+        var filename = FilenameUtilities.sanitize(suggestedFilename)
+        filename = FilenameUtilities.ensureExtension(for: filename, mimeType: mimeType)
+
+        let destinationDirectory = downloadDirectory(for: customDownloadPath)
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: destinationDirectory.path) {
+            try fm.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        }
+
+        filename = try FilenameUtilities.uniqueFilename(for: filename, in: destinationDirectory)
+        let fileURL = destinationDirectory.appendingPathComponent(filename)
+        try data.write(to: fileURL)
+
+        do {
+            try fileURL.setQuarantineAttributes(downloadURL: sourceURL, originURL: sourceURL)
+        } catch {
+            Logger.warning(
+                "Failed to set quarantine on \(filename): \(error)",
+                category: Logger.downloads,
+            )
+        }
+
+        let download = Download(
+            sourceURL: sourceURL,
+            suggestedFilename: filename,
+            destinationDirectory: destinationDirectory,
+            originatingPageURL: sourceURL,
+            originatingPageTitle: originatingTitle,
+            mimeType: mimeType,
+            spaceID: spaceID,
+            spaceName: spaceName,
+            colorTag: colorTag,
+        )
+        download.updateLiveProgress(
+            bytesReceived: Int64(data.count),
+            totalBytes: Int64(data.count),
+            bytesPerSecond: 0,
+        )
+        download.markCompleted()
+        addCompletedDownload(download)
+        applyColorTagIfNeeded(to: download)
+        return download
+    }
+
     // MARK: - Private Helpers
 
     private func setupTaskCallbacks(_ task: DownloadTask) {
