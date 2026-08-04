@@ -580,6 +580,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await Aria2Daemon().cleanupStaleDaemon()
         }
 
+        #if DEBUG
+            // Debug builds skip onboarding so fresh launches (--in-memory
+            // especially) land directly in a browsing window.
+            browserState.settings.hasCompletedOnboarding = true
+            browserState.settings.isActivated = true
+        #endif
+
         if !browserState.settings.hasCompletedOnboarding {
             // Migration for existing alpha testers: if they have browsing data
             // but no onboarding flag (pre-onboarding install), skip onboarding.
