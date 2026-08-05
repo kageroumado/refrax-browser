@@ -56,14 +56,31 @@ struct ColorWheelPopoverContent: View {
 /// instead. Calling an unprobed private selector raises
 /// `NSInvalidArgumentException` inside `makeNSView`, which AppKit escalates to
 /// a process kill via `+[NSApplication _crashOnException:]` — this killed the
-/// app on macOS 27 beta (26A5388g), where `storeColorPanel:` no longer exists.
+/// app on macOS 27 beta (26A5388g), where `storeColorPanel:` was renamed.
 enum PrivateColorWheel {
+    /// The selector that attaches an `NSColorPanel` to the wheel, or `nil`
+    /// when neither variant exists.
+    ///
+    /// macOS 27 exposes `setColorPanel:`, the synthesized setter of a
+    /// `weak, nonatomic` `colorPanel` property; macOS 26 has `storeColorPanel:`
+    /// backed by a bare ivar. Setting the panel via KVC instead would write the
+    /// macOS 26 ivar directly with unknown retain semantics, so the wrapper
+    /// always goes through whichever selector is present.
+    static let storePanelSelector: Selector? = {
+        guard let cls = NSClassFromString("NSColorPickerWheelView") as? NSView.Type else {
+            return nil
+        }
+        return ["setColorPanel:", "storeColorPanel:"]
+            .map { Selector($0) }
+            .first(where: cls.instancesRespond(to:))
+    }()
+
     /// The private wheel class, or `nil` when any required API is missing.
     static let wheelViewClass: NSView.Type? = {
         guard let cls = NSClassFromString("NSColorPickerWheelView") as? NSView.Type else {
             return nil
         }
-        guard cls.instancesRespond(to: Selector(("storeColorPanel:"))),
+        guard storePanelSelector != nil,
               cls.instancesRespond(to: #selector(getter: NSColorPanel.color)),
               canSetKVCKey("controllingPicker", on: cls),
               canSetKVCKey("color", on: cls),
@@ -119,7 +136,9 @@ struct ColorWheelView: NSViewRepresentable {
         let colorPanel = NSColorPanel.shared
         let nsColor = colorToNSColor(color)
         colorPanel.color = nsColor
-        _ = wheelView.perform(Selector(("storeColorPanel:")), with: colorPanel)
+        if let storePanel = PrivateColorWheel.storePanelSelector {
+            _ = wheelView.perform(storePanel, with: colorPanel)
+        }
 
         let proxy = ColorPickerProxy()
         let coordinator = context.coordinator
