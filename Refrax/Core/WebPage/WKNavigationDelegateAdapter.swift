@@ -347,6 +347,9 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     /// - Proper cookie context from the correct WKWebsiteDataStore
     /// - Aria2 support for large files
     /// - Pause/resume/cancel capabilities
+    ///
+    /// The exception is `blob:` URLs, which URLSession cannot re-request — those
+    /// are adopted by DownloadManager and the WKDownload performs the transfer.
     func download(
         _ download: WKDownload,
         decideDestinationUsing response: URLResponse,
@@ -365,6 +368,20 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
 
         // Get space context from the owning WebPage
         let (customDownloadPath, spaceID, spaceName, colorTag, dataStore, originatingURL, originatingTitle) = getSpaceContext()
+
+        if DownloadManager.requiresWebKitTransfer(downloadURL) {
+            return downloadManager.adoptWebKitDownload(
+                download,
+                response: response,
+                suggestedFilename: suggestedFilename,
+                originatingURL: originatingURL,
+                originatingTitle: originatingTitle,
+                customDownloadPath: customDownloadPath,
+                spaceID: spaceID,
+                spaceName: spaceName,
+                colorTag: colorTag,
+            )
+        }
 
         Logger.info(
             "Delegating WKDownload to DownloadManager: \(suggestedFilename)",
@@ -396,12 +413,16 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
 
     /// Handles WKDownload failures.
     ///
-    /// Since we cancel WKDownloads by returning `nil` from `decideDestinationUsing`,
-    /// this method will be called with a cancellation error. We suppress logging
-    /// for intentional cancellations.
-    func download(_: WKDownload, didFailWithError error: any Error, resumeData _: Data?) {
+    /// Adopted downloads (blob: URLs) report the failure to DownloadManager.
+    /// Delegated downloads arrive here with a cancellation error because we
+    /// returned `nil` from `decideDestinationUsing`; those are suppressed.
+    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData _: Data?) {
         // WebKit delivers download delegate callbacks on main thread.
         MainActor.assumeIsolated {
+            if downloadManager?.failWebKitDownload(download, error: error) == true {
+                return
+            }
+
             // Check if this is an intentional cancellation (we returned nil from decideDestinationUsing)
             let nsError = error as NSError
             if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
@@ -416,11 +437,16 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
 
     /// Called when a WKDownload completes.
     ///
-    /// Since we cancel WKDownloads by returning `nil` from `decideDestinationUsing`,
-    /// this method should never be called. Included for protocol completeness.
-    func downloadDidFinish(_: WKDownload) {
-        // Should not be called since we cancel WKDownloads in decideDestinationUsing
-        Logger.warning("Unexpected downloadDidFinish called - WKDownload should have been cancelled", category: Logger.downloads)
+    /// Only adopted downloads (blob: URLs) reach this — delegated downloads are
+    /// cancelled in `decideDestinationUsing` and re-requested by DownloadManager.
+    func downloadDidFinish(_ download: WKDownload) {
+        // WebKit delivers download delegate callbacks on main thread.
+        MainActor.assumeIsolated {
+            if downloadManager?.finishWebKitDownload(download) == true {
+                return
+            }
+            Logger.warning("Unexpected downloadDidFinish called - WKDownload should have been cancelled", category: Logger.downloads)
+        }
     }
 
     // MARK: - Space Context Helpers

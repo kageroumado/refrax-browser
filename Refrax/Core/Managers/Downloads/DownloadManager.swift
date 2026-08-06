@@ -89,6 +89,9 @@ final class DownloadManager {
     /// Active download tasks by ID.
     private var activeTasks: [UUID: DownloadTask] = [:]
 
+    /// Downloads performed by WebKit's own `WKDownload` (blob: URLs), by ID.
+    private var webKitTasks: [UUID: WebKitDownloadTask] = [:]
+
     /// Downloads pending Photos import on completion.
     /// Maps download ID to whether the file should be deleted after import.
     private var photosImportPending: [UUID: Bool] = [:]
@@ -108,12 +111,12 @@ final class DownloadManager {
 
     /// Number of active downloads.
     var activeDownloadCount: Int {
-        activeTasks.count
+        activeTasks.count + webKitTasks.count
     }
 
     /// Whether any downloads are in progress.
     var hasActiveDownloads: Bool {
-        !activeTasks.isEmpty
+        !activeTasks.isEmpty || !webKitTasks.isEmpty
     }
 
     // MARK: - Settings
@@ -532,6 +535,178 @@ final class DownloadManager {
         try await aria2Task.start()
     }
 
+    // MARK: - WebKit-Native Downloads
+
+    /// Whether a URL can only be transferred by WebKit's own download machinery.
+    ///
+    /// `blob:` URLs reference data held inside the web content process. URLSession
+    /// and aria2 cannot resolve them, so the original `WKDownload` must perform
+    /// the transfer instead of the usual cancel-and-re-request flow.
+    nonisolated static func requiresWebKitTransfer(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "blob"
+    }
+
+    /// Adopts a `WKDownload` whose transfer WebKit must perform itself.
+    ///
+    /// Creates a `Download` record, mirrors the WKDownload's progress into it,
+    /// and returns the destination URL to hand back from
+    /// `download(_:decideDestinationUsing:suggestedFilename:)`. The file transfers
+    /// to `<name>.download` and is renamed on completion, matching `DownloadTask`.
+    ///
+    /// Completion and failure must be reported via ``finishWebKitDownload(_:)``
+    /// and ``failWebKitDownload(_:error:)`` from the `WKDownloadDelegate`.
+    ///
+    /// - Returns: The destination URL for the WKDownload, or `nil` if the
+    ///   destination could not be prepared (the caller should cancel).
+    func adoptWebKitDownload(
+        _ wkDownload: WKDownload,
+        response: URLResponse,
+        suggestedFilename: String,
+        originatingURL: URL? = nil,
+        originatingTitle: String? = nil,
+        customDownloadPath: String? = nil,
+        spaceID: UUID? = nil,
+        spaceName: String? = nil,
+        colorTag: Int? = nil,
+    ) -> URL? {
+        guard let sourceURL = wkDownload.originalRequest?.url ?? response.url else {
+            Logger.warning("Cannot adopt WKDownload: no source URL", category: Logger.downloads)
+            return nil
+        }
+
+        var filename = FilenameUtilities.sanitize(suggestedFilename)
+        filename = FilenameUtilities.ensureExtension(for: filename, mimeType: response.mimeType)
+
+        let destinationDirectory = downloadDirectory(for: customDownloadPath)
+        let fm = FileManager.default
+        do {
+            if !fm.fileExists(atPath: destinationDirectory.path) {
+                try fm.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            }
+            filename = try FilenameUtilities.uniqueFilename(for: filename, in: destinationDirectory)
+        } catch {
+            Logger.error("Cannot prepare WebKit download destination: \(error)", category: Logger.downloads)
+            return nil
+        }
+
+        let download = Download(
+            sourceURL: sourceURL,
+            suggestedFilename: filename,
+            destinationDirectory: destinationDirectory,
+            originatingPageURL: originatingURL,
+            originatingPageTitle: originatingTitle,
+            mimeType: response.mimeType,
+            spaceID: spaceID,
+            spaceName: spaceName,
+            colorTag: colorTag,
+        )
+        if response.expectedContentLength > 0 {
+            download.totalBytes = response.expectedContentLength
+        }
+        download.markDownloading()
+
+        modelContext.insert(download)
+        downloads.insert(download, at: 0)
+        scheduleSave()
+
+        let task = WebKitDownloadTask(download: download, wkDownload: wkDownload)
+        task.onProgress = { [weak self] task in
+            guard let self else { return }
+            // Publish on first progress: the .download file exists once WebKit
+            // starts writing, and publishFileProgress no-ops when already published.
+            publishFileProgress(for: task.download, fileURL: task.download.currentFileURL)
+            updateFileProgress(for: task.download)
+            updateAggregateProgress()
+            onProgressChanged?()
+        }
+        webKitTasks[download.id] = task
+        task.startObservingProgress()
+
+        updateAggregateProgress()
+        onDownloadStarted?(download)
+
+        Logger.info("WebKit download started: \(filename)", category: Logger.downloads)
+        return destinationDirectory.appendingPathComponent("\(filename).download")
+    }
+
+    /// Completes an adopted WebKit download: renames the `.download` file,
+    /// stamps quarantine, and applies the space color tag.
+    ///
+    /// - Returns: `true` if this WKDownload was adopted and handled.
+    @discardableResult
+    func finishWebKitDownload(_ wkDownload: WKDownload) -> Bool {
+        guard let (id, task) = webKitTasks.first(where: { $0.value.wkDownload === wkDownload }) else {
+            return false
+        }
+        task.stopObservingProgress()
+        webKitTasks.removeValue(forKey: id)
+
+        let download = task.download
+        let partialURL = download.currentFileURL
+        download.markCompleted()
+        let finalURL = download.finalFileURL
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: partialURL.path) {
+            do {
+                try fm.moveItem(at: partialURL, to: finalURL)
+            } catch {
+                Logger.warning("Failed to finalize WebKit download: \(error)", category: Logger.downloads)
+            }
+        }
+
+        do {
+            try finalURL.setQuarantineAttributes(
+                downloadURL: download.sourceURL,
+                originURL: download.originatingPageURL,
+            )
+        } catch {
+            Logger.warning(
+                "Failed to set quarantine on \(download.destinationFilename): \(error)",
+                category: Logger.downloads,
+            )
+        }
+
+        applyColorTagIfNeeded(to: download)
+        unpublishFileProgress(for: id)
+        // Blob transfers finish near-instantly, so the sidebar button may never
+        // observe the active state — the completion window keeps it visible.
+        latestCompletionDate = Date()
+        updateAggregateProgress()
+        scheduleSave()
+        onDownloadCompleted?(download)
+
+        NSWorkspace.shared.noteFileSystemChanged(finalURL.path)
+
+        Logger.info("WebKit download completed: \(download.destinationFilename)", category: Logger.downloads)
+        return true
+    }
+
+    /// Marks an adopted WebKit download as failed.
+    ///
+    /// - Returns: `true` if this WKDownload was adopted and handled. Returns
+    ///   `false` for downloads already removed (e.g. cancelled via ``cancel(_:)``).
+    @discardableResult
+    func failWebKitDownload(_ wkDownload: WKDownload, error: any Error) -> Bool {
+        guard let (id, task) = webKitTasks.first(where: { $0.value.wkDownload === wkDownload }) else {
+            return false
+        }
+        task.stopObservingProgress()
+        webKitTasks.removeValue(forKey: id)
+
+        task.download.markFailed(error: error, resumeData: nil)
+        unpublishFileProgress(for: id)
+        updateAggregateProgress()
+        scheduleSave()
+        onDownloadFailed?(task.download, error)
+
+        Logger.warning(
+            "WebKit download failed: \(task.download.destinationFilename) - \(error.localizedDescription)",
+            category: Logger.downloads,
+        )
+        return true
+    }
+
     /// Pauses an active download.
     ///
     /// - Parameter id: The download ID to pause.
@@ -611,6 +786,16 @@ final class DownloadManager {
     func cancel(_ id: UUID) {
         unpublishFileProgress(for: id)
         photosImportPending.removeValue(forKey: id)
+
+        // Check for WebKit-native download (blob: URLs)
+        if let webKitTask = webKitTasks.removeValue(forKey: id) {
+            webKitTask.cancel()
+            webKitTask.download.markFailed(error: DownloadError.cancelled, resumeData: nil)
+            updateAggregateProgress()
+            scheduleSave()
+            Logger.info("WebKit download cancelled: \(webKitTask.download.destinationFilename)", category: Logger.downloads)
+            return
+        }
 
         // Check for yt-dlp download first
         if let ytdlpTask = ytdlpTasks.removeValue(forKey: id) {
@@ -1433,7 +1618,8 @@ final class DownloadManager {
     }
 
     private func updateAggregateProgress() {
-        guard !activeTasks.isEmpty else {
+        let activeDownloads = activeTasks.values.map(\.download) + webKitTasks.values.map(\.download)
+        guard !activeDownloads.isEmpty else {
             aggregateProgress = 0
             return
         }
@@ -1442,8 +1628,7 @@ final class DownloadManager {
         var receivedBytes: Int64 = 0
         var unknownCount = 0
 
-        for task in activeTasks.values {
-            let download = task.download
+        for download in activeDownloads {
             receivedBytes += download.bytesReceived
 
             if let total = download.totalBytes {

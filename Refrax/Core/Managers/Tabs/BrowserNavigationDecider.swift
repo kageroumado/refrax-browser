@@ -507,6 +507,12 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             return .cancel
 
         case let .download(url):
+            // blob: URLs can only be transferred by WebKit itself — return .download
+            // so WebKit creates a WKDownload, which WKNavigationDelegateAdapter
+            // adopts into DownloadManager.
+            if DownloadManager.requiresWebKitTransfer(url) {
+                return .download
+            }
             await handleDownloadAction(for: url)
             return .cancel
 
@@ -533,15 +539,16 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             return .cancel
 
         case .download:
-            // Start our own download and cancel the navigation.
-            //
-            // We cannot use WKNavigationResponsePolicy.download because:
-            // 1. It requires implementing webView(_:navigationResponse:didBecomeDownload:)
-            //    to receive the WKDownload object
-            // 2. The SwiftUI WebPage.NavigationDeciding protocol doesn't expose this delegate
-            // 3. Returning .download without proper delegation causes sandbox extension errors
-            //
-            // Instead, we cancel the navigation and initiate a fresh download request.
+            // blob: URLs can only be transferred by WebKit itself — return .download
+            // so WebKit creates a WKDownload, which WKNavigationDelegateAdapter
+            // adopts into DownloadManager.
+            if let url = response.url, DownloadManager.requiresWebKitTransfer(url) {
+                return .download
+            }
+
+            // For re-requestable URLs, cancel the navigation and start a fresh
+            // download through DownloadManager. This keeps progress tracking,
+            // space-aware destinations, aria2 acceleration, and pause/resume.
             await handleDownload(for: response)
             return .cancel
 
