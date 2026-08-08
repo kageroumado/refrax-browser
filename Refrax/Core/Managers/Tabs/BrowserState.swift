@@ -295,6 +295,14 @@ final class BrowserState {
     func saveImmediately() async {
         await saver.saveImmediately()
     }
+
+    /// Saves immediately without debouncing, synchronously.
+    ///
+    /// For contexts that cannot await — app termination in particular, where a
+    /// debounced save scheduled now would never fire before the process exits.
+    func saveImmediatelySync() {
+        saver.saveImmediatelySync()
+    }
     
     // MARK: - Space Lookup
     

@@ -309,11 +309,8 @@ final class SpaceManager {
             windowState.exitLayoutMode()
         }
 
-        // Save current space state (last active tabs for restoration)
-        if let currentSpaceID = windowState.activeSpaceID,
-           let currentSpace = state.space(for: currentSpaceID) {
-            saveSpaceState(currentSpace, windowState: windowState)
-        }
+        // Persist pending model changes before switching
+        scheduleSave()
 
         // Load tabs if needed
         if !space.isLoaded {
@@ -344,11 +341,8 @@ final class SpaceManager {
             windowState.exitLayoutMode()
         }
 
-        // Save current space state (last active tabs for restoration)
-        if let currentSpaceID = windowState.activeSpaceID,
-           let currentSpace = state.space(for: currentSpaceID) {
-            saveSpaceState(currentSpace, windowState: windowState)
-        }
+        // Persist pending model changes before switching
+        scheduleSave()
 
         // Load tabs if needed
         if !space.isLoaded {
@@ -384,18 +378,6 @@ final class SpaceManager {
         if !space.isLoaded {
             loadSpaceTabs(for: space)
         }
-    }
-    
-    // MARK: - Space State Persistence
-
-    /// Saves space state to persistence.
-    ///
-    /// Active tabs are tracked per-window in WindowState, not per-space.
-    func saveSpaceState(_: Space, windowState _: WindowState? = nil) {
-        // Note: active tab is per-window only (stored in WindowState)
-        // Note: active reference tab is per-window only (not persisted per-space)
-        // Note: reference pane mode is per-window (stored in window restoration)
-        scheduleSave()
     }
     
     // MARK: - Default Space

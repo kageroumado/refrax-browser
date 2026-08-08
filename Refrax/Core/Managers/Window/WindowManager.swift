@@ -349,9 +349,7 @@ final class WindowManager {
             extensionManager.removeWindowAdapter(for: controller.windowState)
         }
 
-        if let space = controller.windowState.activeSpace {
-            tabManager.saveSpaceState(space)
-        }
+        tabManager.scheduleSave()
 
         // Close any detached reference pane window associated with this parent
         let parentID = ObjectIdentifier(controller.windowState)

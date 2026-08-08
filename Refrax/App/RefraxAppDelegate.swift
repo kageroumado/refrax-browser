@@ -891,7 +891,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Performs final cleanup:
     /// - Persists the active window's geometry for future new windows
-    /// - Schedules a save of each window's active space
+    /// - Flushes pending SwiftData changes synchronously
     /// - Marks a clean shutdown for crash detection
     /// - Gracefully stops the control server and the aria2 daemon
     func applicationWillTerminate(_: Notification) {
@@ -911,11 +911,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        for controller in windowManager.windowControllers {
-            if let space = controller.windowState.activeSpace {
-                spaceManager.saveSpaceState(space, windowState: controller.windowState)
-            }
-        }
+        // Flush pending model changes synchronously — a debounced save
+        // scheduled here would never fire before the process exits
+        browserState.saveImmediatelySync()
 
         CrashMonitor.markCleanShutdown()
 

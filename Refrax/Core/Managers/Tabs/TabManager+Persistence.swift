@@ -70,11 +70,6 @@ extension TabManager {
         spaceManager.switchToSpaceSync(targetSpace, for: windowState, restoreActiveTab: false)
     }
 
-    /// Saves space state.
-    func saveSpaceState(_ space: Space) {
-        spaceManager.saveSpaceState(space, windowState: nil)
-    }
-
     /// Saves immediately (use sparingly).
     func saveImmediately() async {
         await state.saveImmediately()

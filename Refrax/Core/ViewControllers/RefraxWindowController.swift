@@ -984,9 +984,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     // MARK: - Window Delegate
 
     func windowShouldClose(_: NSWindow) -> Bool {
-        if let activeSpace = windowState.activeSpace {
-            tabManager.saveSpaceState(activeSpace)
-        }
+        tabManager.scheduleSave()
         return true
     }
 

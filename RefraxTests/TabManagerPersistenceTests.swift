@@ -229,17 +229,6 @@ struct TabManagerSaveTests {
         // No assertion needed - just verifying it completes
     }
 
-    @Test("saveSpaceState delegates to space manager")
-    func saveSpaceStateDelegates() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        env.tabManager.createTab(url: URL(string: "https://example.com")!, in: space, makeActive: true)
-
-        // Should not crash
-        env.tabManager.saveSpaceState(space)
-    }
 }
 
 // MARK: - TabManager Memory Warning Tests
