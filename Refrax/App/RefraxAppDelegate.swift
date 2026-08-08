@@ -858,10 +858,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Handles Dock icon click when no windows are visible.
     ///
-    /// Creates a new window if all windows are closed, matching user expectation
-    /// that clicking the Dock icon should show the app.
+    /// Minimized windows count as not visible here, so surface an existing
+    /// window (deminiaturizing if needed) before falling back to creating a
+    /// new one — otherwise a Dock click with a minimized window would create
+    /// a duplicate instead of restoring it.
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag, browserState.settings.hasCompletedOnboarding {
+        guard !flag, browserState.settings.hasCompletedOnboarding else { return true }
+
+        let controller = windowManager.activeWindowController ?? windowManager.windowControllers.first
+        if let window = controller?.window {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+        } else {
             windowManager.createWindow()
         }
         return true
