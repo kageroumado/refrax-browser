@@ -27,7 +27,7 @@ struct OnboardingAlphaInfoView: View {
                     infoCard(
                         title: "Diagnostics are always on",
                         icon: "heart.fill",
-                        description: "To help improve Refrax during the alpha, anonymous diagnostics and crash reports are sent automatically.\n\n\(TelemetryService.heartbeatDescription)\n\nThis will become optional in a future release."
+                        description: "To help improve Refrax during the alpha, anonymous diagnostics and crash reports are sent automatically.\n\n\(TelemetryService.heartbeatDescription)\n\n\(TelemetryService.crashReportDescription)\n\nThis will become optional in a future release."
                     )
 
                     infoCard(

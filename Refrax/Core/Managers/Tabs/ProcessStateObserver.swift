@@ -334,6 +334,25 @@ extension _WKProcessTerminationReason {
         }
     }
 
+    /// Stable slug for the crash telemetry endpoint — the server aggregates
+    /// by exact string, so these must not change between releases.
+    var telemetryReason: String {
+        switch self {
+        case .exceededMemoryLimit:
+            "oom"
+        case .exceededCPULimit:
+            "cpu_limit"
+        case .requestedByClient:
+            "requested_by_client"
+        case .crash:
+            "crash"
+        case .exceededSharedProcessCrashLimit:
+            "shared_process_crash_limit"
+        @unknown default:
+            "unknown_\(rawValue)"
+        }
+    }
+
     /// User-facing description for toast messages.
     var userDescription: String {
         switch self {

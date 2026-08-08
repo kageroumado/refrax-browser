@@ -274,6 +274,10 @@ enum Constants {
         static var telemetryHeartbeat: Foundation.URL? {
             endpoint(base: channel.baseURL, path: "/telemetry/heartbeat", context: "telemetryHeartbeat")
         }
+
+        static var telemetryCrash: Foundation.URL? {
+            endpoint(base: channel.baseURL, path: "/telemetry/crash", context: "telemetryCrash")
+        }
     }
     
     enum AddressBar {

@@ -137,6 +137,15 @@ final class WebProcessTerminationHandler {
             category: Logger.tabs,
         )
 
+        // Report true crashes (not memory/CPU evictions) to crash telemetry
+        if event.isCrash, let settings {
+            TelemetryService.sendCrashReport(
+                reason: reason.telemetryReason,
+                domain: page.tabPage.url.registrableDomain ?? "unknown",
+                settings: settings,
+            )
+        }
+
         // Update page's process state observer
         page.processStateObserver?.recordTermination(reason: reason)
 
