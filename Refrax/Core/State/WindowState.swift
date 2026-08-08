@@ -500,8 +500,8 @@ final class WindowState {
 
     /// Current width of the sidebar panel.
     ///
-    /// Dynamically updated as the user resizes the sidebar, and persists
-    /// across sessions.
+    /// Dynamically updated as the user resizes the sidebar. Persisted per
+    /// window by AppKit state restoration and app-wide by `WindowGeometryStore`.
     var sidebarThickness: CGFloat = 300
 
     /// Tracks whether the tutorial peek animation has played this session.

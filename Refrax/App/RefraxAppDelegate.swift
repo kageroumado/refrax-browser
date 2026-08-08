@@ -886,9 +886,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Called just before the app terminates.
     ///
     /// Performs final cleanup:
-    /// - Saves window state (sidebar width, inspector, active space) for restoration
-    /// - Gracefully stops the aria2 daemon if BitTorrent downloads were active
+    /// - Persists the active window's geometry for future new windows
+    /// - Schedules a save of each window's active space
+    /// - Marks a clean shutdown for crash detection
+    /// - Gracefully stops the control server and the aria2 daemon
     func applicationWillTerminate(_: Notification) {
+        // Quitting skips per-window close notifications, so capture the active
+        // window's geometry here for new windows created after the next launch
+        if let controller = windowManager.activeWindowController,
+           let window = controller.window,
+           !window.styleMask.contains(.fullScreen) {
+            WindowGeometryStore.save(
+                SavedWindowGeometry(
+                    frame: window.frame,
+                    sidebarWidth: controller.windowState.sidebarThickness,
+                    isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
+                    inspectorWidth: controller.windowState.referencePaneDockedWidth,
+                ),
+                screen: window.screen,
+            )
+        }
+
         for controller in windowManager.windowControllers {
             if let space = controller.windowState.activeSpace {
                 spaceManager.saveSpaceState(space, windowState: controller.windowState)

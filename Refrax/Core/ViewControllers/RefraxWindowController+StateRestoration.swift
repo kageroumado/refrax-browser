@@ -69,24 +69,8 @@ extension RefraxWindowController {
            let frameY = state.decodeObject(of: NSNumber.self, forKey: "windowFrameY")?.doubleValue,
            let frameWidth = state.decodeObject(of: NSNumber.self, forKey: "windowFrameWidth")?.doubleValue,
            let frameHeight = state.decodeObject(of: NSNumber.self, forKey: "windowFrameHeight")?.doubleValue {
-            let restoredFrame = NSRect(x: frameX, y: frameY, width: frameWidth, height: frameHeight)
-
-            // Validate that the restored frame is at least partially visible on a connected screen
-            let isVisible = NSScreen.screens.contains { screen in
-                screen.visibleFrame.intersects(restoredFrame)
-            }
-
-            if isVisible {
-                window?.setFrame(restoredFrame, display: false)
-            } else {
-                // Screen configuration changed — use restored size but center on main screen
-                window?.setContentSize(restoredFrame.size)
-                window?.center()
-            }
+            applyFrame(NSRect(x: frameX, y: frameY, width: frameWidth, height: frameHeight))
         }
-
-        let sidebarItem = splitViewController.splitViewItems[0]
-        let inspectorItem = splitViewController.splitViewItems[2]
 
         let sidebarWidth = state.decodeObject(of: NSNumber.self, forKey: "sidebarWidth")?.doubleValue
             ?? Constants.Layout.sidebarDefaultWidth
@@ -96,30 +80,12 @@ extension RefraxWindowController {
             ?? Constants.Layout.inspectorDefaultWidth
         let inspectorCollapsed = state.decodeObject(of: NSNumber.self, forKey: "inspectorCollapsed")?.boolValue ?? true
 
-        lastCollapsedThickness = sidebarWidth
-        windowState.sidebarThickness = sidebarWidth
-
-        // Update overlay container width constraint to match restored sidebar width
-        // Container width = sidebarWidth + padding (see setupSidebarOverlayContainer docs)
-        let padding = Constants.SidebarAnimation.glassEffectPadding
-        sidebarOverlayWidthConstraint?.constant = sidebarWidth + padding
-
-        sidebarItem.isCollapsed = sidebarCollapsed
-        windowState.isSidebarCollapsed = sidebarCollapsed
-
-        if !sidebarCollapsed {
-            splitViewController.splitView.setPosition(sidebarWidth, ofDividerAt: 0)
-        }
-
-        windowState.referencePaneDockedWidth = dockedWidth
-
-        splitViewController.splitView.setPosition(
-            splitViewController.view.bounds.width - dockedWidth,
-            ofDividerAt: 1,
+        applyChrome(
+            sidebarWidth: sidebarWidth,
+            sidebarCollapsed: sidebarCollapsed,
+            inspectorWidth: dockedWidth,
+            inspectorCollapsed: inspectorCollapsed,
         )
-
-        inspectorItem.isCollapsed = inspectorCollapsed
-        windowState.isInspectorCollapsed = inspectorCollapsed
 
         if let spaceIDString = state.decodeObject(of: NSString.self, forKey: "activeSpaceID") as String?,
            let spaceID = UUID(uuidString: spaceIDString) {
@@ -137,9 +103,87 @@ extension RefraxWindowController {
                 compositingFilter: mixMode.makeCIFilter(),
             )
         }
+    }
 
-        // Apply sidebar UI immediately to prevent flash of incorrect state
-        // This runs before window becomes visible, ensuring correct initial appearance
+    /// Applies geometry to a freshly created window outside the AppKit
+    /// restoration path (Dock click, Cmd+N, first launch).
+    ///
+    /// The inspector always starts collapsed in new windows; its width is
+    /// still applied so it opens at the last-used size. Must be called
+    /// before `showWindow(_:)` so the window appears at its final frame.
+    func applyInitialGeometry(_ geometry: SavedWindowGeometry) {
+        isRestoringState = true
+        defer { isRestoringState = false }
+
+        applyFrame(geometry.frame)
+
+        let sidebarWidth = geometry.sidebarWidth.clamped(
+            to: Constants.Layout.sidebarMinWidth ... Constants.Layout.sidebarMaxWidth,
+        )
+        let inspectorWidth = geometry.inspectorWidth.clamped(
+            to: Constants.Layout.inspectorMinWidth ... Constants.Layout.inspectorMaxWidth,
+        )
+
+        applyChrome(
+            sidebarWidth: sidebarWidth,
+            sidebarCollapsed: geometry.isSidebarCollapsed,
+            inspectorWidth: inspectorWidth,
+            inspectorCollapsed: true,
+        )
+    }
+
+    /// Sets the window frame, validating it against connected screens.
+    private func applyFrame(_ frame: NSRect) {
+        let isVisible = NSScreen.screens.contains { screen in
+            screen.visibleFrame.intersects(frame)
+        }
+
+        if isVisible {
+            window?.setFrame(frame, display: false)
+        } else {
+            // Screen configuration changed — keep the size but center on the main screen
+            window?.setContentSize(frame.size)
+            window?.center()
+        }
+    }
+
+    /// Applies sidebar and inspector dimensions and collapse state, syncing
+    /// split view positions, `WindowState`, and the overlay width constraint,
+    /// then applies the matching sidebar UI (traffic lights, toolbar items)
+    /// before the window becomes visible to prevent a flash of incorrect state.
+    private func applyChrome(
+        sidebarWidth: CGFloat,
+        sidebarCollapsed: Bool,
+        inspectorWidth: CGFloat,
+        inspectorCollapsed: Bool,
+    ) {
+        let sidebarItem = splitViewController.splitViewItems[0]
+        let inspectorItem = splitViewController.splitViewItems[2]
+
+        lastCollapsedThickness = sidebarWidth
+        windowState.sidebarThickness = sidebarWidth
+
+        // Container width = sidebarWidth + padding (see setupSidebarOverlayContainer docs)
+        let padding = Constants.SidebarAnimation.glassEffectPadding
+        sidebarOverlayWidthConstraint?.constant = sidebarWidth + padding
+
+        sidebarItem.isCollapsed = sidebarCollapsed
+        windowState.isSidebarCollapsed = sidebarCollapsed
+
+        if !sidebarCollapsed {
+            splitViewController.splitView.setPosition(sidebarWidth, ofDividerAt: 0)
+        }
+
+        windowState.referencePaneDockedWidth = inspectorWidth
+
+        splitViewController.splitView.setPosition(
+            splitViewController.view.bounds.width - inspectorWidth,
+            ofDividerAt: 1,
+        )
+
+        inspectorItem.isCollapsed = inspectorCollapsed
+        windowState.isInspectorCollapsed = inspectorCollapsed
+
         applySidebarStateUI()
     }
 

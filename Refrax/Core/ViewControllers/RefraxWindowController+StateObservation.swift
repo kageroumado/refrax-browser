@@ -15,6 +15,10 @@ extension RefraxWindowController {
 
                 windowState.isSidebarCollapsed = isCollapsed
 
+                // AppKit only dirties restorable state on window changes it can
+                // see (frame, ordering) — sidebar collapse isn't one of them
+                window?.invalidateRestorableState()
+
                 if isCollapsed {
                     let currentWidth = sidebarItem.viewController.view.frame.width
                     if currentWidth > 0 {
@@ -75,6 +79,10 @@ extension RefraxWindowController {
                 if !sidebarItem.isCollapsed, width > 0 {
                     lastCollapsedThickness = width
                     windowState.sidebarThickness = width
+
+                    // AppKit only dirties restorable state on window changes it
+                    // can see (frame, ordering) — divider drags aren't one of them
+                    window?.invalidateRestorableState()
 
                     // Update overlay container width constraint
                     // Container width = sidebarWidth + padding (see setupSidebarOverlayContainer docs)

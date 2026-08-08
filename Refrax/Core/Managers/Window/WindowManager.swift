@@ -174,13 +174,11 @@ final class WindowManager {
         registerWindowController(windowController)
         tabManager.initializeWindow(windowController.windowState)
 
-        window.setContentSize(.defaultWindowSize)
-        windowController.showWindow(nil)
-        window.center()
+        sizeAndShow(windowController)
 
         return windowController
     }
-    
+
     /// Creates a new window showing a specific space.
     ///
     /// New windows don't start with an active tab selected.
@@ -195,9 +193,7 @@ final class WindowManager {
         registerWindowController(windowController)
         tabManager.initializeWindow(windowController.windowState, with: space)
 
-        window.setContentSize(.defaultWindowSize)
-        windowController.showWindow(nil)
-        window.center()
+        sizeAndShow(windowController)
 
         return windowController
     }
@@ -215,11 +211,67 @@ final class WindowManager {
 
         registerWindowController(windowController)
 
-        window.setContentSize(.defaultWindowSize)
-        windowController.showWindow(nil)
-        window.center()
+        sizeAndShow(windowController)
 
         return windowController
+    }
+
+    /// Sizes and shows a newly created window.
+    ///
+    /// A new window inherits the frontmost browser window's geometry, offset
+    /// slightly so the two don't stack exactly. With no window open it reuses
+    /// the persisted geometry of the last closed window, so closing the last
+    /// window and reopening one keeps the user's size, position, and sidebar
+    /// width. With neither available, it falls back to the default size,
+    /// centered.
+    private func sizeAndShow(_ windowController: RefraxWindowController) {
+        guard let window = windowController.window else {
+            windowController.showWindow(nil)
+            return
+        }
+
+        if let geometry = liveGeometry(excluding: windowController)
+            ?? WindowGeometryStore.restore(for: NSScreen.main) {
+            windowController.applyInitialGeometry(geometry)
+            windowController.showWindow(nil)
+        } else {
+            window.setContentSize(.defaultWindowSize)
+            windowController.showWindow(nil)
+            window.center()
+        }
+    }
+
+    /// Snapshots the frontmost browser window's geometry as the template for
+    /// a new window, cascaded down-right so the windows don't overlap exactly.
+    ///
+    /// Returns `nil` when no other browser window exists or the frontmost one
+    /// is fullscreen.
+    private func liveGeometry(excluding windowController: RefraxWindowController) -> SavedWindowGeometry? {
+        let source: RefraxWindowController? = if let active = activeWindowController, active !== windowController {
+            active
+        } else {
+            windowControllers.first { $0 !== windowController && $0.window != nil }
+        }
+
+        guard let source,
+              let sourceWindow = source.window,
+              !sourceWindow.styleMask.contains(.fullScreen)
+        else { return nil }
+
+        var frame = sourceWindow.frame
+        let cascadeOffset: CGFloat = 24
+        let cascaded = frame.offsetBy(dx: cascadeOffset, dy: -cascadeOffset)
+        if let visibleFrame = sourceWindow.screen?.visibleFrame,
+           visibleFrame.contains(cascaded) {
+            frame = cascaded
+        }
+
+        return SavedWindowGeometry(
+            frame: frame,
+            sidebarWidth: source.windowState.sidebarThickness,
+            isSidebarCollapsed: source.windowState.isSidebarCollapsed,
+            inspectorWidth: source.windowState.referencePaneDockedWidth,
+        )
     }
 
     /// Registers a window controller for lifecycle management.
@@ -270,6 +322,18 @@ final class WindowManager {
         }
 
         let controller = windowControllers.remove(at: index)
+
+        if !closedWindow.styleMask.contains(.fullScreen) {
+            WindowGeometryStore.save(
+                SavedWindowGeometry(
+                    frame: closedWindow.frame,
+                    sidebarWidth: controller.windowState.sidebarThickness,
+                    isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
+                    inspectorWidth: controller.windowState.referencePaneDockedWidth,
+                ),
+                screen: closedWindow.screen,
+            )
+        }
 
         // Notify extensions of window close (before cleanup)
         if let extensionManager = tabManager?.state.extensionManager {
