@@ -54,7 +54,7 @@ struct TabManagerTestEnvironment {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
         self.modelContext = container.mainContext
 

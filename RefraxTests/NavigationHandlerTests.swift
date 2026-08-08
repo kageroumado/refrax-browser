@@ -781,7 +781,7 @@ struct CustomRedirectHandlerTests {
 
     private static func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -989,7 +989,7 @@ struct URLShortenerHandlerTests {
 
     private static func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -1074,7 +1074,7 @@ struct AppRedirectHandlerTests {
 
     private static func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 

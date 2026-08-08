@@ -3,14 +3,13 @@ import Testing
 
 @testable import Refrax
 
-/// Tests for drop zone edge cases.
+/// Tests for drop zone edge cases:
+/// - No favorites AND no pinned tabs (both placeholder zones must be targetable)
+/// - Favorites exist but no pinned tabs (pinned placeholder must be targetable)
 ///
-/// These tests expose bugs in drop zone targeting when:
-/// - No favorites AND no pinned tabs exist (both zones show but pinned can't be targeted)
-/// - Favorites exist but no pinned tabs (pinned zone positioned incorrectly)
-///
-/// The key issue is that drop zone detection uses un-adjusted section frames
-/// that don't account for `tabListPushOffset`, causing hit detection to fail.
+/// Drop zone placeholders are positioned from `sidebarBounds.minY` using
+/// `DropZoneConstants`, so probes compute their coordinates from those same
+/// constants to stay in sync with the implementation.
 @Suite("Drop Zone Edge Cases", .tags(.sidebarDragCoordinator), .serialized)
 @MainActor
 struct SidebarDragDropZoneEdgeCaseTests {
@@ -24,8 +23,8 @@ struct SidebarDragDropZoneEdgeCaseTests {
 
     // MARK: - No Favorites AND No Pinned Tests
 
-    @Test("BUG: When no favorites and no pinned, pinned drop zone cannot be targeted")
-    func noFavoritesNoPinnedCantTargetPinnedZone() throws {
+    @Test("Favorites and pinned drop zones are targetable when neither section exists")
+    func dropZonesTargetableWhenNoFavoritesAndNoPinned() throws {
         let support = try SidebarTestSupport()
         // Create only normal tabs - no favorites, no pinned
         _ = support.createTab(url: "https://tab1.com")
@@ -61,50 +60,24 @@ struct SidebarDragDropZoneEdgeCaseTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone == true)
         #expect(support.dragCoordinator.shouldShowPinDropZone == true)
 
-        // Now the bug: With both zones showing, tabListPushOffset = 112 (56 * 2)
-        // The tab list is pushed down by 112 pixels visually
-        // But checkDropZoneTarget uses normalSectionFrame.minY (100) instead of
-        // _adjustedNormalSectionFrame.minY (100 + 112 = 212)
+        // Probe the vertical center of each placeholder, computed from the
+        // same constants the coordinator uses to position them
+        typealias Zones = Sidebar.DragCoordinator.DropZoneConstants
+        let areaTop = support.dragCoordinator.sidebarBounds.minY + Zones.addressBarOffset
+        let favoritesProbeY = areaTop + Zones.favoritesDropZoneTotalHeight / 2
+        let pinnedProbeY = areaTop + Zones.favoritesDropZoneTotalHeight + Zones.pinnedDropZoneTotalHeight / 2
 
-        // When dropZoneProgress is at max (1.0), the detection should work
-        // Let's simulate what the SwiftUI view applies
-        let expectedPushOffset = support.dragCoordinator.tabListPushOffset
-
-        // The pinned drop zone should be targetable in the area between the
-        // favorites zone and the (pushed-down) normal section
-        // Favorites zone: ~0 to 56
-        // Pinned zone: ~56 to 112
-        // Normal section (adjusted): starts at 100 + 112 = 212
-
-        // Try to target the pinned zone at y=80 (between 56 and 112)
         support.dragCoordinator.updateDrag(
-            offset: -38 - 100, // Move overlay to roughly y=80
-            location: CGPoint(x: 100, y: 80),
+            offset: favoritesProbeY - tabFrame.midY,
+            location: CGPoint(x: 100, y: favoritesProbeY),
         )
+        #expect(support.dragCoordinator.activeDropZone == .favoritesGrid)
 
-        // The BUG: Detection checks `location.y < normalSectionFrame.minY` (100)
-        // But y=80 < 100 is TRUE, so it might incorrectly pass
-        // However, the favorites check `location.y < contentTopY` runs first
-        // where contentTopY = normalSectionFrame.minY = 100
-        // So y=80 < 100 triggers favorites instead of pinned!
-
-        // Check current drop target
-        _ = support.dragCoordinator._dropTarget
-        let activeZone = support.dragCoordinator.activeDropZone
-
-        // BUG DOCUMENTATION: When both drop zones show, the pinned zone SHOULD be
-        // targetable in the gap between favorites zone and the pushed-down normal section.
-        // However, the detection logic may use un-adjusted frame comparison.
-        if expectedPushOffset > 0 {
-            // Document expected vs actual behavior
-            // The bug is that activeZone might be .favoritesGrid instead of .pinnedSection
-            // at y=80 because the favorites zone detection uses un-adjusted bounds.
-            // We accept either as valid until the bug is fixed.
-            #expect(
-                activeZone == .pinnedSection || activeZone == .favoritesGrid,
-                "Should target a drop zone at y=80 when push offset is \(expectedPushOffset), got \(String(describing: activeZone))",
-            )
-        }
+        support.dragCoordinator.updateDrag(
+            offset: pinnedProbeY - tabFrame.midY,
+            location: CGPoint(x: 100, y: pinnedProbeY),
+        )
+        #expect(support.dragCoordinator.activeDropZone == .pinnedSection)
     }
 
     @Test("Drop zone detection uses adjusted frames for hit testing")
@@ -183,32 +156,23 @@ struct SidebarDragDropZoneEdgeCaseTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone)
         #expect(support.dragCoordinator.shouldShowPinDropZone)
 
-        // At max progress:
-        // - tabListPushOffset = 112 (56 + 56)
-        // - Normal section is pushed from y=100 to y=212
-        // - Favorites zone occupies: ~0 to 56
-        // - Pinned zone occupies: ~56 to 112
-        // - Gap between zones and content: 112 to 212
-
-        // Calculate where the pinned zone should be targetable
-        // The pinned zone is the SECOND drop zone, so it's after favorites (56 pixels down)
-        // Target y = 80 (within the pinned zone range 56-112)
+        // The pinned placeholder sits directly below the favorites placeholder;
+        // probe its vertical center, computed from the positioning constants
+        typealias Zones = Sidebar.DragCoordinator.DropZoneConstants
+        let pinnedProbeY = support.dragCoordinator.sidebarBounds.minY
+            + Zones.addressBarOffset
+            + Zones.favoritesDropZoneTotalHeight
+            + Zones.pinnedDropZoneTotalHeight / 2
 
         support.dragCoordinator.updateDrag(
-            offset: -200,
-            location: CGPoint(x: 100, y: 80),
+            offset: pinnedProbeY - tabFrame.midY,
+            location: CGPoint(x: 100, y: pinnedProbeY),
         )
 
-        // If the bug is fixed, this should target pinned section
-        // If the bug exists, it will target favorites because the comparison
-        // uses un-adjusted normalSectionFrame.minY
         let zone = support.dragCoordinator.activeDropZone
-
-        // Document expected behavior: zone should be .pinnedSection at y=80
-        // when both drop zones are showing
         #expect(
-            zone == .pinnedSection || zone == .favoritesGrid,
-            "Should target a drop zone at y=80, got \(String(describing: zone))",
+            zone == .pinnedSection,
+            "Should target the pinned drop zone at y=\(pinnedProbeY), got \(String(describing: zone))",
         )
     }
 
@@ -285,9 +249,16 @@ struct SidebarDragDropZoneEdgeCaseTests {
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
 
-        // Set up frames
-        support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: -100, width: 240, height: 500))
-        support.dragCoordinator.updateFavoritesGridFrame(CGRect(x: 0, y: 20, width: 200, height: 100))
+        // Set up frames. The coordinator positions the pinned placeholder at
+        // addressBarOffset + grid height + 12 below the sidebar top, so the
+        // grid frame must sit where that math assumes it: right below the
+        // address bar.
+        typealias Zones = Sidebar.DragCoordinator.DropZoneConstants
+        let sidebarBounds = CGRect(x: 0, y: -100, width: 240, height: 500)
+        support.setupTestGeometry(sidebarBounds: sidebarBounds)
+        support.dragCoordinator.updateFavoritesGridFrame(
+            CGRect(x: 0, y: sidebarBounds.minY + Zones.addressBarOffset, width: 200, height: 100),
+        )
 
         let normalItem = support.layoutManager.normalItems.first!
         let tab = normalItem.tab!
@@ -301,29 +272,30 @@ struct SidebarDragDropZoneEdgeCaseTests {
             startLocation: CGPoint(x: tabFrame.midX, y: tabFrame.midY),
         )
 
-        // Drag to trigger the pinned zone (above normal section)
+        // Probe the vertical center of the pinned placeholder (favorites exist,
+        // so no favorites placeholder is shown above it)
+        let gridFrame = support.dragCoordinator.favoritesGridFrame
+        let pinnedProbeY = sidebarBounds.minY
+            + Zones.addressBarOffset
+            + gridFrame.height + 12
+            + Zones.pinnedDropZoneTotalHeight / 2
+
+        // Zone activation tracks the dragged frame (item minY + offset must sit
+        // above the first item), while hit-testing uses the location — so keep
+        // the offset far negative and probe with the location
         support.dragCoordinator.updateDrag(
-            offset: -100,
-            location: CGPoint(x: 100, y: 130), // Gap between favorites and normal
+            offset: -200,
+            location: CGPoint(x: 100, y: pinnedProbeY),
         )
 
-        let dropTarget = support.dragCoordinator._dropTarget
-
-        // Verify the drop target is for creating a pinned tab
-        // Expected: .reorder(target) where target.collection == .pinned
-        switch dropTarget {
+        // The drop target must create a pinned tab
+        switch support.dragCoordinator._dropTarget {
         case let .reorder(target):
-            if target.collection == .pinned {
-                // Bug is fixed - pinned zone is targetable
-                return
-            }
+            #expect(target.collection == .pinned)
         default:
-            break
-        }
-
-        // Document that if we can't target pinned, the bug exists
-        if support.dragCoordinator.shouldShowPinDropZone {
-            Issue.record("BUG: Pin drop zone is shown but not targetable when favorites exist")
+            Issue.record(
+                "Expected a pinned reorder target at y=\(pinnedProbeY), got \(String(describing: support.dragCoordinator._dropTarget))",
+            )
         }
     }
 

@@ -5,7 +5,9 @@ import Testing
 @Suite("RecordMapper Utilities", .serialized)
 @MainActor
 struct SyncRecordMapperTests {
-    static let zoneID = CKRecordZone.ID(zoneName: "RefraxSync", ownerName: CKCurrentUserDefaultName)
+    // The production constant switches zone names between debug and release
+    // builds, so tests must compare against it rather than a literal name
+    static let zoneID = RecordMapper.zoneID
 
     @Test("Record ID from UUID")
     func recordIDFromUUID() {

@@ -27,7 +27,7 @@ struct TabTests {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -95,7 +95,7 @@ struct TabPageTests {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -166,7 +166,7 @@ struct BookmarkRelationshipTests {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -237,7 +237,7 @@ struct SpaceRelationshipTests {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -313,7 +313,7 @@ struct CascadeDeleteTests {
 
     init() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 

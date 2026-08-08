@@ -14,7 +14,7 @@ struct SyncRoundTripTests {
     /// Creates an in-memory ModelContainer with the full app schema.
     private static func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -416,7 +416,8 @@ struct SyncRoundTripTests {
         let uuid = UUID()
         let recordID = RecordMapper.recordID(for: uuid)
         #expect(recordID.zoneID == RecordMapper.zoneID)
-        #expect(recordID.zoneID.zoneName == "RefraxSync")
+        // Debug builds use "RefraxSync-Debug", release "RefraxSync"
+        #expect(recordID.zoneID.zoneName.hasPrefix("RefraxSync"))
     }
 
     @Test("RecordMapper reference contains correct target UUID")
