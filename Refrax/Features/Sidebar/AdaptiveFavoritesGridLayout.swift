@@ -4,13 +4,10 @@ import SwiftUI
 ///
 /// ## Why a Custom Layout?
 ///
-/// The previous implementation computed grid dimensions from external state (`windowState.sidebarThickness`)
-/// rather than responding to SwiftUI's size proposals. This created layout issues:
-/// - The grid declared fixed sizes without knowing actual available space
-/// - Sibling views could be forced larger than necessary
-/// - Padding calculations were fragile and duplicated
-///
-/// This layout receives size proposals, responds with what it needs, and places children correctly.
+/// The grid must participate in SwiftUI's size negotiation: it receives a
+/// proposed width, decides how many columns fit, and reports the exact height
+/// it needs. Sibling views are never forced larger than necessary, and padding
+/// is computed in one place.
 ///
 /// ## Algorithm
 ///
