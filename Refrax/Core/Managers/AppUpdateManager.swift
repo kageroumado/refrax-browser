@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Manages the complete app update lifecycle: checking, downloading, installing,
 /// and post-update notification.
@@ -38,15 +39,18 @@ import Foundation
 /// ## Installation Process
 ///
 /// When the user clicks "Restart to Update":
-/// 1. Downloaded DMG mounted via `hdiutil` (no-browse, quiet)
-/// 2. `.app` located in mount point
-/// 3. Code signing identity verified against running app (Security framework)
-/// 4. New `.app` copied to staging directory
+/// 1. Translocation guard — refuse to update a translocated (unmovable) bundle
+/// 2. Downloaded DMG mounted via `hdiutil` (no-browse, quiet, checksum verified)
+/// 3. `.app` located in mount point (symlinks skipped)
+/// 4. New `.app` copied to a unique 0700 staging directory
 /// 5. DMG unmounted
-/// 6. Post-update metadata saved to UserDefaults
-/// 7. Updater shell script written to temp and launched
-/// 8. App terminates via `NSApp.terminate(nil)`
-/// 9. Script waits for process exit → replaces bundle → removes quarantine → relaunches
+/// 6. Staged copy verified: signature validity against the running app's
+///    designated requirement, bundle identifier match, downgrade rejection
+/// 7. Post-update metadata saved to UserDefaults
+/// 8. Updater shell script written to temp and launched
+/// 9. App terminates
+/// 10. Script waits for process exit → swaps bundle with rollback on failure
+///     → removes quarantine → relaunches
 ///
 /// ## Post-Update Detection
 ///
@@ -278,35 +282,44 @@ final class AppUpdateManager {
     }
 
     private func installUpdate(update: AppUpdate, dmgPath: URL) async throws {
-        // 1. Mount DMG
+        // 1. Refuse to update a translocated bundle — the swap would
+        // half-complete against the read-only translocated path
+        guard !Bundle.main.bundlePath.contains("/AppTranslocation/") else {
+            throw AppUpdateError.appTranslocated
+        }
+
+        // 2. Mount DMG
         let mountPoint = FileManager.default.temporaryDirectory
             .appendingPathComponent("refrax-mount-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
         try await mountDMG(at: dmgPath, mountPoint: mountPoint)
 
-        // 2. Find .app in mount
+        // 3. Find .app in mount
         let appURL = try findApp(in: mountPoint)
 
-        // 3. Verify code signing identity matches current app
-        try verifyCodeSigning(candidate: appURL, current: Bundle.main.bundleURL)
-
-        // 4. Stage: copy to temp location
-        let staged = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Refrax-staged.app")
-        if FileManager.default.fileExists(atPath: staged.path) {
-            try FileManager.default.removeItem(at: staged)
-        }
+        // 4. Stage into a unique directory (per-user temp is 0700; the UUID
+        // prevents another process from pre-creating the staging path)
+        let stagingDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("refrax-stage-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        let staged = stagingDirectory.appendingPathComponent(appURL.lastPathComponent)
         try FileManager.default.copyItem(at: appURL, to: staged)
 
         // 5. Unmount DMG
         try await unmountDMG(mountPoint: mountPoint)
 
-        // 6. Save post-update info to UserDefaults
+        // 6. Verify the staged copy — the exact bytes that get installed:
+        // signature validity against our designated requirement, then
+        // bundle identity and downgrade rejection from its Info.plist
+        try verifyCodeSigning(candidate: staged, current: Bundle.main.bundleURL)
+        try verifyStagedIdentity(staged: staged)
+
+        // 7. Save post-update info to UserDefaults
         UserDefaults.standard.set(update.version, forKey: UDKey.pendingVersion)
         UserDefaults.standard.set(Constants.App.version, forKey: UDKey.pendingPreviousVersion)
         UserDefaults.standard.set(update.releaseNotes, forKey: UDKey.pendingNotes)
 
-        // 7. Write & launch updater script
+        // 8. Write & launch updater script
         let scriptURL = try writeUpdaterScript()
         try launchUpdater(
             script: scriptURL,
@@ -314,7 +327,7 @@ final class AppUpdateManager {
             installPath: Bundle.main.bundleURL,
         )
 
-        // 8. Quit — use exit(0) to bypass AppKit's applicationShouldTerminate:
+        // 9. Quit — use exit(0) to bypass AppKit's applicationShouldTerminate:
         // which can delay or cancel termination. The updater script handles
         // waiting for the process to exit before replacing the bundle.
         Logger.info("Terminating for update installation", category: Logger.updates)
@@ -347,6 +360,15 @@ final class AppUpdateManager {
         UserDefaults.standard.removeObject(forKey: UDKey.pendingPreviousVersion)
         UserDefaults.standard.removeObject(forKey: UDKey.pendingNotes)
 
+        // Remove downloaded update DMGs — the update they carried is installed
+        let tmp = FileManager.default.temporaryDirectory
+        if let items = try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil) {
+            for item in items
+                where item.lastPathComponent.hasPrefix("Refrax-update-") && item.pathExtension == "dmg" {
+                try? FileManager.default.removeItem(at: item)
+            }
+        }
+
         Logger.info("Post-update detected: v\(previousVersion) → v\(version)", category: Logger.updates)
     }
 
@@ -355,10 +377,12 @@ final class AppUpdateManager {
     private func mountDMG(at dmgPath: URL, mountPoint: URL) async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        // No -noverify: the UDIF checksum is a free integrity check
+        // (catches corruption, not tampering)
         process.arguments = [
             "attach", dmgPath.path,
             "-mountpoint", mountPoint.path,
-            "-nobrowse", "-quiet", "-noverify",
+            "-nobrowse", "-quiet", "-noautoopen",
         ]
 
         let pipe = Pipe()
@@ -381,15 +405,24 @@ final class AppUpdateManager {
 
         try process.run()
         process.waitUntilExit()
+
+        try? FileManager.default.removeItem(at: mountPoint)
     }
 
     private func findApp(in mountPoint: URL) throws -> URL {
         let contents = try FileManager.default.contentsOfDirectory(
             at: mountPoint,
-            includingPropertiesForKeys: nil,
+            includingPropertiesForKeys: [.isSymbolicLinkKey],
         )
 
-        guard let app = contents.first(where: { $0.pathExtension == "app" }) else {
+        // Skip symlinks — DMGs ship an /Applications symlink, and a crafted
+        // image could point an .app-named link outside the mount
+        let app = contents.first { url in
+            url.pathExtension == "app"
+                && (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
+        }
+
+        guard let app else {
             throw AppUpdateError.noAppInDMG
         }
 
@@ -398,45 +431,105 @@ final class AppUpdateManager {
 
     // MARK: - Code Signing Verification
 
-    /// Verifies that the candidate app has the same signing identity as the running app.
+    /// Verifies the candidate's signature validity against the running app's
+    /// designated requirement.
     ///
-    /// Uses the Security framework to extract and compare signing identifiers.
-    /// This ensures the update came from the same developer.
+    /// `SecStaticCodeCheckValidityWithErrors` validates the whole signature —
+    /// identity, team ID, and integrity of the signed bytes — so a resigned or
+    /// tampered bundle fails even when its bundle identifier matches.
     ///
-    /// If neither app is code-signed (common during development), verification
-    /// is skipped with a warning. If only one is signed, that's a mismatch.
+    /// If the running app is unsigned (common during development), verification
+    /// is skipped with a warning.
     private func verifyCodeSigning(candidate: URL, current: URL) throws {
-        let candidateID = signingIdentity(for: candidate)
-        let currentID = signingIdentity(for: current)
+        var currentCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(current as CFURL, [], &currentCode) == errSecSuccess,
+              let currentCode
+        else {
+            throw AppUpdateError.codeSigningFailed
+        }
 
-        switch (candidateID, currentID) {
-        case (nil, nil):
-            Logger.warning("Both apps unsigned — skipping code signing verification", category: Logger.updates)
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(currentCode, [], &requirement) == errSecSuccess,
+              let requirement
+        else {
+            // Unsigned running app has no designated requirement — dev builds only
+            Logger.warning(
+                "Running app has no designated requirement — skipping code signing verification",
+                category: Logger.updates,
+            )
+            return
+        }
 
-        case let (candidate?, current?) where candidate == current:
-            Logger.info("Code signing verified: \(candidate)", category: Logger.updates)
+        var candidateCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(candidate as CFURL, [], &candidateCode) == errSecSuccess,
+              let candidateCode
+        else {
+            throw AppUpdateError.codeSigningFailed
+        }
 
-        case let (candidate, current):
+        var validationError: Unmanaged<CFError>?
+        let status = SecStaticCodeCheckValidityWithErrors(
+            candidateCode,
+            SecCSFlags(rawValue: kSecCSCheckAllArchitectures),
+            requirement,
+            &validationError,
+        )
+
+        guard status == errSecSuccess else {
+            let detail = validationError.map { String(describing: $0.takeRetainedValue()) }
+                ?? "OSStatus \(status)"
             Logger.error(
-                "Code signing mismatch: candidate=\(candidate ?? "unsigned"), current=\(current ?? "unsigned")",
+                "Update failed code signing validation: \(detail)",
                 category: Logger.updates,
             )
             throw AppUpdateError.codeSigningMismatch
         }
+
+        Logger.info(
+            "Code signing verified against designated requirement",
+            category: Logger.updates,
+        )
     }
 
-    private func signingIdentity(for url: URL) -> String? {
-        var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess,
-              let code
-        else { return nil }
+    // MARK: - Staged App Identity
 
-        var info: CFDictionary?
-        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-              let dict = info as? [String: Any]
-        else { return nil }
+    /// Verifies the staged app's bundle identity and rejects downgrades.
+    ///
+    /// Reads the staged copy's `Info.plist` directly:
+    /// - `CFBundleIdentifier` must match the running app, so a DMG that ships
+    ///   some other (validly signed) app can't be installed over Refrax.
+    /// - `CFBundleVersion` must be strictly greater than the running build,
+    ///   so a replayed old release can't roll users back. The force-update
+    ///   debug channel is exempt to keep localhost testing working.
+    private func verifyStagedIdentity(staged: URL) throws {
+        let infoURL = staged.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: infoURL) as? [String: Any],
+              let bundleID = info["CFBundleIdentifier"] as? String,
+              let stagedBuild = info["CFBundleVersion"] as? String
+        else {
+            throw AppUpdateError.stagedAppUnreadable
+        }
 
-        return dict[kSecCodeInfoIdentifier as String] as? String
+        guard bundleID == Bundle.main.bundleIdentifier else {
+            Logger.error(
+                "Staged app bundle identifier mismatch: \(bundleID)",
+                category: Logger.updates,
+            )
+            throw AppUpdateError.bundleIdentityMismatch
+        }
+
+        if !Constants.API.channel.forceUpdate {
+            let currentBuild = Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleVersion",
+            ) as? String ?? "0"
+            guard (Int(stagedBuild) ?? 0) > (Int(currentBuild) ?? 0) else {
+                Logger.error(
+                    "Staged app is not newer: build \(stagedBuild) vs running \(currentBuild)",
+                    category: Logger.updates,
+                )
+                throw AppUpdateError.downgrade
+            }
+        }
     }
 
     // MARK: - Updater Script
@@ -446,6 +539,7 @@ final class AppUpdateManager {
         #!/bin/bash
         # Refrax Updater — replaces app bundle and relaunches
         PID="$1"; STAGED="$2"; INSTALL="$3"
+        OLD="${INSTALL}.old"
 
         # Wait for app to quit (max 30s)
         for _ in $(seq 1 60); do
@@ -453,18 +547,23 @@ final class AppUpdateManager {
             sleep 0.5
         done
 
-        # Replace
-        rm -rf "${INSTALL}.old"
-        mv "$INSTALL" "${INSTALL}.old" 2>/dev/null
-        mv "$STAGED" "$INSTALL"
+        # Ordered swap with rollback — never leave zero apps installed
+        rm -rf "$OLD"
+        mv "$INSTALL" "$OLD" || exit 1
+        if ! mv "$STAGED" "$INSTALL"; then
+            mv "$OLD" "$INSTALL"
+            open "$INSTALL"
+            exit 1
+        fi
         xattr -dr com.apple.quarantine "$INSTALL"
+        rmdir "$(dirname "$STAGED")" 2>/dev/null
 
         # Relaunch
         open "$INSTALL"
 
         # Deferred cleanup (give open time to start the app)
         sleep 2
-        rm -rf "${INSTALL}.old"
+        rm -rf "$OLD"
         rm -- "$0"
         """
 
@@ -565,6 +664,10 @@ nonisolated enum AppUpdateError: Error, LocalizedError {
     case noAppInDMG
     case codeSigningMismatch
     case codeSigningFailed
+    case stagedAppUnreadable
+    case bundleIdentityMismatch
+    case downgrade
+    case appTranslocated
 
     var errorDescription: String? {
         switch self {
@@ -573,9 +676,17 @@ nonisolated enum AppUpdateError: Error, LocalizedError {
         case .noAppInDMG:
             "No application found in update DMG"
         case .codeSigningMismatch:
-            "Update code signing identity doesn't match the current app"
+            "Update failed code signature validation"
         case .codeSigningFailed:
             "Failed to verify update code signing"
+        case .stagedAppUnreadable:
+            "Couldn't read the update's application bundle"
+        case .bundleIdentityMismatch:
+            "Update is not Refrax (bundle identifier mismatch)"
+        case .downgrade:
+            "Update is older than the installed version"
+        case .appTranslocated:
+            "Move Refrax to the Applications folder before updating"
         }
     }
 }

@@ -89,6 +89,16 @@ nonisolated enum AppUpdateChecker: Sendable {
             return nil
         }
 
+        // The release JSON is fetched over HTTPS but is not a signature —
+        // don't let it redirect the download to another scheme or host
+        guard isAllowedDownloadURL(downloadURL) else {
+            Logger.warning(
+                "Rejected update download URL: \(downloadURL.absoluteString)",
+                category: Logger.updates,
+            )
+            return nil
+        }
+
         return AppUpdate(
             version: tagVersion,
             buildNumber: nil,
@@ -98,6 +108,25 @@ nonisolated enum AppUpdateChecker: Sendable {
             isPrerelease: release.prerelease,
             downloadSize: release.size,
         )
+    }
+
+    // MARK: - Download URL Policy
+
+    /// Whether a server-provided download URL is acceptable.
+    ///
+    /// Requires HTTPS and the same host as the update-check endpoint. The
+    /// force-update debug channel relaxes the scheme so `http://localhost`
+    /// testing keeps working, but still pins the host.
+    private static func isAllowedDownloadURL(_ url: Foundation.URL) -> Bool {
+        guard let checkURL = Constants.API.releasesLatest,
+              let allowedHost = checkURL.host,
+              url.host == allowedHost
+        else { return false }
+
+        if Constants.API.channel.forceUpdate {
+            return url.scheme == "https" || url.scheme == "http"
+        }
+        return url.scheme == "https"
     }
 
     // MARK: - Version Comparison
