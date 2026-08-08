@@ -6,8 +6,11 @@ import UniformTypeIdentifiers
 struct AdvancedSettingsView: View {
     @Environment(BrowserSettings.self) private var settings
     @Environment(SiteSettingsManager.self) private var siteSettingsManager
+    @Environment(BrowserState.self) private var browserState
     let highlightedItemId: String?
 
+    @State private var cliHelperStatus: CLIHelperStatus?
+    @State private var isInstallingCLIHelper = false
     @State private var showResetAlert = false
     @State private var showResetActivationAlert = false
     @State private var showJavaScriptSitesSheet = false
@@ -185,6 +188,8 @@ struct AdvancedSettingsView: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 4)
 
+            cliHelperRow
+
             Picker("Access Mode", selection: $settings.controlAccessModeRaw) {
                 ForEach(ControlAccessMode.allCases, id: \.rawValue) { mode in
                     Text(mode.displayName).tag(mode.rawValue)
@@ -231,6 +236,54 @@ struct AdvancedSettingsView: View {
             Text("Control Server")
         } footer: {
             Text(settings.controlAccessMode.description)
+        }
+    }
+
+    /// Shows the CLI helper's install state with an install/update button.
+    ///
+    /// Installation is silent when `/usr/local/bin` is user-writable; otherwise
+    /// the button triggers the system administrator prompt directly — clicking
+    /// it is the consent, so no extra confirmation dialog is shown.
+    @ViewBuilder
+    private var cliHelperRow: some View {
+        HStack {
+            switch cliHelperStatus {
+            case .upToDate:
+                Label("Command-line tool installed", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            case .notInstalled:
+                Label("Command-line tool not installed", systemImage: "terminal")
+            case .outdated:
+                Label("Command-line tool update available", systemImage: "terminal")
+            case .missingFromBundle, nil:
+                Label("Command-line tool unavailable in this build", systemImage: "terminal")
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if let cliHelperStatus, cliHelperStatus.needsInstall {
+                Button(cliHelperStatus == .notInstalled ? "Install…" : "Update…") {
+                    installCLIHelper()
+                }
+                .disabled(isInstallingCLIHelper)
+            }
+        }
+        .task {
+            cliHelperStatus = RefraxControlHost.cliHelperStatus()
+        }
+    }
+
+    /// Installs the CLI helper, escalating to the administrator prompt when needed.
+    private func installCLIHelper() {
+        isInstallingCLIHelper = true
+        Task {
+            let installed = await RefraxControlHost.installCLIHelperWithAuthorization()
+            cliHelperStatus = RefraxControlHost.cliHelperStatus()
+            if installed {
+                browserState.cliHelperNeedsPrivilegedInstall = false
+            }
+            isInstallingCLIHelper = false
         }
     }
 

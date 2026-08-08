@@ -307,23 +307,42 @@ struct CopyBinaryTests {
         #expect(destData.allSatisfy { $0 == 0x42 })
     }
 
-    @Test("Skips copy when destination has same size")
-    func skipsWhenSameSize() throws {
+    @Test("Skips copy when destination content is identical")
+    func skipsWhenContentIdentical() throws {
         let tempDir = try makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: tempDir) }
 
         let source = (tempDir as NSString).appendingPathComponent("source-binary")
         let dest = (tempDir as NSString).appendingPathComponent("dest-binary")
 
-        // Same size, different content
+        try createBinary(at: source, size: 512, byte: 0xAA)
+        try createBinary(at: dest, size: 512, byte: 0xAA)
+
+        let attrsBefore = try FileManager.default.attributesOfItem(atPath: dest)
+
+        RefraxControlHost.copyBinary(from: source, to: dest)
+
+        // File was left in place, not replaced with a fresh copy
+        let attrsAfter = try FileManager.default.attributesOfItem(atPath: dest)
+        #expect(attrsBefore[.creationDate] as? Date == attrsAfter[.creationDate] as? Date)
+    }
+
+    @Test("Overwrites when destination has same size but different content")
+    func overwritesWhenSameSizeDifferentContent() throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        let source = (tempDir as NSString).appendingPathComponent("source-binary")
+        let dest = (tempDir as NSString).appendingPathComponent("dest-binary")
+
+        // Rebuilt helpers can coincide in length while differing in content
         try createBinary(at: source, size: 512, byte: 0xAA)
         try createBinary(at: dest, size: 512, byte: 0xBB)
 
         RefraxControlHost.copyBinary(from: source, to: dest)
 
-        // Content should still be 0xBB (copy was skipped)
         let destData = try Data(contentsOf: URL(fileURLWithPath: dest))
-        #expect(destData[0] == 0xBB)
+        #expect(destData[0] == 0xAA)
     }
 
     @Test("Overwrites when destination has different size")
@@ -390,18 +409,6 @@ struct CopyBinaryTests {
         #expect(FileManager.default.fileExists(atPath: dest))
         let destData = try Data(contentsOf: URL(fileURLWithPath: dest))
         #expect(destData.count == 768)
-    }
-}
-
-// MARK: - RefraxControlHost isCLIHelperInstalledGlobally Tests
-
-@Suite("RefraxControlHost isCLIHelperInstalledGlobally", .tags(.cliInstaller))
-struct CLIHelperInstalledGloballyTests {
-    @Test("Returns a boolean without crashing")
-    func returnsBoolean() {
-        // Simple smoke test — actual value depends on test machine state
-        let result = RefraxControlHost.isCLIHelperInstalledGlobally
-        #expect(result == true || result == false)
     }
 }
 

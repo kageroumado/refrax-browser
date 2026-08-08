@@ -260,6 +260,15 @@ final class BrowserState {
     /// Whether content blocking rules are compiled and ready.
     @ObservationIgnored
     private(set) var isContentBlockingReady = false
+
+    /// Whether the bundled `refrax-ctl` helper needs an administrator-privileged
+    /// install or update (`/usr/local/bin` isn't user-writable and the installed
+    /// binary is missing or stale).
+    ///
+    /// Set at launch and on control-mode changes after the silent install
+    /// attempt; drives the sidebar install button and the Settings row.
+    /// Cleared after a successful authorized install.
+    var cliHelperNeedsPrivilegedInstall = false
     
     // MARK: - Persistence
 

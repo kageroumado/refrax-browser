@@ -59,6 +59,7 @@ struct Sidebar: View {
 
     // UI state
     @State private var showUpdateSheet = false
+    @State private var isInstallingCLIHelper = false
     @State private var showCreateSpaceSheet = false
     @State private var showSpaceManagementSheet = false
     @State private var spaceToEdit: Space?
@@ -550,6 +551,18 @@ struct Sidebar: View {
                 // Calendar widget button
                 CalendarWidgetButton()
 
+                // CLI helper install (only when admin privileges are required)
+                if browserState.cliHelperNeedsPrivilegedInstall {
+                    SidebarControlButton(
+                        icon: "terminal",
+                        accessibilityID: "sidebar-install-cli",
+                        action: installCLIHelper,
+                    )
+                    .disabled(isInstallingCLIHelper)
+                    .help("Install the refrax-ctl command-line tool (requires administrator password)")
+                    .accessibilityLabel("Install command-line tool")
+                }
+
                 // Update phase indicator
                 switch appUpdateManager.phase {
                 case .downloading(let progress):
@@ -606,6 +619,21 @@ struct Sidebar: View {
             arrowEdge: .top,
         ) {
             WindowBackgroundPopover()
+        }
+    }
+
+    /// Installs the `refrax-ctl` helper via the system administrator prompt.
+    ///
+    /// The button that triggers this is the user's consent — the system
+    /// authentication panel is the only dialog shown. On success the button
+    /// disappears; on cancel it stays for another try.
+    private func installCLIHelper() {
+        isInstallingCLIHelper = true
+        Task {
+            if await RefraxControlHost.installCLIHelperWithAuthorization() {
+                browserState.cliHelperNeedsPrivilegedInstall = false
+            }
+            isInstallingCLIHelper = false
         }
     }
 

@@ -833,13 +833,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Widget data: initial update, then scheduled hourly
         widgetDataManager.performInitialUpdate()
 
-        // CLI helper: verify/reinstall on a background thread so it doesn't
-        // block launch. Fixes stale symlinks from old bundle IDs and ensures
-        // the wrapper exists for fresh installs.
-        Task.detached(priority: .utility) {
-            RefraxControlHost.installCLIHelper()
-        }
-
         // Control server: wire authorization prompt and start if enabled
         controlAccessManager.onAuthorizationPrompt = { identity in
             ControlAccessPrompt.prompt(for: identity)
@@ -848,6 +841,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.controlAccessMode != .off {
             Task { await controlHost.start() }
             CLISkillInstaller.install()
+            refreshCLIHelperInstall()
         }
         TelemetryService.sendHeartbeatIfNeeded(settings: settings)
 
@@ -944,8 +938,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     await controlHost.start()
                     CLISkillInstaller.install()
+                    refreshCLIHelperInstall()
                 }
             }
+        }
+    }
+
+    /// Silently installs or updates the `refrax-ctl` helper when `/usr/local/bin`
+    /// is user-writable, and surfaces the sidebar/Settings install affordance
+    /// when administrator privileges would be required. Never prompts on its own.
+    private func refreshCLIHelperInstall() {
+        Task { [browserState] in
+            let status = await RefraxControlHost.ensureCLIHelperInstalled()
+            browserState.cliHelperNeedsPrivilegedInstall = status.needsInstall
         }
     }
 

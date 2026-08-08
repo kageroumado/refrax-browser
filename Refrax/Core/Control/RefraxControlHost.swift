@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import OSLog
 import RefraxProtocol
 
@@ -125,106 +126,77 @@ actor RefraxControlHost {
         listenFD = fd
         os_log("Control host listening on %{public}@", log: Self.logger, type: .info, socketPath)
 
-        installCLIHelper()
-
         acceptTask = Task.detached(priority: .utility) { [weak self] in
             await self?.acceptLoop()
         }
     }
 
-    /// Installs the CLI helper wrapper and symlink.
-    private nonisolated func installCLIHelper() {
-        Self.installCLIHelper(socketPath: socketPath)
+    // MARK: - CLI Helper Installation
+
+    /// Absolute path where the CLI helper is installed for PATH access.
+    nonisolated static let cliHelperDestination = "/usr/local/bin/refrax-ctl"
+
+    /// Serializes install-path checks and mutations across concurrent callers,
+    /// so two install attempts can't race between checking and copying.
+    private nonisolated static let installLock = OSAllocatedUnfairLock()
+
+    private nonisolated static var cliHelperSource: String {
+        (Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/Helpers/refrax-ctl")
     }
 
-    /// Installs the `refrax-ctl` binary to `/usr/local/bin` so the CLI is in PATH.
-    ///
-    /// Tries without privileges first. If `/usr/local/bin` doesn't exist or isn't writable,
-    /// escalates via `osascript` (admin prompt). Only prompts when the binary is missing
-    /// or outdated — subsequent launches skip if already up to date.
-    ///
-    /// Skips copying if the destination binary is already the same size (up to date).
-    /// Safe to call from any thread — uses only POSIX and Foundation file APIs.
-    nonisolated static func installCLIHelper(
-        socketPath: String = (Directories.appStorage.path as NSString).appendingPathComponent("ctl.sock")
-    ) {
+    /// Compares the CLI helper on PATH against the copy bundled with this build.
+    nonisolated static func cliHelperStatus() -> CLIHelperStatus {
         let fm = FileManager.default
-        let bundlePath = Bundle.main.bundlePath
-        let helperSource = (bundlePath as NSString).appendingPathComponent("Contents/Helpers/refrax-ctl")
+        let source = cliHelperSource
+        guard fm.fileExists(atPath: source) else { return .missingFromBundle }
+        guard fm.fileExists(atPath: cliHelperDestination) else { return .notInstalled }
+        return fm.contentsEqual(atPath: source, andPath: cliHelperDestination) ? .upToDate : .outdated
+    }
 
-        guard fm.fileExists(atPath: helperSource) else {
-            os_log("CLI helper not found in bundle", log: logger, type: .error)
-            return
-        }
-
-        let globalBin = "/usr/local/bin"
-        let globalPath = (globalBin as NSString).appendingPathComponent("refrax-ctl")
-
-        // Try creating the directory without privileges (works on some systems)
-        if !fm.fileExists(atPath: globalBin) {
-            try? fm.createDirectory(atPath: globalBin, withIntermediateDirectories: true)
-        }
-
-        if fm.fileExists(atPath: globalBin), fm.isWritableFile(atPath: globalBin) {
-            copyBinary(from: helperSource, to: globalPath)
-        } else if !fm.fileExists(atPath: globalPath) {
-            installCLIHelperWithEscalation()
-        } else {
-            // Binary exists but may be outdated — check size
-            if let srcAttrs = try? fm.attributesOfItem(atPath: helperSource),
-               let dstAttrs = try? fm.attributesOfItem(atPath: globalPath),
-               let srcSize = srcAttrs[.size] as? UInt64,
-               let dstSize = dstAttrs[.size] as? UInt64,
-               srcSize != dstSize
-            {
-                installCLIHelperWithEscalation()
-            }
+    /// Installs or updates the CLI helper when it can be done without privileges.
+    ///
+    /// Never prompts: when `/usr/local/bin` isn't user-writable the helper is
+    /// left untouched and the returned status reports what's still needed.
+    /// Surface that through UI (sidebar button, Settings row) and let the user
+    /// trigger ``installCLIHelperWithAuthorization()`` explicitly.
+    ///
+    /// - Returns: The helper status after the attempt.
+    @discardableResult
+    @concurrent
+    nonisolated static func ensureCLIHelperInstalled() async -> CLIHelperStatus {
+        installLock.withLock {
+            installUnprivileged()
         }
     }
 
-    /// Copies the CLI helper to `/usr/local/bin` using privilege escalation via `osascript`.
+    /// Installs the CLI helper, escalating with the system administrator
+    /// prompt when `/usr/local/bin` isn't user-writable.
     ///
-    /// Shows an explanation dialog first, then the macOS authentication prompt if the user
-    /// agrees. If declined, logs a warning — the CLI won't be available in PATH.
+    /// Call only from an explicit user action (the Settings row or the sidebar
+    /// install button) — the click is the consent, so no explanatory alert is
+    /// shown before the system authentication panel.
     ///
-    /// - Returns: `true` if the binary was successfully installed.
-    @discardableResult
-    nonisolated static func installCLIHelperWithEscalation() -> Bool {
-        let bundlePath = Bundle.main.bundlePath
-        let helperSource = (bundlePath as NSString).appendingPathComponent("Contents/Helpers/refrax-ctl")
-        let destination = "/usr/local/bin/refrax-ctl"
-
-        guard FileManager.default.fileExists(atPath: helperSource) else {
-            os_log("CLI helper not found in bundle", log: logger, type: .error)
-            return false
+    /// - Returns: `true` when the installed helper matches the bundled one afterwards.
+    @concurrent
+    nonisolated static func installCLIHelperWithAuthorization() async -> Bool {
+        installLock.withLock {
+            runAuthorizedInstall()
         }
+    }
 
-        // Show explanation dialog on main thread before the system auth prompt
-        let userAccepted: Bool = DispatchQueue.main.sync {
-            let alert = NSAlert()
-            alert.messageText = "Install Command Line Tool"
-            alert.informativeText = """
-            Refrax needs administrator permission to install its command line tool \
-            (refrax-ctl) to /usr/local/bin.
-
-            This tool lets AI agents and scripts control Refrax from the terminal. \
-            If you skip this, refrax-ctl won't be available in your PATH and you'll \
-            need to install it manually.
-            """
-            alert.alertStyle = .informational
-            alert.icon = NSApp.applicationIconImage
-            alert.addButton(withTitle: "Install")
-            alert.addButton(withTitle: "Skip")
-            return alert.runModal() == .alertFirstButtonReturn
-        }
-
-        guard userAccepted else {
-            os_log("User declined CLI helper installation", log: logger, type: .info)
+    /// Escalated install body. Caller must hold `installLock`.
+    private nonisolated static func runAuthorizedInstall() -> Bool {
+        switch installUnprivileged() {
+        case .upToDate:
+            return true
+        case .missingFromBundle:
             return false
+        case .notInstalled, .outdated:
+            break
         }
 
         let script = """
-        do shell script "mkdir -p /usr/local/bin && cp -f '\(helperSource)' '\(destination)' && chmod 755 '\(destination)' && xattr -dr com.apple.quarantine '\(destination)'" with administrator privileges
+        do shell script "mkdir -p /usr/local/bin && cp -f '\(cliHelperSource)' '\(cliHelperDestination)' && chmod 755 '\(cliHelperDestination)' && xattr -dr com.apple.quarantine '\(cliHelperDestination)'" with administrator privileges
         """
 
         let process = Process()
@@ -234,24 +206,47 @@ actor RefraxControlHost {
         do {
             try process.run()
             process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                os_log("CLI helper installed to %{public}@ (escalated)", log: logger, type: .info, destination)
-                return true
-            } else {
-                os_log(
-                    "Escalated CLI install exited with status %d",
-                    log: logger, type: .error, process.terminationStatus,
-                )
-            }
         } catch {
-            os_log("Failed to run escalation: %{public}@", log: logger, type: .error, error.localizedDescription)
+            os_log(
+                "Failed to run escalated CLI install: %{public}@",
+                log: logger, type: .error, error.localizedDescription,
+            )
+            return false
         }
-        return false
+
+        // osascript exits non-zero when the user cancels the auth prompt;
+        // trust the filesystem over the exit code either way
+        let installed = cliHelperStatus() == .upToDate
+        if installed {
+            os_log("CLI helper installed to %{public}@ (escalated)", log: logger, type: .info, cliHelperDestination)
+        } else {
+            os_log(
+                "Escalated CLI install did not complete (osascript status %d)",
+                log: logger, type: .error, process.terminationStatus,
+            )
+        }
+        return installed
     }
 
-    /// Whether the CLI helper is installed at `/usr/local/bin/refrax-ctl`.
-    nonisolated static var isCLIHelperInstalledGlobally: Bool {
-        FileManager.default.fileExists(atPath: "/usr/local/bin/refrax-ctl")
+    /// Unprivileged install attempt. Caller must hold `installLock`.
+    private nonisolated static func installUnprivileged() -> CLIHelperStatus {
+        let status = cliHelperStatus()
+        guard status.needsInstall else { return status }
+
+        let fm = FileManager.default
+        let globalBin = (cliHelperDestination as NSString).deletingLastPathComponent
+
+        // Creating the directory without privileges works on some systems
+        if !fm.fileExists(atPath: globalBin) {
+            try? fm.createDirectory(atPath: globalBin, withIntermediateDirectories: true)
+        }
+
+        guard fm.fileExists(atPath: globalBin), fm.isWritableFile(atPath: globalBin) else {
+            return status
+        }
+
+        copyBinary(from: cliHelperSource, to: cliHelperDestination)
+        return cliHelperStatus()
     }
 
     /// Strips the quarantine extended attribute so Gatekeeper doesn't prompt on first launch.
@@ -273,12 +268,11 @@ actor RefraxControlHost {
             try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
         }
 
-        // Skip if destination binary has the same size (same build)
-        if let srcAttrs = try? fm.attributesOfItem(atPath: source),
-           let dstAttrs = try? fm.attributesOfItem(atPath: destination),
-           let srcSize = srcAttrs[.size] as? UInt64,
-           let dstSize = dstAttrs[.size] as? UInt64,
-           srcSize == dstSize {
+        // Skip if the destination already byte-matches the source. Size
+        // comparison is not enough: rebuilt helpers can coincide in length
+        // while differing in content, and after every app update the helper
+        // must be refreshed exactly when its bytes changed.
+        if fm.contentsEqual(atPath: source, andPath: destination) {
             return
         }
 
@@ -461,5 +455,25 @@ actor RefraxControlHost {
             }
             return true
         }
+    }
+}
+
+// MARK: - CLI Helper Status
+
+/// Installation state of the `refrax-ctl` binary on PATH relative to the
+/// copy bundled with the running build.
+nonisolated enum CLIHelperStatus: Equatable {
+    /// `/usr/local/bin/refrax-ctl` byte-matches the bundled helper.
+    case upToDate
+    /// Nothing is installed at `/usr/local/bin/refrax-ctl`.
+    case notInstalled
+    /// An installed binary exists but differs from the bundled helper.
+    case outdated
+    /// The app bundle contains no helper (development build without the copy phase).
+    case missingFromBundle
+
+    /// Whether an install or update is wanted (and possible from this bundle).
+    var needsInstall: Bool {
+        self == .notInstalled || self == .outdated
     }
 }
