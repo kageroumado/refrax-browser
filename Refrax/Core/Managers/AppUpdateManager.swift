@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 
@@ -13,9 +14,9 @@ import Security
 /// ## Update Channels
 ///
 /// The active channel is determined at compile time:
-/// - **Alpha** (`release` builds): Checks `refrax.website` for updates
+/// - **Release** builds: Check GitHub Releases (`kageroumado/refrax-browser`)
 /// - **Localhost** (`debug` builds): Checks `localhost:8080`, with force-update
-///   enabled (skips version comparison for testing)
+///   enabled (skips version comparison and signature verification for testing)
 ///
 /// ## State Machine
 ///
@@ -39,7 +40,9 @@ import Security
 /// ## Installation Process
 ///
 /// When the user clicks "Restart to Update":
-/// 1. Translocation guard — refuse to update a translocated (unmovable) bundle
+/// 1. Translocation guard — refuse to update a translocated (unmovable) bundle,
+///    then ed25519 signature over the DMG bytes verified against the pinned
+///    `RefraxEDPublicKey` before mounting
 /// 2. Downloaded DMG mounted via `hdiutil` (no-browse, quiet, checksum verified)
 /// 3. `.app` located in mount point (symlinks skipped)
 /// 4. New `.app` copied to a unique 0700 staging directory
@@ -288,6 +291,11 @@ final class AppUpdateManager {
             throw AppUpdateError.appTranslocated
         }
 
+        // 1b. Verify the EdDSA signature over the DMG bytes before mounting —
+        // the public key pinned in the running app is the trust anchor for
+        // the whole download, release JSON included
+        try await verifySignature(update: update, dmgPath: dmgPath)
+
         // 2. Mount DMG
         let mountPoint = FileManager.default.temporaryDirectory
             .appendingPathComponent("refrax-mount-\(UUID().uuidString)")
@@ -440,6 +448,58 @@ final class AppUpdateManager {
     ///
     /// If the running app is unsigned (common during development), verification
     /// is skipped with a warning.
+    /// Verifies the ed25519 signature over the downloaded DMG bytes.
+    ///
+    /// The public key ships in the **running** app's Info.plist
+    /// (`RefraxEDPublicKey`) — never one delivered with the update — so a
+    /// compromised release feed or asset store cannot forge an installable
+    /// update. Strict pre-mount verification: without a valid signature the
+    /// DMG is never attached.
+    ///
+    /// The localhost force-update channel skips this so unsigned local test
+    /// DMGs keep working; release-channel updates hard-require it.
+    private func verifySignature(update: AppUpdate, dmgPath: URL) async throws {
+        if Constants.API.channel.forceUpdate {
+            Logger.warning(
+                "Skipping update signature verification on force-update channel",
+                category: Logger.updates,
+            )
+            return
+        }
+
+        guard let keyBase64 = Bundle.main.object(forInfoDictionaryKey: "RefraxEDPublicKey") as? String,
+              let keyData = Data(base64Encoded: keyBase64),
+              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData)
+        else {
+            // A release build without the pinned key cannot trust anything
+            throw AppUpdateError.signatureMissing
+        }
+
+        guard let signatureURL = update.signatureURL,
+              AppUpdateChecker.isAllowedDownloadURL(signatureURL)
+        else {
+            throw AppUpdateError.signatureMissing
+        }
+
+        let (sigData, response) = try await HTTPClient.data(for: URLRequest(url: signatureURL))
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw AppUpdateError.signatureMissing
+        }
+
+        let sigBase64 = String(decoding: sigData, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let signature = Data(base64Encoded: sigBase64), signature.count == 64 else {
+            throw AppUpdateError.signatureInvalid
+        }
+
+        let dmgData = try Data(contentsOf: dmgPath)
+        guard publicKey.isValidSignature(signature, for: dmgData) else {
+            throw AppUpdateError.signatureInvalid
+        }
+
+        Logger.info("Update DMG signature verified", category: Logger.updates)
+    }
+
     private func verifyCodeSigning(candidate: URL, current: URL) throws {
         var currentCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(current as CFURL, [], &currentCode) == errSecSuccess,
@@ -668,6 +728,8 @@ nonisolated enum AppUpdateError: Error, LocalizedError {
     case bundleIdentityMismatch
     case downgrade
     case appTranslocated
+    case signatureMissing
+    case signatureInvalid
 
     var errorDescription: String? {
         switch self {
@@ -687,6 +749,10 @@ nonisolated enum AppUpdateError: Error, LocalizedError {
             "Update is older than the installed version"
         case .appTranslocated:
             "Move Refrax to the Applications folder before updating"
+        case .signatureMissing:
+            "Update release is missing its signature"
+        case .signatureInvalid:
+            "Update failed signature verification"
         }
     }
 }

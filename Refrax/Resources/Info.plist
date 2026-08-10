@@ -28,6 +28,12 @@
          (updates, activation, telemetry, feedback) disable at runtime. -->
     <key>RefraxAPIToken</key>
     <string>$(REFRAX_API_TOKEN)</string>
+    <!-- ed25519 public key pinning update-DMG signatures. Updates are
+         refused unless the release's .dmg.sig asset verifies against this
+         key in the running app; the private key lives only in the publish
+         pipeline. -->
+    <key>RefraxEDPublicKey</key>
+    <string>PZpeAoItKlJVbxk8kQTIe0Q4WikXTOP1jKSaZEch9NI=</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

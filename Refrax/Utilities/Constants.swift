@@ -259,9 +259,29 @@ enum Constants {
             return url
         }
 
+        /// GitHub repository serving release builds and update checks.
+        static let githubRepo = "kageroumado/refrax-browser"
+
+        /// Update-check endpoint.
+        ///
+        /// Release builds check GitHub Releases — public, tokenless, so
+        /// open-source builds get updates too. The localhost debug channel
+        /// keeps the self-hosted JSON shape for force-update testing.
         static var releasesLatest: Foundation.URL? {
-            endpoint(base: channel.baseURL, path: "/releases/latest", context: "releasesLatest")
+            if channel.forceUpdate {
+                return endpoint(base: channel.baseURL, path: "/releases/latest", context: "releasesLatest")
+            }
+            return Foundation.URL(string: "https://api.github.com/repos/\(githubRepo)/releases/latest")
         }
+
+        /// Hosts an update download (or signature) URL may point at, in
+        /// addition to the check endpoint's own host. GitHub release assets
+        /// live on `github.com` URLs that redirect to
+        /// `objects.githubusercontent.com`.
+        static let updateDownloadHosts: Set<String> = [
+            "github.com",
+            "objects.githubusercontent.com",
+        ]
 
         static var feedback: Foundation.URL? {
             endpoint(base: UpdateChannel.alpha.baseURL, path: "/feedback", context: "feedback")

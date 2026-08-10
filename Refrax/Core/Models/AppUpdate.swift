@@ -2,7 +2,7 @@ import Foundation
 
 /// A newer version of Refrax available for download.
 ///
-/// Produced by ``AppUpdateChecker`` from the self-hosted releases endpoint
+/// Produced by ``AppUpdateChecker`` from the GitHub Releases endpoint
 /// and consumed by ``AppUpdateManager`` to drive the update lifecycle.
 nonisolated struct AppUpdate: Sendable, Equatable {
     /// Semantic version string (e.g., "1.2.0").
@@ -16,6 +16,10 @@ nonisolated struct AppUpdate: Sendable, Equatable {
 
     /// Direct URL to the DMG download.
     let downloadURL: URL
+
+    /// URL of the base64 ed25519 signature over the DMG bytes
+    /// (`<name>.dmg.sig` release asset), when the release provides one.
+    let signatureURL: URL?
 
     /// When the release was published.
     let publishedDate: Date

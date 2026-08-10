@@ -1,8 +1,15 @@
 import Foundation
 
-/// Checks the self-hosted releases endpoint for newer versions of Refrax.
+/// Checks GitHub Releases (or the localhost debug endpoint) for newer
+/// versions of Refrax.
 ///
-/// Uses conditional requests (`If-None-Match`) to avoid unnecessary downloads.
+/// The release channel queries
+/// `api.github.com/repos/<repo>/releases/latest`, which excludes prereleases
+/// automatically. The localhost force-update channel serves the same JSON
+/// shape with a top-level `download_url` instead of GitHub's `assets[]`.
+///
+/// Uses conditional requests (`If-None-Match`) to avoid unnecessary downloads —
+/// 304 responses don't count against GitHub's unauthenticated rate limit.
 ///
 /// ## Version Comparison
 ///
@@ -60,7 +67,7 @@ nonisolated enum AppUpdateChecker: Sendable {
 
     // MARK: - Parsing
 
-    private static func parseRelease(
+    static func parseRelease(
         from data: Data,
         currentVersion: String,
     ) throws -> AppUpdate? {
@@ -85,7 +92,10 @@ nonisolated enum AppUpdateChecker: Sendable {
             publishedDate = .now
         }
 
-        guard let downloadURL = release.downloadURL else {
+        // GitHub nests the download in assets[]; the localhost JSON carries a
+        // top-level download_url
+        let dmgAsset = release.assets.first { $0.name.hasSuffix(".dmg") }
+        guard let downloadURL = release.downloadURL ?? dmgAsset?.browserDownloadURL else {
             return nil
         }
 
@@ -99,14 +109,21 @@ nonisolated enum AppUpdateChecker: Sendable {
             return nil
         }
 
+        // EdDSA signature over the DMG bytes, uploaded as a sibling asset
+        let signatureURL = release.assets
+            .first { $0.name.hasSuffix(".dmg.sig") }?
+            .browserDownloadURL
+            .flatMap { isAllowedDownloadURL($0) ? $0 : nil }
+
         return AppUpdate(
             version: tagVersion,
             buildNumber: nil,
             releaseNotes: release.body ?? "",
             downloadURL: downloadURL,
+            signatureURL: signatureURL,
             publishedDate: publishedDate,
             isPrerelease: release.prerelease,
-            downloadSize: release.size,
+            downloadSize: release.size ?? dmgAsset?.size,
         )
     }
 
@@ -114,14 +131,21 @@ nonisolated enum AppUpdateChecker: Sendable {
 
     /// Whether a server-provided download URL is acceptable.
     ///
-    /// Requires HTTPS and the same host as the update-check endpoint. The
-    /// force-update debug channel relaxes the scheme so `http://localhost`
-    /// testing keeps working, but still pins the host.
-    private static func isAllowedDownloadURL(_ url: Foundation.URL) -> Bool {
+    /// Requires HTTPS and a host on the allowlist: the update-check endpoint's
+    /// own host plus the GitHub asset hosts (`github.com` URLs redirect to
+    /// `objects.githubusercontent.com`; URLSession follows that redirect after
+    /// this initial-host check). The force-update debug channel relaxes the
+    /// scheme so `http://localhost` testing keeps working, but still pins the
+    /// host.
+    static func isAllowedDownloadURL(_ url: Foundation.URL) -> Bool {
         guard let checkURL = Constants.API.releasesLatest,
-              let allowedHost = checkURL.host,
-              url.host == allowedHost
+              let checkHost = checkURL.host,
+              let host = url.host
         else { return false }
+
+        guard host == checkHost || Constants.API.updateDownloadHosts.contains(host) else {
+            return false
+        }
 
         if Constants.API.channel.forceUpdate {
             return url.scheme == "https" || url.scheme == "http"
@@ -159,7 +183,11 @@ nonisolated enum AppUpdateChecker: Sendable {
 
 // MARK: - Release Info JSON
 
-/// Server response from the self-hosted releases endpoint.
+/// Release JSON from GitHub (`releases/latest`) or the localhost debug server.
+///
+/// The two schemas share every field except the download location: GitHub
+/// nests it in `assets[]`, the localhost server serves a top-level
+/// `download_url`.
 private nonisolated struct ReleaseInfo: Decodable {
     let tagName: String
     let body: String?
@@ -167,6 +195,19 @@ private nonisolated struct ReleaseInfo: Decodable {
     let publishedAt: String?
     let prerelease: Bool
     let size: Int64?
+    let assets: [Asset]
+
+    struct Asset: Decodable {
+        let name: String
+        let size: Int64?
+        let browserDownloadURL: URL?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case size
+            case browserDownloadURL = "browser_download_url"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
@@ -175,6 +216,7 @@ private nonisolated struct ReleaseInfo: Decodable {
         case publishedAt = "published_at"
         case prerelease
         case size
+        case assets
     }
 
     init(from decoder: any Decoder) throws {
@@ -184,6 +226,7 @@ private nonisolated struct ReleaseInfo: Decodable {
         publishedAt = try container.decodeIfPresent(String.self, forKey: .publishedAt)
         prerelease = try container.decode(Bool.self, forKey: .prerelease)
         size = try container.decodeIfPresent(Int64.self, forKey: .size)
+        assets = try container.decodeIfPresent([Asset].self, forKey: .assets) ?? []
 
         // Server may return an empty string when no release is published yet
         if let urlString = try container.decodeIfPresent(String.self, forKey: .downloadURL),
