@@ -16,11 +16,13 @@ struct TabHealthRow: View {
     let isExpanded: Bool
     let isSelected: Bool
     let isSelectionMode: Bool
+    let isCalmed: Bool
     let onTap: () -> Void
     let onNavigate: () -> Void
     let onClose: () -> Void
     let onReload: () -> Void
     let onTerminate: () -> Void
+    let onToggleCalm: () -> Void
 
     @State private var isHovered = false
 
@@ -102,7 +104,8 @@ struct TabHealthRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Memory usage
+            // CPU and memory usage
+            cpuBadge
             memoryBadge
 
             // Expand chevron (if not in selection mode)
@@ -150,6 +153,13 @@ struct TabHealthRow: View {
                     .foregroundStyle(.blue)
             }
 
+            if snapshot.holdsMediaSilently {
+                Image(systemName: "speaker.badge.exclamationmark.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.teal)
+                    .help("Holds an audio session while silent — keeps audio hardware active")
+            }
+
             if snapshot.cameraCaptureState == .active {
                 Image(systemName: "video.fill")
                     .font(.system(size: 9))
@@ -174,6 +184,28 @@ struct TabHealthRow: View {
                     .foregroundStyle(.red)
             }
         }
+    }
+
+    // MARK: - CPU Badge
+
+    /// Process CPU% since the last poll. Shown only when measurable (≥ 0.5%)
+    /// so idle rows stay quiet. The value is per-process: tabs sharing a
+    /// process show the same number.
+    @ViewBuilder
+    private var cpuBadge: some View {
+        if let cpu = snapshot.formattedCPU {
+            Text(cpu)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(cpuColor)
+                .help(snapshot.sharesProcess ? "CPU of the shared process \(snapshot.processName)" : "Process CPU since the last update")
+        }
+    }
+
+    private var cpuColor: Color {
+        let cpu = snapshot.processCPUPercent ?? 0
+        if cpu > 25 { return .red }
+        if cpu > 5 { return .orange }
+        return .secondary
     }
 
     // MARK: - Memory Badge
@@ -247,6 +279,30 @@ struct TabHealthRow: View {
                         Text("(\(reason.logDescription))")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let cpu = snapshot.processCPUPercent {
+                    HStack {
+                        Image(systemName: "gauge.with.needle")
+                            .font(.system(size: 10))
+                            .foregroundStyle(cpuColor)
+                            .frame(width: 16)
+
+                        Text("CPU: \(String(format: "%.1f", cpu))%\(snapshot.sharesProcess ? " (shared process)" : "")")
+                            .font(.system(size: 12))
+                    }
+                }
+
+                if snapshot.mediaPlaybackState != .none {
+                    HStack {
+                        Image(systemName: snapshot.holdsMediaSilently ? "speaker.badge.exclamationmark.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(snapshot.holdsMediaSilently ? .teal : .blue)
+                            .frame(width: 16)
+
+                        Text(mediaStateDescription)
+                            .font(.system(size: 12))
                     }
                 }
             }
@@ -373,6 +429,12 @@ struct TabHealthRow: View {
             NSPasteboard.general.setString(snapshot.url.absoluteString, forType: .string)
         }
 
+        if !snapshot.domain.isEmpty {
+            Button(isCalmed ? "Resume Animations on \(snapshot.domain)" : "Calm \(snapshot.domain)") {
+                onToggleCalm()
+            }
+        }
+
         if !snapshot.isActiveTab, snapshot.processState == .running || snapshot.processState == .background {
             Button("Unload Tab", role: .destructive) { onTerminate() }
         }
@@ -383,6 +445,16 @@ struct TabHealthRow: View {
     }
 
     // MARK: - Helpers
+
+    private var mediaStateDescription: String {
+        switch snapshot.mediaPlaybackState {
+        case .playing: "Media: playing"
+        case .paused: "Media: paused \u{2014} holds an audio session"
+        case .suspended: "Media: suspended \u{2014} holds an audio session"
+        case .none: ""
+        @unknown default: "Media: active"
+        }
+    }
 
     private var domainColor: Color {
         let hash = snapshot.domain.hashValue

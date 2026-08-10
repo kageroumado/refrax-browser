@@ -14,6 +14,7 @@ struct AddressBar: View {
     @Environment(ScreenshotCoordinator.self) private var screenshotCoordinator: ScreenshotCoordinator
     @Environment(RecordingCoordinator.self) private var recordingCoordinator: RecordingCoordinator
     @Environment(DownloadManager.self) private var downloadManager: DownloadManager
+    @Environment(WebPagePool.self) private var pagePool: WebPagePool
     @Environment(\.addressBarContext) private var addressBarContext: AddressBarContext?
     @Environment(\.addressBarIsFloating) private var addressBarIsFloating: Bool
 
@@ -338,6 +339,7 @@ struct AddressBar: View {
                                 isReaderActive: isReaderActive,
                                 isRecording: recordingCoordinator.isRecording,
                                 recordingStartTime: recordingCoordinator.recordingStartTime,
+                                isPageCalmed: url.map { siteSettingsManager.isCalmPage(for: $0) } ?? false,
                                 onZoomChanged: { newZoom in
                                     webPage?.setZoom(newZoom)
                                 },
@@ -384,6 +386,10 @@ struct AddressBar: View {
                                 onReaderMode: {
                                     showsPageMenu = false
                                     toggleReaderMode()
+                                },
+                                onToggleCalm: {
+                                    showsPageMenu = false
+                                    toggleCalmPage()
                                 },
                                 onWebpageSettings: {
                                     showsPageMenu = false
@@ -567,6 +573,14 @@ struct AddressBar: View {
         Task {
             await readerModeManager.toggleReader(for: webPage)
         }
+    }
+
+    /// Toggles "Calm This Page" for the current domain and applies it to
+    /// every live page of that domain.
+    private func toggleCalmPage() {
+        guard let url, let host = url.host else { return }
+        let calmed = siteSettingsManager.toggleCalmPage(for: url)
+        pagePool.applyCalm(calmed, toHost: host)
     }
 
     /// Checks if Reader Mode is available for the current page.

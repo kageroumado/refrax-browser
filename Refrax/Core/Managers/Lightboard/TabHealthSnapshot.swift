@@ -48,6 +48,13 @@ struct TabHealthSnapshot: Identifiable {
     /// Whether the tab has unsaved form data.
     let hasUnsavedFormData: Bool
 
+    /// Cached media playback state (`WebPage.cachedPlaybackState`).
+    ///
+    /// Any value other than `.none` means the page holds live media machinery —
+    /// which keeps a CoreAudio IO thread and CoreMedia image queue alive in the
+    /// GPU process even when nothing is audible.
+    let mediaPlaybackState: WKMediaPlaybackState
+
     // MARK: - Memory
 
     /// PID of the web content process hosting this tab, or 0 if not running.
@@ -65,6 +72,10 @@ struct TabHealthSnapshot: Identifiable {
 
     /// Human-friendly process name (e.g. "Process 1").
     let processName: String
+
+    /// CPU usage of the hosting process since the previous poll (% of one core),
+    /// or nil before two polls have completed.
+    let processCPUPercent: Double?
 
     // MARK: - Status
 
@@ -123,6 +134,18 @@ extension TabHealthSnapshot {
     /// Whether this tab has any activity indicators.
     var hasActivityIndicators: Bool {
         isPlayingAudio || hasActiveMediaCapture || hasUnsavedFormData
+    }
+
+    /// Whether the page holds live media machinery without being audible —
+    /// the tab that keeps audio hardware awake while playing nothing.
+    var holdsMediaSilently: Bool {
+        mediaPlaybackState != .none && !isPlayingAudio
+    }
+
+    /// Formatted process CPU string (e.g. "12%"), or nil when unknown or idle.
+    var formattedCPU: String? {
+        guard let processCPUPercent, processCPUPercent >= 0.5 else { return nil }
+        return "\(Int(processCPUPercent.rounded()))%"
     }
 
     /// Whether this tab is pinned.

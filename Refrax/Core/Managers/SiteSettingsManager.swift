@@ -168,6 +168,22 @@ final class SiteSettingsManager {
         return settingsOrCreate(for: domain)
     }
 
+    /// Whether "Calm This Page" is enabled for a URL's domain.
+    func isCalmPage(for url: URL) -> Bool {
+        settings(for: url)?.calmPage ?? false
+    }
+
+    /// Toggles "Calm This Page" for a URL's domain and returns the new state.
+    ///
+    /// Persistence only — callers apply `CalmPageScript` to live pages of the
+    /// domain via `WebPagePool.applyCalm(_:toHost:)`.
+    func toggleCalmPage(for url: URL) -> Bool {
+        guard let settings = settingsOrCreate(for: url) else { return false }
+        settings.calmPage.toggle()
+        scheduleSave()
+        return settings.calmPage
+    }
+
     /// Fetches all site settings with explicit GPC header overrides.
     ///
     /// This is used by Settings to query SwiftData directly instead of relying

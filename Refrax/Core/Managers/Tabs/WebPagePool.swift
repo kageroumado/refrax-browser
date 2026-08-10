@@ -1109,3 +1109,18 @@ final class WebPagePool {
         }
     }
 }
+
+// MARK: - Calm Page
+
+extension WebPagePool {
+    /// Applies or removes the "Calm This Page" animation freeze on every live
+    /// page whose host matches `host`. Persistence lives in
+    /// `SiteSettingsManager.toggleCalmPage(for:)`; navigations re-apply via
+    /// `SiteSettingsCoordinator`.
+    func applyCalm(_ calmed: Bool, toHost host: String) {
+        let script = calmed ? CalmPageScript.applyScript : CalmPageScript.removeScript
+        for webPage in activePages.values where webPage.url?.host?.lowercased() == host.lowercased() {
+            Task { _ = try? await webPage.evaluateJavaScript(script) }
+        }
+    }
+}

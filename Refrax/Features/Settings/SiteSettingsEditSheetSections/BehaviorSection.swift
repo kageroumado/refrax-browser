@@ -9,9 +9,13 @@ struct SiteSettingsBehaviorSection: View {
     @Binding var scrollHijackingOverride: ScrollHijackingOverride
     @Binding var videoControlsOverride: VideoControlsOverride
     @Binding var videoSpeedOverride: Double?
+    @Binding var calmPage: Bool
 
     var body: some View {
         Section("Behavior") {
+            Toggle("Calm This Page", isOn: $calmPage)
+                .help("Freeze CSS and SVG animations on this site to save energy")
+
             Picker("Page Leave Alerts", selection: $beforeUnloadAlertOverride) {
                 ForEach(BeforeUnloadAlertOverride.allCases, id: \.self) { override in
                     Text(override.displayName).tag(override)

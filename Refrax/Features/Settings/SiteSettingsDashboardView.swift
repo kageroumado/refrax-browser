@@ -447,6 +447,7 @@ struct SiteSettingsEditSheet: View {
     @State private var scrollHijackingOverride: ScrollHijackingOverride
     @State private var videoControlsOverride: VideoControlsOverride
     @State private var videoSpeedOverride: Double?
+    @State private var calmPage: Bool
 
     // Time limits
     @State private var timeLimitEnabled: Bool
@@ -482,6 +483,7 @@ struct SiteSettingsEditSheet: View {
         _scrollHijackingOverride = State(initialValue: site.scrollHijackingOverride)
         _videoControlsOverride = State(initialValue: site.videoControlsOverride)
         _videoSpeedOverride = State(initialValue: site.videoSpeedOverride)
+        _calmPage = State(initialValue: site.calmPage)
         // Time limits initialized in task
         _timeLimitEnabled = State(initialValue: false)
         _timeLimitMinutes = State(initialValue: 30)
@@ -518,6 +520,7 @@ struct SiteSettingsEditSheet: View {
                     scrollHijackingOverride: $scrollHijackingOverride,
                     videoControlsOverride: $videoControlsOverride,
                     videoSpeedOverride: $videoSpeedOverride,
+                    calmPage: $calmPage,
                 )
 
                 SiteSettingsPermissionsSection(
@@ -615,6 +618,7 @@ struct SiteSettingsEditSheet: View {
         site.scrollHijackingOverride = scrollHijackingOverride
         site.videoControlsOverride = videoControlsOverride
         site.videoSpeedOverride = videoSpeedOverride
+        site.calmPage = calmPage
 
         siteSettingsManager.save(site)
         Task { await saveTimeLimit() }
@@ -647,6 +651,7 @@ struct SiteSettingsEditSheet: View {
         scrollHijackingOverride = .useDefault
         videoControlsOverride = .useDefault
         videoSpeedOverride = nil
+        calmPage = false
         // Time limits
         timeLimitEnabled = false
         timeLimitMinutes = 30

@@ -28,6 +28,7 @@ struct PageMenuContent: View {
     let isReaderActive: Bool
     let isRecording: Bool
     let recordingStartTime: Date?
+    let isPageCalmed: Bool
     let onZoomChanged: (Int) -> Void
     let onCopyURL: () -> Void
     let onShare: () -> Void
@@ -39,6 +40,7 @@ struct PageMenuContent: View {
     let onStopRecording: () -> Void
     let onFindOnPage: () -> Void
     let onReaderMode: () -> Void
+    let onToggleCalm: () -> Void
     let onWebpageSettings: () -> Void
     let onShowCookies: () -> Void
     let onExtensionAction: (String) -> Void
@@ -162,6 +164,12 @@ struct PageMenuContent: View {
                         action: onReaderMode,
                     )
                 }
+
+                PageMenuItem(
+                    title: isPageCalmed ? "Resume Animations" : "Calm This Page",
+                    icon: isPageCalmed ? "sparkles" : "moon.zzz",
+                    action: onToggleCalm,
+                )
             }
         }
     }

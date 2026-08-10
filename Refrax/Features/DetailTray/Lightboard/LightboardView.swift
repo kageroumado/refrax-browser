@@ -15,6 +15,7 @@ struct LightboardView: View {
     @Environment(WebPagePool.self) private var pagePool
     @Environment(TabHealthProvider.self) private var healthProvider
     @Environment(ProcessMemoryMonitor.self) private var memoryMonitor
+    @Environment(SiteSettingsManager.self) private var siteSettingsManager
 
     @State private var selectedIDs: Set<UUID> = []
     @State private var isSelectionMode = false
@@ -105,6 +106,12 @@ struct LightboardView: View {
                 .popover(isPresented: $showingMemoryInfo) {
                     memoryInfoPopover
                 }
+            }
+
+            if let cpuSummary {
+                Text(cpuSummary)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
 
             if memoryMonitor.activeWebProcessCount > 0 {
@@ -225,6 +232,7 @@ struct LightboardView: View {
                                 isExpanded: expandedIDs.contains(snapshot.id),
                                 isSelected: selectedIDs.contains(snapshot.id),
                                 isSelectionMode: isSelectionMode,
+                                isCalmed: siteSettingsManager.isCalmPage(for: snapshot.url),
                                 onTap: {
                                     if isSelectionMode {
                                         toggleSelection(snapshot.id)
@@ -243,6 +251,9 @@ struct LightboardView: View {
                                 },
                                 onTerminate: {
                                     terminateProcess(snapshot)
+                                },
+                                onToggleCalm: {
+                                    toggleCalm(snapshot)
                                 },
                             )
                         }
@@ -333,6 +344,18 @@ struct LightboardView: View {
     }
 
     // MARK: - Helpers
+
+    /// One-line CPU summary, e.g. "CPU \u{2014} Web: 9% \u{00B7} GPU: 8% \u{00B7} App: 3%".
+    ///
+    /// GPU% is the number that exposes "invisible animation" pages: compositor
+    /// work for the visible tab lands in the GPU process, not the page's own.
+    private var cpuSummary: String? {
+        guard let web = memoryMonitor.totalWebContentCPUPercent,
+              let gpu = memoryMonitor.gpuProcessCPUPercent,
+              let app = memoryMonitor.appProcessCPUPercent else { return nil }
+        func fmt(_ value: Double) -> String { "\(Int(value.rounded()))%" }
+        return "CPU \u{2014} Web: \(fmt(web)) \u{00B7} GPU: \(fmt(gpu)) \u{00B7} App: \(fmt(app))"
+    }
 
     private var activeFilterLabel: String {
         if let processFilter = healthProvider.processFilter {
@@ -504,6 +527,12 @@ struct LightboardView: View {
             pagePool.page(for: snapshot.tabPage)
         }
         healthProvider.refresh()
+    }
+
+    private func toggleCalm(_ snapshot: TabHealthSnapshot) {
+        guard let host = snapshot.url.host else { return }
+        let calmed = siteSettingsManager.toggleCalmPage(for: snapshot.url)
+        pagePool.applyCalm(calmed, toHost: host)
     }
 
     private func terminateProcess(_ snapshot: TabHealthSnapshot) {

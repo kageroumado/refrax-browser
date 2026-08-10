@@ -47,6 +47,7 @@ final class SiteSettingsCoordinator {
         applyDarkModeOverride(to: webPage, siteSettings: siteSettings)
         applyPageFilterOverride(to: webPage, siteSettings: siteSettings)
         applyBackgroundRemovalOverride(to: webPage, siteSettings: siteSettings)
+        applyCalmPageOverride(to: webPage, siteSettings: siteSettings)
     }
 
     // MARK: - Per-Site Content Appearance
@@ -100,6 +101,11 @@ final class SiteSettingsCoordinator {
         if filter.requiresSVGFilters {
             Task { _ = try? await webPage.evaluateJavaScript(ColorBlindnessFilters.injectionScript) }
         }
+    }
+
+    private func applyCalmPageOverride(to webPage: WebPage, siteSettings: SiteSettings?) {
+        guard siteSettings?.calmPage == true else { return }
+        Task { _ = try? await webPage.evaluateJavaScript(CalmPageScript.applyScript) }
     }
 
     private func applyBackgroundRemovalOverride(to webPage: WebPage, siteSettings: SiteSettings?) {

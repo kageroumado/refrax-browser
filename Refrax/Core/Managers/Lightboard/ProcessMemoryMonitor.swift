@@ -23,6 +23,10 @@ struct WebProcessSnapshot: Identifiable, Equatable {
     /// Cumulative CPU time (user + system) in seconds.
     let totalCPUTime: TimeInterval
 
+    /// CPU usage since the previous poll as a percentage of one core,
+    /// or nil on the first sighting of this process.
+    let cpuPercent: Double?
+
     /// Tab page IDs hosted in this process.
     let tabPageIDs: [UUID]
 
@@ -43,6 +47,7 @@ struct WebProcessSnapshot: Identifiable, Equatable {
         lhs.pid == rhs.pid &&
             lhs.physicalFootprint == rhs.physicalFootprint &&
             lhs.state == rhs.state &&
+            lhs.cpuPercent == rhs.cpuPercent &&
             lhs.tabPageIDs == rhs.tabPageIDs
     }
 }
@@ -95,6 +100,16 @@ final class ProcessMemoryMonitor {
     /// Memory from web processes that couldn't be mapped to any tab (prewarmed/orphan).
     private(set) var unmappedProcessMemory: UInt64 = 0
 
+    /// CPU usage of all web content processes combined since the previous poll,
+    /// as a percentage of one core. Nil until two polls have completed.
+    private(set) var totalWebContentCPUPercent: Double?
+
+    /// CPU usage of the GPU process since the previous poll (% of one core).
+    private(set) var gpuProcessCPUPercent: Double?
+
+    /// CPU usage of the Refrax app process since the previous poll (% of one core).
+    private(set) var appProcessCPUPercent: Double?
+
     /// Last update timestamp.
     private(set) var lastUpdated: Date?
 
@@ -124,6 +139,11 @@ final class ProcessMemoryMonitor {
 
     @ObservationIgnored
     private var monitorCount = 0
+
+    /// Previous cumulative CPU-time samples per pid, for computing CPU% between
+    /// polls. The app process is keyed by its own pid alongside the WebKit ones.
+    @ObservationIgnored
+    private var previousCPUSamples: [pid_t: (cpuTime: TimeInterval, sampledAt: Date)] = [:]
 
     /// Maps PIDs to sequential human-friendly process numbers.
     @ObservationIgnored
@@ -193,10 +213,24 @@ final class ProcessMemoryMonitor {
 
         let processInfos = WKProcessPoolBridge.webContentProcessInfo()
 
+        let sampledAt = Date()
+        var currentCPUSamples: [pid_t: (cpuTime: TimeInterval, sampledAt: Date)] = [:]
+
+        /// Records this poll's cumulative CPU time for `pid` and returns the
+        /// usage since the previous poll as a percentage of one core.
+        func cpuPercent(pid: pid_t, cpuTime: TimeInterval) -> Double? {
+            currentCPUSamples[pid] = (cpuTime, sampledAt)
+            guard let previous = previousCPUSamples[pid] else { return nil }
+            let wall = sampledAt.timeIntervalSince(previous.sampledAt)
+            guard wall > 0.5, cpuTime >= previous.cpuTime else { return nil }
+            return (cpuTime - previous.cpuTime) / wall * 100
+        }
+
         var snapshots: [WebProcessSnapshot] = []
         var totalMem: UInt64 = 0
         var unmappedMem: UInt64 = 0
         var activeCount = 0
+        var webCPUSum: Double?
 
         for info in processInfos {
             guard let contentInfo = info as? _WKWebContentProcessInfo else {
@@ -206,6 +240,10 @@ final class ProcessMemoryMonitor {
 
             let footprint = UInt64(contentInfo.physicalFootprint)
             let cpuTime = contentInfo.totalUserCPUTime + contentInfo.totalSystemCPUTime
+            let processCPUPercent = cpuPercent(pid: contentInfo.pid, cpuTime: cpuTime)
+            if let processCPUPercent {
+                webCPUSum = (webCPUSum ?? 0) + processCPUPercent
+            }
 
             var tabIDs: [UUID] = []
             for webView in contentInfo.webViews {
@@ -230,6 +268,7 @@ final class ProcessMemoryMonitor {
                 state: contentInfo.state,
                 contentState: contentInfo.webContentState,
                 totalCPUTime: cpuTime,
+                cpuPercent: processCPUPercent,
                 tabPageIDs: tabIDs
             )
             snapshots.append(snapshot)
@@ -249,14 +288,17 @@ final class ProcessMemoryMonitor {
 
         let gpuInfo = WKProcessPoolBridge.gpuProcessInfo()
         let gpuMem: UInt64
+        var gpuCPU: Double?
         if let gpuInfo {
             gpuMem = UInt64(gpuInfo.physicalFootprint)
+            gpuCPU = cpuPercent(pid: gpuInfo.pid, cpuTime: gpuInfo.totalUserCPUTime + gpuInfo.totalSystemCPUTime)
             Logger.debug("[Lightboard] GPU process PID \(gpuInfo.pid): \(gpuMem / 1_024 / 1_024) MB", category: Logger.lightboard)
         } else {
             gpuMem = 0
         }
 
         let appMem = readAppProcessMemory()
+        let appCPU = cpuPercent(pid: getpid(), cpuTime: readAppProcessCPUTime())
 
         Logger.debug(
             "[Lightboard] Summary: \(snapshots.count) web processes (\(activeCount) active), unmapped=\(unmappedMem / 1_024 / 1_024) MB, web=\(totalMem / 1_024 / 1_024) MB, GPU=\(gpuMem / 1_024 / 1_024) MB, app=\(appMem / 1_024 / 1_024) MB",
@@ -269,6 +311,10 @@ final class ProcessMemoryMonitor {
         gpuProcessMemory = gpuMem
         appProcessMemory = appMem
         activeWebProcessCount = activeCount
+        totalWebContentCPUPercent = webCPUSum
+        gpuProcessCPUPercent = gpuCPU
+        appProcessCPUPercent = appCPU
+        previousCPUSamples = currentCPUSamples
 
         let dataPoint = MemoryDataPoint(
             timestamp: Date(),
@@ -289,6 +335,20 @@ final class ProcessMemoryMonitor {
         processNumberMap = processNumberMap.filter { activePIDs.contains($0.key) }
         if processNumberMap.isEmpty {
             nextProcessNumber = 1
+        }
+
+        refreshMediaPlaybackStates()
+    }
+
+    /// Refreshes every live page's cached media playback state so the
+    /// Lightboard can attribute audio-session holders (`holdsMediaSilently`)
+    /// to their pages. Runs only while the Lightboard is polling.
+    private func refreshMediaPlaybackStates() {
+        let pages = Array(pagePool.activePages.values)
+        Task(name: "Lightboard media state refresh") {
+            for webPage in pages {
+                await webPage.refreshPlaybackState()
+            }
         }
     }
 
@@ -337,6 +397,11 @@ final class ProcessMemoryMonitor {
         }
 
         return UInt64(info.phys_footprint)
+    }
+
+    /// Reads the Refrax app process cumulative CPU time (user + system) in seconds.
+    private func readAppProcessCPUTime() -> TimeInterval {
+        TimeInterval(clock_gettime_nsec_np(CLOCK_PROCESS_CPUTIME_ID)) / 1_000_000_000
     }
 
     // MARK: - Process Control

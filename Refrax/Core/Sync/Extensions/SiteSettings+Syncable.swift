@@ -39,6 +39,10 @@ extension SiteSettings: Syncable {
 
         record["contentProtectionBypass"] = contentProtectionBypass as NSNumber?
 
+        // MARK: - Energy
+
+        record["calmPage"] = calmPage as NSNumber
+
         // MARK: - Web Behavior Overrides
 
         record["beforeUnloadAlertOverrideRaw"] = beforeUnloadAlertOverrideRaw as NSString
@@ -134,6 +138,10 @@ extension SiteSettings: Syncable {
         // MARK: - Content Protection
 
         siteSettings.contentProtectionBypass = record["contentProtectionBypass"] as? Bool
+
+        // MARK: - Energy
+
+        siteSettings.calmPage = record["calmPage"] as? Bool ?? false
 
         // MARK: - Web Behavior Overrides
 

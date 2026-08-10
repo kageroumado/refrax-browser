@@ -179,6 +179,15 @@ final class SiteSettings {
     /// - `false`: Force disable bypass for this site (use site's restrictions)
     var contentProtectionBypass: Bool?
 
+    // MARK: - Energy
+
+    /// Freezes CSS/SVG animation on this site to save energy ("Calm This Page").
+    ///
+    /// Infinite decorative animations keep the compositor rendering every frame
+    /// while the page is visible. When enabled, `CalmPageScript` pauses them in
+    /// place on every navigation; toggling applies live without a reload.
+    var calmPage: Bool = false
+
     // MARK: - Web Behavior Overrides
 
     /// Override for beforeunload alert blocking.
