@@ -58,6 +58,21 @@ enum OAuthDomainRegistry {
         return oauthDomainSuffixes.contains { host.hasSuffix($0) }
     }
 
+    /// Checks if a URL points at a dedicated authentication host.
+    ///
+    /// `true` when the host is a known OAuth provider domain that exists solely
+    /// for sign-in — a subdomain like `accounts.google.com`, `id.atlassian.com`,
+    /// or `login.microsoftonline.com`. A provider's registrable domain apex
+    /// (`github.com`, `stackoverflow.com`) serves regular browsing and returns
+    /// `false`, even though it appears in the registry for user-agent policy.
+    ///
+    /// - Parameter url: The URL to check.
+    /// - Returns: `true` if the URL's host is an auth-only subdomain.
+    static func isDedicatedAuthHost(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased(), isOAuthDomain(host) else { return false }
+        return host != url.registrableDomain?.lowercased()
+    }
+
     /// Checks if a URL is part of an active OAuth flow.
     ///
     /// This is more specific than `isOAuthDomain` — it checks for actual

@@ -35,6 +35,9 @@ extension TabManager {
         // Capture active tab BEFORE state changes for PiP/extension callbacks
         let previousTabID = windowState.activeTabID
 
+        // Favorite previews are anchored to the outgoing active tab
+        favoritePreviewManager?.handleActiveTabChange()
+
         // Update window state (handles both live favorites and space tabs)
         windowState.setActiveTab(tab)
 

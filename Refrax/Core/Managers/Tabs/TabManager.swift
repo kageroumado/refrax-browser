@@ -118,6 +118,12 @@ final class TabManager {
     /// (removing them from the archive threshold).
     unowned var autoArchiveManager: TabAutoArchiveManager!
 
+    /// Favorite preview manager, notified when the active tab changes.
+    ///
+    /// Registers itself during its own initialization. Weak and optional because
+    /// it is a UI-level collaborator that headless test contexts never create.
+    weak var favoritePreviewManager: FavoritePreviewManager?
+
     /// When true, runs async operations synchronously. Used by tests to avoid
     /// race conditions during test teardown.
     var _runSynchronously = false

@@ -47,6 +47,7 @@ final class FavoritePreviewManager {
     init(tabManager: TabManager, windowManager: WindowManager) {
         self.tabManager = tabManager
         self.windowManager = windowManager
+        tabManager.favoritePreviewManager = self
     }
 
     // MARK: - Preview Actions
@@ -93,19 +94,23 @@ final class FavoritePreviewManager {
 
     /// Dismisses the current preview.
     func dismissPreview() {
-        previewPanel?.close()
+        if let panel = previewPanel {
+            panel.parent?.removeChildWindow(panel)
+            panel.close()
+        }
         previewPanel = nil
         previewingTab = nil
         previewingURL = nil
     }
 
-    /// Called when the source tab is activated.
+    /// Called by ``TabManager`` whenever the active tab changes.
     ///
-    /// If the previewed tab becomes active, the preview is dismissed.
-    func handleTabActivated(_ tab: Tab) {
-        if previewingTab?.id == tab.id {
-            dismissPreview()
-        }
+    /// The preview is anchored to the tab that was active when it opened, so any
+    /// activation invalidates it: activating the previewed favorite replaces the
+    /// preview with the real tab, and switching to any other tab would leave the
+    /// panel floating detached over unrelated content.
+    func handleActiveTabChange() {
+        dismissPreview()
     }
 
     // MARK: - Private Implementation
@@ -161,8 +166,11 @@ final class FavoritePreviewManager {
             },
         )
 
-        // Position and show with animation
+        // Position and show with animation.
+        // Attach as a child window so the panel stays above only Refrax and
+        // follows the browser window through ordering changes.
         panel.setFrame(finalFrame, display: false)
+        window.addChildWindow(panel, ordered: .above)
         panel.makeKeyAndOrderFront(nil)
         panel.animateAppearance()
 

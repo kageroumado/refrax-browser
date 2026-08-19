@@ -52,6 +52,13 @@ final class LinkPreviewManager: NSObject {
     /// The preview panel.
     private var previewPanel: LinkPreviewPanel?
 
+    /// Whether the panel is hidden because the owning web view left its window.
+    ///
+    /// The panel belongs to the tab that opened it: when that tab's web view is
+    /// removed from the window (tab switch, space switch), the panel hides with
+    /// it and reappears when the web view is reinstalled.
+    private var isPanelHiddenForDetachedWebView = false
+
     /// Whether Shift+Click link preview is enabled.
     ///
     /// Default is `true`.
@@ -444,8 +451,42 @@ final class LinkPreviewManager: NSObject {
 
     /// Dismisses the current preview, if any.
     func dismissPreview() {
-        previewPanel?.close()
+        if let panel = previewPanel {
+            panel.parent?.removeChildWindow(panel)
+            panel.close()
+        }
         previewPanel = nil
+        isPanelHiddenForDetachedWebView = false
+    }
+
+    // MARK: - Tab Attachment
+
+    /// Called by ``WebPageWebView`` when it moves to or from a window.
+    ///
+    /// Keeps the preview panel attached to the tab that opened it: the panel
+    /// hides when the tab's web view leaves the window and reappears — repositioned
+    /// over the current content area — when the web view is reinstalled.
+    func webViewWindowDidChange() {
+        guard let panel = previewPanel else { return }
+
+        if let webView, let window = webView.window {
+            guard isPanelHiddenForDetachedWebView else { return }
+            isPanelHiddenForDetachedWebView = false
+
+            // Reposition for the current window: the web view may have been
+            // reinstalled in a different window (tab dragged out) or the window
+            // may have moved or resized while the panel was hidden.
+            let frame = calculatePanelFrame(size: panel.frame.size, relativeTo: webView)
+            panel.setFrame(frame, display: false)
+
+            window.addChildWindow(panel, ordered: .above)
+            panel.orderFront(nil)
+        } else {
+            guard panel.isVisible else { return }
+            isPanelHiddenForDetachedWebView = true
+            panel.parent?.removeChildWindow(panel)
+            panel.orderOut(nil)
+        }
     }
 
     /// Shows a preview for a URL programmatically.

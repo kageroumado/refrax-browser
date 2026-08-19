@@ -60,6 +60,20 @@ final class WebPageWebView: WKWebView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: - Window Attachment
+
+    #if os(macOS)
+        /// Keeps the link preview panel attached to this web view's tab.
+        ///
+        /// The web view leaves the window when its tab is deactivated (tab or
+        /// space switch) and returns when reactivated; the preview panel hides
+        /// and reappears with it.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            linkPreviewManager?.webViewWindowDidChange()
+        }
+    #endif
+
     // MARK: - Scroll Geometry
 
     /// Notifies the delegate that scroll geometry changed.

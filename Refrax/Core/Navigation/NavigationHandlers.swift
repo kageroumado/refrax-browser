@@ -376,19 +376,31 @@ struct PopupHandler: NavigationActionHandler {
 
 /// Implements Arc-style navigation containment for pinned tabs and live favorites.
 ///
-/// When a pinned tab or live favorite navigates to a different domain, this handler
-/// intercepts the navigation and shows a preview panel instead. This keeps the tab
-/// focused on its designated site (e.g., GitHub, Slack, email) while still allowing
-/// users to view and interact with cross-domain links.
+/// When the user follows a link from a pinned tab or live favorite to a different
+/// domain, this handler intercepts the navigation and shows a preview panel instead.
+/// This keeps the tab focused on its designated site (e.g., GitHub, Slack, email)
+/// while still allowing users to view and interact with cross-domain links.
 ///
 /// ## Behavior
 ///
 /// | Condition | Action |
 /// |-----------|--------|
 /// | Same domain | Allow navigation normally |
-/// | Different domain | Show in preview panel |
+/// | Cross-domain link click or `target="_blank"` | Show in preview panel |
+/// | Redirect / programmatic load / back-forward / reload / form POST | Allow |
+/// | Authentication flow (OAuth registry match) | Allow |
 /// | Download | Allow (handled by earlier handlers) |
 /// | Non-HTTP(S) | Allow (mailto:, etc.) |
+///
+/// Only link activations and new-window requests are contained. Every other
+/// navigation kind moves the tab itself: cancelling a server or script redirect
+/// cancels the tab's own provisional load (a cold pinned tab whose home URL
+/// redirects to a login page would be left permanently blank), and a preview
+/// panel cannot replay a form POST — it would reload the URL as a GET.
+///
+/// Authentication flows are exempt even for link clicks: they must complete in
+/// the tab so session cookies land in the tab's data store, and the provider
+/// redirects back to the home domain when the flow finishes.
 ///
 /// ## Order in Handler Chain
 ///
@@ -418,6 +430,20 @@ struct PinnedTabContainmentHandler: NavigationActionHandler {
         guard let scheme = targetURL.scheme?.lowercased(),
               scheme == "http" || scheme == "https"
         else { return .next }
+
+        // Contain only link activations and new-window requests. Redirects,
+        // programmatic loads, back/forward, reloads, and form submissions
+        // navigate the tab itself — cancelling them blanks or breaks the tab.
+        guard action.isLinkActivated || action.isNewWindowRequest else { return .next }
+
+        // Authentication flows complete in place; the provider returns to the
+        // home domain when done. Dedicated auth hosts only — `isOAuthDomain`
+        // also lists provider apexes like github.com, which must stay contained.
+        if OAuthDomainRegistry.isDedicatedAuthHost(targetURL)
+            || OAuthDomainRegistry.isOAuthFlow(targetURL)
+            || action.redirectChain?.containsOAuthURL == true {
+            return .next
+        }
 
         // Extract registrable domains for comparison
         guard let homeDomain = homeURL.registrableDomain?.lowercased(),

@@ -788,9 +788,10 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
 
     /// Shows a link preview panel for navigation containment.
     ///
-    /// When a pinned tab or live favorite navigates to a different domain,
-    /// this method shows the URL in a preview panel instead of navigating
-    /// the tab. The user can then choose to open in a new tab or dismiss.
+    /// When the user follows a cross-domain link from a pinned tab or live
+    /// favorite, this method shows the URL in a preview panel instead of
+    /// navigating the tab. The user can then choose to open in a new tab
+    /// or dismiss.
     ///
     /// - Parameter url: The URL to preview.
     private func showLinkPreview(for url: URL) async {

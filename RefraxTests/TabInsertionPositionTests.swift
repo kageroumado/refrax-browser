@@ -32,25 +32,116 @@ struct PinnedTabContainmentHandlerTests {
 
     // MARK: - Pinned Tabs: Main Frame
 
-    @Test("Pinned tab allows same-domain navigation")
+    @Test("Pinned tab allows same-domain link click")
     func pinnedTabSameDomain() async {
         let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
         let handler = PinnedTabContainmentHandler(tab: tab)
-        let action = MockNavigationAction.mainFrame(url: URL(string: "https://github.com/anthropics/claude-code")!)
+        let action = MockNavigationAction.linkClick(url: URL(string: "https://github.com/anthropics/claude-code")!)
 
         let policy = await handler.evaluate(action)
         #expect(policy == .next)
     }
 
-    @Test("Pinned tab shows preview for cross-domain navigation")
+    @Test("Pinned tab shows preview for cross-domain link click")
     func pinnedTabCrossDomain() async {
         let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
         let handler = PinnedTabContainmentHandler(tab: tab)
         let crossURL = URL(string: "https://stackoverflow.com/questions/123")!
-        let action = MockNavigationAction.mainFrame(url: crossURL)
+        let action = MockNavigationAction.linkClick(url: crossURL)
 
         let policy = await handler.evaluate(action)
         #expect(policy == .showPreview(crossURL))
+    }
+
+    // MARK: - Redirects & Programmatic Loads (Never Contained)
+
+    @Test("Cross-domain redirect of the tab's own load passes through")
+    func initialLoadRedirectPassesThrough() async {
+        // Regression: a cold pinned tab loads its home URL, which 302s to a
+        // login host on another registrable domain. Containing that redirect
+        // cancels the tab's only provisional navigation and leaves it blank.
+        let tab = makePinnedTab(origin: URL(string: "https://netatmo.atlassian.net/jira/dashboards")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let loginURL = URL(string: "https://example-sso.example.com/login?continue=https%3A%2F%2Fnetatmo.atlassian.net")!
+        let action = MockNavigationAction.scriptInitiated(url: loginURL)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next, "Redirects of the tab's own load must never be contained")
+    }
+
+    @Test("Cross-domain back/forward navigation passes through")
+    func backForwardPassesThrough() async {
+        let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let action = MockNavigationAction.backForward(url: URL(string: "https://stackoverflow.com/questions/123")!)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next)
+    }
+
+    @Test("Cross-domain reload passes through")
+    func reloadPassesThrough() async {
+        let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let action = MockNavigationAction.reload(url: URL(string: "https://stackoverflow.com/questions/123")!)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next)
+    }
+
+    @Test("Cross-domain form submission passes through")
+    func formSubmissionPassesThrough() async {
+        // A preview panel cannot replay a POST body - containing a form
+        // submission would silently re-request the URL as a GET.
+        let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let action = MockNavigationAction.formSubmission(url: URL(string: "https://sso.example.com/session")!)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next)
+    }
+
+    // MARK: - Authentication Flows (Never Contained)
+
+    @Test("Link click to an OAuth provider domain passes through")
+    func oauthDomainLinkClickPassesThrough() async {
+        let tab = makePinnedTab(origin: URL(string: "https://netatmo.atlassian.net")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let action = MockNavigationAction.linkClick(url: URL(string: "https://id.atlassian.com/login")!)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next, "Auth flows must complete in the tab so cookies land in its session")
+    }
+
+    @Test("Link click to a generic OAuth authorize URL passes through")
+    func oauthFlowLinkClickPassesThrough() async {
+        let tab = makePinnedTab(origin: URL(string: "https://example.com")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+        let action = MockNavigationAction.linkClick(url: TestURLs.oauth)
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next)
+    }
+
+    @Test("Navigation whose redirect chain crossed an OAuth URL passes through")
+    func oauthRedirectChainPassesThrough() async {
+        let tab = makePinnedTab(origin: URL(string: "https://example.com")!)
+        let handler = PinnedTabContainmentHandler(tab: tab)
+
+        var chain = RedirectChain()
+        chain.append(URL(string: "https://example.com/signin")!)
+        chain.append(TestURLs.oauth)
+
+        let crossURL = URL(string: "https://tenant.example-idp.net/consent")!
+        let action = MockNavigationAction(
+            url: crossURL,
+            redirectChain: chain,
+            isUserInitiated: true,
+            isLinkActivated: true,
+        )
+
+        let policy = await handler.evaluate(action)
+        #expect(policy == .next)
     }
 
     // MARK: - target="_blank" Links (New Window Requests)
@@ -119,7 +210,7 @@ struct PinnedTabContainmentHandlerTests {
     func subdomainSameDomain() async {
         let tab = makePinnedTab(origin: URL(string: "https://github.com")!)
         let handler = PinnedTabContainmentHandler(tab: tab)
-        let action = MockNavigationAction.mainFrame(url: URL(string: "https://gist.github.com/user/abc")!)
+        let action = MockNavigationAction.linkClick(url: URL(string: "https://gist.github.com/user/abc")!)
         let policy = await handler.evaluate(action)
         #expect(policy == .next)
     }
