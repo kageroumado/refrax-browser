@@ -99,6 +99,7 @@ public enum ControlRequest: Sendable {
     case pageExecJS(PageExecJSParams)
     case pageSource(OptionalTabIDParams)
     case pageVideoViewer(PageVideoViewerParams)
+    case pagePiP(PagePiPParams)
 
     // Tier 1D: Reference Pane Extended
     case refPaneAddTab(RefPaneAddTabParams)
@@ -636,6 +637,25 @@ public extension ControlRequest {
     }
 
     struct PageVideoViewerParams: Codable, Sendable {
+        public enum Action: String, Codable, Sendable {
+            case enter
+            case exit
+            case toggle
+            case status
+        }
+
+        public var action: Action
+        public var tabID: String?
+        public var pageID: String?
+
+        public init(action: Action, tabID: String? = nil, pageID: String? = nil) {
+            self.action = action
+            self.tabID = tabID
+            self.pageID = pageID
+        }
+    }
+
+    struct PagePiPParams: Codable, Sendable {
         public enum Action: String, Codable, Sendable {
             case enter
             case exit
@@ -1385,6 +1405,7 @@ extension ControlRequest: Codable {
         case pageExecJS
         case pageSource
         case pageVideoViewer
+        case pagePiP
 
         // Tier 1D
         case refPaneAddTab
@@ -1574,6 +1595,7 @@ extension ControlRequest: Codable {
         case .pageExecJS: self = try .pageExecJS(PageExecJSParams(from: decoder))
         case .pageSource: self = try .pageSource(OptionalTabIDParams(from: decoder))
         case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
+        case .pagePiP: self = try .pagePiP(PagePiPParams(from: decoder))
         // Tier 1D
         case .refPaneAddTab: self = try .refPaneAddTab(RefPaneAddTabParams(from: decoder))
         case .refPaneCloseTab: self = try .refPaneCloseTab(RefPaneCloseTabParams(from: decoder))
@@ -1855,6 +1877,9 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .pageVideoViewer(params):
             try container.encode("pageVideoViewer", forKey: .type)
+            try params.encode(to: encoder)
+        case let .pagePiP(params):
+            try container.encode("pagePiP", forKey: .type)
             try params.encode(to: encoder)
         // Tier 1D
         case let .refPaneAddTab(params):

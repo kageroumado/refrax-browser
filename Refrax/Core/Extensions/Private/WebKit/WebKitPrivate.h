@@ -248,7 +248,9 @@
 /// on top of other windows. This must be enabled for `_togglePictureInPicture`
 /// to work on WKWebView.
 ///
-/// The default value in WebKit is YES for macOS and iOS, NO for watchOS.
+/// Defaults to NO for modern-API WebKit embedders on macOS (the YAML default
+/// many headers claim is YES applies only to iOS and the WebCore layer) —
+/// Safari opts in explicitly, and so must we.
 ///
 /// ## Availability
 /// macOS 10.13+, iOS 11.0+

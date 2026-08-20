@@ -182,6 +182,92 @@ nonisolated enum JavaScriptSnippets: Sendable {
         """
     }
 
+    // MARK: - Picture-in-Picture
+
+    /// Enters Picture-in-Picture on the page's predominant video.
+    ///
+    /// Prefers a playing video, breaking ties by on-screen area. Includes
+    /// same-origin iframes; cross-origin frames are unreachable from here —
+    /// the native SPI path covers those when its playback session exists.
+    ///
+    /// Requires a user gesture (`mediaSession().fullscreenPermitted()`), so
+    /// evaluate with the gesture-forcing `evaluateJavaScript()`.
+    ///
+    /// Returns: `"ok"`, `"already-active"`, or `"no-video"`.
+    static let enterPictureInPicture = """
+    (() => {
+        const collect = (doc) => {
+            let vids = Array.from(doc.querySelectorAll('video'));
+            for (const frame of doc.querySelectorAll('iframe')) {
+                try {
+                    const frameDoc = frame.contentDocument;
+                    if (frameDoc) vids = vids.concat(collect(frameDoc));
+                } catch (e) {}
+            }
+            return vids;
+        };
+        const all = collect(document);
+        if (all.some(v => v.webkitPresentationMode === 'picture-in-picture')) return 'already-active';
+        const candidates = all.filter(v =>
+            v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture'));
+        if (!candidates.length) return 'no-video';
+        const playing = candidates.filter(v => !v.paused && !v.ended);
+        const pick = (playing.length ? playing : candidates).reduce((a, b) =>
+            a.clientWidth * a.clientHeight >= b.clientWidth * b.clientHeight ? a : b);
+        pick.webkitSetPresentationMode('picture-in-picture');
+        return 'ok';
+    })();
+    """
+
+    /// Exits Picture-in-Picture if any video is presenting in it.
+    ///
+    /// Returns: `"ok"` or `"not-active"`.
+    static let exitPictureInPicture = """
+    (() => {
+        const collect = (doc) => {
+            let vids = Array.from(doc.querySelectorAll('video'));
+            for (const frame of doc.querySelectorAll('iframe')) {
+                try {
+                    const frameDoc = frame.contentDocument;
+                    if (frameDoc) vids = vids.concat(collect(frameDoc));
+                } catch (e) {}
+            }
+            return vids;
+        };
+        const active = collect(document).find(v => v.webkitPresentationMode === 'picture-in-picture');
+        if (!active) return 'not-active';
+        active.webkitSetPresentationMode('inline');
+        return 'ok';
+    })();
+    """
+
+    /// Reports the page's PiP-relevant video state.
+    ///
+    /// Returns: JSON `{ active: Bool, playing: Bool, eligible: Bool }` —
+    /// whether a video is in PiP, whether any video is playing, and whether
+    /// any video supports PiP.
+    static let pictureInPictureState = """
+    (() => {
+        const collect = (doc) => {
+            let vids = Array.from(doc.querySelectorAll('video'));
+            for (const frame of doc.querySelectorAll('iframe')) {
+                try {
+                    const frameDoc = frame.contentDocument;
+                    if (frameDoc) vids = vids.concat(collect(frameDoc));
+                } catch (e) {}
+            }
+            return vids;
+        };
+        const all = collect(document);
+        return JSON.stringify({
+            active: all.some(v => v.webkitPresentationMode === 'picture-in-picture'),
+            playing: all.some(v => !v.paused && !v.ended),
+            eligible: all.some(v =>
+                v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')),
+        });
+    })();
+    """
+
     // MARK: - Link Detection
 
     /// Performs a hit test to find a link at the given coordinates.

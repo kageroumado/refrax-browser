@@ -62,7 +62,9 @@ final class PiPCoordinator {
         }
 
         // Exit PiP since user returned to the source tab
-        webPage.exitPiP()
+        Task(name: "Auto-PiP exit") {
+            await webPage.exitPiP()
+        }
         clearPiPState()
     }
 
@@ -105,16 +107,19 @@ final class PiPCoordinator {
 
         guard shouldAutoPiP else { return }
 
-        // Only trigger PiP if WebKit indicates PiP can be toggled.
-        // This is true when there's a video element that supports PiP.
-        // Note: We don't check isPlayingAudio because videos may be muted
-        // or may not have an audio track.
-        guard webPage.canTogglePiP else { return }
+        // Gate on the JS-observed page state: a playing, PiP-eligible video.
+        // The native canTogglePiP is advisory only (false-negatives whenever
+        // the playback-controls session is absent). We don't check
+        // isPlayingAudio because videos may be muted or have no audio track.
+        Task(name: "Auto-PiP enter") { [weak self] in
+            let state = await webPage.pipState()
+            guard state.playing, state.eligible, !state.active else { return }
 
-        // Enter PiP and track the source
-        webPage.enterPiP()
-        activePiPSourceTabID = tab.id
-        isAutoPiP = true
+            await webPage.enterPiP()
+            guard let self else { return }
+            self.activePiPSourceTabID = tab.id
+            self.isAutoPiP = true
+        }
     }
 
     // MARK: - Manual PiP Control

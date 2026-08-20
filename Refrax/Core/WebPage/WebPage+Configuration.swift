@@ -146,6 +146,12 @@ extension WebPage {
             config.preferences.isTextInteractionEnabled = true
             config.preferences.isElementFullscreenEnabled = true
 
+            // PiP is opt-in for modern-API WebKit embedders on macOS (Safari opts in);
+            // without this, MediaElementSession.allowsPictureInPicture() is false and
+            // every PiP entry point (_togglePictureInPicture, the WebKit context-menu
+            // item, _canTogglePictureInPicture) silently no-ops.
+            config.preferences._allowsPictureInPictureMediaPlayback = true
+
             // WebKit feature flags (via _WKFeature private API)
             enableFeatures(on: config.preferences)
 
@@ -211,6 +217,7 @@ extension WebPage {
             // Preferences
             config.preferences.isTextInteractionEnabled = true
             config.preferences.isElementFullscreenEnabled = true
+            config.preferences._allowsPictureInPictureMediaPlayback = true
 
             // WebKit feature flags (via _WKFeature private API)
             enableFeatures(on: config.preferences)

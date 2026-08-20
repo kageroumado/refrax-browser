@@ -3,42 +3,83 @@ import WebKit
 
 // MARK: - Picture-in-Picture
 
+/// PiP-relevant video state observed from page JavaScript.
+struct PiPState: Decodable {
+    /// Whether a video on the page is presenting in Picture-in-Picture.
+    let active: Bool
+    /// Whether any video on the page is playing.
+    let playing: Bool
+    /// Whether any video on the page supports Picture-in-Picture.
+    let eligible: Bool
+
+    static let unknown = PiPState(active: false, playing: false, eligible: false)
+}
+
 extension WebPage {
-    /// Whether PiP can currently be toggled for this page.
+    /// Whether WebKit's playback-controls session reports PiP as toggleable.
     ///
-    /// Returns `true` when the page has an active video element that supports PiP.
-    /// This checks WebKit's internal state via the private `_canTogglePictureInPicture` API.
+    /// Advisory only: the underlying `canTogglePictureInPicture()` requires the
+    /// video to be the current playback-controls-manager element and reads
+    /// `false` for many pages where PiP works (measured on YouTube). Use
+    /// ``pipState()`` for an authoritative answer.
     var canTogglePiP: Bool {
         backingWebView._canTogglePictureInPicture
     }
 
-    /// Whether PiP is currently active for this page.
+    /// Whether the playback-controls session reports PiP as active.
+    ///
+    /// Advisory only, same gate as ``canTogglePiP`` — it can read `false`
+    /// while a PiP panel is on screen. Use ``pipState()`` for an
+    /// authoritative answer.
     var isPiPActive: Bool {
         backingWebView._isPictureInPictureActive
     }
 
-    /// Toggles Picture-in-Picture for the predominant video element.
+    /// Reads the page's PiP state via JavaScript.
     ///
-    /// If PiP is inactive and can be toggled, enters PiP mode.
-    /// If PiP is active, exits PiP mode.
-    func togglePiP() {
-        guard canTogglePiP else { return }
-        backingWebView._togglePictureInPicture()
+    /// This is the authoritative signal — the native properties above
+    /// false-negative whenever the playback-controls session is absent.
+    /// Cross-origin iframe videos are invisible to this probe.
+    func pipState() async -> PiPState {
+        guard let json = try? await evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.pictureInPictureState) as? String,
+              let data = json.data(using: .utf8),
+              let state = try? JSONDecoder().decode(PiPState.self, from: data)
+        else {
+            return .unknown
+        }
+        return state
     }
 
-    /// Enters Picture-in-Picture mode if available.
+    /// Enters Picture-in-Picture for the page's predominant video.
     ///
-    /// Does nothing if PiP cannot be toggled or is already active.
-    func enterPiP() {
-        guard canTogglePiP, !isPiPActive else { return }
-        backingWebView._togglePictureInPicture()
+    /// Uses the native `_togglePictureInPicture` SPI when its playback session
+    /// reports capability (this also covers cross-origin iframe videos), and
+    /// otherwise drives `webkitSetPresentationMode` on the best candidate
+    /// video via JavaScript. The evaluation is deliberately gesture-forced:
+    /// PiP entry is gated on `mediaSession().fullscreenPermitted()`.
+    func enterPiP() async {
+        if backingWebView._canTogglePictureInPicture, !backingWebView._isPictureInPictureActive {
+            backingWebView._togglePictureInPicture()
+            return
+        }
+        _ = try? await evaluateJavaScript(JavaScriptSnippets.enterPictureInPicture)
     }
 
-    /// Exits Picture-in-Picture mode if active.
-    ///
-    /// Does nothing if PiP is not currently active.
-    func exitPiP() {
-        guard isPiPActive else { return }
-        backingWebView._togglePictureInPicture()
+    /// Exits Picture-in-Picture if active.
+    func exitPiP() async {
+        if backingWebView._isPictureInPictureActive {
+            backingWebView._togglePictureInPicture()
+            return
+        }
+        _ = try? await evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.exitPictureInPicture)
+    }
+
+    /// Toggles Picture-in-Picture for the page's predominant video.
+    func togglePiP() async {
+        if await pipState().active {
+            await exitPiP()
+        } else {
+            await enterPiP()
+        }
     }
 }

@@ -267,6 +267,8 @@ final class RefraxControlServer {
             try await handlePageSource(params)
         case let .pageVideoViewer(params):
             try await handlePageVideoViewer(params)
+        case let .pagePiP(params):
+            try await handlePagePiP(params)
         // Tier 1D: Reference Pane Extended
         case let .refPaneAddTab(params):
             handleRefPaneAddTab(params)
@@ -2071,6 +2073,36 @@ final class RefraxControlServer {
             try? await Task.sleep(for: .milliseconds(400))
             let after = await statusLine()
             return .ok("Video viewer \(params.action.rawValue): before [\(before)] → after [\(after)]")
+        }
+    }
+
+    private func handlePagePiP(_ params: ControlRequest.PagePiPParams) async throws -> ControlResponse {
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+
+        func statusLine() async -> String {
+            let state = await webPage.pipState()
+            return "active: \(state.active), "
+                + "playing: \(state.playing), "
+                + "eligible: \(state.eligible), "
+                + "nativeCanToggle: \(webPage.canTogglePiP)"
+        }
+
+        switch params.action {
+        case .status:
+            return await .ok(statusLine())
+        case .enter, .exit, .toggle:
+            let before = await statusLine()
+            switch params.action {
+            case .enter: await webPage.enterPiP()
+            case .exit: await webPage.exitPiP()
+            case .toggle: await webPage.togglePiP()
+            case .status: break
+            }
+            // PiP entry round-trips through the web process and AVKit; give it a
+            // moment so the after-state reflects the result.
+            try? await Task.sleep(for: .milliseconds(400))
+            let after = await statusLine()
+            return .ok("PiP \(params.action.rawValue): before [\(before)] → after [\(after)]")
         }
     }
 

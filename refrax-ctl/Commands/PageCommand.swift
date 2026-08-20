@@ -17,6 +17,7 @@ struct PageCommand: AsyncParsableCommand {
             FindPrevious.self,
             FindDismiss.self,
             VideoViewer.self,
+            Pip.self,
         ],
     )
 
@@ -235,6 +236,47 @@ struct PageCommand: AsyncParsableCommand {
             }
             try sendAndHandle(
                 .pageVideoViewer(.init(action: viewerAction, tabID: tab, pageID: page)),
+            )
+        }
+    }
+
+    struct Pip: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "pip",
+            abstract: "Control Picture-in-Picture for the current video",
+            discussion: """
+            Enters or exits the system Picture-in-Picture window for the page's \
+            predominant video.
+
+            Requires an active playback session — the video must have started \
+            playing so it is registered as the page's playback-controls element; \
+            without one, enter/exit/toggle are silent no-ops. `active` in the \
+            after-state is the authoritative signal.
+
+            Examples:
+              refrax-ctl page pip status
+              refrax-ctl page pip enter
+              refrax-ctl page pip exit
+              refrax-ctl page pip toggle --tab 3
+            """,
+        )
+
+        @Argument(help: "Action: enter, exit, toggle, or status")
+        var action: String = "status"
+
+        @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
+        var tab: String?
+
+        @Option(name: .long, help: "Page ID (for multi-page tabs)")
+        var page: String?
+
+        func run() async throws {
+            guard let pipAction = ControlRequest.PagePiPParams.Action(rawValue: action) else {
+                printError("Invalid action '\(action)'. Use: enter, exit, toggle, or status")
+                _Exit(1)
+            }
+            try sendAndHandle(
+                .pagePiP(.init(action: pipAction, tabID: tab, pageID: page)),
             )
         }
     }
