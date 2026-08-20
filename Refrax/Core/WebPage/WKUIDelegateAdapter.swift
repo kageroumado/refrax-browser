@@ -399,8 +399,10 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         forElement element: _WKContextMenuElementInfo,
         userInfo _: (any NSSecureCoding)?,
     ) async -> NSMenu? {
-        // Get selected text via JavaScript (lookupText only gives dictionary lookup text)
-        let selectedText = try? await webView.evaluateJavaScript("window.getSelection().toString()") as? String
+        // Get selected text via JavaScript (lookupText only gives dictionary lookup text).
+        // Without-gesture: a gesture-forced evaluation here would strip the transient
+        // activation the right-click just granted, breaking activation-gated menu actions.
+        let selectedText = try? await webView.evaluateJavaScriptWithoutUserGesture("window.getSelection().toString()") as? String
 
         let hitTestResult = element.hitTestResult
 
@@ -430,7 +432,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
                 return link?.href || null;
             })()
             """
-            if let urlString = try? await webView.evaluateJavaScript(js) as? String {
+            if let urlString = try? await webView.evaluateJavaScriptWithoutUserGesture(js) as? String {
                 videoContextURL = URL(string: urlString)
             }
         }

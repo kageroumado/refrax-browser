@@ -135,7 +135,7 @@ final class FrameContentExtractor: NSObject {
         // We can't call it directly in cross-origin frames, but since the script
         // is already injected, navigations/reloads will trigger it automatically.
         // For dynamic content, the caller should clear + wait for new postMessage.
-        webView.evaluateJavaScript(
+        webView._evaluateJavaScriptWithoutUserGesture(
             "document.querySelectorAll('iframe').forEach(f => { try { f.contentWindow.__refraxExtractFrameContent && f.contentWindow.__refraxExtractFrameContent() } catch(e) {} })",
             completionHandler: nil,
         )

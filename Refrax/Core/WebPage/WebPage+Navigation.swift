@@ -1056,7 +1056,7 @@ extension WebPage {
             })()
             """
 
-            guard let href = try await backingWebView.evaluateJavaScript(js) as? String,
+            guard let href = try await backingWebView.evaluateJavaScriptWithoutUserGesture(js) as? String,
                   let descriptorURL = URL(string: href)
             else {
                 return

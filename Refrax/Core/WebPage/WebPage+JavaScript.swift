@@ -63,17 +63,6 @@ extension WebPage {
     /// page content world only.
     @discardableResult
     func evaluateJavaScriptWithoutUserGesture(_ script: String) async throws -> Any? {
-        try await withCheckedThrowingContinuation { continuation in
-            backingWebView._evaluateJavaScriptWithoutUserGesture(script) { result, error in
-                // WebKit invokes the completion on the main thread with immutable
-                // property-list values; transferring them out is safe.
-                nonisolated(unsafe) let result = result
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: result)
-                }
-            }
-        }
+        try await backingWebView.evaluateJavaScriptWithoutUserGesture(script)
     }
 }

@@ -157,7 +157,9 @@ struct OverlayContainer: View {
         )
 
         do {
-            let result = try await page.evaluateJavaScript(script)
+            // Without-gesture: insertion targets the focused field the user just
+            // clicked into; a gesture-forced evaluation would strip that activation.
+            let result = try await page.evaluateJavaScriptWithoutUserGesture(script)
             let success = (result as? Bool) ?? false
 
             if !success {

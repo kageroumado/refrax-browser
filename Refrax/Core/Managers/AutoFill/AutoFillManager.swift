@@ -159,7 +159,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
 
         Task {
             do {
-                if let result = try await webView.evaluateJavaScript(js) as? [String: Bool] {
+                if let result = try await webView.evaluateJavaScriptWithoutUserGesture(js) as? [String: Bool] {
                     let filledUser = result["filledUsername"] ?? false
                     let filledPass = result["filledPassword"] ?? false
                     Logger.debug("Filled credentials for \(host): username=\(filledUser), password=\(filledPass)", category: Logger.autoFill)
@@ -235,7 +235,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
             // Fill all password fields in the form (password + confirm password)
             let fillAllJS = JavaScriptSnippets.fillAllPasswordFields(password)
             do {
-                if let count = try await webView.evaluateJavaScript(fillAllJS) as? Int, count > 0 {
+                if let count = try await webView.evaluateJavaScriptWithoutUserGesture(fillAllJS) as? Int, count > 0 {
                     Logger.info("Generated and filled \(count) password field(s) for \(domain)", category: Logger.autoFill)
                 }
             } catch {
@@ -257,7 +257,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
         let fillAllJS = JavaScriptSnippets.fillAllPasswordFields(password)
         Task {
             do {
-                if let count = try await webView.evaluateJavaScript(fillAllJS) as? Int, count > 0 {
+                if let count = try await webView.evaluateJavaScriptWithoutUserGesture(fillAllJS) as? Int, count > 0 {
                     Logger.debug("Filled \(count) password field(s) with generated password", category: Logger.autoFill)
                 }
             } catch {
@@ -280,7 +280,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
             let focusedFillJS = JavaScriptSnippets.fillFocusedPassword(password)
 
             do {
-                if let success = try await webView.evaluateJavaScript(focusedFillJS) as? Bool, success {
+                if let success = try await webView.evaluateJavaScriptWithoutUserGesture(focusedFillJS) as? Bool, success {
                     Logger.debug("Filled password using focused element", category: Logger.autoFill)
                     return
                 }
@@ -291,7 +291,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
             // Fallback to ID-based fill
             let js = JavaScriptSnippets.fillPassword(password, fieldId: fieldId)
             do {
-                _ = try await webView.evaluateJavaScript(js)
+                _ = try await webView.evaluateJavaScriptWithoutUserGesture(js)
                 Logger.debug("Filled password using field ID fallback", category: Logger.autoFill)
             } catch {
                 Logger.error("Failed to fill password: \(error)", category: Logger.autoFill)
@@ -709,7 +709,7 @@ extension AutoFillManager {
     /// Gets the rect of the currently focused field using JavaScript.
     private func getFieldRect(in webView: WKWebView) async -> CGRect? {
         do {
-            let result = try await webView.evaluateJavaScript(JavaScriptSnippets.activeElementRect)
+            let result = try await webView.evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.activeElementRect)
             guard let dict = result as? [String: Any],
                   let x = dict["x"] as? CGFloat,
                   let y = dict["y"] as? CGFloat,
@@ -738,7 +738,7 @@ extension AutoFillManager {
     /// confirm password field detection, and field value check.
     private func getFormContext(in webView: WKWebView) async -> FormContext {
         do {
-            let result = try await webView.evaluateJavaScript(JavaScriptSnippets.formContext)
+            let result = try await webView.evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.formContext)
             guard let jsonString = result as? String,
                   let data = jsonString.data(using: .utf8),
                   let context = try? JSONSerialization.jsonObject(with: data) as? [String: Any]

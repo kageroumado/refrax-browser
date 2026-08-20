@@ -344,7 +344,9 @@ extension WebPage {
     @discardableResult
     func refreshMediaSessionMetadata() async -> MediaSessionMetadata? {
         do {
-            let result = try await backingWebView.evaluateJavaScript(
+            // Without-gesture: this fires right after playback starts — often the
+            // moment a user click granted activation the page still needs.
+            let result = try await backingWebView.evaluateJavaScriptWithoutUserGesture(
                 JavaScriptSnippets.mediaSessionMetadata,
             )
 

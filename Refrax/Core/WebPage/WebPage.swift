@@ -515,7 +515,7 @@ final class WebPage: Identifiable {
     /// ```
     func detectStickyHeaderViaJS() async -> StickyHeaderDetectionResult {
         do {
-            let resultJSON = try await evaluateJavaScript(JavaScriptSnippets.detectStickyHeader) as? String
+            let resultJSON = try await evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.detectStickyHeader) as? String
             guard let resultJSON, let data = resultJSON.data(using: .utf8) else {
                 return StickyHeaderDetectionResult(hasStickyHeader: false, headerColor: nil, headerHeight: nil)
             }
@@ -531,7 +531,7 @@ final class WebPage: Identifiable {
     /// More efficient than `detectStickyHeaderViaJS()` when you only need a boolean.
     func hasStickyHeaderViaJS() async -> Bool {
         do {
-            let result = try await evaluateJavaScript(JavaScriptSnippets.hasStickyHeader)
+            let result = try await evaluateJavaScriptWithoutUserGesture(JavaScriptSnippets.hasStickyHeader)
             return result as? Bool ?? false
         } catch {
             return false

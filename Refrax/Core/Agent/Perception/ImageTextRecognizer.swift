@@ -104,7 +104,7 @@ nonisolated enum ImageTextRecognizer {
         })()
         """
 
-        guard let json = try? await webView.evaluateJavaScript(js) as? String,
+        guard let json = try? await webView.evaluateJavaScriptWithoutUserGesture(js) as? String,
               let data = json.data(using: .utf8),
               let images = try? JSONDecoder().decode([DiscoveredImage].self, from: data)
         else {
