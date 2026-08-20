@@ -20,6 +20,8 @@ final class VideoWindowController: NSObject, NSWindowDelegate {
     private weak var webView: WebPageWebView?
     private weak var webPage: WebPage?
     private weak var tabAdapter: CocoaWebViewAdapter?
+    private weak var dragStrip: DragStripView?
+    private var chromeFadeTask: Task<Void, Never>?
 
     /// Whether the video window is currently presenting the web view.
     private(set) var isPresented = false
@@ -28,6 +30,8 @@ final class VideoWindowController: NSObject, NSWindowDelegate {
         static let minimumSize = NSSize(width: 640, height: 360)
         static let defaultSize = NSSize(width: 1024, height: 576)
         static let frameAutosaveName = "RefraxVideoWindow"
+        static let dragStripHeight: CGFloat = 30
+        static let chromeFadeDuration: TimeInterval = 0.2
     }
 
     // MARK: - Presentation
@@ -65,9 +69,60 @@ final class VideoWindowController: NSObject, NSWindowDelegate {
                 webView.frame = contentView.bounds
                 webView.isHidden = false
                 contentView.addSubview(webView)
+                self.installDragStrip(in: contentView)
                 window.makeKeyAndOrderFront(nil)
+                self.revealChromeThenFade()
             }
         }
+    }
+
+    // MARK: - Window Chrome
+
+    /// Sets the traffic-light reveal (0 hidden … 1 visible), animated.
+    ///
+    /// Skipped in native macOS fullscreen, where the system manages the
+    /// titlebar reveal itself.
+    private func setChromeRevealed(_ revealed: Bool) {
+        guard let window, !window.styleMask.contains(.fullScreen),
+              let themeFrame = window.contentView?.superview as? NSThemeFrame
+        else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Layout.chromeFadeDuration
+            themeFrame.animator().buttonRevealAmount = revealed ? 1.0 : 0.0
+        }
+    }
+
+    /// Shows the traffic lights briefly on presentation so the close button
+    /// is discoverable, then fades them out.
+    private func revealChromeThenFade() {
+        setChromeRevealed(true)
+        chromeFadeTask?.cancel()
+        chromeFadeTask = Task(name: "Video window chrome fade") { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self, self.dragStrip?.isMouseInside != true else { return }
+            self.setChromeRevealed(false)
+        }
+    }
+
+    /// Adds the transparent top strip that makes the window draggable and
+    /// reveals the traffic lights on hover. Sits above the web view (which
+    /// swallows every mouse event) but below the titlebar buttons, which live
+    /// in the theme frame's titlebar container.
+    private func installDragStrip(in contentView: NSView) {
+        let strip = DragStripView(frame: NSRect(
+            x: 0,
+            y: contentView.bounds.height - Layout.dragStripHeight,
+            width: contentView.bounds.width,
+            height: Layout.dragStripHeight,
+        ))
+        strip.autoresizingMask = [.width, .minYMargin]
+        strip.onHoverChanged = { [weak self] inside in
+            guard let self else { return }
+            self.chromeFadeTask?.cancel()
+            self.setChromeRevealed(inside)
+        }
+        contentView.addSubview(strip)
+        dragStrip = strip
     }
 
     /// Returns the web view to its tab and closes the video window.
@@ -79,6 +134,10 @@ final class VideoWindowController: NSObject, NSWindowDelegate {
     func dismiss() {
         guard isPresented else { return }
         isPresented = false
+
+        chromeFadeTask?.cancel()
+        chromeFadeTask = nil
+        dragStrip?.removeFromSuperview()
 
         if let window {
             window.delegate = nil
@@ -129,6 +188,42 @@ final class VideoWindowController: NSObject, NSWindowDelegate {
         }
         window.setFrameAutosaveName(Layout.frameAutosaveName)
         return window
+    }
+
+    // MARK: - Drag Strip
+
+    /// Transparent strip along the window's top edge: dragging it moves the
+    /// window (the web view underneath consumes every mouse event, so
+    /// `isMovableByWindowBackground` alone gives nothing to grab), and
+    /// hovering it reveals the traffic lights. Clicks in the strip go to the
+    /// drag, not the page — the tradeoff that makes the window movable.
+    private final class DragStripView: NSView {
+        var onHoverChanged: ((Bool) -> Void)?
+        private(set) var isMouseInside = false
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self,
+            ))
+        }
+
+        override func mouseEntered(with _: NSEvent) {
+            isMouseInside = true
+            onHoverChanged?(true)
+        }
+
+        override func mouseExited(with _: NSEvent) {
+            isMouseInside = false
+            onHoverChanged?(false)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
     }
 
     // MARK: - Window Subclass
