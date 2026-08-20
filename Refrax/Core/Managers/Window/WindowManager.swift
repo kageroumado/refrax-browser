@@ -101,9 +101,14 @@ final class WindowManager {
     ///
     /// Use this for operations that should target the user's current focus.
     /// Falls back to the last active browser window when non-browser windows
-    /// (like Bookmarks, History, or Settings) are frontmost.
+    /// (like Bookmarks, History, or Settings) are frontmost. The final fallback
+    /// to the first window covers sessions where no window has ever become key —
+    /// on a locked screen no window can become key or main, and without this
+    /// fallback every window-targeting control command fails while an agent
+    /// drives the browser behind the lock.
     var activeWindowController: RefraxWindowController? {
         frontmostWindowController ?? mainWindowController ?? lastActiveBrowserWindowController
+            ?? windowControllers.first
     }
 
     /// Whether any windows are open.
