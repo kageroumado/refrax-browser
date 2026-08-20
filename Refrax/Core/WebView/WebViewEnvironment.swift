@@ -35,7 +35,6 @@ extension EnvironmentValues {
     @Entry var webViewTextSelection: Bool = true
 
     /// Controls element fullscreen behavior.
-    @Entry var webViewElementFullscreenBehavior: WebView.ElementFullscreenBehavior = .enabled
 
     /// Find navigator context for find-in-page.
     @Entry var webViewFindContext: FindContext? = nil
@@ -187,18 +186,6 @@ extension WebView {
         case enabled
 
         /// Magnification gestures are disabled.
-        case disabled
-    }
-
-    /// Behavior for element fullscreen (videos, etc.).
-    enum ElementFullscreenBehavior: Sendable {
-        /// Automatic behavior - system chooses based on context (defaults to disabled).
-        case automatic
-
-        /// Element fullscreen is enabled.
-        case enabled
-
-        /// Element fullscreen is disabled.
         case disabled
     }
 

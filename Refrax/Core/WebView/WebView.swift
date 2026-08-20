@@ -300,13 +300,6 @@ struct WebViewRepresentable: NSViewRepresentable {
         }
         coordinator.cachedTextSelection = textSelection
 
-        // Element fullscreen
-        let fullscreenEnabled = environment.webViewElementFullscreenBehavior == .enabled
-        if webView.configuration.preferences.isElementFullscreenEnabled != fullscreenEnabled {
-            webView.configuration.preferences.isElementFullscreenEnabled = fullscreenEnabled
-        }
-        coordinator.cachedElementFullscreen = fullscreenEnabled
-
         // Scroll bounce behavior (apply once)
         applyScrollBounceBehavior(webView, environment: environment, coordinator: coordinator)
     }
@@ -354,12 +347,6 @@ struct WebViewRepresentable: NSViewRepresentable {
             coordinator.cachedTextSelection = textSelection
         }
 
-        // Element fullscreen
-        let fullscreenEnabled = environment.webViewElementFullscreenBehavior == .enabled
-        if coordinator.cachedElementFullscreen != fullscreenEnabled {
-            webView.configuration.preferences.isElementFullscreenEnabled = fullscreenEnabled
-            coordinator.cachedElementFullscreen = fullscreenEnabled
-        }
     }
 
     /// Applies interaction blocking state.
@@ -519,9 +506,6 @@ extension WebViewRepresentable {
         /// Cached value for text selection.
         var cachedTextSelection: Bool?
 
-        /// Cached value for element fullscreen.
-        var cachedElementFullscreen: Bool?
-
         /// Cached value for vertical bounce behavior.
         var cachedVerticalBounce: EquatableScrollBounceBehavior?
 
@@ -548,7 +532,6 @@ extension WebViewRepresentable {
             cachedAllowsMagnification = nil
             cachedDrawsBackground = nil
             cachedTextSelection = nil
-            cachedElementFullscreen = nil
             cachedVerticalBounce = nil
             cachedHorizontalBounce = nil
         }

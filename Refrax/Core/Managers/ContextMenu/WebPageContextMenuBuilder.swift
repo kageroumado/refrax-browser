@@ -84,6 +84,17 @@ final class WebPageContextMenuBuilder: NSObject {
     ///   - elementInfo: Information about the clicked element.
     /// - Returns: The customized context menu with custom items prepended.
     func buildMenu(proposedMenu: NSMenu, elementInfo: WKContextMenuElementInfoAdapter) -> NSMenu {
+        // Drop WebKit's raw-element "Enter Full Screen" video item when the
+        // page routes fullscreen through the replacement client — it
+        // fullscreens the bare <video> with a broken aspect ratio there.
+        // Identified by WebKit's stable menu item identifier, not the
+        // localized title. ("Enter Viewer" and PiP stay: both work.)
+        if elementInfo.hidesRawVideoFullscreenItem {
+            for item in proposedMenu.items where item.identifier?.rawValue == "WKMenuItemIdentifierToggleFullScreen" {
+                proposedMenu.removeItem(item)
+            }
+        }
+
         // Collect custom item groups, each group separated from others
         var itemGroups: [[NSMenuItem]] = []
 

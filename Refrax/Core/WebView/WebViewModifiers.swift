@@ -121,25 +121,6 @@ extension View {
         environment(\.webViewTextSelection, S.allowsSelection)
     }
 
-    /// Determines whether a web view can display content full screen.
-    ///
-    /// When enabled, elements like videos can enter fullscreen mode.
-    ///
-    /// - Parameter value: The fullscreen behavior to apply.
-    /// - Returns: A view with the modified behavior.
-    ///
-    /// ## Example
-    ///
-    /// ```swift
-    /// WebView(page)
-    ///     .webViewElementFullscreenBehavior(.enabled)
-    /// ```
-    func webViewElementFullscreenBehavior(
-        _ value: WebView.ElementFullscreenBehavior,
-    ) -> some View {
-        environment(\.webViewElementFullscreenBehavior, value)
-    }
-
     /// Controls the find navigator presentation for web views.
     ///
     /// - Parameter isPresented: Binding controlling visibility.

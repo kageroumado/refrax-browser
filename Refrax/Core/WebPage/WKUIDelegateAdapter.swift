@@ -445,6 +445,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             videoContextURL: videoContextURL,
             selectedText: selectedText,
             isContentEditable: hitTestResult?.isContentEditable ?? false,
+            hidesRawVideoFullscreenItem: owner?.inWindowFullscreenController != nil,
         )
         return contextMenuBuilder.buildMenu(proposedMenu: menu, elementInfo: info)
     }
@@ -640,6 +641,14 @@ struct WKContextMenuElementInfoAdapter: Sendable {
     /// or documents with `designMode="on"`.
     let isContentEditable: Bool
 
+    /// Whether the page routes element fullscreen through the replacement
+    /// fullscreen client (in-tab/windowed modes). When true, WebKit's
+    /// "Enter Full Screen" video item is hidden: it fullscreens the bare
+    /// `<video>` element, which fills the viewport with a broken aspect
+    /// ratio in the contained modes — the site's own fullscreen button is
+    /// the correct entry point.
+    let hidesRawVideoFullscreenItem: Bool
+
     init(
         pageURL: URL? = nil,
         linkURL: URL? = nil,
@@ -648,6 +657,7 @@ struct WKContextMenuElementInfoAdapter: Sendable {
         videoContextURL: URL? = nil,
         selectedText: String? = nil,
         isContentEditable: Bool = false,
+        hidesRawVideoFullscreenItem: Bool = false,
     ) {
         self.pageURL = pageURL
         self.linkURL = linkURL
@@ -656,5 +666,6 @@ struct WKContextMenuElementInfoAdapter: Sendable {
         self.videoContextURL = videoContextURL
         self.selectedText = selectedText
         self.isContentEditable = isContentEditable
+        self.hidesRawVideoFullscreenItem = hidesRawVideoFullscreenItem
     }
 }

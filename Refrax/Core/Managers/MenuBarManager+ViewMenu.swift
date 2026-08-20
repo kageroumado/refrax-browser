@@ -193,6 +193,17 @@ extension MenuBarManager {
 
         viewMenu.addItem(.separator())
 
+        // Video Viewer (WebKit's in-window viewer for the current video)
+        let videoViewerItem = NSMenuItem(
+            title: "Toggle Video Viewer",
+            action: #selector(toggleVideoViewer(_:)),
+            keyEquivalent: "f",
+        )
+        videoViewerItem.keyEquivalentModifierMask = [.command, .shift]
+        videoViewerItem.image = NSImage(systemSymbolName: "play.rectangle", accessibilityDescription: nil)
+        videoViewerItem.target = self
+        viewMenu.addItem(videoViewerItem)
+
         // Full Screen
         let fullScreenItem = NSMenuItem(
             title: "Enter Full Screen",
@@ -260,6 +271,15 @@ extension MenuBarManager {
         guard let controller = activeWindowController,
               let webPage = controller.windowState.activeWebPage else { return }
         webPage.zoomOut()
+    }
+
+    @objc
+    func toggleVideoViewer(_: Any?) {
+        guard let controller = activeWindowController,
+              let webPage = controller.windowState.activeWebPage else { return }
+        // Needs an active playback session (a video that has started playing);
+        // without one the SPI is a silent no-op.
+        webPage.toggleInWindowVideo()
     }
 
     // MARK: - Detail Tray Actions
