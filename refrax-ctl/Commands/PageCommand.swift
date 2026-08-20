@@ -16,6 +16,7 @@ struct PageCommand: AsyncParsableCommand {
             FindNext.self,
             FindPrevious.self,
             FindDismiss.self,
+            VideoViewer.self,
         ],
     )
 
@@ -151,9 +152,12 @@ struct PageCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Page ID (for multi-page tabs)")
         var page: String?
 
+        @Flag(name: .long, help: "Evaluate without a synthesized user gesture (preserves the page's transient user activation; gesture-forced evaluation strips it)")
+        var noGesture = false
+
         func run() async throws {
             let response = try ControlClient.send(
-                .pageExecJS(.init(script: script, tabID: tab, pageID: page)),
+                .pageExecJS(.init(script: script, tabID: tab, pageID: page, noGesture: noGesture ? true : nil)),
             )
             switch response {
             case let .javascript(result):
@@ -189,6 +193,49 @@ struct PageCommand: AsyncParsableCommand {
 
         func run() async throws {
             try sendAndHandle(.pageSource(.init(tabID: tab, pageID: page)))
+        }
+    }
+
+    struct VideoViewer: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "video-viewer",
+            abstract: "Control the in-window video viewer (fullscreen inside the tab)",
+            discussion: """
+            Drives WebKit's in-window video viewer: the current video expands to \
+            fill the web view while browser chrome stays visible, without creating \
+            a macOS fullscreen space.
+
+            Requires an active playback session — the video must have started \
+            playing so it is registered as the page's playback-controls element; \
+            without one, enter/exit/toggle are silent no-ops. The `canToggle` \
+            status field is advisory (it can read false while enter still works); \
+            `active` in the after-state is the authoritative signal.
+
+            Examples:
+              refrax-ctl page video-viewer status
+              refrax-ctl page video-viewer enter
+              refrax-ctl page video-viewer exit
+              refrax-ctl page video-viewer toggle --tab 3
+            """,
+        )
+
+        @Argument(help: "Action: enter, exit, toggle, or status")
+        var action: String = "status"
+
+        @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
+        var tab: String?
+
+        @Option(name: .long, help: "Page ID (for multi-page tabs)")
+        var page: String?
+
+        func run() async throws {
+            guard let viewerAction = ControlRequest.PageVideoViewerParams.Action(rawValue: action) else {
+                printError("Invalid action '\(action)'. Use: enter, exit, toggle, or status")
+                _Exit(1)
+            }
+            try sendAndHandle(
+                .pageVideoViewer(.init(action: viewerAction, tabID: tab, pageID: page)),
+            )
         }
     }
 

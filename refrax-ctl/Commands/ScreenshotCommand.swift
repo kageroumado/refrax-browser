@@ -26,6 +26,9 @@ struct ScreenshotCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Downscale to logical pixel dimensions")
     var logical = false
 
+    @Option(name: .long, help: "Capture a page region as X,Y,W,H in document coordinates (overrides mode; use page exec getBoundingClientRect + scroll offsets to compute). Note: video layers render black in page captures — use window mode to verify video.")
+    var rect: String?
+
     func run() async throws {
         guard let screenshotMode = ControlRequest.ScreenshotParams.ScreenshotMode(rawValue: mode) else {
             printError("Invalid mode '\(mode)'. Use: window, visible, full, or window-glass")
@@ -39,6 +42,7 @@ struct ScreenshotCommand: AsyncParsableCommand {
             outputPath: output,
             grid: grid ? true : nil,
             logical: logical ? true : nil,
+            rect: rect,
         ))
 
         let response = try ControlClient.send(request)

@@ -265,6 +265,8 @@ final class RefraxControlServer {
             try await handlePageExecJS(params)
         case let .pageSource(params):
             try await handlePageSource(params)
+        case let .pageVideoViewer(params):
+            try await handlePageVideoViewer(params)
         // Tier 1D: Reference Pane Extended
         case let .refPaneAddTab(params):
             handleRefPaneAddTab(params)
@@ -497,6 +499,20 @@ final class RefraxControlServer {
 
         case .visible, .full:
             let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+
+            if let rectString = params.rect {
+                let components = rectString.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+                guard components.count == 4, components[2] > 0, components[3] > 0 else {
+                    return .error(CTL.ErrorInfo(
+                        code: "invalid_rect",
+                        message: "Invalid rect '\(rectString)' — expected x,y,w,h in document coordinates with positive size",
+                    ))
+                }
+                let rect = CGRect(x: components[0], y: components[1], width: components[2], height: components[3])
+                let data = try await ScreenshotService.captureRegion(of: webPage, rect: rect)
+                return buildScreenshotResponse(data: data, logicalSize: rect.size, scaleFactor: scaleFactor, grid: grid, logical: logical)
+            }
+
             let mode: ScreenshotMode = params.mode == .full ? .fullPage : .visibleArea
             let data = try await ScreenshotService.takeScreenshot(of: webPage, mode: mode)
             let size = webPage.backingWebView.bounds.size
@@ -804,12 +820,36 @@ final class RefraxControlServer {
                 if (el) { el.click(); el.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, clientX: \(x), clientY: \(y)})); }
                 """)
             } else {
-                try await webPage.callJavaScript("document.elementFromPoint(\(x), \(y))?.click()")
+                // Native interaction: dispatches trusted events that grant real user
+                // activation. A JS `el.click()` inside a gesture-forced evaluation
+                // also works, but that evaluation strips the page's transient
+                // activation when it completes, so activation-gated responses to
+                // the click (fullscreen, popups, PiP) survive only if they run
+                // synchronously. Fall back to the JS path if the native
+                // interaction fails (e.g. point outside the visible bounds).
+                let interaction = _WKTextExtractionInteraction(action: .click)
+                interaction.location = CGPoint(x: x, y: y)
+                do {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                        webPage.backingWebView._performInteraction(interaction) { result in
+                            if let error = result.error {
+                                continuation.resume(throwing: error)
+                            } else {
+                                continuation.resume()
+                            }
+                        }
+                    }
+                } catch {
+                    try await webPage.callJavaScript("document.elementFromPoint(\(x), \(y))?.click()")
+                }
             }
 
-            // Identify the element at the click position for feedback
-            let hitInfo = try? await webPage.callJavaScript("""
-            return (function() {
+            // Identify the element at the click position for feedback.
+            // Without-gesture evaluation: a gesture-forced read here would strip
+            // the transient activation the click just granted, breaking
+            // activation-gated responses (fullscreen, popups, PiP).
+            let hitInfo = try? await webPage.evaluateJavaScriptWithoutUserGesture("""
+            (function() {
                 var el = document.elementFromPoint(\(x), \(y));
                 if (!el) return 'no element at position';
                 var tag = el.tagName.toLowerCase();
@@ -1957,6 +1997,22 @@ final class RefraxControlServer {
 
     private func handlePageExecJS(_ params: ControlRequest.PageExecJSParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+
+        if params.noGesture == true {
+            // Without-gesture evaluation takes a plain expression/program, not a
+            // function body — no return-wrapping. Preserves the page's transient
+            // user activation.
+            do {
+                let result = try await webPage.evaluateJavaScriptWithoutUserGesture(params.script)
+                let resultString = result.map { "\($0)" } ?? "undefined"
+                return .javascript(resultString)
+            } catch let error as NSError where error.domain == "WKErrorDomain" {
+                let jsMessage = error.userInfo["WKJavaScriptExceptionMessage"] as? String
+                    ?? error.localizedDescription
+                return .error(CTL.ErrorInfo(code: "javascript_error", message: jsMessage))
+            }
+        }
+
         // callAsyncJavaScript treats the string as a function body, so expressions
         // like "document.title" need an explicit `return` to produce a value.
         // Auto-wrap scripts that don't contain a return statement.
@@ -1982,6 +2038,39 @@ final class RefraxControlServer {
                 detail += ")"
             }
             return .error(CTL.ErrorInfo(code: "javascript_error", message: detail))
+        }
+    }
+
+    private func handlePageVideoViewer(_ params: ControlRequest.PageVideoViewerParams) async throws -> ControlResponse {
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+
+        func statusLine() async -> String {
+            await webPage.refreshPlaybackState()
+            return "active: \(webPage.isInWindowVideoActive), "
+                + "canToggle: \(webPage.canToggleInWindowVideo), "
+                + "fullscreenState: \(webPage.fullscreenState), "
+                + "mediaPlaying: \(webPage.isMediaPlaying), "
+                + "inWindowFullscreen: \(webPage.inWindowFullscreenController.map { "\($0.isActive)" } ?? "client-off")"
+        }
+
+        switch params.action {
+        case .status:
+            return await .ok(statusLine())
+        case .enter, .exit, .toggle:
+            let before = await statusLine()
+            switch params.action {
+            case .enter: webPage.enterInWindowVideo()
+            case .exit: webPage.exitInWindowVideo()
+            case .toggle: webPage.toggleInWindowVideo()
+            case .status: break
+            }
+            // The mode change round-trips through the web process; give it a moment
+            // so the after-state reflects the result. The viewer needs an active
+            // playback session (a video that has started playing) — without one the
+            // SPI is a silent no-op and the state will not change.
+            try? await Task.sleep(for: .milliseconds(400))
+            let after = await statusLine()
+            return .ok("Video viewer \(params.action.rawValue): before [\(before)] → after [\(after)]")
         }
     }
 

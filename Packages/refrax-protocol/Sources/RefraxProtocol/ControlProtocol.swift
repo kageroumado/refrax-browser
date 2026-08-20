@@ -98,6 +98,7 @@ public enum ControlRequest: Sendable {
     case pageFindDismiss(OptionalTabIDParams)
     case pageExecJS(PageExecJSParams)
     case pageSource(OptionalTabIDParams)
+    case pageVideoViewer(PageVideoViewerParams)
 
     // Tier 1D: Reference Pane Extended
     case refPaneAddTab(RefPaneAddTabParams)
@@ -224,6 +225,9 @@ public extension ControlRequest {
         public var outputPath: String?
         public var grid: Bool?
         public var logical: Bool?
+        /// Region to capture as "x,y,w,h" in document coordinates.
+        /// When set, overrides `mode` (except `window`/`window-glass`).
+        public var rect: String?
 
         public enum ScreenshotMode: String, Codable, Sendable {
             case window
@@ -239,6 +243,7 @@ public extension ControlRequest {
             outputPath: String? = nil,
             grid: Bool? = nil,
             logical: Bool? = nil,
+            rect: String? = nil,
         ) {
             self.mode = mode
             self.tabID = tabID
@@ -246,6 +251,7 @@ public extension ControlRequest {
             self.outputPath = outputPath
             self.grid = grid
             self.logical = logical
+            self.rect = rect
         }
     }
 
@@ -617,9 +623,32 @@ public extension ControlRequest {
         public var script: String
         public var tabID: String?
         public var pageID: String?
+        /// Evaluate without synthesizing a user gesture. Preserves the page's
+        /// transient user activation (gesture-forced evaluation strips it).
+        public var noGesture: Bool?
 
-        public init(script: String, tabID: String? = nil, pageID: String? = nil) {
+        public init(script: String, tabID: String? = nil, pageID: String? = nil, noGesture: Bool? = nil) {
             self.script = script
+            self.tabID = tabID
+            self.pageID = pageID
+            self.noGesture = noGesture
+        }
+    }
+
+    struct PageVideoViewerParams: Codable, Sendable {
+        public enum Action: String, Codable, Sendable {
+            case enter
+            case exit
+            case toggle
+            case status
+        }
+
+        public var action: Action
+        public var tabID: String?
+        public var pageID: String?
+
+        public init(action: Action, tabID: String? = nil, pageID: String? = nil) {
+            self.action = action
             self.tabID = tabID
             self.pageID = pageID
         }
@@ -1355,6 +1384,7 @@ extension ControlRequest: Codable {
         case pageFindDismiss
         case pageExecJS
         case pageSource
+        case pageVideoViewer
 
         // Tier 1D
         case refPaneAddTab
@@ -1543,6 +1573,7 @@ extension ControlRequest: Codable {
         case .pageFindDismiss: self = try .pageFindDismiss(OptionalTabIDParams(from: decoder))
         case .pageExecJS: self = try .pageExecJS(PageExecJSParams(from: decoder))
         case .pageSource: self = try .pageSource(OptionalTabIDParams(from: decoder))
+        case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
         // Tier 1D
         case .refPaneAddTab: self = try .refPaneAddTab(RefPaneAddTabParams(from: decoder))
         case .refPaneCloseTab: self = try .refPaneCloseTab(RefPaneCloseTabParams(from: decoder))
@@ -1821,6 +1852,9 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .pageSource(params):
             try container.encode("pageSource", forKey: .type)
+            try params.encode(to: encoder)
+        case let .pageVideoViewer(params):
+            try container.encode("pageVideoViewer", forKey: .type)
             try params.encode(to: encoder)
         // Tier 1D
         case let .refPaneAddTab(params):
