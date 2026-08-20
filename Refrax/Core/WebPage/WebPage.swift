@@ -793,6 +793,15 @@ final class WebPage: Identifiable {
     /// Observer for web process state with `@Observable` KVO integration.
     var processStateObserver: ProcessStateObserver?
 
+    // MARK: - In-Window Fullscreen
+
+    /// Routes element fullscreen into the tab instead of a macOS Space.
+    ///
+    /// Created at web view creation when the in-window fullscreen setting is
+    /// enabled; must live as long as the web view (its pointer is registered
+    /// as the page's fullscreen client info).
+    private(set) var inWindowFullscreenController: InWindowFullscreenController?
+
     /// The current state of the web process backing this session.
     var webProcessState: _WKWebProcessState {
         processStateObserver?.processState ?? backingWebView._webProcessState
@@ -1162,6 +1171,11 @@ final class WebPage: Identifiable {
         self.backingWebView = WebPageWebView(frame: expectedFrame, configuration: webViewConfig)
         backingWebView.navigationDelegate = backingNavigationDelegate
         backingWebView.uiDelegate = backingUIDelegate
+
+        // Contain element fullscreen inside the tab (no macOS fullscreen Space)
+        if config.inWindowFullscreenEnabled {
+            self.inWindowFullscreenController = InWindowFullscreenController(webView: backingWebView)
+        }
 
         // Set owner references (requires self to be fully initialized)
         backingNavigationDelegate.owner = self

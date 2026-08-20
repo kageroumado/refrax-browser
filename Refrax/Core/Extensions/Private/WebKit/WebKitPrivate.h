@@ -86,6 +86,9 @@
 // Media playback and capture control
 #import "WKWebViewPrivate+Media.h"
 
+// Fullscreen client replacement (in-window fullscreen)
+#import "WKFullScreenClientPrivate.h"
+
 // User interaction control
 #import "WKWebViewPrivate+Interaction.h"
 

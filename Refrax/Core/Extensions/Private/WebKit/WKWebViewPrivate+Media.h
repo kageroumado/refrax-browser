@@ -497,6 +497,16 @@ typedef NS_OPTIONS(NSUInteger, _WKAutoplayEventFlags) {
 #pragma mark - In-Window Video Viewer
 
 /**
+ * Whether the in-window video viewer can be toggled right now.
+ *
+ * WebKit implements this as the playback-controls manager's
+ * canTogglePictureInPicture, so it can report NO while -_enterInWindow
+ * still succeeds. Treat NO as advisory; _isInWindowActive after entering
+ * is the authoritative signal.
+ */
+@property (nonatomic, readonly) BOOL _canToggleInWindow;
+
+/**
  * Whether the in-window video viewer is currently active.
  *
  * The in-window viewer is Safari's alternative to true fullscreen,

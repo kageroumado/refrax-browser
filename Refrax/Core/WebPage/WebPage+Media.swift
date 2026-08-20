@@ -196,6 +196,15 @@ extension WebPage {
 // MARK: - In-Window Video Viewer
 
 extension WebPage {
+    /// Whether the in-window video viewer can be toggled right now.
+    ///
+    /// Advisory only: WebKit backs this with the playback-controls manager's
+    /// PiP capability, so it can be `false` while `enterInWindowVideo()` still
+    /// succeeds. Check `isInWindowVideoActive` after entering instead.
+    var canToggleInWindowVideo: Bool {
+        backingWebView._canToggleInWindow
+    }
+
     /// Whether the in-window video viewer is currently active.
     var isInWindowVideoActive: Bool {
         backingWebView._isInWindowActive
