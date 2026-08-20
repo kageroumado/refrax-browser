@@ -60,6 +60,7 @@ extension BrowserSettings: Syncable {
         // MARK: - Tabs: Video
 
         record["inWindowFullscreenEnabled"] = inWindowFullscreenEnabled as NSNumber?
+        record["elementFullscreenMode"] = elementFullscreenModeRaw as NSString?
 
         // MARK: - Tabs: Notifications
 
@@ -297,6 +298,7 @@ extension BrowserSettings: Syncable {
         // MARK: - Tabs: Video
 
         settings.inWindowFullscreenEnabled = record["inWindowFullscreenEnabled"] as? Bool
+        settings.elementFullscreenModeRaw = record["elementFullscreenMode"] as? String
 
         // MARK: - Tabs: Notifications
 

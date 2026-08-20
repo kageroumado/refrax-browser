@@ -41,7 +41,7 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     case badgeDetectionEnabled
     case showTimeSpentInTooltips
     case showUnsavedFormIndicator
-    case inWindowFullscreenEnabled
+    case elementFullscreenMode
 
     // MARK: - Privacy
 
@@ -346,15 +346,15 @@ extension BrowserSettingKey {
                 highlightID: "tabs.unsavedFormIndicator",
                 valueKind: .toggle,
             )
-        case .inWindowFullscreenEnabled:
+        case .elementFullscreenMode:
             SettingMetadata(
-                displayName: "In-Window Video Fullscreen",
-                description: "Fullscreen videos inside the browser window",
-                keywords: ["fullscreen", "video", "in-window", "inline", "pip"],
+                displayName: "Video Fullscreen Mode",
+                description: "Where videos go when they enter fullscreen",
+                keywords: ["fullscreen", "video", "in-window", "in-tab", "windowed", "floating", "pip"],
                 icon: "rectangle.inset.filled",
                 category: .tabs,
                 highlightID: "tabs.inWindowFullscreen",
-                valueKind: .toggle,
+                valueKind: .picker(FullscreenPresentationMode.allCases.map(\.rawValue)),
             )
         // Privacy
         case .blockThirdPartyCookies:
@@ -578,7 +578,7 @@ extension BrowserSettingKey {
         case .badgeDetectionEnabled: .bool(settings.badgeDetectionEnabled)
         case .showTimeSpentInTooltips: .bool(settings.showTimeSpentInTooltips)
         case .showUnsavedFormIndicator: .bool(settings.showUnsavedFormIndicator)
-        case .inWindowFullscreenEnabled: .bool(settings.inWindowFullscreenEnabled ?? false)
+        case .elementFullscreenMode: .string(settings.elementFullscreenMode.rawValue)
         // Privacy
         case .blockThirdPartyCookies: .bool(settings.blockThirdPartyCookies)
         case .doNotTrack: .bool(settings.doNotTrack)
@@ -674,8 +674,10 @@ extension BrowserSettingKey {
             if case let .bool(v) = value { settings.showTimeSpentInTooltips = v }
         case .showUnsavedFormIndicator:
             if case let .bool(v) = value { settings.showUnsavedFormIndicator = v }
-        case .inWindowFullscreenEnabled:
-            if case let .bool(v) = value { settings.inWindowFullscreenEnabled = v }
+        case .elementFullscreenMode:
+            if case let .string(v) = value, let mode = FullscreenPresentationMode(rawValue: v) {
+                settings.elementFullscreenMode = mode
+            }
         // Privacy
         case .blockThirdPartyCookies:
             if case let .bool(v) = value { settings.blockThirdPartyCookies = v }

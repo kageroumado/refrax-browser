@@ -119,15 +119,19 @@ struct TabsSettingsView: View {
             // MARK: - Video Fullscreen
 
             Section {
-                Toggle("In-window video fullscreen", isOn: Binding(
-                    get: { settings.inWindowFullscreenEnabled ?? false },
-                    set: { settings.inWindowFullscreenEnabled = $0 }
-                ))
+                Picker("Video fullscreen", selection: Binding(
+                    get: { settings.elementFullscreenMode },
+                    set: { settings.elementFullscreenMode = $0 }
+                )) {
+                    ForEach(FullscreenPresentationMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
                 .highlightable(id: "tabs.inWindowFullscreen", highlightedItemId: highlightedItemId)
             } header: {
                 Text("Video")
             } footer: {
-                Text("Videos enter fullscreen within the browser window instead of taking over the entire screen. Requires creating a new tab to take effect.")
+                Text("Where videos go when they enter fullscreen: a macOS fullscreen Space, contained inside the tab with browser chrome visible, or a floating window you can move and resize (its green button expands to macOS fullscreen). Switching from or to macOS Fullscreen takes effect in new tabs.")
             }
 
             // MARK: - Notifications

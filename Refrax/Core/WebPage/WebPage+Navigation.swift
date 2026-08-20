@@ -113,6 +113,11 @@ extension WebPage {
         // End domain time tracking session
         domainTimeTracker.endCurrentSession()
 
+        // Tear down any in-window/windowed fullscreen presentation. Without
+        // this, closing a tab whose web view lives in the floating video
+        // window leaves that window orphaned on screen.
+        inWindowFullscreenController?.pageIsTerminating()
+
         // Stop all media playback to prevent orphaned audio after tab close.
         // This is a hard stop - the page is being terminated.
         backingWebView._stopAllMediaPlayback()

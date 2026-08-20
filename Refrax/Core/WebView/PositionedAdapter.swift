@@ -84,7 +84,13 @@ struct PositionedAdapter: NSViewRepresentable {
         // 3. If we're not in active mode yet, the inset application is skipped!
         //
         // This matches WebView.updateNSView which also calls updateDisplayMode() before applyDynamicSettings().
-        if isSnapshotMode {
+        if page.isWebViewInVideoWindow {
+            // The windowed-fullscreen video window hosts the web view; keep
+            // the frozen snapshot rather than reclaiming it.
+            if case .active = adapter.displayMode {
+                adapter.setSnapshotMode(for: page)
+            }
+        } else if isSnapshotMode {
             // Snapshot mode: freeze current content as GPU snapshot for layout mode.
             // This prevents WebKit from re-laying out content at the tile size.
             if case .snapshot = adapter.displayMode {

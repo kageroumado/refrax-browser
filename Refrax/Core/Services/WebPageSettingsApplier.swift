@@ -22,7 +22,7 @@ struct WebPageSettingsApplier {
         configuration.suppressesIncrementalRendering = false
         configuration.allowsInlinePredictions = true
         configuration.upgradeKnownHostsToHTTPS = true
-        configuration.inWindowFullscreenEnabled = settings.inWindowFullscreenEnabled ?? false
+        configuration.elementFullscreenMode = settings.elementFullscreenMode
 
         // Feature flag overrides
         let overrides = settings.featureFlagOverrides

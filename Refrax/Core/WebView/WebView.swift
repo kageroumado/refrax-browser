@@ -207,6 +207,16 @@ struct WebViewRepresentable: NSViewRepresentable {
     /// This is always called regardless of configuration lock since tab switching
     /// and multi-window scenarios require mode updates.
     private func updateDisplayMode(_ adapter: CocoaWebViewAdapter, webView: WebPageWebView) {
+        // While the windowed-fullscreen video window hosts the web view, the
+        // tab keeps its frozen snapshot — reclaiming the web view here would
+        // yank it out of the video window on the next SwiftUI pass.
+        if page.isWebViewInVideoWindow {
+            if case .active = adapter.displayMode {
+                adapter.setSnapshotMode(for: page)
+            }
+            return
+        }
+
         if isActive {
             if adapter.bounds.size == .zero {
                 // Adapter hasn't been laid out yet. Defer activation until after layout.

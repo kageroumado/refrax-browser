@@ -26,6 +26,18 @@ final class InWindowFullscreenController {
     private weak var webView: WKWebView?
     private var escapeMonitor: Any?
 
+    /// The page owning the web view; used for the windowed presentation's
+    /// snapshot handoff. Assigned by `WebPage` right after construction.
+    weak var webPage: WebPage?
+
+    /// Supplies the presentation mode at fullscreen time, so switching
+    /// between in-tab and windowed applies without recreating the tab.
+    /// Assigned by `WebPage` right after construction; `.inTab` when absent.
+    var modeProvider: (() -> FullscreenPresentationMode)?
+
+    /// Hosts the windowed presentation; created on first use.
+    private var videoWindowController: VideoWindowController?
+
     /// Whether the page is currently in in-window fullscreen.
     private(set) var isActive = false
 
@@ -64,6 +76,7 @@ final class InWindowFullscreenController {
 
     isolated deinit {
         removeEscapeMonitor()
+        videoWindowController?.dismiss()
     }
 
     // MARK: - State Transitions
@@ -71,14 +84,30 @@ final class InWindowFullscreenController {
     private func fullscreenDidBegin() {
         isActive = true
         installEscapeMonitor()
-        Logger.info("In-window fullscreen entered", category: Logger.webview)
+
+        let mode = modeProvider?() ?? .inTab
+        if mode == .windowed,
+           let webView = webView as? WebPageWebView,
+           let webPage {
+            let controller = videoWindowController ?? VideoWindowController()
+            videoWindowController = controller
+            controller.present(webView: webView, webPage: webPage)
+        }
+        Logger.info("In-window fullscreen entered (\(mode.rawValue))", category: Logger.webview)
     }
 
     private func fullscreenDidEnd() {
         guard isActive else { return }
         isActive = false
         removeEscapeMonitor()
+        videoWindowController?.dismiss()
         Logger.info("In-window fullscreen exited", category: Logger.webview)
+    }
+
+    /// Tears down any active fullscreen presentation because the page is
+    /// being terminated (tab close, pool eviction).
+    func pageIsTerminating() {
+        fullscreenDidEnd()
     }
 
     // MARK: - Escape Handling

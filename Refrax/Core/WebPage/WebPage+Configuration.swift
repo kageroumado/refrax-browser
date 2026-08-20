@@ -86,8 +86,11 @@ extension WebPage {
 
         // MARK: - WebKit Feature Flags
 
-        /// Whether to enable in-window fullscreen for videos.
-        var inWindowFullscreenEnabled: Bool = false
+        /// How element (video) fullscreen is presented for pages created with
+        /// this configuration. Anything other than `.system` installs the
+        /// replacement fullscreen client at web view creation; the specific
+        /// mode is re-read from live settings at fullscreen time.
+        var elementFullscreenMode: FullscreenPresentationMode = .system
 
         /// Whether to disable cross-origin resource sharing checks.
         var disableCORS: Bool = false
@@ -260,7 +263,7 @@ extension WebPage {
             // IPC messages. The network process rejects these as invalid IPC, terminating the
             // web process with reason=8 (RequestedByNetworkProcess). WebKit bug, not ours.
 
-            if inWindowFullscreenEnabled {
+            if elementFullscreenMode != .system {
                 featureStates["InWindowFullscreenEnabled"] = true
             }
 

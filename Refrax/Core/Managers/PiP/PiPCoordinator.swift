@@ -111,6 +111,10 @@ final class PiPCoordinator {
         // The native canTogglePiP is advisory only (false-negatives whenever
         // the playback-controls session is absent). We don't check
         // isPlayingAudio because videos may be muted or have no audio track.
+        // The floating video window keeps its video visible across tab
+        // switches — auto-PiP would fight it.
+        guard !webPage.isWebViewInVideoWindow else { return }
+
         Task(name: "Auto-PiP enter") { [weak self] in
             let state = await webPage.pipState()
             guard state.playing, state.eligible, !state.active else { return }

@@ -190,12 +190,27 @@ final class BrowserSettings {
 
     // MARK: - Tabs: Video
 
-    /// Whether to enable in-window fullscreen for videos.
-    ///
-    /// When enabled, videos can enter fullscreen within the browser window
-    /// rather than taking over the entire screen. This is a WebKit internal
-    /// feature that changes the default fullscreen behavior.
+    /// Legacy toggle superseded by ``elementFullscreenMode``; kept as the
+    /// migration source for databases written before the mode picker existed.
     var inWindowFullscreenEnabled: Bool?
+
+    /// Raw storage for ``elementFullscreenMode``.
+    var elementFullscreenModeRaw: String?
+
+    /// How element (video) fullscreen is presented.
+    ///
+    /// Falls back to the legacy ``inWindowFullscreenEnabled`` toggle when the
+    /// mode has never been set on this database.
+    var elementFullscreenMode: FullscreenPresentationMode {
+        get {
+            if let raw = elementFullscreenModeRaw,
+               let mode = FullscreenPresentationMode(rawValue: raw) {
+                return mode
+            }
+            return (inWindowFullscreenEnabled ?? false) ? .inTab : .system
+        }
+        set { elementFullscreenModeRaw = newValue.rawValue }
+    }
 
     // MARK: - Tabs: Notifications
 
@@ -1173,6 +1188,7 @@ final class BrowserSettings {
         shiftClickLinkPreviewEnabled = true
         showModifierKeyHints = true
         inWindowFullscreenEnabled = false
+        elementFullscreenModeRaw = nil
         badgeDetectionEnabled = true
         showTimeSpentInTooltips = true
         showUnsavedFormIndicator = false

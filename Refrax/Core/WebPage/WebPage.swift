@@ -797,10 +797,17 @@ final class WebPage: Identifiable {
 
     /// Routes element fullscreen into the tab instead of a macOS Space.
     ///
-    /// Created at web view creation when the in-window fullscreen setting is
-    /// enabled; must live as long as the web view (its pointer is registered
-    /// as the page's fullscreen client info).
+    /// Created at web view creation when the fullscreen mode is not `.system`;
+    /// must live as long as the web view (its pointer is registered as the
+    /// page's fullscreen client info).
     private(set) var inWindowFullscreenController: InWindowFullscreenController?
+
+    /// Whether the web view is currently hosted by the windowed-fullscreen
+    /// video window instead of its tab.
+    ///
+    /// While true, display-mode updates must not reclaim the web view — the
+    /// tab shows a frozen snapshot until the video window returns it.
+    var isWebViewInVideoWindow = false
 
     /// The current state of the web process backing this session.
     var webProcessState: _WKWebProcessState {
@@ -1172,8 +1179,9 @@ final class WebPage: Identifiable {
         backingWebView.navigationDelegate = backingNavigationDelegate
         backingWebView.uiDelegate = backingUIDelegate
 
-        // Contain element fullscreen inside the tab (no macOS fullscreen Space)
-        if config.inWindowFullscreenEnabled {
+        // Contain element fullscreen inside the tab or a floating window
+        // (no macOS fullscreen Space)
+        if config.elementFullscreenMode != .system {
             self.inWindowFullscreenController = InWindowFullscreenController(webView: backingWebView)
         }
 
@@ -1181,6 +1189,10 @@ final class WebPage: Identifiable {
         backingNavigationDelegate.owner = self
         backingUIDelegate.owner = self
         iconLoadingDelegateAdapter.owner = self
+        inWindowFullscreenController?.webPage = self
+        inWindowFullscreenController?.modeProvider = { [settingsApplier] in
+            settingsApplier.settings.elementFullscreenMode
+        }
 
         // Wire up remaining dependencies (weak/delegate references)
         self.siteSettingsCoordinator = dependencies.siteSettingsCoordinator
