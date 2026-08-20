@@ -872,6 +872,25 @@ API_AVAILABLE(macos(26.0))
  */
 - (void)_scrollTo:(_WKRectEdge)edge animated:(BOOL)animated;
 
+#pragma mark - JavaScript Evaluation
+
+/**
+ * Evaluates JavaScript without synthesizing a user gesture.
+ *
+ * The public `evaluateJavaScript`/`callAsyncJavaScript` APIs run scripts inside
+ * a forced user gesture and then STRIP the window's transient activation when
+ * the script finishes (WebCore ScriptController, RemoveTransientActivation).
+ * Background/read-only evaluation through those APIs therefore erases the
+ * activation a real user click just granted, breaking activation-gated APIs
+ * the page may call next (fullscreen, popups, PiP).
+ *
+ * Use this variant for any evaluation that merely observes the page.
+ * Main frame, page content world only.
+ */
+- (void)_evaluateJavaScriptWithoutUserGesture:(NSString *)javaScriptString
+                            completionHandler:(void (^_Nullable)(id _Nullable, NSError *_Nullable))completionHandler
+    API_AVAILABLE(macos(10.13));
+
 @end
 
 NS_ASSUME_NONNULL_END

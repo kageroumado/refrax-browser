@@ -208,7 +208,15 @@ private enum EditorStateSwizzle {
         })();
         """
 
-        webView.evaluateJavaScript(js) { result, error in
+        // Without-gesture evaluation: this fires on every editor-state change
+        // (every focus transition), and a gesture-forced evaluation strips the
+        // page's transient user activation when it completes — killing the very
+        // click being inspected before the page can spend it on fullscreen,
+        // popups, or PiP. The SPI's completion lacks the public API's @MainActor
+        // annotation; WebKit still calls it on the main thread.
+        nonisolated(unsafe) let completion = completion
+        webView._evaluateJavaScriptWithoutUserGesture(js) { result, error in
+            nonisolated(unsafe) let result = result
             MainActor.assumeIsolated {
                 guard error == nil,
                       let dict = result as? [String: Any],
