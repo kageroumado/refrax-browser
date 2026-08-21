@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import WebKit
 
@@ -1091,6 +1092,10 @@ extension WebPage {
 
         // Skip if dismissed this session
         if windowState.dismissedSearchEngineDomains.contains(detected.domain) { return }
+
+        // Skip if the user opted out for this domain
+        let searchEngineManager = NSApplication.shared.typedDelegate.customSearchEngineManager
+        if searchEngineManager.isDetectionIgnored(forDomain: detected.domain) { return }
 
         windowState.pendingSearchEngineDetection = detected
     }

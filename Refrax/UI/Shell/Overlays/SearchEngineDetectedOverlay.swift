@@ -53,6 +53,13 @@ private struct SearchEngineDetectedPill: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
 
+            Button("Never") {
+                neverAskAgain()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Stop asking for \(detection.domain)")
+
             Button {
                 dismiss()
             } label: {
@@ -106,6 +113,11 @@ private struct SearchEngineDetectedPill: View {
 
     private func dismiss() {
         windowState.dismissedSearchEngineDomains.insert(detection.domain)
+        windowState.pendingSearchEngineDetection = nil
+    }
+
+    private func neverAskAgain() {
+        customSearchEngineManager.ignoreDetection(forDomain: detection.domain)
         windowState.pendingSearchEngineDetection = nil
     }
 }

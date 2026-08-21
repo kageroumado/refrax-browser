@@ -152,6 +152,27 @@ final class CustomSearchEngineManager {
     }
 }
 
+// MARK: - Detection Opt-Out
+
+extension CustomSearchEngineManager {
+    /// UserDefaults key storing domains the user opted out of detection prompts for.
+    private static let ignoredDetectionDomainsKey = "searchEngineDetectionIgnoredDomains"
+
+    /// Whether the user opted out of search engine detection prompts for a domain.
+    func isDetectionIgnored(forDomain domain: String) -> Bool {
+        let domains = UserDefaults.standard.stringArray(forKey: Self.ignoredDetectionDomainsKey) ?? []
+        return domains.contains(domain)
+    }
+
+    /// Permanently suppresses search engine detection prompts for a domain.
+    func ignoreDetection(forDomain domain: String) {
+        var domains = UserDefaults.standard.stringArray(forKey: Self.ignoredDetectionDomainsKey) ?? []
+        guard !domains.contains(domain) else { return }
+        domains.append(domain)
+        UserDefaults.standard.set(domains, forKey: Self.ignoredDetectionDomainsKey)
+    }
+}
+
 // MARK: - Alias Generation
 
 extension CustomSearchEngineManager {
