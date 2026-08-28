@@ -440,8 +440,8 @@ final class BrowserState {
     private func startSettingsObservation() {
         let settings = settings
         let settingsChanges = Observations {
-            settings.enableJavaScript
-            settings.featureFlagOverridesJSON
+            (settings.enableJavaScript,
+            settings.featureFlagOverridesJSON)
         }
 
         settingsObservationTask = Task { [weak self] in
