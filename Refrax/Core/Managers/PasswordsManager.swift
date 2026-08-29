@@ -131,6 +131,145 @@ final class PasswordsManager {
     private let serviceName = "Refrax Browser"
     #endif
 
+    // MARK: - Shared Access Group
+
+    /// Suffix of the keychain access group shared with the credential provider
+    /// extension. Both targets list `$(AppIdentifierPrefix)website.refrax.browser.shared`
+    /// in their keychain-access-groups entitlement.
+    nonisolated static let sharedAccessGroupSuffix = "website.refrax.browser.shared"
+
+    /// The fully team-prefixed shared access group (e.g.
+    /// `52K336H235.website.refrax.browser.shared`), resolved once at runtime.
+    ///
+    /// The shared group is the only entry in the entitlement, so it is the default
+    /// group for a new item; reading a probe item's group back yields the team
+    /// prefix without hardcoding it. The credential provider extension keeps a
+    /// matching resolver in `CredentialProviderStore`.
+    nonisolated static let accessGroup: String = resolveAccessGroup()
+
+    private nonisolated static func resolveAccessGroup() -> String {
+        let probe = "website.refrax.browser.accessgroup.probe"
+        let readQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrService as String: probe,
+            kSecAttrAccount as String: probe,
+            kSecReturnAttributes as String: true,
+        ]
+
+        var result: CFTypeRef?
+        var status = SecItemCopyMatching(readQuery as CFDictionary, &result)
+
+        if status == errSecItemNotFound {
+            let addQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecUseDataProtectionKeychain as String: true,
+                kSecAttrService as String: probe,
+                kSecAttrAccount as String: probe,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus == errSecSuccess || addStatus == errSecDuplicateItem {
+                status = SecItemCopyMatching(readQuery as CFDictionary, &result)
+            } else {
+                status = addStatus
+            }
+        }
+
+        if status == errSecSuccess,
+           let attributes = result as? [String: Any],
+           let group = attributes[kSecAttrAccessGroup as String] as? String,
+           group.hasSuffix(sharedAccessGroupSuffix) {
+            return group
+        }
+
+        Logger.error(
+            "Could not resolve shared keychain access group (status \(status)); credential sharing will fail",
+            category: Logger.autoFill,
+        )
+        return sharedAccessGroupSuffix
+    }
+
+    // MARK: - Migration
+
+    /// Moves credentials created before the shared-group switch out of the legacy
+    /// file-based keychain into the data protection keychain's shared access
+    /// group, so the credential provider extension can read them. Runs once,
+    /// off the main actor.
+    nonisolated func migrateToSharedAccessGroupIfNeeded() {
+        let flagKey = "refrax.passwords.migratedToSharedGroup.v1"
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+        let moved = migrateLegacyCredentials()
+        UserDefaults.standard.set(true, forKey: flagKey)
+        if moved > 0 {
+            Logger.info("Migrated \(moved) credential(s) into the shared keychain group", category: Logger.autoFill)
+        }
+    }
+
+    /// Reads every Refrax credential from the legacy file-based keychain and
+    /// re-adds it to the shared data protection group. Read-add-delete: the legacy
+    /// copy is removed only after the shared copy is written, so a failure never
+    /// loses a password. Returns the number moved.
+    private nonisolated func migrateLegacyCredentials() -> Int {
+        let listQuery: [String: Any] = [
+            kSecClass as String: kSecClassInternetPassword,
+            kSecAttrLabel as String: serviceName,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        var listResult: CFTypeRef?
+        let listStatus = SecItemCopyMatching(listQuery as CFDictionary, &listResult)
+        guard listStatus == errSecSuccess, let items = listResult as? [[String: Any]] else {
+            return 0
+        }
+
+        var moved = 0
+        for item in items {
+            guard let server = item[kSecAttrServer as String] as? String,
+                  let account = item[kSecAttrAccount as String] as? String
+            else { continue }
+
+            let dataQuery: [String: Any] = [
+                kSecClass as String: kSecClassInternetPassword,
+                kSecAttrServer as String: server,
+                kSecAttrAccount as String: account,
+                kSecAttrLabel as String: serviceName,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecReturnData as String: true,
+            ]
+            var dataResult: CFTypeRef?
+            guard SecItemCopyMatching(dataQuery as CFDictionary, &dataResult) == errSecSuccess,
+                  let passwordData = dataResult as? Data
+            else { continue }
+
+            let addQuery: [String: Any] = [
+                kSecClass as String: kSecClassInternetPassword,
+                kSecUseDataProtectionKeychain as String: true,
+                kSecAttrAccessGroup as String: Self.accessGroup,
+                kSecAttrServer as String: server,
+                kSecAttrAccount as String: account,
+                kSecAttrLabel as String: serviceName,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                kSecValueData as String: passwordData,
+            ]
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            guard addStatus == errSecSuccess || addStatus == errSecDuplicateItem else {
+                Logger.error("Migration failed to add credential for \(server): \(addStatus)", category: Logger.autoFill)
+                continue
+            }
+
+            let deleteQuery: [String: Any] = [
+                kSecClass as String: kSecClassInternetPassword,
+                kSecAttrServer as String: server,
+                kSecAttrAccount as String: account,
+                kSecAttrLabel as String: serviceName,
+            ]
+            SecItemDelete(deleteQuery as CFDictionary)
+            moved += 1
+        }
+        return moved
+    }
+
     // MARK: - Credential Lookup
 
     /// Finds all credentials for a given URL with registrable domain matching.
@@ -203,10 +342,13 @@ final class PasswordsManager {
         // in SecItemAdd causes errSecParam (-50).
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrServer as String: credential.domain,
             kSecAttrAccount as String: credential.username,
             kSecValueData as String: passwordData,
             kSecAttrLabel as String: serviceName,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -234,6 +376,8 @@ final class PasswordsManager {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrServer as String: credential.domain,
             kSecAttrAccount as String: credential.username,
         ]
@@ -263,6 +407,8 @@ final class PasswordsManager {
     func deleteCredential(_ credential: StoredCredential) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrServer as String: credential.domain,
             kSecAttrAccount as String: credential.username,
         ]
@@ -373,6 +519,8 @@ final class PasswordsManager {
     nonisolated func allCredentialMetadata() throws -> [StoredCredential] {
         let refsQuery: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrLabel as String: serviceName,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecReturnPersistentRef as String: true,
@@ -424,6 +572,8 @@ final class PasswordsManager {
     nonisolated func fetchPassword(for credential: StoredCredential) throws -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrServer as String: credential.domain,
             kSecAttrAccount as String: credential.username,
             kSecAttrLabel as String: serviceName,
@@ -451,6 +601,8 @@ final class PasswordsManager {
     func deleteAllCredentials() throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrLabel as String: serviceName,
         ]
 
@@ -496,6 +648,8 @@ private extension PasswordsManager {
         // Step 1: Query for persistent references only (kSecReturnData + kSecMatchLimitAll is prohibited)
         let refsQuery: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessGroup as String: Self.accessGroup,
             kSecAttrServer as String: domain,
             kSecAttrLabel as String: serviceName,
             kSecMatchLimit as String: kSecMatchLimitAll,
@@ -532,6 +686,8 @@ private extension PasswordsManager {
             // Query for this specific item's data using the persistent reference
             let dataQuery: [String: Any] = [
                 kSecClass as String: kSecClassInternetPassword,
+                kSecUseDataProtectionKeychain as String: true,
+                kSecAttrAccessGroup as String: Self.accessGroup,
                 kSecMatchItemList as String: [persistentRef],
 
                 kSecMatchLimit as String: kSecMatchLimitOne,

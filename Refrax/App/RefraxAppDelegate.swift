@@ -1,4 +1,5 @@
 import AppKit
+import AuthenticationServices
 import CloudKit
 import CoreSpotlight
 import SwiftData
@@ -574,6 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyActivityManager.start()
         browserState.spaceLockManager.start()
         runLegacyAgentCredentialMigration()
+        migrateCredentialsToSharedGroup()
 
         // Clean up any stale aria2 daemon from a previous crash
         Task(priority: .utility) {
@@ -1127,6 +1129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Handoff & Spotlight Continuation
 
     func application(_: NSApplication, continue userActivity: NSUserActivity, restorationHandler _: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        // Handle a Credential Exchange import: another password manager chose
+        // Refrax as the destination for its exported passwords.
+        if userActivity.activityType == ASCredentialExchangeActivity {
+            handleCredentialExchangeImport(userActivity)
+            return true
+        }
+
         // Handle Spotlight search results
         if userActivity.activityType == CSSearchableItemActionType {
             return handleSpotlightContinuation(userActivity)
@@ -1176,6 +1185,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
     
+    // MARK: - Credential Exchange
+
+    /// Moves saved logins into the shared keychain group so the credential
+    /// provider extension can read them. Runs once, off the main actor.
+    private func migrateCredentialsToSharedGroup() {
+        let passwordsManager = passwordsManager
+        Task.detached(priority: .utility) {
+            passwordsManager.migrateToSharedAccessGroupIfNeeded()
+        }
+    }
+
+    /// Receives passwords that another manager exported into Refrax, maps them
+    /// into the store, and reports the result.
+    private func handleCredentialExchangeImport(_ userActivity: NSUserActivity) {
+        guard let token = userActivity.userInfo?[ASCredentialImportToken] as? UUID else {
+            Logger.error("Credential Exchange activity was missing its import token", category: Logger.autoFill)
+            return
+        }
+
+        let passwordsManager = passwordsManager
+        Task {
+            do {
+                let data = try await ASCredentialImportManager().importCredentials(token: token)
+                let imported = CredentialExchangeImporter.credentials(from: data)
+
+                var added = 0
+                for credential in imported {
+                    do {
+                        try passwordsManager.importCredential(credential, conflictResolution: .useImported)
+                        added += 1
+                    } catch {
+                        Logger.error("Failed to store imported credential for \(credential.domain): \(error)", category: Logger.autoFill)
+                    }
+                }
+
+                Logger.info("Credential Exchange: imported \(added)/\(imported.count) password login(s)", category: Logger.autoFill)
+                NSApp.activate(ignoringOtherApps: true)
+                presentCredentialImportSummary(added: added)
+            } catch {
+                Logger.error("Credential Exchange import failed: \(error)", category: Logger.autoFill)
+            }
+        }
+    }
+
+    private func presentCredentialImportSummary(added: Int) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        if added > 0 {
+            alert.messageText = "Imported \(added) password\(added == 1 ? "" : "s")"
+            alert.informativeText = "Your passwords are now available in Refrax."
+        } else {
+            alert.messageText = "No passwords imported"
+            alert.informativeText = "Refrax didn’t receive any password logins to import."
+        }
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     // MARK: - Memory Warning
 
     /// Responds to system memory pressure.

@@ -55,6 +55,7 @@
     <array>
         <string>NSUserActivityTypeBrowsingWeb</string>
         <string>com.refrax.browsing</string>
+        <string>ASCredentialExchangeActivityType</string>
     </array>
     
     <!-- Allows AppleScript control -->
