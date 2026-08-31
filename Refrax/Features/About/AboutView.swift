@@ -54,7 +54,7 @@ struct AboutView: View {
 
     private var contactLinks: some View {
         HStack(spacing: 4) {
-            Link("refrax.website", destination: URL.staticRequired("https://refrax.website"))
+            Link("kagerou.glass/refrax", destination: URL.staticRequired("https://kagerou.glass/refrax"))
             Text("·").foregroundStyle(.secondary)
             Link("kagerou.glass", destination: URL.staticRequired("https://kagerou.glass"))
             Text("·").foregroundStyle(.secondary)

@@ -54,7 +54,7 @@ nonisolated enum AgentClientFactory {
             baseURL: URL(string: "https://openrouter.ai/api/v1")!,
             apiKey: AgentCredentialStore.loadAPIKey(for: .openRouter),
             extraHeaders: [
-                "HTTP-Referer": "https://refrax.website",
+                "HTTP-Referer": "https://kagerou.glass/refrax",
                 "X-Title": "Refrax",
             ],
             providerName: "OpenRouter",
