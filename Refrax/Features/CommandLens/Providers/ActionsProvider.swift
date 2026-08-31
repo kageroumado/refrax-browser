@@ -1,6 +1,7 @@
 import Foundation
 
-/// Provides app-level action suggestions: Send Feedback and Check for Updates.
+/// Provides app-level action suggestions: Send Feedback, open Passwords,
+/// Import from Another Browser, and Check for Updates.
 ///
 /// These are global actions not tied to any tab or page context.
 /// Uses fuzzy matching against natural language terms so users can
@@ -9,7 +10,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
     let id = "actions"
     let priority = 45
     let groupHeader: String? = "Actions"
-    let maxSuggestions = 3
+    let maxSuggestions = 4
 
     func shouldProvide(for context: SuggestionContext) -> Bool {
         !context.isEmptyInput && !context.isDirectURL
@@ -30,6 +31,27 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             keywordAction: nil,
             url: nil,
         ))
+
+        // Open Passwords window
+        let passwordTerms = [
+            "passwords", "password", "saved passwords", "logins", "login",
+            "credentials", "keychain", "my passwords", "view passwords",
+            "manage passwords", "autofill passwords",
+        ]
+        let passwordScore = FuzzyMatcher.match(query: query, against: passwordTerms)
+
+        if passwordScore >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.openPasswords),
+                text: "Passwords",
+                description: "View and manage your saved passwords",
+                iconName: "key.fill",
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
 
         // Import from Another Browser
         let importTerms = [

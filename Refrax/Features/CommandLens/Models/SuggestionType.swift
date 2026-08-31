@@ -80,6 +80,9 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Open the browser data import wizard.
     case importBrowserData
+
+    /// Open the saved-passwords window.
+    case openPasswords
 }
 
 /// Scope of a setting (global or per-site).

@@ -1662,6 +1662,8 @@ final class CommandLensManager {
                 }
             case .importBrowserData:
                 windowState.showsBrowserImport = true
+            case .openPasswords:
+                NSApp.typedDelegate.passwordsWindowController.showWindow()
             }
             closeCurrentLens()
             reset()
