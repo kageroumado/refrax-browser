@@ -810,10 +810,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize iCloud sync if enabled and available
         if settings.iCloudSyncEnabled, let syncContainer {
             Task {
+                // CKContainer(identifier:) raises an NSException — uncatchable in
+                // Swift — when the container is missing from the app's entitlements
+                // (an unsigned or mis-provisioned build). Route it through the ObjC
+                // catcher so a signing regression degrades sync instead of aborting
+                // launch.
+                var container: CKContainer?
+                let exception = RefraxCatchingNSException {
+                    container = CKContainer(identifier: "iCloud.website.refrax.browser")
+                }
+                guard exception == nil, let container else {
+                    Logger.error(
+                        "iCloud container unavailable: \(exception?.reason ?? "missing entitlement")",
+                        category: Logger.storage
+                    )
+                    return
+                }
                 do {
-                    let status = try await CKContainer(
-                        identifier: "iCloud.website.refrax.browser"
-                    ).accountStatus()
+                    let status = try await container.accountStatus()
                     if status == .available {
                         self.syncCoordinator = SyncCoordinator(
                             mainContainer: self.modelContainer,

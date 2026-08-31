@@ -57,6 +57,9 @@
 #import <WebKit/WebKit.h>
 #import <QuartzCore/QuartzCore.h>
 
+// Foundation helpers (ObjC @try/@catch bridge for exception-raising Cocoa APIs)
+#import "Foundation/RefraxExceptionCatch.h"
+
 // WebKit private APIs (WKWebView, delegates, thumbnail, context menu, etc.)
 #import "WebKit/WebKitPrivate.h"
 
