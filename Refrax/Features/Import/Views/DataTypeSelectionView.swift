@@ -151,6 +151,7 @@ private struct PasswordImportRow: View {
 
     @State private var showingFilePicker = false
     @State private var showingSafariGuide = false
+    @State private var showingPasswordsAppGuide = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -177,6 +178,9 @@ private struct PasswordImportRow: View {
         )
         .sheet(isPresented: $showingSafariGuide) {
             SafariExportInstructionsSheet()
+        }
+        .sheet(isPresented: $showingPasswordsAppGuide) {
+            PasswordsAppImportGuideSheet()
         }
         .onAppear {
             // Force CSV method for Safari since direct import isn't available
@@ -210,14 +214,50 @@ private struct PasswordImportRow: View {
         .toggleStyle(.switch)
     }
 
+    private var passwordsAppRecommendation: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "key.horizontal.fill")
+                .foregroundStyle(.green)
+                .font(.caption)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Recommended: import from the Passwords app")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+
+                    Button("Show me how") {
+                        showingPasswordsAppGuide = true
+                    }
+                    .font(.caption)
+                    .buttonStyle(.link)
+                }
+
+                Text("Send logins straight into Refrax over Apple's encrypted Credential Exchange — no CSV file to manage or delete.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.green.opacity(0.08)),
+        )
+    }
+
     private var safariImportSection: some View {
         VStack(alignment: .leading, spacing: 10) {
+            passwordsAppRecommendation
+                .padding(.leading, Constants.iconSize + Constants.iconSpacing)
+
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .foregroundStyle(.orange)
                     .font(.caption)
 
-                Text("Safari passwords require manual export")
+                Text("Or export a CSV from Safari")
                     .font(.caption)
                     .foregroundStyle(.orange)
 

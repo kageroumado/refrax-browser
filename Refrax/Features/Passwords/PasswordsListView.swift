@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -17,6 +18,8 @@ struct PasswordsListView: View {
     @State private var isLoading = false
     @State private var showingAddSheet = false
     @State private var showingDeleteAllConfirmation = false
+    @State private var showingImportGuide = false
+    @State private var exportResult: ExportResult?
     @State private var loadError: String?
 
     private var filteredCredentials: [PasswordsManager.StoredCredential] {
@@ -37,6 +40,10 @@ struct PasswordsListView: View {
             .frame(minWidth: 250)
             .onAppear { loadCredentials() }
             .sheet(isPresented: $showingAddSheet) { addPasswordSheet }
+            .sheet(isPresented: $showingImportGuide) { PasswordsAppImportGuideSheet() }
+            .alert(item: $exportResult) { result in
+                Alert(title: Text(result.title), message: Text(result.message), dismissButton: .default(Text("OK")))
+            }
             .confirmationDialog(
                 "Delete All Passwords?",
                 isPresented: $showingDeleteAllConfirmation,
@@ -91,11 +98,17 @@ struct PasswordsListView: View {
             .help("Add Password")
 
             Menu {
+                Button("Import from Passwords App...") { showingImportGuide = true }
+                Divider()
+                Button("Export to Another App...") { exportViaCredentialExchange() }
+                    .disabled(credentials.isEmpty)
                 Button("Export to CSV...") { exportToCSV() }
+                    .disabled(credentials.isEmpty)
                 Divider()
                 Button("Delete All Passwords...", role: .destructive) {
                     showingDeleteAllConfirmation = true
                 }
+                .disabled(credentials.isEmpty)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -215,6 +228,64 @@ struct PasswordsListView: View {
         }
         return csv
     }
+
+    /// Hands every stored login to another password manager over Apple's
+    /// encrypted Credential Exchange. The system presents the destination
+    /// picker and Refrax fills in the credentials once a format is agreed.
+    private func exportViaCredentialExchange() {
+        guard let anchor = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
+        let allCredentials = (try? passwordsManager.allCredentials()) ?? []
+        guard !allCredentials.isEmpty else { return }
+
+        Task {
+            // Construct the manager inside the task so it stays in this
+            // isolation region — it is not Sendable and must not cross one.
+            let manager = ASCredentialExportManager(presentationAnchor: anchor)
+            do {
+                let options = try await manager.requestExport()
+                let data = CredentialExchangeExporter.exportData(
+                    from: allCredentials,
+                    formatVersion: options.formatVersion,
+                )
+                try await manager.exportCredentials(data)
+
+                let count = allCredentials.count
+                exportResult = ExportResult(
+                    title: "Exported \(count) password\(count == 1 ? "" : "s")",
+                    message: "Your passwords were handed to the app you selected.",
+                )
+            } catch {
+                guard !isCancellation(error) else { return }
+                Logger.error("Credential Exchange export failed: \(error)", category: Logger.autoFill)
+                exportResult = ExportResult(
+                    title: "Export failed",
+                    message: "Refrax couldn't complete the export. \(error.localizedDescription)",
+                )
+            }
+        }
+    }
+
+    /// Whether an export error is really the user dismissing the system sheet,
+    /// which should pass silently rather than surface a failure alert.
+    private func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        let nsError = error as NSError
+        if nsError.domain == ASAuthorizationError.errorDomain,
+           nsError.code == ASAuthorizationError.Code.canceled.rawValue {
+            return true
+        }
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
+    }
+}
+
+// MARK: - Export Result
+
+/// A one-shot alert payload for the outcome of a Credential Exchange export.
+private struct ExportResult: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 // MARK: - Credential Row
