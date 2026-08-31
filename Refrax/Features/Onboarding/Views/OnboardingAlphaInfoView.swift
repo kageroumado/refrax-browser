@@ -33,7 +33,7 @@ struct OnboardingAlphaInfoView: View {
                     infoCard(
                         title: "Get in touch",
                         icon: "bubble.left.and.bubble.right.fill",
-                        description: "Share feedback directly from the browser (⌘T) or reach out:\n\nfeedback@refrax.website\n@kageroumado on X\nkagerou.glass · refrax.browser\n\nLove it? Tell your friends to sign up for the alpha."
+                        description: "Share feedback directly from the browser (⌘T) — it opens a GitHub issue you can review and submit. Or reach out:\n\n@kageroumado on X\nkagerou.glass/refrax\n\nLove it? Tell your friends to sign up for the alpha."
                     )
                 }
                 .frame(maxWidth: 380)

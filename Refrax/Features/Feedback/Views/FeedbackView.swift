@@ -28,8 +28,14 @@ struct FeedbackView: View {
                     categoryPicker
                     subjectField
                     bodyEditor
-                    contactFields
-                    FeedbackAttachmentsView()
+                    // Bug/feature/general open a public GitHub issue: contact
+                    // details and log files aren't sent (and an email in a
+                    // public issue would leak). Crash reports still go to the
+                    // backend, so they keep both.
+                    if manager.category == .crash {
+                        contactFields
+                        FeedbackAttachmentsView()
+                    }
                 }
                 .padding(20)
             }
@@ -158,7 +164,7 @@ struct FeedbackView: View {
             Button {
                 Task { await manager.submit() }
             } label: {
-                Text("Send")
+                Text(manager.category == .crash ? "Send" : "Continue on GitHub")
                     .font(.system(size: Constants.Typography.bodySize, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 24)

@@ -34,7 +34,7 @@ struct FeedbackConfirmationView: View {
             Text("Thanks for your feedback")
                 .font(.system(size: Constants.Typography.headerSize, weight: .semibold))
 
-            Text("Your report has been saved and will help improve Refrax.")
+            Text(manager.successMessage)
                 .font(.system(size: Constants.Typography.bodySize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

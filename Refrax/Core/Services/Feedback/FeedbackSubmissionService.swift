@@ -1,10 +1,11 @@
 import Foundation
 
-/// Submits feedback to the self-hosted backend at refrax.website.
+/// Submits crash reports to the self-hosted backend.
 ///
 /// Sends form data and file attachments as a multipart POST request.
 /// If the server is unreachable, falls back to saving locally so no
-/// user input is lost.
+/// user input is lost. Bug reports, feature requests, and general
+/// feedback take the GitHub route via ``FeedbackIssueComposer`` instead.
 nonisolated enum FeedbackSubmissionService: Sendable {
     /// The complete feedback payload sent to the backend.
     nonisolated struct FeedbackPayload: Codable, Sendable {

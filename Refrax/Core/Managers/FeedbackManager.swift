@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Manages feedback composition, attachment collection, and submission.
@@ -29,6 +30,10 @@ final class FeedbackManager {
     var isSubmitting = false
     var submissionError: String?
     var didSubmitSuccessfully = false
+
+    /// Confirmation copy for the success screen, tailored to where the
+    /// feedback went (GitHub issue vs. the crash backend).
+    var successMessage = "Your report has been saved and will help improve Refrax."
 
     // MARK: - Collected Data
 
@@ -138,13 +143,27 @@ final class FeedbackManager {
             attachmentURLs: selectedAttachments.map(\.url),
         )
 
-        do {
-            try await FeedbackSubmissionService.submit(payload)
-            settings.feedbackName = name
-            settings.feedbackEmail = email
-            didSubmitSuccessfully = true
-        } catch {
-            submissionError = error.localizedDescription
+        settings.feedbackName = name
+        settings.feedbackEmail = email
+
+        // Crash reports go to the backend; everything else becomes a GitHub
+        // issue the user reviews and submits under their own account.
+        if category == .crash {
+            do {
+                try await FeedbackSubmissionService.submit(payload)
+                successMessage = "Your report has been saved and will help improve Refrax."
+                didSubmitSuccessfully = true
+            } catch {
+                submissionError = error.localizedDescription
+            }
+        } else {
+            if let url = FeedbackIssueComposer.issueURL(for: payload) {
+                NSWorkspace.shared.open(url)
+                successMessage = "GitHub is opening with your report pre-filled — review it and click “Submit new issue” to finish."
+                didSubmitSuccessfully = true
+            } else {
+                submissionError = "Couldn't open GitHub to file your report. Please try again."
+            }
         }
 
         isSubmitting = false
@@ -161,6 +180,7 @@ final class FeedbackManager {
         isSubmitting = false
         submissionError = nil
         didSubmitSuccessfully = false
+        successMessage = "Your report has been saved and will help improve Refrax."
         systemInfo = nil
     }
 

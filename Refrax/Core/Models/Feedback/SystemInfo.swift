@@ -17,6 +17,22 @@ nonisolated struct SystemInfo: Codable, Sendable {
     let extensionCount: Int
     let uptime: TimeInterval
 
+    /// A Markdown bullet list of the collected context, for embedding in a
+    /// GitHub issue body.
+    var markdownReport: String {
+        let rows: [(String, String)] = [
+            ("Refrax", "\(refraxVersion) (\(refraxBuild))"),
+            ("macOS", macOSVersion),
+            ("Hardware", hardwareModel),
+            ("Memory", "\(memoryGB) GB"),
+            ("Locale", locale),
+            ("Tabs", "\(tabCount)"),
+            ("Spaces", "\(spaceCount)"),
+            ("Extensions", "\(extensionCount)"),
+        ]
+        return rows.map { "- **\($0.0):** \($0.1)" }.joined(separator: "\n")
+    }
+
     /// Collects current system information.
     ///
     /// Version and build come from the main bundle. Hardware details come
