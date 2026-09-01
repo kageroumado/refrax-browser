@@ -56,6 +56,21 @@ final class TabGroup {
         set { boardFrameData = BoardFrame.encode(newValue) }
     }
 
+    /// Serialized ``BoardPoint``: set when the group is a magnet on the tab canvas.
+    /// A magnet gathers its members around this point instead of claiming a zone.
+    var boardAnchorData: Data?
+
+    /// The magnet's anchor on the tab canvas, or `nil` if the group is a zone.
+    var boardAnchor: CGPoint? {
+        get { BoardPoint.decode(boardAnchorData) }
+        set { boardAnchorData = BoardPoint.encode(newValue) }
+    }
+
+    /// Whether the group is a magnet on the tab canvas.
+    var isMagnet: Bool {
+        boardAnchorData != nil
+    }
+
     /// Position in the tab list (alongside tabs)
     var position: Int
     

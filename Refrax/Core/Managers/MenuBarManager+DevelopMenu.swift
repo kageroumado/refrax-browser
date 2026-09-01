@@ -98,6 +98,17 @@ extension MenuBarManager {
         )
         generateTabsItem.target = self
         developMenu.addItem(generateTabsItem)
+
+        let labItem = NSMenuItem(title: "Tab Canvas Lab", action: nil, keyEquivalent: "")
+        let labMenu = NSMenu(title: "Tab Canvas Lab")
+        for scenario in CanvasScenario.allCases {
+            let item = NSMenuItem(title: scenario.title, action: #selector(loadCanvasScenario(_:)), keyEquivalent: "")
+            item.representedObject = scenario.rawValue
+            item.target = self
+            labMenu.addItem(item)
+        }
+        labItem.submenu = labMenu
+        developMenu.addItem(labItem)
         #endif
 
         developMenuItem.submenu = developMenu
@@ -151,6 +162,25 @@ extension MenuBarManager {
             tabManager: appDelegate.tabManager,
             groupManager: appDelegate.groupManager,
             space: space,
+        )
+    }
+    #endif
+
+    #if DEBUG
+    @objc
+    func loadCanvasScenario(_ sender: NSMenuItem) {
+        guard let controller = activeWindowController,
+              let rawValue = sender.representedObject as? String,
+              let scenario = CanvasScenario(rawValue: rawValue)
+        else { return }
+        let appDelegate = NSApplication.shared.typedDelegate
+        CanvasScenario.load(
+            scenario,
+            tabManager: appDelegate.tabManager,
+            spaceManager: appDelegate.spaceManager,
+            groupManager: appDelegate.groupManager,
+            windowState: controller.windowState,
+            canvas: controller.tabCanvasManager,
         )
     }
     #endif

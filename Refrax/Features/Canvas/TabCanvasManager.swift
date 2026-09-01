@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 import WebKit
 
-/// A group drawn on the tab canvas: a zone that holds its member tiles.
+/// A group drawn on the tab canvas as a zone that holds its member tiles.
 struct CanvasZone: Identifiable, Equatable {
     let id: UUID
     let name: String
@@ -16,17 +16,36 @@ struct CanvasZone: Identifiable, Equatable {
     let memberTabIDs: [Tab.ID]
 }
 
-/// Manages the tab canvas: a board on which every tab of the active space is a
+/// A group drawn on the tab canvas as a magnet that gathers its members around a point.
+struct CanvasMagnet: Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let color: NSColor
+    let anchor: CGPoint
+    let memberTabIDs: [Tab.ID]
+}
+
+/// A one-shot request for the board to fly its camera to a rectangle.
+struct CanvasZoomRequest: Equatable {
+    let serial: Int
+    let rect: CGRect
+}
+
+/// Manages the tab canvas: a desk on which every tab of the active space is a
 /// tile placed at a position of its own, zoomed out from and back into the live page.
 ///
-/// The board is a table, not a list. Tiles keep the position they were given
-/// (persisted on ``Tab/boardFrame``), a click zooms into a tile until it fills the
-/// window and the live page takes over, and dismissing zooms back out. Tab groups
-/// are zones on the board: a zone is at least the rectangle stored on
-/// ``TabGroup/boardFrame`` and always grows to hold its members; dragging a zone
-/// carries its members, and dropping a tile inside a zone joins the group.
+/// The desk is finite. Tiles keep the position they were given (persisted on
+/// ``Tab/boardFrame``), a click zooms into a tile until it fills the window and
+/// the live page takes over, and dismissing zooms back out. A tile pushed past the
+/// desk's edge falls off, which closes the tab.
 ///
-/// Tile content is a software snapshot of the page, taken whenever the tab is
+/// Tab groups appear on the desk in one of two shapes. A **zone**
+/// (``TabGroup/boardFrame``) is a region that is at least the claimed rectangle
+/// and grows to hold its members; dragging it carries them, dropping a tile inside
+/// joins the group. A **magnet** (``TabGroup/boardAnchor``) gathers its members in a
+/// ring around a point and attracts tabs similar to them (``CanvasSimilarity``).
+///
+/// Tile content is a software snapshot of the page, captured whenever the tab is
 /// switched away from and again when the canvas opens, and kept on disk, so a tile
 /// is as fresh as the last time the page was looked at and survives relaunch.
 ///
@@ -52,7 +71,7 @@ final class TabCanvasManager {
     /// Whether the canvas covers the content area.
     private(set) var isActive = false
 
-    /// Tabs on the board, in sidebar order.
+    /// Tabs on the desk, in sidebar order.
     private(set) var tabs: [Tab] = []
 
     /// Where each tab's tile sits, mirrored from ``Tab/boardFrame`` for observation.
@@ -61,8 +80,17 @@ final class TabCanvasManager {
     /// Zones derived from the space's groups and the current tile positions.
     private(set) var zones: [CanvasZone] = []
 
+    /// Magnets derived from the space's groups.
+    private(set) var magnets: [CanvasMagnet] = []
+
     /// Snapshot of each tab's page.
     private(set) var snapshots: [Tab.ID: NSImage] = [:]
+
+    /// Tiles picked up by the lasso.
+    private(set) var selectedTabIDs: Set<Tab.ID> = []
+
+    /// The latest camera request; the board flies there once per serial.
+    private(set) var zoomRequest: CanvasZoomRequest?
 
     /// The tab the board zooms out from on show and back into on dismiss.
     private(set) var focusedTabID: Tab.ID?
@@ -83,12 +111,13 @@ final class TabCanvasManager {
     // MARK: - Constants
 
     enum Layout {
+        /// The desk. Tiles that leave it fall off.
+        static let deskSize = CGSize(width: 4800, height: 3000)
         static let defaultTileSize = CGSize(width: 320, height: 200)
         static let tileWidth: CGFloat = 320
         static let gap: CGFloat = 48
-        static let columns = 4
-        /// Empty board around the outermost tiles, so there is always room to drag.
-        static let boardMargin: CGFloat = 600
+        /// Margin kept between the desk's edge and auto-placed tiles.
+        static let deskInset: CGFloat = 120
         /// Breathing room around the tiles when zoomed to fit everything.
         static let fitInset: CGFloat = 80
         /// Width of the snapshot image; the tile is scaled from this.
@@ -101,6 +130,8 @@ final class TabCanvasManager {
         static let zoneHeaderHeight: CGFloat = 36
         /// Room above a tile for its title.
         static let tileTitleHeight: CGFloat = 24
+        /// Smallest ring a magnet lays its members on.
+        static let magnetMinimumRadius: CGFloat = 260
     }
 
     // MARK: - Initialization
@@ -119,7 +150,7 @@ final class TabCanvasManager {
         snapshotTask?.cancel()
     }
 
-    // MARK: - Public API
+    // MARK: - Showing
 
     func toggle() {
         if isActive {
@@ -133,12 +164,10 @@ final class TabCanvasManager {
     func show() {
         guard !isActive else { return }
 
-        tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
         focusedTabID = windowState.activeTab?.id
         tileSize = contentAspectTileSize()
-        loadTileFrames()
-        placeUnplacedTabs()
-        rebuildZones()
+        selectedTabIDs = []
+        reloadTabs()
         isActive = true
 
         snapshotTask = Task(name: "Canvas snapshots") {
@@ -156,8 +185,19 @@ final class TabCanvasManager {
         }
         snapshotTask?.cancel()
         snapshotTask = nil
+        selectedTabIDs = []
         isActive = false
     }
+
+    /// Re-reads the space's tabs, places new ones, and rebuilds zones and magnets.
+    private func reloadTabs() {
+        tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
+        loadTileFrames()
+        placeUnplacedTabs()
+        rebuildGroups()
+    }
+
+    // MARK: - Tiles
 
     /// Records a tile's new position while it is being dragged.
     func moveTile(_ tabID: Tab.ID, to frame: CGRect) {
@@ -168,30 +208,24 @@ final class TabCanvasManager {
 
     /// Settles a dropped tile: it joins the zone it landed in, or leaves the one it left.
     func finishTileDrag(_ tabID: Tab.ID) {
-        defer { rebuildZones() }
+        defer { rebuildGroups() }
         guard let tab = tab(for: tabID), let frame = tileFrames[tabID] else { return }
 
         let target = zone(containing: CGPoint(x: frame.midX, y: frame.midY))
         let targetGroup = target.flatMap { group(for: $0.id) }
         guard tab.group?.id != targetGroup?.id else { return }
+        // Magnet members stay with their magnet unless dropped into a zone.
+        if tab.group?.isMagnet == true, targetGroup == nil { return }
 
         groupManager.moveTabToGroup(tab, group: targetGroup, in: windowState.activeSpace)
     }
 
-    /// Moves a zone and everything in it.
-    func moveZone(_ groupID: UUID, by delta: CGPoint) {
-        guard let zone = zones.first(where: { $0.id == groupID }) else { return }
-        for tabID in zone.memberTabIDs {
-            if let frame = tileFrames[tabID] {
-                moveTile(tabID, to: frame.offsetBy(dx: delta.x, dy: delta.y))
-            }
-        }
-        for group in groups() where group.id == groupID || descendantGroupIDs(of: groupID).contains(group.id) {
-            if let claimed = group.boardFrame {
-                group.boardFrame = claimed.offsetBy(dx: delta.x, dy: delta.y)
-            }
-        }
-        rebuildZones()
+    /// A tile pushed off the desk: the tab closes.
+    func tileFellOffDesk(_ tabID: Tab.ID) {
+        guard let tab = tab(for: tabID) else { return }
+        tabManager.closeTab(tab)
+        selectedTabIDs.remove(tabID)
+        reloadTabs()
     }
 
     /// The tile of the focused tab, or the first tile.
@@ -210,6 +244,160 @@ final class TabCanvasManager {
         }
         let union = frames.dropFirst().reduce(first) { $0.union($1) }
         return union.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset)
+    }
+
+    // MARK: - Selection
+
+    func select(_ tabIDs: Set<Tab.ID>) {
+        selectedTabIDs = tabIDs.intersection(tabs.map(\.id))
+    }
+
+    func clearSelection() {
+        selectedTabIDs = []
+    }
+
+    var selectedTabs: [Tab] {
+        tabs.filter { selectedTabIDs.contains($0.id) }
+    }
+
+    var selectionBounds: CGRect? {
+        let frames = selectedTabs.compactMap { tileFrames[$0.id] }
+        guard let first = frames.first else { return nil }
+        return frames.dropFirst().reduce(first) { $0.union($1) }
+    }
+
+    func zoomToSelection() {
+        guard let bounds = selectionBounds else { return }
+        requestZoom(to: bounds.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset))
+    }
+
+    func zoomToEverything() {
+        requestZoom(to: tilesBounds)
+    }
+
+    private func requestZoom(to rect: CGRect) {
+        zoomRequest = CanvasZoomRequest(serial: (zoomRequest?.serial ?? 0) + 1, rect: rect)
+    }
+
+    func closeSelected() {
+        let closing = selectedTabs
+        guard !closing.isEmpty else { return }
+        tabManager.closeTabs(closing)
+        selectedTabIDs = []
+        reloadTabs()
+    }
+
+    /// Puts the selection into a new zone claiming the area the tiles occupy.
+    func groupSelected() {
+        let members = selectedTabs
+        guard !members.isEmpty, let bounds = selectionBounds,
+              let group = try? groupManager.createGroup(in: windowState.activeSpace, name: "Group", color: Self.nextGroupColor())
+        else { return }
+
+        for tab in members {
+            groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
+        }
+        group.boardFrame = bounds.insetBy(dx: -Layout.zonePadding, dy: -Layout.zonePadding)
+        tabManager.state.scheduleSave()
+        selectedTabIDs = []
+        rebuildGroups()
+    }
+
+    /// Turns the selection into a magnet at its center, then lets it attract similar tabs.
+    func makeMagnetFromSelected() {
+        let members = selectedTabs
+        guard !members.isEmpty, let bounds = selectionBounds else { return }
+
+        let keys = Set(members.compactMap(CanvasSimilarity.key(for:)))
+        let name = keys.count == 1 ? keys.first! : "Magnet"
+        guard let group = try? groupManager.createGroup(in: windowState.activeSpace, name: name, color: Self.nextGroupColor()) else { return }
+
+        group.boardAnchor = CGPoint(x: bounds.midX, y: bounds.midY)
+        for tab in members {
+            groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
+        }
+        attractSimilarTabs(to: group)
+        arrangeMembers(of: group)
+        selectedTabIDs = []
+        rebuildGroups()
+    }
+
+    // MARK: - Zones and Magnets
+
+    /// Moves a zone and everything in it.
+    func moveZone(_ groupID: UUID, by delta: CGPoint) {
+        guard let zone = zones.first(where: { $0.id == groupID }) else { return }
+        for tabID in zone.memberTabIDs {
+            if let frame = tileFrames[tabID] {
+                moveTile(tabID, to: frame.offsetBy(dx: delta.x, dy: delta.y))
+            }
+        }
+        for group in groups() where group.id == groupID || descendantGroupIDs(of: groupID).contains(group.id) {
+            if let claimed = group.boardFrame {
+                group.boardFrame = claimed.offsetBy(dx: delta.x, dy: delta.y)
+            }
+        }
+        rebuildGroups()
+    }
+
+    /// Moves a magnet and its ring of members.
+    func moveMagnet(_ groupID: UUID, by delta: CGPoint) {
+        guard let group = group(for: groupID), let anchor = group.boardAnchor,
+              let magnet = magnets.first(where: { $0.id == groupID }) else { return }
+        group.boardAnchor = CGPoint(x: anchor.x + delta.x, y: anchor.y + delta.y)
+        for tabID in magnet.memberTabIDs {
+            if let frame = tileFrames[tabID] {
+                moveTile(tabID, to: frame.offsetBy(dx: delta.x, dy: delta.y))
+            }
+        }
+        rebuildGroups()
+    }
+
+    /// Pulls in every ungrouped tab similar to the magnet's members and re-forms the ring.
+    func attract(_ groupID: UUID) {
+        guard let group = group(for: groupID), group.isMagnet else { return }
+        attractSimilarTabs(to: group)
+        arrangeMembers(of: group)
+        rebuildGroups()
+    }
+
+    private func attractSimilarTabs(to group: TabGroup) {
+        let memberKeys = Set(tabs.filter { $0.group?.id == group.id }.compactMap(CanvasSimilarity.key(for:)))
+        guard !memberKeys.isEmpty else { return }
+        for tab in tabs where tab.group == nil {
+            if let key = CanvasSimilarity.key(for: tab), memberKeys.contains(key) {
+                groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
+            }
+        }
+    }
+
+    /// Lays a magnet's members on a ring around its anchor.
+    private func arrangeMembers(of group: TabGroup) {
+        guard let anchor = group.boardAnchor else { return }
+        let members = tabs.filter { $0.group?.id == group.id }
+        guard !members.isEmpty else { return }
+
+        let circumference = CGFloat(members.count) * (tileSize.width + Layout.gap)
+        let radius = max(Layout.magnetMinimumRadius, circumference / (2 * .pi))
+        for (index, tab) in members.enumerated() {
+            let angle = -CGFloat.pi / 2 + CGFloat(index) / CGFloat(members.count) * 2 * .pi
+            let center = CGPoint(x: anchor.x + cos(angle) * radius, y: anchor.y + sin(angle) * radius)
+            moveTile(tab.id, to: CGRect(
+                x: (center.x - tileSize.width / 2).rounded(),
+                y: (center.y - tileSize.height / 2).rounded(),
+                width: tileSize.width,
+                height: tileSize.height,
+            ))
+        }
+    }
+
+    private static let groupColors: [GroupColor] = [.pelorus, .coral, .emerald, .violet, .flamingo, .turquoise, .orchid, .avocado]
+    private static var nextColorIndex = 0
+
+    private static func nextGroupColor() -> String {
+        let color = groupColors[nextColorIndex % groupColors.count]
+        nextColorIndex += 1
+        return color.rawValue
     }
 
     // MARK: - Lookup
@@ -247,27 +435,31 @@ final class TabCanvasManager {
     // MARK: - Placement
 
     private func loadTileFrames() {
-        tileFrames = [:]
+        var frames: [Tab.ID: CGRect] = [:]
         for tab in tabs {
             if let frame = tab.boardFrame {
-                tileFrames[tab.id] = frame
+                frames[tab.id] = frame
             }
         }
+        tileFrames = frames
     }
 
-    /// Places tabs that have no tile yet in reading order after the last placed one.
+    /// Places tabs that have no tile yet in reading order across the desk, after
+    /// the last placed one. Past the desk's last row they pile up on it.
     private func placeUnplacedTabs() {
         let unplaced = tabs.filter { tileFrames[$0.id] == nil }
         guard !unplaced.isEmpty else { return }
 
         let step = CGSize(width: tileSize.width + Layout.gap, height: tileSize.height + Layout.gap * 1.5)
+        let columns = max(1, Int((Layout.deskSize.width - Layout.deskInset * 2 + Layout.gap) / step.width))
+        let rows = max(1, Int((Layout.deskSize.height - Layout.deskInset * 2 + Layout.gap) / step.height))
         var index = tabs.count - unplaced.count
         for tab in unplaced {
-            let column = index % Layout.columns
-            let row = index / Layout.columns
+            let column = index % columns
+            let row = min(index / columns, rows - 1)
             let frame = CGRect(
-                x: CGFloat(column) * step.width,
-                y: CGFloat(row) * step.height,
+                x: Layout.deskInset + CGFloat(column) * step.width,
+                y: Layout.deskInset + CGFloat(row) * step.height,
                 width: tileSize.width,
                 height: tileSize.height,
             )
@@ -289,14 +481,14 @@ final class TabCanvasManager {
         return CGSize(width: Layout.tileWidth, height: height)
     }
 
-    // MARK: - Zones
+    // MARK: - Group Shapes
 
-    /// Recomputes every zone from the groups and the current tile positions.
+    /// Recomputes every zone and magnet from the groups and the current tile positions.
     ///
     /// A zone is the union of the group's claimed rectangle, its own tiles (padded,
     /// with room for their titles), and its child zones. Groups with neither a claim
-    /// nor members have no zone.
-    private func rebuildZones() {
+    /// nor members have no zone. Groups with an anchor are magnets instead.
+    private func rebuildGroups() {
         let all = groups()
         let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
         var frames: [UUID: CGRect] = [:]
@@ -326,7 +518,7 @@ final class TabCanvasManager {
                     tabIDs.append(tab.id)
                 }
             }
-            for child in all where child.parentGroupID == group.id {
+            for child in all where child.parentGroupID == group.id && !child.isMagnet {
                 if let childFrame = resolve(child) {
                     rects.append(childFrame.insetBy(dx: -Layout.zonePadding, dy: -Layout.zonePadding))
                     tabIDs.append(contentsOf: members[child.id] ?? [])
@@ -341,7 +533,7 @@ final class TabCanvasManager {
             return union
         }
 
-        zones = all.compactMap { group in
+        zones = all.filter { !$0.isMagnet }.compactMap { group in
             guard let frame = resolve(group) else { return nil }
             return CanvasZone(
                 id: group.id,
@@ -353,6 +545,17 @@ final class TabCanvasManager {
             )
         }
         .sorted { $0.depth < $1.depth }
+
+        magnets = all.compactMap { group in
+            guard let anchor = group.boardAnchor else { return nil }
+            return CanvasMagnet(
+                id: group.id,
+                name: group.name,
+                color: NSColor(group.color),
+                anchor: anchor,
+                memberTabIDs: tabs.filter { $0.group?.id == group.id }.map(\.id),
+            )
+        }
     }
 
     // MARK: - Snapshots
