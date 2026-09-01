@@ -44,6 +44,14 @@ struct PaneContentWrapper: View {
     /// Only updated when meaningful changes occur (> 1px), not on every animation frame.
     @State private var cachedTrayTrailingEdge: CGFloat = 0
 
+    /// The page whose lifecycle this wrapper currently drives, and its tab page.
+    ///
+    /// Identity is the position, so a tab switch changes `webPage` without any
+    /// `onDisappear`/`onAppear`; the outgoing page is remembered here so it can be
+    /// hidden and released when the next one arrives.
+    @State private var lifecyclePage: WebPage?
+    @State private var lifecycleTabPageID: UUID?
+
     private var hasContent: Bool {
         tabPage != nil && frame.width > 0 && frame.height > 0
     }
@@ -76,7 +84,6 @@ struct PaneContentWrapper: View {
         // If forcedInactive is true, we never claim ownership.
         let ownerID = webPage?.ownerWindowID
         let isCurrentOwner = ownerID == windowID
-        let isWindowKey = windowState.window?.isKeyWindow ?? false
         // When ownerID is nil, we should be active - we'll claim ownership via onChange.
         // This prevents the "empty frame" gap when another window releases ownership.
         let isOwner = !isForcedInactive && (isCurrentOwner || ownerID == nil)
@@ -130,88 +137,17 @@ struct PaneContentWrapper: View {
         .modifier(DialogModifiers(dialogState: dialogState))
         .modifier(PageOverlayModifiers(webPage: webPage, hasContent: hasContent, isLayoutMode: isLayoutMode))
         .onAppear {
-            // Claim ownership if we're the key window or no owner exists.
-            // Don't claim if forced inactive (e.g., docked view when separate window is open).
-            // NOTE: webPage may be nil on initial appear if pool hasn't created it yet.
-            // In that case, onChange(of: webPage?.id) will handle ownership claiming.
-            if !isForcedInactive, !isCurrentOwner, webPage?.ownerWindowID == nil || isWindowKey {
-                webPage?.claimOwnership(for: windowState)
-            }
-
-            // Register with activity manager for time tracking
-            if let tabPage {
-                historyActivityManager.registerPage(tabPage.id, windowID: windowID)
-                if isWindowKey {
-                    historyActivityManager.updateWindowKey(windowID: windowID, isKey: true)
-                }
-            }
-
-            // Notify page of visibility (creates history entry if missing)
-            if let webPage, let tabPage {
-                webPage.onBecameVisible()
-                webPage.inspectorPageDidBecomeVisible()
-
-                // Record interaction for address bar focus tracking
-                windowState.recordInteraction(with: tabPage.id)
-
-                // Set up link hover callback only if we're the owner.
-                // This prevents non-owner windows from overwriting the callback.
-                if isOwner {
-                    setupLinkHoverCallback(for: webPage)
-                }
-            }
-
-            // Initialize tray offset
+            beginLifecycle()
             cachedTrayTrailingEdge = windowState.detailTrayTrailingEdge
         }
-        .onDisappear { handleDisappear() }
+        .onDisappear { endLifecycle() }
         .onChange(of: webPage?.id) { oldValue, newValue in
+            // A tab switch arrives here rather than as onDisappear/onAppear: the
+            // outgoing page is hidden and released, the incoming one claimed and shown.
             guard oldValue != newValue else { return }
-
-            // Clear stale hover URL from previous page
             hoveredLinkURL = nil
-
-            // Handle webPage becoming available after initial appear.
-            // This is critical because WebPagePool creates pages lazily,
-            // so webPage may be nil when onAppear first fires.
-            guard let webPage, let tabPage else { return }
-
-            if oldValue == nil {
-                // First-time page creation: full lifecycle setup
-                let isWindowKey = windowState.window?.isKeyWindow ?? false
-                let isCurrentOwner = webPage.ownerWindowID == windowID
-
-                // Claim ownership if we're the key window or no owner exists
-                if !isForcedInactive, !isCurrentOwner, webPage.ownerWindowID == nil || isWindowKey {
-                    webPage.claimOwnership(for: windowState)
-                }
-
-                // Register with activity manager for time tracking
-                historyActivityManager.registerPage(tabPage.id, windowID: windowID)
-                if isWindowKey {
-                    historyActivityManager.updateWindowKey(windowID: windowID, isKey: true)
-                }
-
-                // Notify page of visibility
-                webPage.onBecameVisible()
-                webPage.inspectorPageDidBecomeVisible()
-
-                // Record interaction for address bar focus tracking
-                windowState.recordInteraction(with: tabPage.id)
-
-                // Initialize tray offset
-                cachedTrayTrailingEdge = windowState.detailTrayTrailingEdge
-            }
-
-            // Set up link hover callback for the new page (both nil→page and page→page transitions)
-            let ownerID = webPage.ownerWindowID
-            let isCurrentOwner = ownerID == windowID
-            let isWindowKey = windowState.window?.isKeyWindow ?? false
-            let isOwner = !isForcedInactive && (isCurrentOwner || (ownerID == nil && isWindowKey))
-
-            if isOwner {
-                setupLinkHoverCallback(for: webPage)
-            }
+            endLifecycle()
+            beginLifecycle()
         }
         .task(id: tabPage?.id) {
             guard tabPage != nil else { return }
@@ -274,26 +210,62 @@ struct PaneContentWrapper: View {
 
     // MARK: - Lifecycle
 
-    private func handleDisappear() {
+    /// Takes the current page for this window: ownership, activity registration,
+    /// visibility, and the link-hover callback.
+    private func beginLifecycle() {
         guard let webPage, let tabPage else { return }
+        let isWindowKey = windowState.window?.isKeyWindow ?? false
+        let ownerID = webPage.ownerWindowID
 
-        webPage.inspectorPageWillBecomeHidden()
+        // Claim when nobody owns the page, when this is the key window, or when no
+        // window of ours is key (the app is in the background). Leaving a stale owner
+        // in place puts the adapter into portal mode over a layer that is attached
+        // nowhere, which renders as a blank pane.
+        if !isForcedInactive, ownerID != windowID, ownerID == nil || isWindowKey || NSApp.keyWindow == nil {
+            webPage.claimOwnership(for: windowState)
+        }
 
-        // Unregister from activity manager
-        historyActivityManager.unregisterPage(tabPage.id, windowID: windowID)
+        historyActivityManager.registerPage(tabPage.id, windowID: windowID)
+        if isWindowKey {
+            historyActivityManager.updateWindowKey(windowID: windowID, isKey: true)
+        }
 
-        webPage.onBecameHidden()
+        // Creates the history entry if missing and starts time tracking.
+        webPage.onBecameVisible()
+        webPage.inspectorPageDidBecomeVisible()
+
+        // Record interaction for address bar focus tracking
+        windowState.recordInteraction(with: tabPage.id)
+
+        // Only the owner installs the hover callback, so other windows never overwrite it.
+        if webPage.ownerWindowID == windowID {
+            setupLinkHoverCallback(for: webPage)
+        }
+
+        lifecyclePage = webPage
+        lifecycleTabPageID = tabPage.id
+    }
+
+    /// Releases the page taken by `beginLifecycle()`.
+    private func endLifecycle() {
+        guard let page = lifecyclePage, let tabPageID = lifecycleTabPageID else { return }
+        lifecyclePage = nil
+        lifecycleTabPageID = nil
+
+        page.inspectorPageWillBecomeHidden()
+        historyActivityManager.unregisterPage(tabPageID, windowID: windowID)
+        page.onBecameHidden()
 
         // Release ownership unless a reference pane window is open.
         // The separate window shares the same WindowState, so releasing here
         // would clear ownership needed by the separate window's view.
         if !windowState.hasReferencePaneWindow {
-            webPage.releaseOwnership(for: windowState)
+            page.releaseOwnership(for: windowState)
         }
 
         // Clean up link hover callback only if we set it
-        if webPage.ownerWindowID == nil || webPage.ownerWindowID == windowID {
-            webPage.onHoveredLinkChanged = nil
+        if page.ownerWindowID == nil || page.ownerWindowID == windowID {
+            page.onHoveredLinkChanged = nil
         }
 
         hoveredLinkURL = nil

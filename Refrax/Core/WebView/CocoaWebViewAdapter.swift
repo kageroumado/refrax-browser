@@ -297,6 +297,18 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     /// Invalidated if layout mode is re-entered before the exit animation completes.
     private var snapshotExitWork: DispatchWorkItem?
 
+    /// Run-loop turns spent waiting for a portal source layer to become ready.
+    private var portalReadyAttempts = 0
+
+    private enum Constants {
+        /// Retries that re-check on the very next run-loop turn; the window-move race resolves within a few.
+        static let portalReadyImmediateAttempts = 10
+        /// Delay between the later retries.
+        static let portalReadyRetryInterval: TimeInterval = 0.016
+        /// Total retries before an unready source is abandoned (about two seconds).
+        static let portalReadyMaxAttempts = 130
+    }
+
     /// Local event monitor for tracking mouse down events.
     private var mouseDownMonitor: Any?
 
@@ -384,6 +396,12 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         }
 
         pendingPortalSourceLayer = nil
+
+        // A pending snapshot-exit from the previous page would restore frame management
+        // against the wrong webView and leave `isHoldingWebViewFrame` blocking layout().
+        snapshotExitWork?.cancel()
+        snapshotExitWork = nil
+        isHoldingWebViewFrame = false
 
         // Check if this is a cross-window move BEFORE cleaning up.
         let isMovingWindows = webView.window != nil && webView.window !== window
@@ -536,6 +554,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
 
         displayMode = .inactive
         pendingPortalSourceLayer = sourceLayer
+        portalReadyAttempts = 0
 
         // Defer portal creation to the next run loop iteration.
         //
@@ -543,9 +562,32 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         // allows layer hierarchy changes to propagate. The readiness checks in
         // createPortalIfReady handle all timing — if the source isn't ready yet
         // (no superlayer, still our descendant, context mismatch), it retries
-        // automatically on the next run loop iteration.
-        DispatchQueue.main.async { [weak self] in
-            self?.createPortalIfReady(sourceLayer: sourceLayer)
+        // through deferPortalCreation until that gives up.
+        deferPortalCreation(sourceLayer: sourceLayer)
+    }
+
+    /// Re-checks portal readiness on a later run-loop turn.
+    ///
+    /// Gives up after `Constants.portalReadyMaxAttempts` so a source layer that never gets a
+    /// superlayer (its page's webView is attached nowhere, typically because ownership went
+    /// stale) cannot spin the main queue forever. Giving up leaves the adapter inactive and
+    /// clears the pending source, so a later `setPortalMode` for the same layer starts over.
+    private func deferPortalCreation(sourceLayer: CALayer) {
+        portalReadyAttempts += 1
+        guard portalReadyAttempts <= Constants.portalReadyMaxAttempts else {
+            pendingPortalSourceLayer = nil
+            return
+        }
+        if portalReadyAttempts <= Constants.portalReadyImmediateAttempts {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                createPortalIfReady(sourceLayer: sourceLayer)
+            }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Constants.portalReadyRetryInterval) { [weak self] in
+                guard let self else { return }
+                createPortalIfReady(sourceLayer: sourceLayer)
+            }
         }
     }
 
@@ -570,17 +612,13 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
 
         // Check again if source is still our descendant
         if let sourceView = sourceLayer.delegate as? NSView, sourceView.isDescendant(of: self) {
-            DispatchQueue.main.async { [weak self] in
-                self?.createPortalIfReady(sourceLayer: sourceLayer)
-            }
+            deferPortalCreation(sourceLayer: sourceLayer)
             return
         }
 
         // Check if source layer has a valid superlayer
         guard sourceLayer.superlayer != nil else {
-            DispatchQueue.main.async { [weak self] in
-                self?.createPortalIfReady(sourceLayer: sourceLayer)
-            }
+            deferPortalCreation(sourceLayer: sourceLayer)
             return
         }
 
@@ -599,9 +637,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
             // the layer is still transitioning - defer and retry
             if let windowCtx = windowContext, windowCtx.contextId != 0 {
                 if sourceContext == nil || sourceCtxId == 0 || sourceCtxId != windowCtx.contextId {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.createPortalIfReady(sourceLayer: sourceLayer)
-                    }
+                    deferPortalCreation(sourceLayer: sourceLayer)
                     return
                 }
             }
@@ -656,9 +692,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         // Orphaned layers (no superlayer) cannot be portaled.
         guard sourceLayer.superlayer != nil else {
             displayMode = .inactive
-            DispatchQueue.main.async { [weak self] in
-                self?.createPortalIfReady(sourceLayer: sourceLayer)
-            }
+            deferPortalCreation(sourceLayer: sourceLayer)
             return
         }
 
@@ -914,7 +948,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         }
 
         pendingPortalSourceLayer = nil
-        removeTransitionSnapshot()
+        cancelSnapshotExitWork()
 
         cleanupCurrentMode()
         displayMode = .inactive
@@ -930,7 +964,9 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     ///
     /// - Parameter page: The web page whose content to snapshot.
     func setSnapshotMode(for page: WebPage) {
-        guard case .active = displayMode else { return }
+        // Only the webView this adapter hosts can be captured; a different page's webView
+        // is a live subview somewhere else and must not be pulled out from under it.
+        guard case let .active(current) = displayMode, current === page.backingWebView else { return }
 
         // Cancel any in-flight exit animation from a previous snapshot mode.
         // This handles rapid exit → re-enter: the pending timer would otherwise
@@ -948,19 +984,16 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         displayMode = .snapshot(webPageID: page.id)
     }
 
-    /// Cancels any pending snapshot exit work and resets related state.
+    /// Cancels any pending snapshot exit work, restores frame management, and drops the
+    /// snapshot layer regardless of display mode.
     ///
-    /// Called from `setSnapshotMode` during rapid exit→re-enter to prevent the
-    /// pending exit timer from removing the new snapshot. Uses force removal
-    /// since the normal `removeTransitionSnapshot()` guards against removal
-    /// during `.snapshot` display mode.
+    /// Used wherever the snapshot must not survive: re-entering snapshot mode (a new capture
+    /// replaces it), going inactive, and dismantling. The mode-guarded
+    /// `removeTransitionSnapshot()` would keep it while `displayMode` is `.snapshot`.
     private func cancelSnapshotExitWork() {
         snapshotExitWork?.cancel()
         snapshotExitWork = nil
         isHoldingWebViewFrame = false
-        // Force-remove the old snapshot — the normal removeTransitionSnapshot()
-        // would refuse since displayMode might still be .snapshot. But we're about
-        // to capture a new snapshot, so the old one must go.
         forceRemoveTransitionSnapshot()
     }
 
@@ -1055,7 +1088,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     /// to a different adapter if needed.
     func prepareForDismantle() {
         pendingPortalSourceLayer = nil
-        removeTransitionSnapshot()
+        cancelSnapshotExitWork()
 
         // Full cleanup - remove webView from hierarchy
         cleanupCurrentMode()

@@ -93,18 +93,15 @@ struct PositionedAdapter: NSViewRepresentable {
         } else if isSnapshotMode {
             // Snapshot mode: freeze current content as GPU snapshot for layout mode.
             // This prevents WebKit from re-laying out content at the tile size.
-            if case .snapshot = adapter.displayMode {
-                // Already in snapshot mode — nothing to do.
-                // Match on .snapshot without checking webPageID to avoid spurious
-                // fallthrough from transient SwiftUI re-evaluations where the
-                // page object might differ briefly.
-            } else if case .active = adapter.displayMode {
-                // Was active — capture snapshot and switch
+            switch adapter.displayMode {
+            case let .snapshot(webPageID) where webPageID == page.id:
+                break
+            case let .active(current) where current === webView:
                 adapter.setSnapshotMode(for: page)
-            } else {
-                // Adapter not active (just created or was inactive) — set active normally.
-                // Can't snapshot what isn't rendered yet. This path is hit when SwiftUI
-                // recreates the adapter during layout mode entry.
+            default:
+                // Nothing of this page is rendered here yet (fresh adapter, or a pane
+                // swap while frozen), so there is nothing to capture: show it live at
+                // tile size instead.
                 adapter.setActiveMode(
                     webView: webView,
                     expectedFrame: expectedFrame,
@@ -112,9 +109,11 @@ struct PositionedAdapter: NSViewRepresentable {
                 )
             }
         } else if isActive {
-            // If we were in snapshot mode, transition back to active with the snapshot
-            // held as a cover until WebKit paints the new content.
-            if case .snapshot = adapter.displayMode {
+            // Leaving snapshot mode on the same page: bring the webView back with the
+            // snapshot held as a cover until WebKit paints. A snapshot of a different
+            // page (exit-layout-mode and tab-switch land in one update) must not cover
+            // the incoming webView, so that case goes through setActiveMode.
+            if case let .snapshot(webPageID) = adapter.displayMode, webPageID == page.id {
                 adapter.exitSnapshotMode(webView: webView, expectedFrame: expectedFrame)
             } else {
                 // When page changes (tab switch), prefer expectedFrame over stale adapter bounds.
