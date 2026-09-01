@@ -37,6 +37,7 @@ struct RefraxEnvironment {
     let commandLensManager: CommandLensManager
     let modifierKeysState: ModifierKeysState
     let tabSwitcherManager: TabSwitcherManager
+    let tabCanvasManager: TabCanvasManager
     let sidebarManagers: SidebarManagers
     let cellEnvironment: SidebarCellEnvironment
     let readerModeManager: ReaderModeManager
@@ -94,6 +95,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.commandLensManager)
             .environment(environment.modifierKeysState)
             .environment(environment.tabSwitcherManager)
+            .environment(environment.tabCanvasManager)
             .environment(environment.sidebarManagers.layoutManager)
             .environment(environment.sidebarManagers.dragCoordinator)
             .environment(environment.sidebarManagers.filterManager)

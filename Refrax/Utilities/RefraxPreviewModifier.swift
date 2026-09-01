@@ -155,6 +155,12 @@ struct RefraxPreviewModifier: PreviewModifier {
             windowState: windowState,
             previewProvider: tabPreviewProvider,
         )
+        let tabCanvasManager = TabCanvasManager(
+            tabManager: tabManager,
+            windowState: windowState,
+            pagePool: pagePool,
+            groupManager: groupManager,
+        )
 
         let sidebarManagers = SidebarManagers(
             tabManager: tabManager,
@@ -249,6 +255,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             commandLensManager: commandLensManager,
             modifierKeysState: modifierKeysState,
             tabSwitcherManager: tabSwitcherManager,
+            tabCanvasManager: tabCanvasManager,
             sidebarManagers: sidebarManagers,
             cellEnvironment: SidebarCellEnvironment(
                 layoutManager: sidebarManagers.layoutManager,

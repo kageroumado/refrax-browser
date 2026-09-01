@@ -50,6 +50,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     let tabPreviewManager: TabPreviewManager
     let commandLensManager: CommandLensManager
     let tabSwitcherManager: TabSwitcherManager
+    let tabCanvasManager: TabCanvasManager
     let sidebarManagers: SidebarManagers
 
     private(set) var environment: RefraxEnvironment!
@@ -265,6 +266,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             windowState: windowState,
             previewProvider: tabPreviewProvider,
         )
+        self.tabCanvasManager = TabCanvasManager(
+            tabManager: appDelegate.tabManager,
+            windowState: windowState,
+            pagePool: appDelegate.pagePool,
+            groupManager: appDelegate.groupManager,
+        )
         self.sidebarManagers = SidebarManagers(
             tabManager: appDelegate.tabManager,
             bookmarksManager: appDelegate.bookmarksManager,
@@ -314,6 +321,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             commandLensManager: commandLensManager,
             modifierKeysState: appDelegate.modifierKeysState,
             tabSwitcherManager: tabSwitcherManager,
+            tabCanvasManager: tabCanvasManager,
             sidebarManagers: sidebarManagers,
             cellEnvironment: SidebarCellEnvironment(
                 layoutManager: sidebarManagers.layoutManager,

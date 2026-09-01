@@ -161,6 +161,7 @@ struct SyncRoundTripTests {
         )
         tab.customName = "Swift Lang"
         tab.isUnread = true
+        tab.boardFrame = CGRect(x: 10, y: 20, width: 320, height: 200)
         context.insert(tab)
         try context.save()
 
@@ -180,6 +181,7 @@ struct SyncRoundTripTests {
         #expect(decoded.isUnread == true)
         #expect(decoded.position == 2)
         #expect(decoded.space?.id == space.id)
+        #expect(decoded.boardFrame == CGRect(x: 10, y: 20, width: 320, height: 200))
     }
 
     // MARK: - Bookmark Round-Trip

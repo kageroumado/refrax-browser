@@ -23,6 +23,7 @@ extension Tab: Syncable {
         record["groupID"] = groupID?.uuidString as NSString?
         record["originURL"] = originURL?.absoluteString as NSString?
         record["layoutConfigurationData"] = layoutConfigurationData as NSData?
+        record["boardFrameData"] = boardFrameData as NSData?
 
         // Relationships
         // Tab → Space: CASCADE (Tab is deleted when Space is deleted)
@@ -92,6 +93,7 @@ extension Tab: Syncable {
         tab.groupID = (record["groupID"] as? String).flatMap(UUID.init(uuidString:))
         tab.originURL = (record["originURL"] as? String).flatMap(URL.init(string:))
         tab.layoutConfigurationData = record["layoutConfigurationData"] as? Data
+        tab.boardFrameData = record["boardFrameData"] as? Data
 
         // Resolve space relationship
         if let spaceRef = record["spaceRef"] as? CKRecord.Reference,

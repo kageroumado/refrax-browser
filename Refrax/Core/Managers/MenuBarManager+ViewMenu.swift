@@ -216,6 +216,16 @@ extension MenuBarManager {
         splitViewItem.target = self
         viewMenu.addItem(splitViewItem)
 
+        let canvasItem = NSMenuItem(
+            title: "Tab Canvas",
+            action: #selector(toggleTabCanvas(_:)),
+            keyEquivalent: "c",
+        )
+        canvasItem.keyEquivalentModifierMask = [.command, .control]
+        canvasItem.image = NSImage(systemSymbolName: "square.grid.3x3.topleft.filled", accessibilityDescription: nil)
+        canvasItem.target = self
+        viewMenu.addItem(canvasItem)
+
         viewMenu.addItem(.separator())
 
         // Video Viewer (WebKit's in-window viewer for the current video)
@@ -364,6 +374,11 @@ extension MenuBarManager {
         // Set target position to top-right pane and open command lens
         windowState.layoutModeTargetPosition = .topRight
         windowState.openCommandLens()
+    }
+
+    @objc
+    func toggleTabCanvas(_: Any?) {
+        activeWindowController?.tabCanvasManager.toggle()
     }
 
     // MARK: - Sidebar Mode Actions

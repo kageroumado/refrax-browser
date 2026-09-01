@@ -46,6 +46,16 @@ final class TabGroup {
     /// SF Symbol icon name
     var iconName: String?
 
+    /// Serialized ``BoardFrame``: the zone this group claims on the tab canvas.
+    /// The zone shown is always at least this rectangle, grown to hold its members.
+    var boardFrameData: Data?
+
+    /// The zone this group claims on the tab canvas, or `nil` if it only follows its members.
+    var boardFrame: CGRect? {
+        get { BoardFrame.decode(boardFrameData) }
+        set { boardFrameData = BoardFrame.encode(newValue) }
+    }
+
     /// Position in the tab list (alongside tabs)
     var position: Int
     

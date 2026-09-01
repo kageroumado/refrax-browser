@@ -19,6 +19,7 @@ extension TabGroup: Syncable {
         // Optionals
         record["iconName"] = iconName as NSString?
         record["parentGroupID"] = parentGroupID?.uuidString as NSString?
+        record["boardFrameData"] = boardFrameData as NSData?
 
         // Relationships
         // TabGroup → Space: CASCADE (TabGroup is deleted when Space is deleted)
@@ -80,6 +81,7 @@ extension TabGroup: Syncable {
         group.iconName = record["iconName"] as? String
         group.parentGroupID = (record["parentGroupID"] as? String)
             .flatMap(UUID.init(uuidString:))
+        group.boardFrameData = record["boardFrameData"] as? Data
 
         // Resolve space relationship
         if let spaceRef = record["spaceRef"] as? CKRecord.Reference,

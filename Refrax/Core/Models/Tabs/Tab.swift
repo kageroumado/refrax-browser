@@ -119,6 +119,16 @@ final class Tab {
         }
     }
 
+    /// Serialized ``BoardFrame``: where this tab's tile sits on the tab canvas.
+    /// `nil` until the tab has been placed on the board.
+    var boardFrameData: Data?
+
+    /// Where this tab's tile sits on the tab canvas, or `nil` if it has never been placed.
+    var boardFrame: CGRect? {
+        get { BoardFrame.decode(boardFrameData) }
+        set { boardFrameData = BoardFrame.encode(newValue) }
+    }
+
     /// Cached decoded layout configuration to avoid repeated JSON parsing.
     ///
     /// Invalidated when ``layoutConfigurationData`` changes.
