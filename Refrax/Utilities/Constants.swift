@@ -71,8 +71,10 @@ enum Constants {
         // Sidebar container and padding
         static let sidebarCornerRadius: CGFloat = 18 // Main sidebar container corner radius
         static let sidebarPadding: CGFloat = 8 // Padding between sidebar edge and pinned background
-        /// Inset between the bottom bar's glass platter and the controls it holds
-        static let bottomPlatterPadding: CGFloat = 3
+        /// Inset between a bottom-bar glass platter and the controls it holds
+        static let bottomPlatterPadding: CGFloat = 2
+        /// Side of a square bottom-bar button; platters add `bottomPlatterPadding` around it
+        static let bottomButtonSize: CGFloat = 26
         static let tabHorizontalPadding: CGFloat = sidebarPadding
         static let tabCornerRadius: CGFloat = sidebarCornerRadius - sidebarPadding
     }

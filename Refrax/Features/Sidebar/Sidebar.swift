@@ -533,7 +533,7 @@ struct Sidebar: View {
             spaceSettingsPopoverContent
           }
         }
-        .bottomPlatter()
+        
 
         HStack(spacing: Constants.Spacing.small - 1) {
           SidebarControlButton(

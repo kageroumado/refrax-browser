@@ -5,8 +5,8 @@ import SwiftUI
 /// Layout constants for SpacePicker, extracted to file scope to avoid
 /// issues with static stored properties in generic types.
 private enum SpacePickerLayout {
-    static let height: CGFloat = 32
-    static let cornerRadius: CGFloat = 16
+    static let height: CGFloat = 30
+    static let cornerRadius: CGFloat = 15
     static let highlightInset: CGFloat = 2
     static let iconOnlyWidth: CGFloat = 40
     static let iconWidth: CGFloat = 20
@@ -20,6 +20,9 @@ private enum SpacePickerLayout {
     /// Tooltip center above the picker's top edge; clears the glass platter the picker sits on.
     static let tooltipOffsetY: CGFloat = -20
     static let defaultTextWidth: CGFloat = 50
+    static let trackOpacity: CGFloat = 0.10
+    static let trackShadowOpacity: CGFloat = 0.18
+    static let trackShadowRadius: CGFloat = 2
     /// Extra horizontal inset on each side to keep content clear of the capsule's rounded corners.
     static let edgePadding: CGFloat = 8
 }
@@ -34,9 +37,9 @@ private enum SpacePickerLayout {
 /// Uses SwiftUI PreferenceKey to measure text sizes and determine the appropriate mode.
 /// Icon-only segments display a hover tooltip with the space name.
 ///
-/// The picker draws no capsule of its own: the sidebar's bottom bar wraps it in a
-/// glass platter. Only the selected space's pill is drawn at rest; the dividers
-/// between segments appear while the pointer is over the picker.
+/// Drawn like iOS Safari's tab-group switcher: a recessed track with a glass pill
+/// sliding to the selected space. The dividers between segments appear while the
+/// pointer is over the picker.
 ///
 /// Wraps a native Picker for full accessibility support while providing custom visual styling.
 ///
@@ -147,6 +150,14 @@ struct SpacePicker<ContextMenu: View>: View {
                 segmentsRow(layoutInfo: layoutInfo)
             }
         }
+        .background {
+            Capsule()
+                .fill(Color.primary.opacity(Layout.trackOpacity).shadow(.inner(
+                    color: .black.opacity(Layout.trackShadowOpacity),
+                    radius: Layout.trackShadowRadius,
+                    y: 1,
+                )))
+        }
         .overlay {
             // Tooltip overlay - placed after clipShape so it won't be clipped
             GeometryReader { geometry in
@@ -236,7 +247,7 @@ struct SpacePicker<ContextMenu: View>: View {
 
         return Color.clear
             .frame(width: width, height: Layout.height - (inset * 2))
-            .adaptiveBackground(.emphasized, in: RoundedRectangle(cornerRadius: cornerRadius - inset))
+            .glassEffect(.regular.interactive(), in: Capsule())
             .offset(x: offset)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedIndex)
     }

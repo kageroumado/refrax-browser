@@ -558,8 +558,7 @@ enum FilterSuggestion: Equatable {
 
 private enum Layout {
     static let fieldHeight: CGFloat = 28
-    static let buttonSize: CGFloat = 32
-    static let buttonCornerRadius: CGFloat = 16
+    static let buttonSize = Constants.Layout.bottomButtonSize
     static let iconButtonWidth: CGFloat = 32
     static let buttonHorizontalPadding: CGFloat = 6
     static let standardAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)

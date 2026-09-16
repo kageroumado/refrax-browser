@@ -36,6 +36,5 @@ struct ShelfButton: View {
 // MARK: - Layout Constants
 
 private enum Layout {
-    static let buttonSize: CGFloat = 32
-    static let buttonCornerRadius: CGFloat = 16
+    static let buttonSize = Constants.Layout.bottomButtonSize
 }

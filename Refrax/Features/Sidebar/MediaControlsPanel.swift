@@ -505,8 +505,7 @@ struct MediaSectionView: View {
 // MARK: - Layout Constants
 
 private enum Layout {
-    static let buttonSize: CGFloat = 32
-    static let buttonCornerRadius: CGFloat = 16
+    static let buttonSize = Constants.Layout.bottomButtonSize
     /// Maximum height for the panel content area.
     static let maxPanelHeight: CGFloat = 250
 }
