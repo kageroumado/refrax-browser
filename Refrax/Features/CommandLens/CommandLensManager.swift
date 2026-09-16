@@ -1023,31 +1023,62 @@ final class CommandLensManager {
     ///
     /// Order:
     /// 1. URL navigation suggestion (from inline completion or direct URL input) - if available
-    /// 2. Search suggestion for raw input - always available
-    /// 3. Ask AI suggestion - when input looks like an AI query
-    /// 4. All other suggestions in their original order (by provider priority)
+    /// 2. The root of that site, when the URL points at a subpage - so a completion to the
+    ///    most-visited deep link is always one row away from the homepage
+    /// 3. Search suggestion for raw input - always available
+    /// 4. Ask AI suggestion - when input looks like an AI query
+    /// 5. All other suggestions in their original order (by provider priority)
     private func sortSuggestionsWithHeuristics(_ suggestions: [CommandLensSuggestion]) -> [CommandLensSuggestion] {
         var result: [CommandLensSuggestion] = []
+        var remaining = suggestions
 
         // 1. URL navigation suggestion first (if valid URL from completion or direct input)
         if let urlSuggestion = createURLNavigationSuggestion() {
             result.append(urlSuggestion)
+
+            // 2. Site root right under it; drop the provider's copy further down
+            if let rootSuggestion = createSiteRootSuggestion(for: urlSuggestion) {
+                result.append(rootSuggestion)
+                remaining.removeAll { $0.type == .url && $0.url == rootSuggestion.url }
+            }
         }
 
-        // 2. Search suggestion second
+        // 3. Search suggestion
         if let searchSuggestion = createSearchSuggestion() {
             result.append(searchSuggestion)
         }
 
-        // 3. Ask AI suggestion (when input looks like a question/intent)
+        // 4. Ask AI suggestion (when input looks like a question/intent)
         if let aiSuggestion = createAskAISuggestion() {
             result.append(aiSuggestion)
         }
 
-        // 4. All other suggestions in original order
-        result.append(contentsOf: suggestions)
+        // 5. All other suggestions in original order
+        result.append(contentsOf: remaining)
 
         return result
+    }
+
+    /// Creates a "Go to website" suggestion for the root of the site a URL suggestion
+    /// points into, or nil when that URL is already a site root or has no host.
+    private func createSiteRootSuggestion(for urlSuggestion: CommandLensSuggestion) -> CommandLensSuggestion? {
+        guard let url = urlSuggestion.url,
+              !url.isFileURL,
+              let host = url.host,
+              url.path != "", url.path != "/",
+              let rootURL = URL(string: "\(url.scheme ?? "https")://\(host)")
+        else { return nil }
+
+        return CommandLensSuggestion(
+            type: .url,
+            text: host,
+            description: "Go to website",
+            iconName: "globe.badge.chevron.backward",
+            groupHeader: nil,
+            isRemovable: false,
+            keywordAction: nil,
+            url: rootURL,
+        )
     }
 
     private func calculateInlineCompletion(for input: String, from suggestions: [CommandLensSuggestion]) {
