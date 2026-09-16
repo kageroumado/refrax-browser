@@ -202,7 +202,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// The toolbar item identifiers that should move with the sidebar.
     let sidebarToolbarItemIdentifiers: Set<NSToolbarItem.Identifier> = [
-        .toggleSidebar, .toggleLayoutMode, .toggleInspector,
+        .toggleSidebarGrouped, .toggleLayoutMode, .toggleInspector,
     ]
 
     /// Tracks whether we're in fullscreen mode for proper edge reveal behavior

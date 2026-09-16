@@ -10,7 +10,7 @@ extension RefraxWindowController: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
-            .toggleSidebar,
+            .toggleSidebarGrouped,
             .toggleLayoutMode,
             .toggleInspector,
             .sidebarTrackingSeparator,
@@ -24,8 +24,20 @@ extension RefraxWindowController: NSToolbarDelegate {
         willBeInsertedIntoToolbar _: Bool,
     ) -> NSToolbarItem? {
         switch id {
-        case .toggleSidebar:
-            return nil
+        case .toggleSidebarGrouped:
+            // AppKit draws anything under the .toggleSidebar identifier on a glass
+            // platter of its own, even a plain bordered item. Under a custom
+            // identifier the same item shares its neighbors' platter.
+            let item = NSToolbarItem(itemIdentifier: .toggleSidebarGrouped)
+            item.label = "Sidebar"
+            item.paletteLabel = "Toggle Sidebar"
+            item.toolTip = "Hide or Show Sidebar"
+            item.image = NSImage(systemSymbolName: "sidebar.leading", accessibilityDescription: nil)
+            item.action = #selector(toggleSidebar(_:))
+            item.target = self
+            item.isBordered = true
+            configureSidebarTracking(for: item)
+            return item
 
         case .toggleInspector:
             let item = NSToolbarItem(itemIdentifier: .toggleInspector)
@@ -167,6 +179,8 @@ extension RefraxWindowController {
 // MARK: - Toolbar Item Identifiers
 
 extension NSToolbarItem.Identifier {
+    /// The sidebar toggle under an identifier AppKit does not single out; see the delegate.
+    static let toggleSidebarGrouped = NSToolbarItem.Identifier("ToggleSidebar")
     static let toggleInspector = NSToolbarItem.Identifier("ToggleInspector")
     static let toggleLayoutMode = NSToolbarItem.Identifier("ToggleLayoutMode")
 }
