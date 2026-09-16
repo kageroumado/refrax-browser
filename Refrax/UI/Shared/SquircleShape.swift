@@ -26,7 +26,7 @@ import SwiftUI
 /// // With custom ratio
 /// SquircleShape(cornerRadiusRatio: 0.25)  // 25% for tighter corners
 /// ```
-struct SquircleShape: Shape {
+nonisolated struct SquircleShape: Shape {
     /// The ratio of corner radius to the smaller dimension.
     ///
     /// Default is 9/32 (28.125%), approximating macOS Tahoe icons with bitmap-friendly math.
@@ -82,7 +82,7 @@ extension SquircleShape: InsettableShape {
 }
 
 /// An inset version of SquircleShape for stroke borders.
-struct InsetSquircleShape: InsettableShape {
+nonisolated struct InsetSquircleShape: InsettableShape {
     var cornerRadiusRatio: CGFloat
     var inset: CGFloat
 

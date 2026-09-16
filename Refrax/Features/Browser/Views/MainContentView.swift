@@ -9,14 +9,30 @@ struct MainContentView: View {
 
     /// Calculates leading padding based on sidebar state and mode.
     ///
-    /// - Compact mode with collapsed sidebar: 56px (compact sidebar width + glass padding)
+    /// - Compact mode with collapsed sidebar: 55px (compact sidebar width + glass padding)
     /// - Other collapsed states: 0px
-    /// - Expanded sidebar: 8px
+    /// - Expanded inset sidebar (macOS 26): 8px
+    /// - Expanded flush sidebar (macOS 27): 0px
     private var leadingPadding: CGFloat {
         if isCompactModeActive {
             return Constants.compactSidebarPadding
         }
-        return windowState.isSidebarCollapsed ? 0 : Constants.leadingPadding
+        if windowState.isSidebarCollapsed || !Refrax.Constants.Design.sidebarIsInset {
+            return 0
+        }
+        return Constants.leadingPadding
+    }
+
+    /// Corner radius on the content's leading edge.
+    ///
+    /// Only the inset sidebar of macOS 26 leaves a gap that shows rounded corners. In
+    /// compact mode the content extends under the edge extension, and a flush sidebar
+    /// meets the content edge to edge.
+    private var leadingCornerRadius: CGFloat {
+        if isCompactModeActive || !Refrax.Constants.Design.sidebarIsInset {
+            return 0
+        }
+        return Constants.cornerRadius
     }
 
     /// Whether compact sidebar mode is active (collapsed + compact mode).
@@ -52,11 +68,9 @@ struct MainContentView: View {
     }
 
     private var contentShape: some InsettableShape {
-        // In compact mode, no rounded corners - content extends under edge extension
-        let leadingRadius = isCompactModeActive ? 0 : Constants.cornerRadius
-        return UnevenRoundedRectangle(
-            topLeadingRadius: leadingRadius,
-            bottomLeadingRadius: leadingRadius,
+        UnevenRoundedRectangle(
+            topLeadingRadius: leadingCornerRadius,
+            bottomLeadingRadius: leadingCornerRadius,
             bottomTrailingRadius: 0,
             topTrailingRadius: 0,
         )

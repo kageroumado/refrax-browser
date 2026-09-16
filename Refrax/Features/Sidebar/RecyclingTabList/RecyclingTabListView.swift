@@ -783,6 +783,21 @@ private final class FirstMouseTableView: NSTableView {
         true
     }
 
+    /// A mouse-down on empty space below the rows moves the window.
+    ///
+    /// The table fills the sidebar, so this is where most sidebar-background clicks
+    /// land. NSTableView consumes them without forwarding, and the window has
+    /// `isMovableByWindowBackground` off so web content never drags the window, so
+    /// the drag has to start here.
+    override func mouseDown(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        guard row(at: location) == -1 else {
+            super.mouseDown(with: event)
+            return
+        }
+        window?.performDrag(with: event)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let location = convert(event.locationInWindow, from: nil)
         let clickedRow = row(at: location)

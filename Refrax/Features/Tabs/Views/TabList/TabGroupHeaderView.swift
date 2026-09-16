@@ -178,7 +178,7 @@ struct TabGroupHeaderView: View {
     /// indicates whether a tab within the group is selected, but the header itself
     /// uses subtle styling to avoid visual competition with the selected tab.
     private var highlightState: AdaptiveBackgroundStyle {
-        if effectiveHoverState || isActive { return .subtle }
+        if isDragging || isActive { return .subtle }
         return .clear
     }
     

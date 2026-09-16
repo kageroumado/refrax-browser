@@ -393,8 +393,7 @@ private struct MorphableOverlayContent: View {
 
     /// Background style matching TabView/FavoriteTileView conventions.
     ///
-    /// TabView uses hover-style (.subtle) during drag since isDragging triggers effectiveHoverState.
-    /// FavoriteTileView hover state uses .muted.
+    /// TabView uses .subtle while dragging. FavoriteTileView hover state uses .muted.
     private var backgroundStyle: AdaptiveBackgroundStyle {
         if isTile {
             // Tile mode: match FavoriteTileView hover state
@@ -403,11 +402,11 @@ private struct MorphableOverlayContent: View {
             // Non-active: use .muted to match FavoriteTileView's hover state
             return .muted
         } else {
-            // Tab mode: match TabView with isDragging=true (hover state)
+            // Tab mode: match TabView with isDragging=true
             if isActive, isMultiSelected { return .emphasizedSecondary }
             if isActive { return .emphasized }
             if isMultiSelected { return .secondary }
-            return .subtle // Hover state during drag
+            return .subtle
         }
     }
 

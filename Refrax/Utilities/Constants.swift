@@ -308,6 +308,20 @@ enum Constants {
         static let zoomLevels = [50, 75, 85, 100, 115, 125, 150, 175, 200, 250, 300]
     }
 
+    // MARK: - Design
+
+    enum Design {
+        /// macOS 26 draws the sidebar as an inset glass panel, so the content beside it is
+        /// clipped to a matching corner radius with an 8pt gap. macOS 27 draws the sidebar
+        /// flush against the content.
+        static let sidebarIsInset: Bool = {
+            if #available(macOS 27, *) {
+                return false
+            }
+            return true
+        }()
+    }
+
     // MARK: - Sidebar Animation
 
     enum SidebarAnimation {

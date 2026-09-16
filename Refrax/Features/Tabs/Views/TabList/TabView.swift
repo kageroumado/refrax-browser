@@ -322,7 +322,7 @@ struct TabView: View {
         if isSelected, isMultiSelected { return .emphasizedSecondary }
         if isSelected { return .emphasized }
         if isMultiSelected { return .secondary }
-        if effectiveHoverState { return .subtle }
+        if isDragging { return .subtle }
         return .clear
     }
     

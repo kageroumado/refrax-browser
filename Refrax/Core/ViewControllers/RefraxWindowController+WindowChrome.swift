@@ -126,27 +126,42 @@ extension RefraxWindowController {
         for item in toolbar.items {
             guard sidebarToolbarItemIdentifiers.contains(item.itemIdentifier) else { continue }
 
-            let itemViewer = item._itemViewer
-            itemViewer.wantsLayer = true
-            itemViewer.isHidden = false
-
-            applyLayerTransform(to: itemViewer, transform: transform, alpha: targetAlpha, animated: animated, duration: duration)
-
-            if let platter = itemViewer.associatedPlatter {
-                platter.wantsLayer = true
-                platter.isHidden = false
-                applyLayerTransform(to: platter, transform: transform, alpha: targetAlpha, animated: animated, duration: duration)
-            }
-
-            if let superview = itemViewer.superview,
-               NSStringFromClass(type(of: superview)).contains("Platter") {
-                superview.wantsLayer = true
-                superview.isHidden = false
-                applyLayerTransform(to: superview, transform: transform, alpha: targetAlpha, animated: animated, duration: duration)
+            for view in slidingViews(for: item) {
+                view.wantsLayer = true
+                view.isHidden = false
+                applyLayerTransform(to: view, transform: transform, alpha: targetAlpha, animated: animated, duration: duration)
             }
         }
 
         hideGlassContainer()
+    }
+
+    /// The views that must move together to slide a toolbar item: its item viewer and
+    /// the glass platter drawn for it.
+    ///
+    /// On macOS 26 the platter is a sibling of the item viewer, so both need the same
+    /// transform. On macOS 27 the platter *contains* the item viewer, so only the
+    /// platter is returned: transforming both would move the item twice as far.
+    private func slidingViews(for item: NSToolbarItem) -> [NSView] {
+        let itemViewer = item._itemViewer
+        var candidates: [NSView] = [itemViewer]
+
+        if let platter = itemViewer.associatedPlatter {
+            candidates.append(platter)
+        }
+        if let superview = itemViewer.superview,
+           NSStringFromClass(type(of: superview)).contains("Platter") {
+            candidates.append(superview)
+        }
+
+        var views: [NSView] = []
+        for view in candidates where !views.contains(where: { $0 === view }) {
+            let hasAncestorInSet = candidates.contains { $0 !== view && view.isDescendant(of: $0) }
+            if !hasAncestorInSet {
+                views.append(view)
+            }
+        }
+        return views
     }
 
     /// Applies a layer transform and alpha to a view with optional animation.
@@ -181,16 +196,21 @@ extension RefraxWindowController {
         }
     }
 
-    /// Hides the toolbar's glass container.
+    /// Hides the toolbar's glass platter backdrops.
     ///
     /// The glass platter effects are rendered by NSGlassContainerView which is
-    /// stored in NSToolbarView._glassContainer (an ivar, not a property).
-    /// We always hide this container since the sidebar toolbar items are animated
-    /// separately and don't need the glass effect backdrop.
+    /// stored in NSToolbarView._glassContainer (an ivar, not a property). The
+    /// sidebar toolbar items are animated separately and don't need the backdrop.
+    ///
+    /// On macOS 27 the container also holds every item viewer, so hiding it would
+    /// leave the buttons clickable but invisible; the container is then left alone.
     func hideGlassContainer() {
-        guard let toolbarView else { return }
+        guard let toolbar = window?.toolbar, let toolbarView else { return }
 
         guard let glassContainer = toolbarView.value(forKey: "_glassContainer") as? NSView else { return }
+
+        let containsItemViewers = toolbar.items.contains { $0._itemViewer.isDescendant(of: glassContainer) }
+        guard !containsItemViewers else { return }
 
         glassContainer.wantsLayer = true
         glassContainer.alphaValue = 0

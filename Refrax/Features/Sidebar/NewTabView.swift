@@ -5,22 +5,14 @@ import SwiftUI
 /// Extracted label for NewTabView that only observes the minimal environment values needed.
 ///
 /// This reduces observation overhead: NewTabView has 10 @Environment declarations for its context menu,
-/// but the label only needs `modifierKeys` and `dragCoordinator`. By extracting the label, changes to
+/// but the label only needs `modifierKeys` and `windowState`. By extracting the label, changes to
 /// other environment values (tabManager, groupManager, etc.) won't trigger label re-evaluation.
 private struct NewTabViewLabel: View {
     @Environment(SidebarCellEnvironment.self) private var env
 
-    @Binding var isHovered: Bool
-
-    /// Effective hover state: disabled when any drag is happening to prevent visual noise.
-    private var effectiveHover: Bool {
-        isHovered && !env.dragCoordinator.isDragging
-    }
-
-    /// The background style for the new tab button.
+    /// The background style for the new tab button: highlighted while the Command Lens is open.
     private var highlightState: AdaptiveBackgroundStyle {
-        if effectiveHover || env.windowState.showsCommandLens { return .subtle }
-        return .clear
+        env.windowState.showsCommandLens ? .subtle : .clear
     }
 
     /// Lens icon matching the size and style of tab favicons.
@@ -55,7 +47,6 @@ private struct NewTabViewLabel: View {
 ///
 /// This view mirrors the visual appearance of tab rows in the sidebar:
 /// - Same height, padding, and corner radius as `TabView`
-/// - Matching hover background effect
 /// - Plus icon styled consistently with tab favicons
 ///
 /// ## Usage
@@ -80,13 +71,11 @@ private struct NewTabViewLabel: View {
 struct NewTabView: View {
     @Environment(SidebarCellEnvironment.self) private var env
 
-    @State private var isHovered = false
-
     // MARK: - Body
 
     var body: some View {
         Button(action: performAction) {
-            NewTabViewLabel(isHovered: $isHovered)
+            NewTabViewLabel()
         }
         .buttonStyle(.plain)
         .onKeyPress(.return) {
@@ -94,7 +83,6 @@ struct NewTabView: View {
             return .handled
         }
         .padding(.horizontal, Constants.Layout.tabHorizontalPadding)
-        .onHover { isHovered = $0 }
         .refraxContextMenu {
             SidebarContextMenus.buildEmptyAreaMenu(dependencies: env.dependencyContainer)
         }
