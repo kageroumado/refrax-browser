@@ -29,7 +29,6 @@ struct RemindersWidgetButton: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
             .accessibilityIdentifier("sidebar-reminders")
             .accessibilityLabel("Reminders (\(reminderManager.pendingItems.count) pending)")
             .help("Page Reminders")

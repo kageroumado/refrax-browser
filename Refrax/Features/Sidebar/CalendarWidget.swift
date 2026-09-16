@@ -33,7 +33,6 @@ struct CalendarWidgetButton: View {
                 }
             }
             .buttonStyle(.plain)
-            .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
             .accessibilityIdentifier("sidebar-calendar")
             .accessibilityLabel("Calendar")
             .if(isExpanded) { view in

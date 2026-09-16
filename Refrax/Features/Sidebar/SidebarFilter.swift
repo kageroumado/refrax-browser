@@ -6,7 +6,7 @@ import SwiftUI
 /// A reusable button style for sidebar bottom controls.
 ///
 /// Used for filter button, new space button, and potentially collapsed space picker.
-/// Maintains consistent sizing and material styling across all control buttons.
+/// Maintains consistent sizing across all control buttons; only the icon is drawn.
 struct SidebarControlButton: View {
     let icon: String
     let isActive: Bool
@@ -34,7 +34,6 @@ struct SidebarControlButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
         .if(accessibilityID != nil) { view in
             view.accessibilityIdentifier(accessibilityID!)
         }
@@ -153,7 +152,6 @@ struct SidebarFilter: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
         .matchedGeometryEffect(id: "filterContainer", in: morphNamespace)
         .transition(
             .asymmetric(

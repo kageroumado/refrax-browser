@@ -26,7 +26,6 @@ struct ShelfButton: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
             .accessibilityIdentifier("sidebar-shelf")
             .accessibilityLabel("Shelf (\(shelfManager.items.count) items)")
             .help("Shelf")

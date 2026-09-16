@@ -63,7 +63,6 @@ struct MediaControlsButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
         .accessibilityIdentifier("sidebar-media-controls")
         .accessibilityLabel(accessibilityLabel)
         .help(helpText)

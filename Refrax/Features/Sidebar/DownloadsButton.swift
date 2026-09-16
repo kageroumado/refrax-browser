@@ -63,7 +63,6 @@ struct DownloadsButton: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: Layout.buttonCornerRadius))
             .accessibilityIdentifier("sidebar-downloads")
             .accessibilityLabel(accessibilityLabel)
             .help("Downloads")

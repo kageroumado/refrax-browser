@@ -34,6 +34,9 @@ private enum SpacePickerLayout {
 /// Uses SwiftUI PreferenceKey to measure text sizes and determine the appropriate mode.
 /// Icon-only segments display a hover tooltip with the space name.
 ///
+/// At rest only the selected space's pill is drawn; the capsule behind the other
+/// segments and the dividers between them appear while the pointer is over the picker.
+///
 /// Wraps a native Picker for full accessibility support while providing custom visual styling.
 ///
 /// ## Observation
@@ -54,6 +57,7 @@ struct SpacePicker<ContextMenu: View>: View {
     var contextMenuBuilder: ((Space) -> ContextMenu)?
 
     @State private var measuredWidths: [UUID: CGFloat] = [:]
+    @State private var isHovered = false
     @State private var hoveredSpaceID: UUID?
     @State private var tooltipSpaceID: UUID?
     @State private var hoverTask: Task<Void, any Error>?
@@ -138,13 +142,12 @@ struct SpacePicker<ContextMenu: View>: View {
             let layoutInfo = calculateLayout(for: geometry.size.width)
 
             ZStack(alignment: .leading) {
-                if spaces.count > 1 {
-                    highlightPill(segmentWidths: layoutInfo.segmentWidths)
-                }
+                highlightPill(segmentWidths: layoutInfo.segmentWidths)
                 segmentsRow(layoutInfo: layoutInfo)
             }
         }
-        .adaptiveBackground(.subtle, in: RoundedRectangle(cornerRadius: cornerRadius))
+        .adaptiveBackground(isHovered ? .subtle : .clear, in: RoundedRectangle(cornerRadius: cornerRadius))
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
         .overlay {
             // Tooltip overlay - placed after clipShape so it won't be clipped
             GeometryReader { geometry in
@@ -154,6 +157,7 @@ struct SpacePicker<ContextMenu: View>: View {
             .allowsHitTesting(false)
         }
         .onHover { isHovering in
+            isHovered = isHovering
             if !isHovering {
                 dismissTooltip()
             }
@@ -187,6 +191,7 @@ struct SpacePicker<ContextMenu: View>: View {
 
                 SpaceSegmentButton(
                     space: space,
+                    isSelected: index == selectedIndex,
                     isLocked: isLocked,
                     width: width,
                     showsLabel: showsLabel,
@@ -245,7 +250,7 @@ struct SpacePicker<ContextMenu: View>: View {
         return Rectangle()
             .fill(Color.secondary.opacity(0.3))
             .frame(width: 1, height: Layout.dividerHeight)
-            .opacity(adjacentToSelected ? 0 : 1)
+            .opacity(adjacentToSelected || !isHovered ? 0 : 1)
             .animation(.easeInOut(duration: 0.2), value: selectedIndex)
     }
 
@@ -388,8 +393,11 @@ extension SpacePicker where ContextMenu == EmptyView {
 // MARK: - Space Segment Button
 
 /// A button for a single space segment that observes only the display properties.
+///
+/// Inactive segments use the secondary foreground, matching the Command Lens row.
 private struct SpaceSegmentButton<ContextMenu: View>: View {
     let space: Space
+    let isSelected: Bool
     let isLocked: Bool
     let width: CGFloat
     let showsLabel: Bool
@@ -421,7 +429,7 @@ private struct SpaceSegmentButton<ContextMenu: View>: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
             .frame(width: width, height: Layout.height)
             .contentShape(Rectangle())
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: showsLabel)
