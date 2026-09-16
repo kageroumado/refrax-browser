@@ -17,8 +17,8 @@ private enum SpacePickerLayout {
     static let emojiFontSize: CGFloat = 14
     static let textFontSize: CGFloat = 12
     static let tooltipFontSize: CGFloat = 11
-    static let tooltipCornerRadius: CGFloat = 6
-    static let tooltipOffsetY: CGFloat = -12
+    /// Tooltip center above the picker's top edge; clears the glass platter the picker sits on.
+    static let tooltipOffsetY: CGFloat = -20
     static let defaultTextWidth: CGFloat = 50
     /// Extra horizontal inset on each side to keep content clear of the capsule's rounded corners.
     static let edgePadding: CGFloat = 8
@@ -34,9 +34,9 @@ private enum SpacePickerLayout {
 /// Uses SwiftUI PreferenceKey to measure text sizes and determine the appropriate mode.
 /// Icon-only segments display a hover tooltip with the space name.
 ///
-/// The picker draws no capsule of its own: the sidebar's bottom platter is its
-/// background. Only the selected space's pill is drawn at rest; the dividers between
-/// segments appear while the pointer is over the picker.
+/// The picker draws no capsule of its own: the sidebar's bottom bar wraps it in a
+/// glass platter. Only the selected space's pill is drawn at rest; the dividers
+/// between segments appear while the pointer is over the picker.
 ///
 /// Wraps a native Picker for full accessibility support while providing custom visual styling.
 ///
@@ -485,7 +485,7 @@ private struct SpaceTooltip: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Layout.tooltipCornerRadius))
+            .background(.ultraThinMaterial, in: Capsule())
             .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
             .fixedSize()
             .position(x: centerX, y: Layout.tooltipOffsetY)
