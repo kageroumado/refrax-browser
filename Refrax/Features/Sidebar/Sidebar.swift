@@ -499,7 +499,7 @@ struct Sidebar: View {
                 )
             }
 
-            // Main controls row
+            // Main controls row, on one glass platter
             // Layout: [Filter] [SpacePicker] [New Space] | [Dynamic buttons]
             // Dynamic buttons are placed after static controls for visual stability
             HStack(spacing: Constants.Spacing.small - 1) {
@@ -602,6 +602,8 @@ struct Sidebar: View {
                     EmptyView()
                 }
             }
+            .padding(Constants.Layout.bottomPlatterPadding)
+            .glassEffect(in: Capsule())
             .sheet(isPresented: $showUpdateSheet) {
                 UpdateAvailableView()
             }

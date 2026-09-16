@@ -187,7 +187,7 @@ struct SidebarFilter: View {
                 manageFiltersButton
             }
             .frame(height: Layout.fieldHeight)
-            .adaptiveBackground(.subtle, in: Capsule())
+            .glassEffect(in: Capsule())
         }
         .matchedGeometryEffect(id: "filterContainer", in: morphNamespace)
         .transition(.opacity)

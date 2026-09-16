@@ -34,8 +34,9 @@ private enum SpacePickerLayout {
 /// Uses SwiftUI PreferenceKey to measure text sizes and determine the appropriate mode.
 /// Icon-only segments display a hover tooltip with the space name.
 ///
-/// At rest only the selected space's pill is drawn; the capsule behind the other
-/// segments and the dividers between them appear while the pointer is over the picker.
+/// The picker draws no capsule of its own: the sidebar's bottom platter is its
+/// background. Only the selected space's pill is drawn at rest; the dividers between
+/// segments appear while the pointer is over the picker.
 ///
 /// Wraps a native Picker for full accessibility support while providing custom visual styling.
 ///
@@ -146,8 +147,6 @@ struct SpacePicker<ContextMenu: View>: View {
                 segmentsRow(layoutInfo: layoutInfo)
             }
         }
-        .adaptiveBackground(isHovered ? .subtle : .clear, in: RoundedRectangle(cornerRadius: cornerRadius))
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
         .overlay {
             // Tooltip overlay - placed after clipShape so it won't be clipped
             GeometryReader { geometry in

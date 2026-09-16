@@ -136,8 +136,7 @@ struct AddressBar: View {
         .overlay(alignment: .bottom) {
             loadingIndicator
         }
-        .adaptiveBackground(addressBarIsFloating ? .clear : .subtle, in: Capsule())
-        .adaptiveBackgroundBlur()
+        .glassEffect(addressBarIsFloating ? .identity : .regular, in: Capsule())
         .contentShape(Capsule())
         .onHover { isHovered = $0 }
         .onTapGesture {
