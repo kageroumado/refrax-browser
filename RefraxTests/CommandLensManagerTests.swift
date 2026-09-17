@@ -79,6 +79,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.inputText.isEmpty)
@@ -100,6 +101,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.suggestions.isEmpty)
@@ -121,6 +123,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.selection == CommandLensSelection.none)
@@ -142,6 +145,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.isPopupVisible == false)
@@ -163,6 +167,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.isLoading == false)
@@ -184,6 +189,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.inlineCompletion == nil)
@@ -206,6 +212,7 @@ struct CommandLensManagerInitializationTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.selectedSearchEngine == nil)
@@ -233,6 +240,7 @@ struct CommandLensManagerComputedPropertiesTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         manager.inputText = "test query"
@@ -256,6 +264,7 @@ struct CommandLensManagerComputedPropertiesTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         #expect(manager.showSearchEngineBadge == false)
@@ -277,6 +286,7 @@ struct CommandLensManagerComputedPropertiesTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         // Should use default search engine from browserSettings
@@ -305,6 +315,7 @@ struct CommandLensManagerInputHandlingTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         manager.onInputChanged("")
@@ -329,6 +340,7 @@ struct CommandLensManagerInputHandlingTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         manager.onInputChanged("test")
@@ -352,6 +364,7 @@ struct CommandLensManagerInputHandlingTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         manager.onInputChanged("hello world")
@@ -375,6 +388,7 @@ struct CommandLensManagerInputHandlingTests {
             agentChatManager: AgentChatManager(settings: env.settings),
             extensionManager: env.extensionManager,
             customSearchEngineManager: env.customSearchEngineManager,
+            localNetworkSource: EmptyLocalNetworkSource(),
         )
 
         // Simulate having a completion

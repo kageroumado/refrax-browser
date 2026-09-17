@@ -251,6 +251,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             agentChatManager: appDelegate.agentChatManager,
             extensionManager: appDelegate.extensionManager,
             customSearchEngineManager: appDelegate.customSearchEngineManager,
+            localNetworkSource: appDelegate.localNetworkDirectory,
         )
         self.tabSwitcherManager = TabSwitcherManager(
             tabManager: appDelegate.tabManager,

@@ -68,6 +68,22 @@ enum SuggestionType: Hashable, Sendable {
     /// Used by `ActionsProvider` for browser-level operations that aren't
     /// navigation, search, or settings toggles.
     case appAction(AppAction)
+
+    /// A device on the local network with a web interface.
+    ///
+    /// When selected, navigates to the device's URL like ``url``.
+    ///
+    /// - Parameter role: Whether the device is the default gateway or a Bonjour-advertised service.
+    case localDevice(LocalDeviceRole)
+}
+
+/// What a local network device is to the user.
+enum LocalDeviceRole: Hashable, Sendable {
+    /// The router this Mac sends non-local traffic through.
+    case gateway
+
+    /// Any other device advertising a web interface over Bonjour.
+    case service
 }
 
 /// App-level actions triggered from the Command Lens.
@@ -83,6 +99,9 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Open the saved-passwords window.
     case openPasswords
+
+    /// Open the Local Devices window.
+    case openLocalDevices
 }
 
 /// Scope of a setting (global or per-site).

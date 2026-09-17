@@ -40,6 +40,13 @@ struct SuggestionActionView: View {
                     isSelected ? Color.white : Color(.pillBackground),
                     in: Capsule(),
                 )
+            } else if case let .localDevice(role) = suggestion.type {
+                Text(role == .gateway ? "Gateway" : "Local device")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(.pillBackground), in: Capsule())
             } else if case let .setting(key, _) = suggestion.type {
                 SettingToggleIndicator(settingKey: key, settings: settings)
             } else {

@@ -91,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let activationObserver: AppActivationObserver
     let systemSleepObserver: SystemSleepObserver
     let scheduledTasksManager: ScheduledTasksManager
+    let localNetworkDirectory = LocalNetworkDirectory()
 
     // Other managers
     let windowManager: WindowManager
@@ -209,6 +210,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dedicated Feedback window controller.
     lazy var feedbackWindowController = FeedbackWindowController(
         feedbackManager: feedbackManager,
+    )
+
+    /// Local Devices window controller: the map of the router and the devices around it.
+    lazy var localDevicesWindowController = LocalDevicesWindowController(
+        directory: localNetworkDirectory,
+        tabManager: tabManager,
     )
 
     /// Acknowledgements window controller.
@@ -589,6 +596,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             browserState.settings.isActivated = true
         #endif
 
+        if browserState.settings.hasCompletedOnboarding {
+            requestLocalNetworkAccess()
+        }
+
         if !browserState.settings.hasCompletedOnboarding {
             // Migration for existing alpha testers: if they have browsing data
             // but no onboarding flag (pre-onboarding install), skip onboarding.
@@ -646,6 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             browserState.settings.hasCompletedOnboarding = true
             onboardingWindowController?.closeWindow()
             onboardingWindowController = nil
+            requestLocalNetworkAccess()
 
             prepareForFirstLaunch()
         }
@@ -1303,6 +1315,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load missing favicons for favorites in the background
         // (function dispatches its own detached utility task internally)
         bookmarksManager.loadFaviconsForFavorites()
+    }
+
+    /// Browses the local network once so the macOS permission prompt appears at launch, in
+    /// context, rather than under the Command Lens the first time someone types an address.
+    /// The browse also fills the directory, so the first lens query already lists devices.
+    private func requestLocalNetworkAccess() {
+        Task(name: "Local network warm-up", priority: .utility) {
+            _ = await localNetworkDirectory.snapshot()
+        }
     }
 
     /// Sets up the app for UI testing with test data.

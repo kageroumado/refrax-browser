@@ -141,6 +141,7 @@ final class CommandLensManager {
     private let agentChatManager: AgentChatManager
     private let extensionManager: ExtensionManager
     private let customSearchEngineManager: CustomSearchEngineManager
+    private let localNetworkSource: any LocalNetworkSnapshotSource
 
     @ObservationIgnored private var aiStreamingTask: Task<Void, Never>?
 
@@ -170,6 +171,7 @@ final class CommandLensManager {
         agentChatManager: AgentChatManager,
         extensionManager: ExtensionManager,
         customSearchEngineManager: CustomSearchEngineManager,
+        localNetworkSource: any LocalNetworkSnapshotSource,
     ) {
         self.tabManager = tabManager
         self.historyManager = historyManager
@@ -181,6 +183,7 @@ final class CommandLensManager {
         self.agentChatManager = agentChatManager
         self.extensionManager = extensionManager
         self.customSearchEngineManager = customSearchEngineManager
+        self.localNetworkSource = localNetworkSource
 
         // Initialize providers
         self.suggestionProviders = [
@@ -188,6 +191,7 @@ final class CommandLensManager {
             SiteControlProvider(siteSettingsManager: siteSettingsManager, browserSettings: browserSettings),
             ExtensionControlProvider(extensionManager: extensionManager),
             OpenTabsProvider(tabManager: tabManager),
+            LocalNetworkProvider(source: localNetworkSource),
             SearchEngineProvider(customSearchEngineManager: customSearchEngineManager),
             BaseDomainSynthesisProvider(frequentDestinations: historyManager.frequentDestinations),
             HistoryProvider(historyManager: historyManager),
@@ -1032,14 +1036,19 @@ final class CommandLensManager {
         var result: [CommandLensSuggestion] = []
         var remaining = suggestions
 
-        // 1. URL navigation suggestion first (if valid URL from completion or direct input)
+        // 1. URL navigation suggestion first (if valid URL from completion or direct input).
+        //    A local device row for the same URL takes its place, keeping the gateway badge.
         if let urlSuggestion = createURLNavigationSuggestion() {
-            result.append(urlSuggestion)
+            if let localIndex = remaining.firstIndex(where: { isLocalDevice($0, at: urlSuggestion.url) }) {
+                result.append(remaining.remove(at: localIndex).withGroupHeader(nil))
+            } else {
+                result.append(urlSuggestion)
 
-            // 2. Site root right under it; drop the provider's copy further down
-            if let rootSuggestion = createSiteRootSuggestion(for: urlSuggestion) {
-                result.append(rootSuggestion)
-                remaining.removeAll { $0.type == .url && $0.url == rootSuggestion.url }
+                // 2. Site root right under it; drop the provider's copy further down
+                if let rootSuggestion = createSiteRootSuggestion(for: urlSuggestion) {
+                    result.append(rootSuggestion)
+                    remaining.removeAll { $0.type == .url && $0.url == rootSuggestion.url }
+                }
             }
         }
 
@@ -1057,6 +1066,11 @@ final class CommandLensManager {
         result.append(contentsOf: remaining)
 
         return result
+    }
+
+    private func isLocalDevice(_ suggestion: CommandLensSuggestion, at url: URL?) -> Bool {
+        guard case .localDevice = suggestion.type else { return false }
+        return suggestion.url == url
     }
 
     /// Creates a "Go to website" suggestion for the root of the site a URL suggestion
@@ -1101,32 +1115,33 @@ final class CommandLensManager {
             rejectedAtInputLength = 0
         }
 
-        let urlSuggestions = suggestions.filter { suggestion in
-            switch suggestion.type {
-            case .url, .openTab:
-                let normalizedURL = normalizeForCompletion(suggestion.description)
-                let normalizedInput = normalizeForCompletion(input)
-                return normalizedURL.hasPrefix(normalizedInput)
-            default:
-                return false
-            }
-        }
+        let normalizedInput = normalizeForCompletion(input)
+        let completionText = suggestions.lazy
+            .compactMap { self.completionCandidate(for: $0) }
+            .first { $0.hasPrefix(normalizedInput) }
 
-        if let bestMatch = urlSuggestions.first {
-            let completionText = normalizeForCompletion(bestMatch.description)
-            let normalizedInput = normalizeForCompletion(input)
-
-            if completionText.hasPrefix(normalizedInput) {
-                inlineCompletion = completionText
-                let inputLength = input.count
-                let completionLength = completionText.count
-                inlineCompletionRange = NSRange(location: inputLength, length: completionLength - inputLength)
-                return
-            }
+        if let completionText {
+            inlineCompletion = completionText
+            let inputLength = input.count
+            let completionLength = completionText.count
+            inlineCompletionRange = NSRange(location: inputLength, length: completionLength - inputLength)
+            return
         }
 
         inlineCompletion = nil
         inlineCompletionRange = nil
+    }
+
+    /// The normalized address a suggestion can complete typed input to, if it has one.
+    private func completionCandidate(for suggestion: CommandLensSuggestion) -> String? {
+        switch suggestion.type {
+        case .url, .openTab:
+            normalizeForCompletion(suggestion.description)
+        case .localDevice:
+            suggestion.url.map { normalizeForCompletion($0.absoluteString) }
+        default:
+            nil
+        }
     }
 
     private func normalizeForCompletion(_ urlString: String) -> String {
@@ -1616,7 +1631,7 @@ final class CommandLensManager {
         case let .searchProvider(engine):
             selectSearchProvider(engine)
 
-        case .url:
+        case .url, .localDevice:
             if let url = suggestion.url {
                 navigateToURL(url, makeActive: makeActive)
                 reset()
@@ -1695,6 +1710,8 @@ final class CommandLensManager {
                 windowState.showsBrowserImport = true
             case .openPasswords:
                 NSApp.typedDelegate.passwordsWindowController.showWindow()
+            case .openLocalDevices:
+                NSApp.typedDelegate.localDevicesWindowController.showWindow()
             }
             closeCurrentLens()
             reset()

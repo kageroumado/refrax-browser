@@ -178,6 +178,16 @@ extension MenuBarManager {
         passwordsItem.target = self
         viewMenu.addItem(passwordsItem)
 
+        // Local Devices window
+        let localDevicesItem = NSMenuItem(
+            title: "Local Devices",
+            action: #selector(showLocalDevices(_:)),
+            keyEquivalent: "",
+        )
+        localDevicesItem.image = NSImage(systemSymbolName: "network", accessibilityDescription: nil)
+        localDevicesItem.target = self
+        viewMenu.addItem(localDevicesItem)
+
         viewMenu.addItem(.separator())
 
         // Enter Split View with Command Lens
@@ -299,6 +309,13 @@ extension MenuBarManager {
     @objc
     func showPasswords(_: Any?) {
         NSApp.typedDelegate.passwordsWindowController.showWindow()
+    }
+
+    // MARK: - Local Devices Window
+
+    @objc
+    func showLocalDevices(_: Any?) {
+        NSApp.typedDelegate.localDevicesWindowController.showWindow()
     }
 
     // MARK: - Split View Actions

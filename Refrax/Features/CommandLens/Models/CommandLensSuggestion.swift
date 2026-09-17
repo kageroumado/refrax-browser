@@ -68,9 +68,9 @@ struct CommandLensSuggestion: Identifiable, Hashable, Sendable {
     
     /// Creates a copy of this suggestion with a new group header.
     ///
-    /// - Parameter title: The group header title to assign.
+    /// - Parameter title: The group header title to assign, or `nil` for none.
     /// - Returns: A new suggestion with the specified group header.
-    func withGroupHeader(_ title: String) -> CommandLensSuggestion {
+    func withGroupHeader(_ title: String?) -> CommandLensSuggestion {
         CommandLensSuggestion(
             type: type,
             text: text,

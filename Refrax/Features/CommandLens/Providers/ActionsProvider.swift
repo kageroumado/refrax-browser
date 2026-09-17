@@ -53,6 +53,26 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
+        // Local Devices window
+        let localDevicesTerms = [
+            "local devices", "devices", "network map", "local network", "lan",
+            "network", "bonjour", "my devices", "smart home", "iot",
+        ]
+        let localDevicesScore = FuzzyMatcher.match(query: query, against: localDevicesTerms)
+
+        if localDevicesScore >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.openLocalDevices),
+                text: "Local Devices",
+                description: "Map of your router and the devices around it",
+                iconName: "network",
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
+
         // Import from Another Browser
         let importTerms = [
             "import", "import browser", "import bookmarks", "import passwords",

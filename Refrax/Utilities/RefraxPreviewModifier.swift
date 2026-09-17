@@ -149,6 +149,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             agentChatManager: agentChatManager,
             extensionManager: extensionManager,
             customSearchEngineManager: customSearchEngineManager,
+            localNetworkSource: LocalNetworkDirectory(),
         )
 
         let tabSwitcherManager = TabSwitcherManager(
