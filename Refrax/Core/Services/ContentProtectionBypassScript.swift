@@ -39,15 +39,31 @@ enum ContentProtectionBypassScript {
         `;
         (document.head || document.documentElement).appendChild(style);
     
-        // Events to neutralize for copy protection bypass
-        // Note: Do NOT include mousedown/mouseup/click - breaks site interactivity
+        // Events to neutralize for copy protection bypass.
+        // Note: Do NOT include mousedown/mouseup/click - breaks site interactivity.
+        // 'paste' is handled separately below, not blanket-neutralized.
         const neutralizedEvents = [
-            'selectstart', 'contextmenu', 'copy', 'cut', 'paste', 'dragstart'
+            'selectstart', 'contextmenu', 'copy', 'cut', 'dragstart'
         ];
-    
+
         neutralizedEvents.forEach(eventType => {
             document.addEventListener(eventType, e => e.stopPropagation(), true);
         });
+
+        // Paste is neutralized only when the clipboard carries no files. A text
+        // paste still bypasses a site that blocks pasting; a paste that carries an
+        // image or video reaches the page's own handler so it becomes an attachment
+        // (X/Twitter, GitHub, Slack), which a blanket stopPropagation would sever.
+        document.addEventListener('paste', e => {
+            const data = e.clipboardData;
+            const hasFile = !!data && (
+                (data.files && data.files.length > 0) ||
+                (data.items && Array.from(data.items).some(item => item.kind === 'file'))
+            );
+            if (!hasFile) {
+                e.stopPropagation();
+            }
+        }, true);
     
         const handlerAttributes = [
             'onselectstart', 'oncontextmenu', 'oncopy', 'oncut', 'onpaste', 'ondragstart'
