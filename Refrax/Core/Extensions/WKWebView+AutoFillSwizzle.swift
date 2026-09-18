@@ -115,7 +115,9 @@ private enum EditorStateSwizzle {
     private static func handlePasswordFieldFocus(webView: WKWebView) {
         guard webView.url?.allowsAutoFill == true else { return }
 
-        queryFocusedElementInfo(webView: webView, expectedType: .password) { elementInfo in
+        queryFocusedElementInfo(webView: webView, expectedType: .password) { elementInfo, focusInSubframe in
+            // A sub-frame password field is handled by the sub-frame reporter.
+            guard !focusInSubframe else { return }
             guard let elementInfo else { return }
             notifyInputDelegate(webView: webView, elementInfo: elementInfo)
         }
@@ -131,7 +133,10 @@ private enum EditorStateSwizzle {
     private static func checkForCredentialFieldFocus(webView: WKWebView) {
         guard webView.url?.allowsAutoFill == true else { return }
 
-        queryFocusedElementInfo(webView: webView, expectedType: nil) { elementInfo in
+        queryFocusedElementInfo(webView: webView, expectedType: nil) { elementInfo, focusInSubframe in
+            // Focus moved into a sub-frame; its reporter owns the overlay, so leave it up.
+            guard !focusInSubframe else { return }
+
             // No input element focused - focus moved away
             guard let elementInfo else {
                 onFocusLost?()
@@ -163,11 +168,18 @@ private enum EditorStateSwizzle {
     private static func queryFocusedElementInfo(
         webView: WKWebView,
         expectedType: WKInputType?,
-        completion: @escaping (FocusedElementInfoImpl?) -> Void,
+        completion: @escaping (FocusedElementInfoImpl?, _ focusInSubframe: Bool) -> Void,
     ) {
         let js = """
         (function() {
             const el = document.activeElement;
+            // Focus inside a cross-origin iframe surfaces here as the <iframe> element.
+            // The sub-frame content script owns those fields, so signal "handled
+            // elsewhere" rather than "no field" — otherwise the caller would hide the
+            // overlay the sub-frame just requested.
+            if (el && el.tagName === 'IFRAME') {
+                return { inSubframe: true };
+            }
             if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) {
                 return null;
             }
@@ -218,19 +230,27 @@ private enum EditorStateSwizzle {
         webView._evaluateJavaScriptWithoutUserGesture(js) { result, error in
             nonisolated(unsafe) let result = result
             MainActor.assumeIsolated {
-                guard error == nil,
-                      let dict = result as? [String: Any],
-                      let inputTypeString = dict["inputType"] as? String
-                else {
-                    completion(nil)
+                guard error == nil, let dict = result as? [String: Any] else {
+                    completion(nil, false)
                     return
                 }
 
-                let wkInputType = mapInputType(inputTypeString)
+                // The focused element is inside a sub-frame; leave it to the reporter.
+                if dict["inSubframe"] as? Bool == true {
+                    completion(nil, true)
+                    return
+                }
+
+                guard let inputTypeString = dict["inputType"] as? String else {
+                    completion(nil, false)
+                    return
+                }
+
+                let wkInputType = WKInputType(htmlType: inputTypeString)
 
                 // If we expected a specific type, verify it matches
                 if let expectedType, wkInputType != expectedType {
-                    completion(nil)
+                    completion(nil, false)
                     return
                 }
 
@@ -245,27 +265,8 @@ private enum EditorStateSwizzle {
                     isUserInitiated: dict["isUserInitiated"] as? Bool ?? true,
                 )
 
-                completion(elementInfo)
+                completion(elementInfo, false)
             }
-        }
-    }
-
-    /// Maps HTML input type to WKInputType.
-    private static func mapInputType(_ htmlType: String) -> WKInputType {
-        switch htmlType.lowercased() {
-        case "password": .password
-        case "email": .email
-        case "tel": .phone
-        case "url": .URL
-        case "number": .number
-        case "search": .search
-        case "date": .date
-        case "datetime-local": .dateTimeLocal
-        case "month": .month
-        case "week": .week
-        case "time": .time
-        case "color": .color
-        default: .text
         }
     }
 

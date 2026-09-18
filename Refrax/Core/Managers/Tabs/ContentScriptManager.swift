@@ -67,6 +67,10 @@ final class ContentScriptManager {
     // Credential submission detection
     private var credentialSubmitHandler: CredentialSubmitHandler?
 
+    // AutoFill sub-frame focus reporting
+    private var autoFillFocusHandler: AutoFillFocusHandler?
+    private var autoFillFocusScriptID: UUID?
+
     // Web store integration
     private var webStoreEarlyScriptID: UUID?
     private var webStoreScriptID: UUID?
@@ -225,6 +229,70 @@ final class ContentScriptManager {
     })();
     """
 
+    /// JavaScript that reports credential-field focus from inside sub-frames.
+    ///
+    /// Design rationale:
+    /// - On macOS, WebKit's form input delegate is simulated by querying
+    ///   `document.activeElement` in the main frame (see `WKWebView+AutoFillSwizzle`).
+    ///   A field inside a cross-origin iframe — Apple ID's `idmsa.apple.com` widget,
+    ///   embedded SSO — is never seen there: the main frame's active element is the
+    ///   `<iframe>`, not the input.
+    /// - This script runs in every frame but acts only in sub-frames, forwarding
+    ///   focus and blur of input fields (with the field's descriptor and in-frame
+    ///   rect) to native. The message's frame info gives WebKit the frame to fill
+    ///   into; the main frame stays on the native input-delegate path untouched.
+    private static let autoFillFocusReporterScript = """
+    (() => {
+      if (window.top === window.self) return;
+      if (window.__refraxAutoFillFocusInstalled) return;
+      window.__refraxAutoFillFocusInstalled = true;
+
+      const handlerName = '\(Constants.App.autoFillFocusHandlerName)';
+
+      function post(body) {
+        try {
+          window.webkit?.messageHandlers?.[handlerName]?.postMessage(body);
+        } catch (e) {}
+      }
+
+      function describe(el) {
+        let label = null;
+        if (el.id) {
+          const forEl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+          if (forEl) label = forEl.textContent.trim();
+        }
+        if (!label && el.closest('label')) label = el.closest('label').textContent.trim();
+        if (!label && el.getAttribute('aria-label')) label = el.getAttribute('aria-label');
+
+        const rect = el.getBoundingClientRect();
+        return {
+          type: (el.type || 'text').toLowerCase(),
+          name: el.name || null,
+          id: el.id || null,
+          placeholder: el.placeholder || null,
+          label: label,
+          autocomplete: el.getAttribute('autocomplete') || null,
+          hasValue: !!(el.value && el.value.length > 0),
+          rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+        };
+      }
+
+      function isField(el) {
+        return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+      }
+
+      document.addEventListener('focusin', (e) => {
+        if (!isField(e.target)) return;
+        post({ action: 'focus', href: location.href, field: describe(e.target) });
+      }, true);
+
+      document.addEventListener('focusout', (e) => {
+        if (!isField(e.target)) return;
+        post({ action: 'blur', href: location.href });
+      }, true);
+    })();
+    """
+
     // MARK: - Initialization
 
     init(state: BrowserState) {
@@ -256,6 +324,7 @@ final class ContentScriptManager {
         updateWebBehaviorProtections()
         updateHideSignInPrompts(isEnabled: state.settings.hideSignInPrompts)
         setupCredentialDetection()
+        setupAutoFillFocusReporting()
         setupWebStoreIntegration()
         startSettingsObservation()
         startAppearanceObservation()
@@ -739,8 +808,13 @@ final class ContentScriptManager {
         let controller = state.webPageConfiguration.userContentController
 
         // Register message handler
-        let handler = CredentialSubmitHandler { [weak self] username, password, urlString in
-            self?.handleCredentialSubmission(username: username, password: password, urlString: urlString)
+        let handler = CredentialSubmitHandler { [weak self] username, password, urlString, topLevelURL in
+            self?.handleCredentialSubmission(
+                username: username,
+                password: password,
+                urlString: urlString,
+                topLevelURL: topLevelURL,
+            )
         }
         credentialSubmitHandler = handler
         controller.add(handler, name: Constants.App.credentialSubmitHandlerName)
@@ -762,11 +836,23 @@ final class ContentScriptManager {
     }
 
     /// Handles credential submission detected by JavaScript.
-    private func handleCredentialSubmission(username: String, password: String, urlString: String?) {
-        guard let urlString, let url = URL(string: urlString) else {
+    ///
+    /// - Parameter topLevelURL: The tab's main-frame URL. When the form lives in a
+    ///   same-site sub-frame, the credential is keyed to this recognizable host
+    ///   rather than the sub-frame's; see `AutoFillDomain.submissionURL`.
+    private func handleCredentialSubmission(
+        username: String,
+        password: String,
+        urlString: String?,
+        topLevelURL: URL?,
+    ) {
+        let frameURL = urlString.flatMap(URL.init(string:))
+        guard let frameURL = frameURL ?? topLevelURL else {
             Logger.debug("Credential submission ignored - invalid URL", category: Logger.autoFill)
             return
         }
+
+        let url = AutoFillDomain.submissionURL(topLevel: topLevelURL, frame: frameURL)
 
         // Validate URL allows autofill (HTTPS only)
         guard url.allowsAutoFill else {
@@ -780,6 +866,47 @@ final class ContentScriptManager {
             password: password,
             url: url,
         )
+    }
+
+    // MARK: - AutoFill Sub-Frame Focus Reporting
+
+    /// Installs the sub-frame credential-focus reporter and its message handler.
+    ///
+    /// The main frame's credential focus is handled natively by `AutoFillManager`
+    /// via WebKit's input delegate. This covers the fields that live inside
+    /// cross-origin iframes, which that path cannot see.
+    private func setupAutoFillFocusReporting() {
+        let controller = state.webPageConfiguration.userContentController
+
+        let handler = AutoFillFocusHandler(
+            onFocus: { [weak self] field, href, frame, webView in
+                self?.state.autoFillManager.handleSubframeFieldFocus(
+                    field: field,
+                    href: href,
+                    frame: frame,
+                    webView: webView,
+                )
+            },
+            onBlur: { [weak self] frame, webView in
+                self?.state.autoFillManager.handleSubframeFieldBlur(frame: frame, webView: webView)
+            },
+        )
+        autoFillFocusHandler = handler
+        controller.add(handler, name: Constants.App.autoFillFocusHandlerName)
+
+        let script = WKUserScript(
+            source: Self.autoFillFocusReporterScript,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false,
+        )
+        autoFillFocusScriptID = state.scriptRegistry.register(
+            script,
+            source: .system(name: "autoFillFocus"),
+            priority: ScriptRegistry.Priority.system,
+        )
+
+        rebuildUserScripts()
+        Logger.info("AutoFill sub-frame focus reporter installed", category: Logger.tabs)
     }
 
     // MARK: - Web Store Integration
@@ -934,12 +1061,12 @@ private final class GPCMessageHandler: NSObject, WKScriptMessageHandler {
 /// a login form is submitted (either via traditional form submission
 /// or AJAX/fetch).
 private final class CredentialSubmitHandler: NSObject, WKScriptMessageHandler {
-    private let onCredentials: (String, String, String?) -> Void
+    private let onCredentials: (String, String, String?, URL?) -> Void
 
     /// Creates a handler with a callback for credential submissions.
     ///
-    /// - Parameter onCredentials: Callback with (username, password, url).
-    init(onCredentials: @escaping (String, String, String?) -> Void) {
+    /// - Parameter onCredentials: Callback with (username, password, frame url, top-level url).
+    init(onCredentials: @escaping (String, String, String?, URL?) -> Void) {
         self.onCredentials = onCredentials
     }
 
@@ -952,7 +1079,51 @@ private final class CredentialSubmitHandler: NSObject, WKScriptMessageHandler {
         }
 
         let urlString = body["url"] as? String
-        onCredentials(username, password, urlString)
+        onCredentials(username, password, urlString, message.webView?.url)
+    }
+}
+
+/// Message handler for credential-field focus reported from sub-frames.
+///
+/// Carries the sending frame's `WKFrameInfo`, which `AutoFillManager` uses both
+/// to fill into that frame and to look up the iframe's position for the overlay.
+private final class AutoFillFocusHandler: NSObject, WKScriptMessageHandler {
+    private let onFocus: (_ field: [String: Any], _ href: String, _ frame: WKFrameInfo, _ webView: WKWebView) -> Void
+    private let onBlur: (_ frame: WKFrameInfo, _ webView: WKWebView) -> Void
+
+    init(
+        onFocus: @escaping (_ field: [String: Any], _ href: String, _ frame: WKFrameInfo, _ webView: WKWebView) -> Void,
+        onBlur: @escaping (_ frame: WKFrameInfo, _ webView: WKWebView) -> Void,
+    ) {
+        self.onFocus = onFocus
+        self.onBlur = onBlur
+    }
+
+    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let action = body["action"] as? String,
+              let webView = message.webView
+        else {
+            return
+        }
+
+        let frame = message.frameInfo
+
+        switch action {
+        case "focus":
+            guard let field = body["field"] as? [String: Any],
+                  let href = body["href"] as? String
+            else {
+                return
+            }
+            onFocus(field, href, frame, webView)
+
+        case "blur":
+            onBlur(frame, webView)
+
+        default:
+            break
+        }
     }
 }
 

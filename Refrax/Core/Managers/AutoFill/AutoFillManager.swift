@@ -54,6 +54,13 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
     /// The username field ID associated with the current password field.
     private var currentUsernameFieldId: String?
 
+    /// The frame of the currently focused field, when it lives in a sub-frame.
+    ///
+    /// `nil` means the focus is in the main frame (the native input-delegate path).
+    /// When set, fill scripts are evaluated in this frame so they reach fields
+    /// inside cross-origin iframes.
+    private var currentFrameInfo: WKFrameInfo?
+
     // MARK: - Initialization
 
     init(
@@ -133,11 +140,13 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
         self.webView = nil
         currentURL = nil
         currentInputSession = nil
+        currentFrameInfo = nil
     }
 
     /// Updates the current URL (call when navigation occurs).
     func updateURL(_ url: URL) {
         currentURL = url
+        currentFrameInfo = nil
         autoFillState.hide()
     }
 
@@ -148,8 +157,21 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
     /// The JavaScript function finds the appropriate fields automatically:
     /// - Password: Currently focused element or first password input in form
     /// - Username: Text/email input with username-related attributes
+    /// Evaluates a fill script in the focused field's frame.
+    ///
+    /// A sub-frame field is filled in its own frame via the frame-targeted API, so
+    /// the script reaches inputs inside cross-origin iframes. The main frame keeps
+    /// the gesture-free path that avoids disturbing the page's transient activation.
+    private func evaluateFill(_ script: String) async throws -> Any? {
+        guard let webView else { return nil }
+        if let frame = currentFrameInfo {
+            return try await webView.evaluateJavaScript(script, in: frame, contentWorld: .page)
+        }
+        return try await webView.evaluateJavaScriptWithoutUserGesture(script)
+    }
+
     private func fillCredential(_ credential: PasswordsManager.StoredCredential) {
-        guard let webView else { return }
+        guard webView != nil else { return }
         let host = currentURL?.host ?? "unknown host"
 
         let js = JavaScriptSnippets.fillCredentials(
@@ -159,7 +181,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
 
         Task {
             do {
-                if let result = try await webView.evaluateJavaScriptWithoutUserGesture(js) as? [String: Bool] {
+                if let result = try await evaluateFill(js) as? [String: Bool] {
                     let filledUser = result["filledUsername"] ?? false
                     let filledPass = result["filledPassword"] ?? false
                     Logger.debug("Filled credentials for \(host): username=\(filledUser), password=\(filledPass)", category: Logger.autoFill)
@@ -220,7 +242,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
     /// before generating a password that meets the site's requirements.
     /// Fills all password fields in the form (both password and confirm password).
     private func generateAndFillPassword(fieldId _: String, usernameFieldId _: String?) {
-        guard let url = currentURL, url.allowsAutoFill, let host = url.host, let webView else {
+        guard let url = currentURL, url.allowsAutoFill, let host = url.host, webView != nil else {
             Logger.debug("Ignoring password generation on non-HTTPS site", category: Logger.autoFill)
             return
         }
@@ -235,7 +257,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
             // Fill all password fields in the form (password + confirm password)
             let fillAllJS = JavaScriptSnippets.fillAllPasswordFields(password)
             do {
-                if let count = try await webView.evaluateJavaScriptWithoutUserGesture(fillAllJS) as? Int, count > 0 {
+                if let count = try await evaluateFill(fillAllJS) as? Int, count > 0 {
                     Logger.info("Generated and filled \(count) password field(s) for \(domain)", category: Logger.autoFill)
                 }
             } catch {
@@ -248,7 +270,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
 
     /// Fills a previously generated password into all password fields.
     private func fillGeneratedPassword(_ password: String, fieldId _: String, usernameFieldId _: String?) {
-        guard let url = currentURL, url.allowsAutoFill, let webView else {
+        guard let url = currentURL, url.allowsAutoFill, webView != nil else {
             Logger.debug("Ignoring generated password fill on non-HTTPS site", category: Logger.autoFill)
             return
         }
@@ -257,7 +279,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
         let fillAllJS = JavaScriptSnippets.fillAllPasswordFields(password)
         Task {
             do {
-                if let count = try await webView.evaluateJavaScriptWithoutUserGesture(fillAllJS) as? Int, count > 0 {
+                if let count = try await evaluateFill(fillAllJS) as? Int, count > 0 {
                     Logger.debug("Filled \(count) password field(s) with generated password", category: Logger.autoFill)
                 }
             } catch {
@@ -273,14 +295,14 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
     /// First attempts to fill the focused element directly (more reliable),
     /// then falls back to ID-based fill if that fails.
     private func fillPasswordOnly(_ password: String, fieldId: String) {
-        guard let webView else { return }
+        guard webView != nil else { return }
 
         Task {
             // First try filling the focused element directly (more reliable)
             let focusedFillJS = JavaScriptSnippets.fillFocusedPassword(password)
 
             do {
-                if let success = try await webView.evaluateJavaScriptWithoutUserGesture(focusedFillJS) as? Bool, success {
+                if let success = try await evaluateFill(focusedFillJS) as? Bool, success {
                     Logger.debug("Filled password using focused element", category: Logger.autoFill)
                     return
                 }
@@ -291,7 +313,7 @@ final class AutoFillManager: NSObject, _WKInputDelegate {
             // Fallback to ID-based fill
             let js = JavaScriptSnippets.fillPassword(password, fieldId: fieldId)
             do {
-                _ = try await webView.evaluateJavaScriptWithoutUserGesture(js)
+                _ = try await evaluateFill(js)
                 Logger.debug("Filled password using field ID fallback", category: Logger.autoFill)
             } catch {
                 Logger.error("Failed to fill password: \(error)", category: Logger.autoFill)
@@ -467,6 +489,8 @@ extension AutoFillManager {
         // Skip all autofill when disabled - don't interfere with extensions
         guard settings.autoFillMode != .disabled else { return }
 
+        // Focus is in the main frame; leave the sub-frame fill path.
+        currentFrameInfo = nil
         currentInputSession = inputSession
 
         guard let focusedElementInfo = inputSession.focusedElementInfo else {
@@ -680,6 +704,148 @@ extension AutoFillManager {
             autoFillState.show(context: context)
             Logger.debug("Showing auto-fill overlay for OTP field", category: Logger.autoFill)
         }
+    }
+
+    // MARK: - Sub-Frame Credential Focus
+
+    /// Handles focus of a field reported from a sub-frame.
+    ///
+    /// The main frame's fields reach this manager through WebKit's input delegate.
+    /// Fields inside cross-origin iframes are invisible there, so a content script
+    /// forwards their focus (with descriptor, in-frame rect, and the sending frame's
+    /// `WKFrameInfo`) here. Credential lookup and the overlay are keyed to the
+    /// top-level page; fills target the reported frame.
+    ///
+    /// - Note: The iframe offset resolves a single level of nesting — enough for the
+    ///   common embedded-auth widget. Fields nested more than one iframe deep still
+    ///   fill correctly but may position the overlay at the wrong offset.
+    func handleSubframeFieldFocus(field: [String: Any], href: String, frame: WKFrameInfo, webView: WKWebView) {
+        guard settings.autoFillMode != .disabled else { return }
+        guard webView === self.webView else { return }
+        guard let topURL = currentURL, topURL.allowsAutoFill else {
+            Logger.debug("Ignoring sub-frame field focus - top-level URL disallows autofill", category: Logger.autoFill)
+            return
+        }
+
+        let inputType = WKInputType(htmlType: field["type"] as? String ?? "text")
+        let fieldType = AutoFillFieldDetector.detectFieldType(
+            label: field["label"] as? String,
+            placeholder: field["placeholder"] as? String,
+            name: field["name"] as? String,
+            autocomplete: field["autocomplete"] as? String,
+            inputType: inputType,
+        )
+        guard fieldType != .none else { return }
+
+        // Don't offer over a field that already has content.
+        if field["hasValue"] as? Bool == true {
+            Logger.debug("Ignoring sub-frame field focus - field already has content", category: Logger.autoFill)
+            return
+        }
+
+        guard let rectDict = field["rect"] as? [String: Any],
+              let fieldRect = Self.cgRect(from: rectDict)
+        else {
+            return
+        }
+
+        currentFrameInfo = frame
+        let fieldId = generateFieldId()
+        currentFieldId = fieldId
+        let isPasswordField = inputType == .password
+        currentUsernameFieldId = isPasswordField ? nil : fieldId
+
+        Task {
+            let frameOrigin = await iframeOffset(forSource: href)
+            let rect = AutoFillFrameGeometry.rectInTopView(fieldRectInFrame: fieldRect, frameOrigin: frameOrigin)
+
+            let mode = settings.autoFillMode
+            let context: AutoFillContext
+
+            switch fieldType {
+            case .credential:
+                let credentials = mode == .builtIn ? passwordsManager.findCredentials(for: topURL) : []
+                let recentPassword: String? = {
+                    guard mode == .builtIn, isPasswordField,
+                          let domain = topURL.registrableDomain ?? topURL.host else { return nil }
+                    return GeneratedPasswordStore.shared.recentlyGeneratedPassword(for: domain)
+                }()
+                context = AutoFillContext(
+                    autoFillMode: mode,
+                    fieldType: .credential,
+                    isPasswordField: isPasswordField,
+                    isLoginForm: true,
+                    credentials: credentials,
+                    recentlyGeneratedPassword: recentPassword,
+                    rect: rect,
+                    fieldId: fieldId,
+                    usernameFieldId: isPasswordField ? currentUsernameFieldId : nil,
+                    url: topURL,
+                    requireAuthForAutoFill: settings.requireAuthForAutoFill,
+                )
+            case .creditCard:
+                context = AutoFillContext(
+                    autoFillMode: mode, fieldType: .creditCard, credentials: [],
+                    rect: rect, fieldId: fieldId, usernameFieldId: nil, url: topURL,
+                )
+            case .contact:
+                context = AutoFillContext(
+                    autoFillMode: mode, fieldType: .contact, credentials: [],
+                    rect: rect, fieldId: fieldId, usernameFieldId: nil, url: topURL,
+                )
+            case .oneTimeCode:
+                context = AutoFillContext(
+                    autoFillMode: mode, fieldType: .oneTimeCode,
+                    rect: rect, fieldId: fieldId, usernameFieldId: nil, url: topURL,
+                )
+            case .none:
+                return
+            }
+
+            autoFillState.show(context: context)
+            Logger.debug("Showing sub-frame auto-fill overlay for \(fieldType) field", category: Logger.autoFill)
+        }
+    }
+
+    /// Hides the overlay when a sub-frame field loses focus.
+    ///
+    /// `currentFrameInfo` is intentionally left set so a fill triggered from the
+    /// overlay still targets the right frame; the next focus or navigation replaces it.
+    func handleSubframeFieldBlur(frame _: WKFrameInfo, webView: WKWebView) {
+        guard webView === self.webView else { return }
+        autoFillState.hide()
+    }
+
+    /// Resolves the top-view origin of a sub-frame's iframe content box.
+    ///
+    /// Runs in the main frame, matching the iframe by the sub-frame's URL. Returns
+    /// `.zero` when the iframe can't be resolved, so the overlay falls back to the
+    /// field's in-frame position rather than not showing.
+    private func iframeOffset(forSource href: String) async -> CGPoint {
+        guard let webView else { return .zero }
+        let js = JavaScriptSnippets.iframeContentOffset(forSource: href)
+        do {
+            if let dict = try await webView.evaluateJavaScriptWithoutUserGesture(js) as? [String: Any],
+               let x = (dict["x"] as? NSNumber)?.doubleValue,
+               let y = (dict["y"] as? NSNumber)?.doubleValue {
+                return CGPoint(x: x, y: y)
+            }
+        } catch {
+            Logger.debug("Failed to resolve sub-frame offset: \(error)", category: Logger.autoFill)
+        }
+        return .zero
+    }
+
+    /// Builds a rect from a JavaScript `{ x, y, width, height }` message payload.
+    private static func cgRect(from dict: [String: Any]) -> CGRect? {
+        guard let x = (dict["x"] as? NSNumber)?.doubleValue,
+              let y = (dict["y"] as? NSNumber)?.doubleValue,
+              let width = (dict["width"] as? NSNumber)?.doubleValue,
+              let height = (dict["height"] as? NSNumber)?.doubleValue
+        else {
+            return nil
+        }
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     /// Called when a form is about to be submitted.

@@ -181,6 +181,7 @@ enum Constants {
         static let thirdPartyCookieRuleListID = "refrax_third_party_cookie_blocking"
         static let gpcMessageHandlerName = "refraxGPC"
         static let credentialSubmitHandlerName = "refraxCredentialSubmit"
+        static let autoFillFocusHandlerName = "refraxAutoFillFocus"
         static let releaseChannel: ReleaseChannel = .alpha
     }
 

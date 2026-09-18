@@ -575,6 +575,62 @@ nonisolated enum JavaScriptSnippets: Sendable {
         """
     }
 
+    /// Locates the iframe hosting a sub-frame and returns its content-box origin.
+    ///
+    /// Run in the main frame. Matches the iframe by `src` (exact, then by origin
+    /// prefix as a fallback for post-load URL drift), and returns the top-left of
+    /// its content box — the iframe's viewport rect shifted in by its own border
+    /// and padding — so a field rect measured inside the sub-frame can be lifted
+    /// into top-view coordinates. Ambiguous matches (two iframes, same source)
+    /// return null rather than guess.
+    ///
+    /// - Parameter source: The sub-frame's `location.href`.
+    /// - Returns: `{ x, y }` in top-view coordinates, or null.
+    static func iframeContentOffset(forSource source: String) -> String {
+        let sourceJSON = jsonEncode(source)
+        return """
+        (function() {
+            const source = \(sourceJSON);
+            const frames = Array.from(document.querySelectorAll('iframe'));
+
+            let match = null;
+            for (const frame of frames) {
+                if (frame.src === source) {
+                    if (match) return null;
+                    match = frame;
+                }
+            }
+
+            if (!match) {
+                let originMatch = null;
+                for (const frame of frames) {
+                    try {
+                        if (frame.src && source.indexOf(new URL(frame.src).origin) === 0) {
+                            if (originMatch) return null;
+                            originMatch = frame;
+                        }
+                    } catch (e) {}
+                }
+                match = originMatch;
+            }
+
+            if (!match) return null;
+
+            const rect = match.getBoundingClientRect();
+            const style = getComputedStyle(match);
+            const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+            const borderTop = parseFloat(style.borderTopWidth) || 0;
+            const paddingLeft = parseFloat(style.paddingLeft) || 0;
+            const paddingTop = parseFloat(style.paddingTop) || 0;
+
+            return {
+                x: rect.left + borderLeft + paddingLeft,
+                y: rect.top + borderTop + paddingTop
+            };
+        })();
+        """
+    }
+
     /// Fills only a password field.
     ///
     /// - Parameters:
