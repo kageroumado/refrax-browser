@@ -126,6 +126,13 @@ extension RefraxWindowController {
         for item in toolbar.items {
             guard sidebarToolbarItemIdentifiers.contains(item.itemIdentifier) else { continue }
 
+            // A prior instant hide sets `isHidden` on the item viewer directly. When the
+            // buttons share one platter the viewer is the platter's descendant, so it is
+            // not among `slidingViews` and the loop below never clears that flag — the
+            // platter would slide back in empty. Visibility on this path is driven by the
+            // platter's alpha and transform, so the viewer must simply not be `isHidden`.
+            item._itemViewer.isHidden = false
+
             for view in slidingViews(for: item) {
                 view.wantsLayer = true
                 view.isHidden = false
@@ -141,7 +148,10 @@ extension RefraxWindowController {
     ///
     /// On macOS 26 the platter is a sibling of the item viewer, so both need the same
     /// transform. On macOS 27 the platter *contains* the item viewer, so only the
-    /// platter is returned: transforming both would move the item twice as far.
+    /// platter is returned: transforming both would move the item twice as far. When
+    /// several items share one platter the item viewers sit inside the platter's content
+    /// view, so the platter is a grandparent rather than the direct superview — the whole
+    /// ancestor chain is searched to reach it.
     private func slidingViews(for item: NSToolbarItem) -> [NSView] {
         let itemViewer = item._itemViewer
         var candidates: [NSView] = [itemViewer]
@@ -149,9 +159,8 @@ extension RefraxWindowController {
         if let platter = itemViewer.associatedPlatter {
             candidates.append(platter)
         }
-        if let superview = itemViewer.superview,
-           NSStringFromClass(type(of: superview)).contains("Platter") {
-            candidates.append(superview)
+        if let platter = enclosingPlatter(of: itemViewer) {
+            candidates.append(platter)
         }
 
         var views: [NSView] = []
@@ -162,6 +171,22 @@ extension RefraxWindowController {
             }
         }
         return views
+    }
+
+    /// The nearest glass platter enclosing a toolbar item viewer, or nil when the platter
+    /// is a sibling instead of an ancestor.
+    ///
+    /// A shared platter nests its item viewers inside its content view, so the platter is
+    /// reached by climbing superviews rather than reading the direct superview alone.
+    private func enclosingPlatter(of view: NSView) -> NSView? {
+        var current = view.superview
+        while let candidate = current {
+            if NSStringFromClass(type(of: candidate)).contains("Platter") {
+                return candidate
+            }
+            current = candidate.superview
+        }
+        return nil
     }
 
     /// Applies a layer transform and alpha to a view with optional animation.
@@ -263,9 +288,8 @@ extension RefraxWindowController {
                 platter.isHidden = true
             }
 
-            if let superview = itemViewer.superview,
-               NSStringFromClass(type(of: superview)).contains("Platter") {
-                superview.isHidden = true
+            if let platter = enclosingPlatter(of: itemViewer) {
+                platter.isHidden = true
             }
         }
 
@@ -295,11 +319,10 @@ extension RefraxWindowController {
                 platter.layer?.transform = CATransform3DIdentity
             }
 
-            if let superview = itemViewer.superview,
-               NSStringFromClass(type(of: superview)).contains("Platter") {
-                superview.isHidden = false
-                superview.alphaValue = 1.0
-                superview.layer?.transform = CATransform3DIdentity
+            if let platter = enclosingPlatter(of: itemViewer) {
+                platter.isHidden = false
+                platter.alphaValue = 1.0
+                platter.layer?.transform = CATransform3DIdentity
             }
         }
     }

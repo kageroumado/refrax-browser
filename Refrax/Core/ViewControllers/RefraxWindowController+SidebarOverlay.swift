@@ -202,6 +202,17 @@ extension RefraxWindowController {
         animateSidebarOverlay(visible: false, duration: duration)
         animateWindowChrome(forOverlayProgress: 0.0, duration: duration)
         animateDetailTrayToOverlayProgress(0.0, duration: duration)
+
+        // The animation drives the shared platter's alpha and transform, but AppKit
+        // re-tiles the toolbar afterward and resets those, leaving the empty pill on
+        // screen. Settle the hidden state with `isHidden` once the animation is done —
+        // the same cleanup the click-driven collapse performs. Generation-guarded so a
+        // re-triggered peek that supersedes this hide cancels it.
+        let currentGen = overlayAnimationGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, currentGen == overlayAnimationGeneration else { return }
+            hideToolbarItemsInstantly()
+        }
     }
 
     /// Cancels the sidebar overlay animation and resets to hidden state.
