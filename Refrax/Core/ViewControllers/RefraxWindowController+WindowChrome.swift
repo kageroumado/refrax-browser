@@ -347,6 +347,9 @@ extension RefraxWindowController {
     /// - Parameter animated: Whether to animate the initial scale-down.
     func enterCompactTrafficLightMode(animated: Bool) {
         guard !isCompactTrafficLightModeActive else { return }
+        // In fullscreen AppKit owns the traffic lights in its own auto-hiding titlebar,
+        // so Refrax's compact platter would just sit empty at the top of the dock.
+        guard !isInFullscreen else { return }
         isCompactTrafficLightModeActive = true
 
         // Ensure traffic lights are visible (not hidden by buttonRevealAmount)
@@ -551,12 +554,19 @@ extension RefraxWindowController {
         let padding = Constants.SidebarAnimation.compactTrafficLightPadding
         guard let groupFrame = originalTrafficLightGroupFrame else { return }
 
-        // Tracking rect matches the platter bounds (slightly larger than traffic lights)
+        // At rest the lights are scaled down and shifted by the compact transform,
+        // but a layer transform moves only the visuals — this tracking rect (like the
+        // buttons' own hit region) stays at the untransformed frame. Grow it to cover
+        // the shifted resting position in either direction (the sign depends on the
+        // titlebar's coordinate space) so hovering the visible lights reveals them at
+        // full size, where they are actually clickable.
+        let shiftX = Constants.SidebarAnimation.compactTrafficLightTranslateX
+        let shiftY = Constants.SidebarAnimation.compactTrafficLightTranslateY
         let trackingRect = CGRect(
-            x: groupFrame.minX - padding,
-            y: groupFrame.minY - padding,
-            width: groupFrame.width + padding * 2,
-            height: groupFrame.height + padding * 2,
+            x: groupFrame.minX - padding - shiftX,
+            y: groupFrame.minY - padding - shiftY,
+            width: groupFrame.width + padding * 2 + shiftX * 2,
+            height: groupFrame.height + padding * 2 + shiftY * 2,
         )
 
         let trackingArea = NSTrackingArea(

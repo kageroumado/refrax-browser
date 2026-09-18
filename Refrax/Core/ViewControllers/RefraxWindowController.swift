@@ -166,6 +166,14 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     /// completes to catch that case.
     var compactTrafficLightHoverCheckTask: Task<Void, Never>?
 
+    // MARK: - Fullscreen Titlebar Reveal
+
+    /// KVO of the fullscreen titlebar's reveal state (the traffic-light alpha).
+    let fullscreenRevealObservations = WebKitObservationBag()
+
+    /// Whether AppKit's auto-hiding fullscreen titlebar is currently revealed.
+    var isFullscreenTitlebarRevealed = false
+
     // MARK: - Screen Sharing Detection
 
     /// Observer for detecting when this window is being screen captured.

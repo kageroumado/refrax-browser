@@ -236,6 +236,10 @@ extension RefraxWindowController {
         isInFullscreen = true
         captureTrafficLightOrigins(force: true)
         hideSidebarTitlebarBackground()
+        // AppKit shows the traffic lights in its own fullscreen titlebar; drop Refrax's
+        // compact platter so it does not linger empty at the top of the dock.
+        exitCompactTrafficLightMode(animated: false)
+        startFullscreenRevealObserving()
     }
 
     /// Disables the opaque white backstop that AppKit shows behind the sidebar in fullscreen.
@@ -256,13 +260,19 @@ extension RefraxWindowController {
 
     func windowDidExitFullScreen(_: Notification) {
         isInFullscreen = false
+        stopFullscreenRevealObserving()
 
         captureTrafficLightOrigins(force: true)
 
         let sidebarItem = splitViewController.splitViewItems[0]
         if sidebarItem.isCollapsed {
-            DispatchQueue.main.async { [weak self] in
-                self?.animateWindowChromeEased(forOverlayProgress: 0.0)
+            if windowState.effectiveSidebarMode == .compact {
+                // Restore the compact platter suppressed on entering fullscreen.
+                enterCompactTrafficLightMode(animated: false)
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.animateWindowChromeEased(forOverlayProgress: 0.0)
+                }
             }
         } else {
             updateTrafficLightsForExpandedSidebar(animated: false)
