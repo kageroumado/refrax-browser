@@ -203,6 +203,18 @@ final class WindowManager {
         return windowController
     }
 
+    /// Creates and shows a window for `space` with `tab` already selected.
+    ///
+    /// Activates the tab on the new window's own state rather than through
+    /// `createTab(makeActive:)`, which keys off the global active window — a brand-new
+    /// window isn't key yet, so relying on it leaves the window showing no selected tab.
+    @discardableResult
+    func createWindow(with space: Space, activating tab: Tab) -> RefraxWindowController {
+        let controller = createWindow(with: space)
+        controller.windowState.setActiveTab(tab)
+        return controller
+    }
+
     /// Creates a new window without initializing tab state.
     ///
     /// Used during first launch to show the window immediately before DB restoration.
@@ -402,10 +414,20 @@ final class WindowManager {
     /// browser window (useful when a non-browser window like Settings is key), then
     /// to creating a new window.
     func openURL(_ url: URL) {
-        // Prefer frontmost browser window, then last active, then create new
-        let controller = frontmostWindowController ?? lastActiveBrowserWindowController ?? createWindow()
-        guard let space = controller.windowState.activeSpace ?? tabManager.state.spaces.first else { return }
-        tabManager.createTab(url: url, in: space, makeActive: true, loadImmediately: true)
+        // With an existing window, add a tab to it: the frontmost/last-active window is
+        // already key, so createTab's makeActive selects the tab in the right window.
+        if let controller = frontmostWindowController ?? lastActiveBrowserWindowController {
+            guard let space = controller.windowState.activeSpace ?? tabManager.state.spaces.first else { return }
+            tabManager.createTab(url: url, in: space, makeActive: true, loadImmediately: true)
+            return
+        }
+
+        // No window open: create one and select the tab on that window's own state.
+        // createTab's makeActive keys off the global active window, which the brand-new
+        // window isn't yet, so it would leave the window showing no selected tab.
+        guard let space = tabManager.state.spaces.first else { return }
+        let tab = tabManager.createTab(url: url, in: space, makeActive: false, loadImmediately: true)
+        createWindow(with: space, activating: tab)
     }
 
     /// Opens a URL from an external application.
@@ -419,6 +441,15 @@ final class WindowManager {
     ///   - sourceAppBundleID: The bundle ID of the source application, if known.
     ///     Pass `nil` if the source cannot be determined.
     func openExternalURL(_ url: URL, sourceAppBundleID: String? = nil) {
+        // With no window open there is no current space/window to honor, so present a
+        // standalone Glimpse (Little-Arc style): the link is visible immediately and the
+        // user promotes it into a space — which creates the window — from the Glimpse.
+        guard hasWindows else {
+            createGlimpseWindow(url: url)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         let settings = BrowserSettings.fetch(in: tabManager.state.modelContext)
         let handler = ExternalURLHandler(
             tabManager: tabManager,
@@ -860,11 +891,11 @@ final class WindowManager {
         url: URL,
         relativeTo sourceController: RefraxWindowController? = nil,
     ) -> GlimpseController {
-        // Get environment from active window or create minimal one
+        // A Glimpse borrows a parent window's environment. With no window to peek from
+        // (an external URL arriving while no window is open), present a standalone Glimpse
+        // backed by a hidden host environment instead of trapping or opening an empty window.
         guard let sourceController = sourceController ?? activeWindowController else {
-            Logger.warning("Creating Glimpse window without environment source", category: Logger.tabs)
-            // Create without showing - would need environment
-            fatalError("Cannot create Glimpse window without an active window controller")
+            return openStandaloneGlimpse(url: url)
         }
 
         let controller = GlimpseController(
@@ -892,6 +923,31 @@ final class WindowManager {
         } else {
             controller.showCentered()
         }
+
+        return controller
+    }
+
+    /// Presents a standalone Glimpse for a URL when no browser window is open.
+    ///
+    /// A Glimpse needs a `RefraxEnvironment`, which only a browser window vends. Rather
+    /// than open an empty browser window just to peek at one link (Arc's "Little Arc"
+    /// model), this builds a hidden host controller — never shown, never registered in
+    /// `windowControllers`, so it can't affect `hasWindows`/`activeWindowController` — and
+    /// uses its environment. The Glimpse retains and tears the host down on close. The
+    /// user promotes the page into a space (creating a real window) from the Glimpse.
+    @discardableResult
+    func openStandaloneGlimpse(url: URL) -> GlimpseController {
+        let host = RefraxWindowController(window: RefraxWindow())
+        let controller = GlimpseController(
+            url: url,
+            environment: host.environment,
+            windowManager: self,
+            tabManager: tabManager,
+            hostController: host,
+        )
+
+        glimpseWindowControllers.append(controller)
+        controller.showCentered()
 
         return controller
     }
@@ -933,10 +989,9 @@ final class WindowManager {
         for webPage: WebPage,
         relativeTo sourceController: RefraxWindowController? = nil,
     ) -> ReflectedViewController {
-        guard let sourceController = sourceController ?? activeWindowController else {
-            Logger.warning("Creating reflected window without environment source", category: Logger.tabs)
-            fatalError("Cannot create reflected window without an active window controller")
-        }
+        // See createGlimpseWindow: with no parent window to borrow an environment from,
+        // create one instead of trapping.
+        let sourceController = sourceController ?? activeWindowController ?? createWindow()
 
         let controller = webPage.createReflectedWindow(environment: sourceController.environment)
         controller.showRelativeTo(sourceController.window)

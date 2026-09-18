@@ -1084,6 +1084,9 @@ final class WindowState {
     ///     for new windows that should start without a tab selected.
     func setActiveSpace(_ space: Space, restoreActiveTab _: Bool = true) {
         activeSpaceID = space.id
+        // Persist as the last-active space so windowless surfaces (a standalone Glimpse)
+        // can default to it after every window closes.
+        browserState.lastActiveSpaceID = space.id
         // Note: Reference tabs intentionally don't auto-select on space switch.
         // The user must explicitly choose which reference tab to load via the
         // empty state tab selector, matching the behavior for main tabs.

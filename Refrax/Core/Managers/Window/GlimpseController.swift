@@ -42,6 +42,12 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
     /// Reference to the tab manager for creating tabs on transfer.
     private unowned let tabManager: TabManager
 
+    /// A hidden window controller that vends this Glimpse's environment when it was
+    /// opened with no browser window present (Little-Arc style). Never shown or
+    /// registered; torn down when the Glimpse closes. `nil` for Glimpses spawned from a
+    /// real window, which borrow that window's environment.
+    private let hostController: RefraxWindowController?
+
     // MARK: - Page State
 
     /// The ephemeral tab page for this Glimpse window.
@@ -74,17 +80,23 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
         environment: RefraxEnvironment,
         windowManager: WindowManager,
         tabManager: TabManager,
+        hostController: RefraxWindowController? = nil,
     ) {
         self.environment = environment
         self.windowManager = windowManager
         self.tabManager = tabManager
+        self.hostController = hostController
 
         // Create ephemeral TabPage (not inserted into ModelContext)
         self.tabPage = TabPage(url: url, title: "Loading...")
         self.glimpseState = GlimpseWindowState(
             tabPage: tabPage,
             allSpaces: tabManager.state.spaces,
-            activeSpace: windowManager.activeWindowController?.windowState.activeSpace,
+            // With no window (standalone Glimpse) there is no active window to read the
+            // current space from, so fall back to the last-active space, then the first.
+            activeSpace: windowManager.activeWindowController?.windowState.activeSpace
+                ?? tabManager.state.lastActiveSpace
+                ?? tabManager.state.spaces.first,
         )
 
         // Use the same window class as reference pane
@@ -171,6 +183,7 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
         guard let url = webPage?.url ?? tabPage.url as URL? else { return }
 
         let targetSpace = space ?? windowManager.activeWindowController?.windowState.activeSpace
+            ?? tabManager.state.lastActiveSpace
             ?? tabManager.state.spaces.first
 
         // Check storage mode compatibility
@@ -207,33 +220,45 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
     private func performTransfer(to space: Space?, url: URL) {
         guard let targetSpace = space ?? tabManager.state.spaces.first else { return }
 
+        // A tab promoted from a Glimpse has been read (the user was just viewing it), so
+        // create it active: makeActive marks it read and selects it in the current window.
+        // With no window, createTab can't select it (nothing is key yet), so also create a
+        // window and select the tab on its own state.
+        let hasWindow = windowManager.hasWindows
+
         if webPage != nil {
-            // Create tab without loading (we'll transfer the existing WebPage)
+            // Create tab without loading (we'll transfer the existing WebPage).
             let tab = tabManager.createTab(
                 url: url,
                 in: targetSpace,
                 makeActive: true,
                 loadImmediately: false,
             )
+            if !hasWindow {
+                windowManager.createWindow(with: targetSpace, activating: tab)
+            }
 
-            // Transfer the WebPage from Glimpse's ephemeral TabPage to the new Tab's TabPage
+            // Transfer the WebPage from Glimpse's ephemeral TabPage to the new Tab's TabPage.
             tabManager.pagePool.transferPage(
                 from: tabPage,
                 to: tab.activePage,
                 preserveHistory: true,
             )
 
-            // Close window without cleanup (WebPage is now owned by new tab)
+            // Close window without cleanup (WebPage is now owned by new tab).
             skipCleanup = true
             close()
         } else {
-            // Fallback if not loaded yet - just create and load fresh
-            tabManager.createTab(
+            // Fallback if not loaded yet - just create and load fresh.
+            let tab = tabManager.createTab(
                 url: url,
                 in: targetSpace,
                 makeActive: true,
                 loadImmediately: true,
             )
+            if !hasWindow {
+                windowManager.createWindow(with: targetSpace, activating: tab)
+            }
             close()
         }
     }
@@ -245,6 +270,11 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
             tabManager.pagePool.removePage(for: tabPage)
         }
         windowManager.removeGlimpseWindow(self)
+
+        // Tear down the hidden host that vended our environment (standalone Glimpse only).
+        // It was never shown or registered, so closing it here runs its observer/monitor
+        // cleanup that would otherwise only fire when a visible window closes.
+        hostController?.close()
     }
 
     // MARK: - NSWindowDelegate

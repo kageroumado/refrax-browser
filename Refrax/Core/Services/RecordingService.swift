@@ -303,7 +303,11 @@ enum RecordingService {
 // MARK: - Recording Stream Delegate
 
 /// Handles stream lifecycle events and errors.
-final class RecordingStreamDelegate: NSObject, SCStreamDelegate, @unchecked Sendable {
+///
+/// `nonisolated` because ScreenCaptureKit invokes the delegate on its own dispatch
+/// queue: under the module's default `@MainActor` isolation the runtime would assert
+/// the wrong executor (`dispatch_assert_queue`) and trap when SCStream calls back.
+nonisolated final class RecordingStreamDelegate: NSObject, SCStreamDelegate, @unchecked Sendable {
     /// Called when the stream stops unexpectedly.
     func stream(_: SCStream, didStopWithError error: any Error) {
         Logger.error("Recording stream stopped with error: \(error)", category: Logger.navigation)
@@ -313,7 +317,12 @@ final class RecordingStreamDelegate: NSObject, SCStreamDelegate, @unchecked Send
 // MARK: - Recording Stream Output
 
 /// Handles video frames from ScreenCaptureKit and writes them to an AVAssetWriter.
-final class RecordingStreamOutput: NSObject, SCStreamOutput, @unchecked Sendable {
+///
+/// `nonisolated` because SCStream delivers sample buffers on `queue` below, not the
+/// main actor. Frame state is serialized by that queue, so `@unchecked Sendable` is
+/// safe; without `nonisolated` the default `@MainActor` isolation makes the runtime
+/// trap on an executor-mismatch assertion the moment ScreenCaptureKit calls back.
+nonisolated final class RecordingStreamOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     /// The queue for processing frames.
     let queue = DispatchQueue(label: "com.refrax.recording", qos: .userInitiated)
 

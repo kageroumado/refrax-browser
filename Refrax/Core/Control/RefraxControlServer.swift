@@ -1199,9 +1199,13 @@ final class RefraxControlServer {
             }
         } else {
             space = windowManager.activeWindowController?.windowState.activeSpace
+                ?? tabManager.state.spaces.first
         }
 
         let activate = params.activate ?? true
+        guard let space else {
+            return .error(CTL.ErrorInfo(code: "no_space", message: "No space available to open a tab"))
+        }
         let tab = tabManager.createTab(url: url, in: space, makeActive: activate)
         let activeTabID = activate ? tab.id : windowManager.activeWindowController?.windowState.activeTabID
         return .tab(buildTabInfo(tab, activeTabID: activeTabID))
@@ -3486,9 +3490,13 @@ extension RefraxControlServer {
             }
         } else {
             space = windowManager.activeWindowController?.windowState.activeSpace
+                ?? tabManager.state.spaces.first
         }
 
         let activate = params.activate ?? true
+        guard let space else {
+            return .error(CTL.ErrorInfo(code: "no_space", message: "No space available to open a tab"))
+        }
         let tab = tabManager.createTab(url: url, in: space, makeActive: activate)
         let activeTabID = activate ? tab.id : windowManager.activeWindowController?.windowState.activeTabID
 

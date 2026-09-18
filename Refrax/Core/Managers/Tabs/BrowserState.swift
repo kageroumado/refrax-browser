@@ -62,6 +62,24 @@ final class BrowserState {
     @ObservationIgnored
     private(set) var spaces: [Space] = []
 
+    private static let lastActiveSpaceIDKey = "lastActiveSpaceID"
+
+    /// The id of the most recently active space, persisted across launches.
+    ///
+    /// A window's active space lives in its `WindowState`, which is gone once every
+    /// window has closed. Recording it here lets a windowless surface — a standalone
+    /// Glimpse opened for an external URL — default its "Open in <space>" target to the
+    /// space the user last used instead of a generic label.
+    var lastActiveSpaceID: UUID? {
+        get { UserDefaults.standard.string(forKey: Self.lastActiveSpaceIDKey).flatMap(UUID.init) }
+        set { UserDefaults.standard.set(newValue?.uuidString, forKey: Self.lastActiveSpaceIDKey) }
+    }
+
+    /// The most recently active space, if it still exists.
+    var lastActiveSpace: Space? {
+        lastActiveSpaceID.flatMap { space(for: $0) }
+    }
+
     /// Global live favorite tabs visible across all spaces.
     ///
     /// Live favorite tabs are persistent tabs linked to favorited bookmarks. They appear
