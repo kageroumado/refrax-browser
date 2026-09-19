@@ -9,7 +9,7 @@
 [![kagerou.glass](https://img.shields.io/badge/kagerou.glass-c08bff?style=for-the-badge&logo=safari&logoColor=white)](https://kagerou.glass/refrax/)
 [![@kageroumado](https://img.shields.io/badge/@kageroumado-76e6e0?style=for-the-badge&logo=x&logoColor=0d0a10)](https://x.com/kageroumado)
 [![GPLv3](https://img.shields.io/badge/license-GPL_v3-0d0a10?style=for-the-badge&logo=gnu&logoColor=white)](LICENSE)
-[![macOS Tahoe](https://img.shields.io/badge/macOS-Tahoe_26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#building)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#building)
 
 <img src=".github/screenshot.avif" alt="Refrax browser: sidebar with grouped tabs and spaces, a Liquid Glass interface, and a webpage in the main pane" width="820">
 
@@ -26,7 +26,7 @@ whole browser, and an MCP server so an agent can browse beside you.
 - **Plain-language command palette.** Type what you want in natural language, not just a fuzzy-matched command name.
 - **Scriptable from the terminal.** `refrax-ctl` is a headless CLI that drives the entire browser: tabs, spaces, navigation, screenshots.
 - **Agent-ready.** A built-in MCP server lets your AI agent browse alongside you.
-- **Native Liquid Glass UI.** Swift and WebKit against the macOS 26 design system — not a re-skinned Chromium.
+- **Native Liquid Glass UI.** Swift and WebKit against the macOS design system — not a re-skinned Chromium.
 
 ## Download
 
@@ -53,7 +53,7 @@ Refrax.xcodeproj/           Xcode project
 
 ## Requirements
 
-- **macOS Tahoe 26+**
+- **macOS 26+**
 - **Xcode 26+** to build, with Swift 6.2 strict concurrency enabled
 
 ## Building
