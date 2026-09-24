@@ -454,6 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browserState.downloadManager = downloadManager
         browserState.pagePool = pagePool
         browserState.extensionManager = extensionManager
+        extensionManager.readerModeManager = readerModeManager
         browserState.webInspectorManager = webInspectorManager
         browserState.webPageConfiguration.webExtensionController = extensionManager.defaultController
         

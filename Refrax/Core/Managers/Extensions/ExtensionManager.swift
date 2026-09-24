@@ -108,15 +108,7 @@ final class ExtensionManager {
     /// with the permissions the user granted in Refrax.
     var enginePackages: [ExtensionPackage] {
         installedExtensions.compactMap { extension_ in
-            let directory: URL
-            switch extension_.source {
-            case let .localFolder(url):
-                directory = url
-            case .crxFile, .xpiFile, .bundled:
-                directory = extractedFolderURL(for: extension_)
-            case .chromeWebStore, .firefoxAddons, .refraxGallery:
-                return nil
-            }
+            guard let directory = try? resourceFolder(for: extension_) else { return nil }
             return ExtensionPackage(
                 id: extension_.uniqueIdentifier,
                 directory: directory,
@@ -146,6 +138,9 @@ final class ExtensionManager {
 
     /// Browser state for accessing tab/window managers.
     unowned let state: BrowserState
+
+    /// Answers extensions' reader-mode queries (`tabs.toggleReaderMode`, `isInReaderMode`).
+    weak var readerModeManager: ReaderModeManager?
 
     /// Manager for handling permission prompts.
     let permissionPromptManager = PermissionPromptManager()
@@ -457,6 +452,7 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         isolatedControllers[space.id] = controller
+        loadExtensions(into: space)
 
         Logger.info("Created isolated extension controller for space: \(space.name)", category: Logger.extensions)
 
@@ -490,22 +486,27 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         privateControllers[space.id] = controller
+        loadExtensions(into: space)
 
         Logger.info("Created transient extension controller for private space: \(space.name)", category: Logger.extensions)
 
         return controller
     }
 
-    /// Ensures extensions are loaded for a space.
-    ///
-    /// For isolated/private spaces, this loads enabled extensions into the space's controller.
-    /// Call this when a space is first accessed or when extensions are installed.
+    /// Starts loading the extensions a new space controller should run.
+    private func loadExtensions(into space: Space) {
+        Task.immediate(name: "Load extensions for space") { [weak self] in
+            await self?.ensureExtensionsLoaded(for: space)
+        }
+    }
+
+    /// Loads the enabled extensions into an isolated or private space's controller.
     ///
     /// - For private spaces: only loads extensions with `allowedInPrivateMode = true`
     /// - For isolated spaces: loads all enabled extensions
     ///
     /// - Parameter space: The space to load extensions for.
-    func ensureExtensionsLoaded(for space: Space) async {
+    private func ensureExtensionsLoaded(for space: Space) async {
         // Only isolated and private spaces need per-space extension loading
         guard space.dataStoreMode.usesSeparateDataStore || space.dataStoreMode.isPrivate else { return }
 
@@ -1034,14 +1035,12 @@ final class ExtensionManager {
         // Unregister scripts
         state.scriptRegistry.unregisterExtension(extension_.uniqueIdentifier)
 
-        // Remove extracted folder for archive-based installations
+        // Remove the folder Refrax extracted it into. Bundled extensions keep theirs:
+        // installBundledExtensionsIfNeeded restores them from it.
         switch extension_.source {
-        case .crxFile, .xpiFile:
-            let extractedDir = stateFileURL.deletingLastPathComponent()
-                .appendingPathComponent("Extracted", isDirectory: true)
-                .appendingPathComponent(extension_.uniqueIdentifier, isDirectory: true)
-            try? FileManager.default.removeItem(at: extractedDir)
-        default:
+        case .crxFile, .xpiFile, .chromeWebStore, .firefoxAddons, .refraxGallery:
+            try? FileManager.default.removeItem(at: extractedFolderURL(for: extension_))
+        case .localFolder, .bundled:
             break
         }
 
@@ -1075,6 +1074,7 @@ final class ExtensionManager {
 
         installedExtensions[index].isEnabled = true
         savePersistedState()
+        await reconcileSpaceControllers(for: extension_)
 
         // Start resource monitoring
         await resourceMonitor.startMonitoring(for: extension_)
@@ -1101,19 +1101,12 @@ final class ExtensionManager {
             loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
         }
 
-        // Unload from all isolated controllers
-        for (key, context) in isolatedContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
-            if let controller = isolatedControllers[key.spaceID] {
-                try controller.unload(context)
-            }
-        }
-        isolatedContexts = isolatedContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
-
         // Unregister scripts
         state.scriptRegistry.unregisterExtension(extension_.uniqueIdentifier)
 
         installedExtensions[index].isEnabled = false
         savePersistedState()
+        await reconcileSpaceControllers(for: extension_)
 
         // Stop resource monitoring
         await resourceMonitor.stopMonitoring(for: extension_)
@@ -1135,6 +1128,9 @@ final class ExtensionManager {
 
         installedExtensions[index].allowedInPrivateMode = allowed
         savePersistedState()
+        Task.immediate(name: "Apply private mode setting") { [weak self] in
+            await self?.reconcileSpaceControllers(for: extension_)
+        }
 
         Logger.info(
             "Set private mode \(allowed ? "enabled" : "disabled") for '\(extension_.displayName)'",
@@ -1252,9 +1248,10 @@ final class ExtensionManager {
 
     // MARK: - Tab Event Dispatching
 
-    /// Returns the appropriate controller for a tab based on its space.
-    private func controller(for tab: Tab) -> WKWebExtensionController {
-        guard let space = tab.space else {
+    /// The controller for a tab's web views: its space's, matching the data store
+    /// `WebPageSettingsApplier` gives the tab.
+    func controller(for tab: Tab) -> WKWebExtensionController {
+        guard !tab.status.usesGlobalDataStore, let space = tab.space else {
             return defaultController
         }
         return controller(for: space)
@@ -1371,10 +1368,7 @@ final class ExtensionManager {
 
     /// Returns the appropriate controller for a tab page based on its owning tab's space.
     private func controller(for tabPage: TabPage) -> WKWebExtensionController {
-        guard let tab = tabPage.tab, let space = tab.space else {
-            return defaultController
-        }
-        return controller(for: space)
+        tabPage.tab.map(controller(for:)) ?? defaultController
     }
 
     // MARK: - Enabled Extensions Query
@@ -1507,30 +1501,7 @@ final class ExtensionManager {
 
     /// Loads an extension from its persisted state into the default controller.
     private func loadExtension(_ extension_: InstalledExtension) async throws {
-        // Determine the folder URL based on source type
-        let folderURL: URL
-
-        switch extension_.source {
-        case let .localFolder(url):
-            folderURL = url
-
-        case .crxFile, .xpiFile, .bundled:
-            // Archive-based and bundled extensions are extracted to Extensions/Extracted/{uniqueIdentifier}/
-            folderURL = extractedFolderURL(for: extension_)
-
-        case .chromeWebStore, .firefoxAddons, .refraxGallery:
-            // These would be downloaded and extracted - currently not fully implemented
-            Logger.warning(
-                "Web store extensions not yet supported for reload: \(extension_.displayName)",
-                category: Logger.extensions,
-            )
-            throw ExtensionError.unsupportedSource
-        }
-
-        // Verify folder still exists
-        guard FileManager.default.fileExists(atPath: folderURL.path) else {
-            throw ExtensionError.sourceNotFound
-        }
+        let folderURL = try resourceFolder(for: extension_)
 
         let webExtension = try await WKWebExtension(resourceBaseURL: folderURL)
         let context = WKWebExtensionContext(for: webExtension)
@@ -1546,6 +1517,48 @@ final class ExtensionManager {
 
         // Configure shims after loading (webViewConfiguration is only available after load)
         shimInjector.configure(context: context)
+    }
+
+    /// The folder an installed extension's resources load from. Everything except a local
+    /// folder is extracted into `Extensions/Extracted/<uniqueIdentifier>` on install.
+    private func resourceFolder(for extension_: InstalledExtension) throws -> URL {
+        let folderURL = switch extension_.source {
+        case let .localFolder(url): url
+        case .crxFile, .xpiFile, .bundled, .chromeWebStore, .firefoxAddons, .refraxGallery: extractedFolderURL(for: extension_)
+        }
+        guard FileManager.default.fileExists(atPath: folderURL.path) else {
+            throw ExtensionError.sourceNotFound
+        }
+        return folderURL
+    }
+
+    /// Brings every space controller in line with `extension_`'s settings: loaded while it is
+    /// enabled (and, in private spaces, allowed in private mode), unloaded otherwise.
+    private func reconcileSpaceControllers(for extension_: InstalledExtension) async {
+        let current = installedExtensions.first { $0.id == extension_.id }
+        let spaces = isolatedControllers.map { (spaceID: $0.key, controller: $0.value, isPrivate: false) }
+            + privateControllers.map { (spaceID: $0.key, controller: $0.value, isPrivate: true) }
+
+        for space in spaces {
+            let key = SpaceExtensionKey(spaceID: space.spaceID, extensionIdentifier: extension_.uniqueIdentifier)
+            let loaded = space.isPrivate ? privateContexts[key] : isolatedContexts[key]
+            let wanted = current.map { $0.isEnabled && (!space.isPrivate || $0.allowedInPrivateMode) } ?? false
+
+            if wanted, loaded == nil, let current {
+                do {
+                    try await loadExtension(current, into: space.controller, spaceID: space.spaceID, isPrivate: space.isPrivate)
+                } catch {
+                    Logger.error("Failed to load '\(current.displayName)' into space \(space.spaceID): \(error)", category: Logger.extensions)
+                }
+            } else if !wanted, let loaded {
+                try? space.controller.unload(loaded)
+                if space.isPrivate {
+                    privateContexts[key] = nil
+                } else {
+                    isolatedContexts[key] = nil
+                }
+            }
+        }
     }
 
     /// Returns the extracted folder URL for an archive-based or bundled extension.
@@ -1571,23 +1584,7 @@ final class ExtensionManager {
         spaceID: UUID,
         isPrivate: Bool = false,
     ) async throws {
-        // Determine the folder URL based on source type
-        let folderURL: URL
-
-        switch extension_.source {
-        case let .localFolder(url):
-            folderURL = url
-
-        case .crxFile, .xpiFile, .bundled:
-            folderURL = extractedFolderURL(for: extension_)
-
-        case .chromeWebStore, .firefoxAddons, .refraxGallery:
-            throw ExtensionError.unsupportedSource
-        }
-
-        guard FileManager.default.fileExists(atPath: folderURL.path) else {
-            throw ExtensionError.sourceNotFound
-        }
+        let folderURL = try resourceFolder(for: extension_)
 
         let webExtension = try await WKWebExtension(resourceBaseURL: folderURL)
         let context = WKWebExtensionContext(for: webExtension)
@@ -2037,9 +2034,6 @@ enum ExtensionError: Error, LocalizedError {
     /// The extension is not installed.
     case notInstalled
 
-    /// The extension source type is not yet supported.
-    case unsupportedSource
-
     /// The extension source file/folder was not found.
     case sourceNotFound
 
@@ -2067,8 +2061,6 @@ enum ExtensionError: Error, LocalizedError {
             "Extension manifest errors: \(errors.joined(separator: ", "))"
         case .notInstalled:
             "Extension is not installed"
-        case .unsupportedSource:
-            "Extension source type is not yet supported"
         case .sourceNotFound:
             "Extension source file or folder not found"
         case .permissionDenied:

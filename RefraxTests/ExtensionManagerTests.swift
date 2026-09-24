@@ -215,7 +215,6 @@ struct ExtensionErrorTests {
         let errors: [ExtensionError] = [
             .manifestErrors(["Error 1", "Error 2"]),
             .notInstalled,
-            .unsupportedSource,
             .sourceNotFound,
             .permissionDenied,
         ]
@@ -273,7 +272,7 @@ struct ExtensionManagerInitialStateTests {
     func managerCreatesWithController() throws {
         let env = try TabManagerTestEnvironment()
 
-        _ = env.extensionManager.controller
+        _ = env.extensionManager.defaultController
     }
 
     @Test("Bundled extensions are installed")
@@ -588,3 +587,59 @@ struct ExtensionGlobalSettingsTests {
 // - A valid extension folder with manifest.json
 // - Real WKWebExtensionController operations
 // - File system access for persistence
+
+// MARK: - Adapter Selectors
+
+/// WebKit calls the adapters' optional protocol methods by Objective-C selector. A Swift method
+/// with a near-miss name compiles but is never called, so the selectors are checked directly.
+@Suite("Extension adapter selectors", .tags(.extensionManager))
+struct ExtensionAdapterSelectorTests {
+    @Test("The tab adapter implements the WKWebExtensionTab methods WebKit calls", arguments: [
+        "windowForWebExtensionContext:",
+        "webViewForWebExtensionContext:",
+        "titleForWebExtensionContext:",
+        "urlForWebExtensionContext:",
+        "isPinnedForWebExtensionContext:",
+        "setPinned:forWebExtensionContext:completionHandler:",
+        "isReaderModeAvailableForWebExtensionContext:",
+        "isReaderModeActiveForWebExtensionContext:",
+        "setReaderModeActive:forWebExtensionContext:completionHandler:",
+        "isPlayingAudioForWebExtensionContext:",
+        "isMutedForWebExtensionContext:",
+        "setMuted:forWebExtensionContext:completionHandler:",
+        "sizeForWebExtensionContext:",
+        "zoomFactorForWebExtensionContext:",
+        "setZoomFactor:forWebExtensionContext:completionHandler:",
+        "isLoadingCompleteForWebExtensionContext:",
+        "detectWebpageLocaleForWebExtensionContext:completionHandler:",
+        "loadURL:forWebExtensionContext:completionHandler:",
+        "reloadFromOrigin:forWebExtensionContext:completionHandler:",
+        "goBackForWebExtensionContext:completionHandler:",
+        "goForwardForWebExtensionContext:completionHandler:",
+        "activateForWebExtensionContext:completionHandler:",
+        "isSelectedForWebExtensionContext:",
+        "setSelected:forWebExtensionContext:completionHandler:",
+        "duplicateUsingConfiguration:forWebExtensionContext:completionHandler:",
+        "closeForWebExtensionContext:completionHandler:",
+    ])
+    func tabSelectors(selector: String) {
+        #expect(RefraxExtensionTab.instancesRespond(to: NSSelectorFromString(selector)))
+    }
+
+    @Test("The window adapter implements the WKWebExtensionWindow methods WebKit calls", arguments: [
+        "tabsForWebExtensionContext:",
+        "activeTabForWebExtensionContext:",
+        "windowTypeForWebExtensionContext:",
+        "windowStateForWebExtensionContext:",
+        "setWindowState:forWebExtensionContext:completionHandler:",
+        "isPrivateForWebExtensionContext:",
+        "frameForWebExtensionContext:",
+        "setFrame:forWebExtensionContext:completionHandler:",
+        "screenFrameForWebExtensionContext:",
+        "focusForWebExtensionContext:completionHandler:",
+        "closeForWebExtensionContext:completionHandler:",
+    ])
+    func windowSelectors(selector: String) {
+        #expect(RefraxExtensionWindow.instancesRespond(to: NSSelectorFromString(selector)))
+    }
+}

@@ -1047,7 +1047,7 @@ final class WebPagePool {
     ///
     /// Live favorite tabs always use the global data store to maintain consistent
     /// sessions across spaces. Space-bound tabs use the space's data store if
-    /// the space has `usesSeparateDataStore` enabled.
+    /// the space has `usesSeparateDataStore` enabled, and the matching extension controller.
     private func configuration(for tabPage: TabPage) -> WebPage.Configuration {
         var config = state.webPageConfiguration
         let url = tabPage.url
@@ -1059,6 +1059,11 @@ final class WebPagePool {
                 spaceProvider: state.space(for:),
                 spaceDataStoreManager: spaceDataStoreManager,
             )
+            // Extensions run with the same isolation as the data store: a private space
+            // gets only private-mode extensions, a separate space its own extension storage.
+            if let extensionManager {
+                config.webExtensionController = extensionManager.controller(for: tab)
+            }
         } else {
             Logger.warning("Applying default data store: TabPage has no parent Tab", category: Logger.tabs)
             config.websiteDataStore = state.settingsApplier.defaultDataStore()

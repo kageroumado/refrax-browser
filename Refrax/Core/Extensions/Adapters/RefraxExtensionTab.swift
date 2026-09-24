@@ -77,7 +77,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         return page.webKitView
     }
 
-    func tabTitle(for _: WKWebExtensionContext) -> String? {
+    func title(for _: WKWebExtensionContext) -> String? {
         tabPage?.title
     }
 
@@ -90,12 +90,13 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     }
 
     func isReaderModeAvailable(for _: WKWebExtensionContext) -> Bool {
-        // Reader mode detection requires implementation
-        false
+        guard let tabPage, let readerMode = manager?.readerModeManager else { return false }
+        return readerMode.cachedAvailability(for: tabPage.url)
     }
 
-    func isShowingReaderMode(for _: WKWebExtensionContext) -> Bool {
-        false
+    func isReaderModeActive(for _: WKWebExtensionContext) -> Bool {
+        guard let tabPage, let readerMode = manager?.readerModeManager else { return false }
+        return readerMode.isReaderActive(for: tabPage.id)
     }
 
     func isPlayingAudio(for _: WKWebExtensionContext) -> Bool {
@@ -159,19 +160,23 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         }
     }
 
-    func select(for context: WKWebExtensionContext) async throws {
-        // In Refrax, select and activate are the same operation
+    /// Whether this is the active tab of a window showing its space. Refrax selects one tab per window.
+    func isSelected(for _: WKWebExtensionContext) -> Bool {
+        guard let tab, let space = tab.space, let windowManager = pagePool?.windowManager else { return false }
+        return windowManager.windowControllers.contains { $0.windowState.activeTabID(for: space.id) == tab.id }
+    }
+
+    /// Selecting activates the tab. A window always has one selected tab, so a deselect
+    /// request leaves the selection for the next activation to change.
+    func setSelected(_ selected: Bool, for context: WKWebExtensionContext) async throws {
+        guard selected else { return }
         try await activate(for: context)
     }
 
-    func deselect(for _: WKWebExtensionContext) async throws {
-        // No-op in single-selection model
-    }
-
     func duplicate(
+        using options: WKWebExtension.TabConfiguration,
         for _: WKWebExtensionContext,
-        with options: WKWebExtension.TabConfiguration?,
-    ) async throws -> any WKWebExtensionTab {
+    ) async throws -> (any WKWebExtensionTab)? {
         guard let tab, let tabPage, let pagePool else {
             throw ExtensionError.notInstalled
         }
@@ -183,7 +188,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         let newTab = tabManager.createTab(
             url: tabPage.url,
             in: tab.space,
-            makeActive: options?.shouldBeActive ?? false,
+            makeActive: options.shouldBeActive,
         )
 
         // Return adapter for new tab
@@ -199,7 +204,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         tabManager.closeTab(tab)
     }
 
-    func reload(for _: WKWebExtensionContext, fromOrigin: Bool) async throws {
+    func reload(fromOrigin: Bool, for _: WKWebExtensionContext) async throws {
         guard let tabPage else { return }
         guard let page = pagePool?.existingPage(for: tabPage.id) else { return }
 
@@ -232,8 +237,12 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         }
     }
 
-    func toggleReaderMode(for _: WKWebExtensionContext) async throws {
-        // Reader mode not yet implemented
+    func setReaderModeActive(_ active: Bool, for _: WKWebExtensionContext) async throws {
+        guard let tabPage, let readerMode = manager?.readerModeManager,
+              let page = pagePool?.existingPage(for: tabPage.id),
+              readerMode.isReaderActive(for: tabPage.id) != active
+        else { return }
+        await readerMode.toggleReader(for: page)
     }
 
     func detectWebpageLocale(for _: WKWebExtensionContext) async throws -> Locale? {
