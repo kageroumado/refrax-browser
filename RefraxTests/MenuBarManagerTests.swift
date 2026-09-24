@@ -47,9 +47,11 @@ struct MenuBarManagerInitializationTests {
         let menuBarManager = MenuBarManager(
             windowManager: env.windowManager,
             undoRedoManager: UndoRedoManager(),
+            focusedWindow: { nil },
         )
 
-        // Without any browser windows open
+        // Without any browser windows open. The test host is Refrax itself, so its real
+        // key window must not leak in.
         let controller = menuBarManager.activeWindowController
 
         #expect(controller == nil)

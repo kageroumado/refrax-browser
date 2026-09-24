@@ -44,7 +44,7 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
     /// actions work even when non-browser windows (Web Inspector, Settings) are focused.
     var activeWindowController: RefraxWindowController? {
         // First, check if the key or main window is a browser window
-        if let keyWindow = NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow,
+        if let keyWindow = focusedWindow(),
            let windowController = keyWindow.windowController as? RefraxWindowController {
             return windowController
         }
@@ -54,12 +54,17 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
 
     // MARK: - Initialization
 
+    /// The window menu actions target first: the key window, else the main window.
+    private let focusedWindow: () -> NSWindow?
+
     init(
         windowManager: WindowManager,
         undoRedoManager: UndoRedoManager,
+        focusedWindow: @escaping () -> NSWindow? = { NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow },
     ) {
         self.windowManager = windowManager
         self.undoRedoManager = undoRedoManager
+        self.focusedWindow = focusedWindow
         super.init()
     }
 
