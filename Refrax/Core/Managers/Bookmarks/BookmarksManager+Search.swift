@@ -58,11 +58,10 @@ extension BookmarksManager {
     ) -> [Bookmark] {
         guard !query.isEmpty else { return [] }
 
-        let lowercasedQuery = query.lowercased()
-
         var descriptor = FetchDescriptor<Bookmark>(
             predicate: #Predicate { bookmark in
-                bookmark.searchableText.contains(lowercasedQuery)
+                // Never `.contains(_:)`: in a predicate it resolves to the Regex overload, which SwiftData rejects.
+                bookmark.searchableText.localizedStandardContains(query)
             },
             sortBy: [SortDescriptor(\.lastVisited, order: .reverse)],
         )

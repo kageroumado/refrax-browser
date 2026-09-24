@@ -15,11 +15,10 @@ actor HistoryQueryActor {
     /// Uses the indexed `searchableText` field for efficient database-level
     /// filtering instead of loading all entries into memory.
     func search(query: String, limit: Int = 50) -> [HistoryEntryData] {
-        let lowercasedQuery = query.lowercased()
-
         var descriptor = FetchDescriptor<HistoryEntry>(
             predicate: #Predicate { entry in
-                entry.searchableText.contains(lowercasedQuery)
+                // Never `.contains(_:)`: in a predicate it resolves to the Regex overload, which SwiftData rejects.
+                entry.searchableText.localizedStandardContains(query)
             },
             sortBy: [SortDescriptor(\.visitedAt, order: .reverse)],
         )
