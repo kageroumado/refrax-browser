@@ -120,7 +120,7 @@ private final class WebKitChannelBridge: NSObject, WKScriptMessageHandlerWithRep
         deliver(scriptMessage, message.webView) { reply in
             MainActor.assumeIsolated {
                 switch reply {
-                case let .value(value): replyHandler(value.foundationValue, nil)
+                case let .value(value): replyHandler(value.foundationValue ?? NSNull(), nil)
                 case let .error(message): replyHandler(nil, message)
                 }
             }
