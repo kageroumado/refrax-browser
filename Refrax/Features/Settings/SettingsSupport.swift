@@ -10,6 +10,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case privacy
     case search
     case extensions
+    case engines
     case userCustomization
     case storage
     case sync
@@ -29,6 +30,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .privacy: "Privacy"
         case .search: "Search"
         case .extensions: "Extensions"
+        case .engines: "Engines"
         case .userCustomization: "User Content"
         case .storage: "Storage"
         case .sync: "iCloud Sync"
@@ -47,6 +49,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .privacy: "hand.raised.fill"
         case .search: "magnifyingglass"
         case .extensions: "puzzlepiece.extension.fill"
+        case .engines: "shippingbox.fill"
         case .userCustomization: "wand.and.stars"
         case .storage: "internaldrive"
         case .sync: "icloud.fill"
@@ -74,6 +77,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
             "Search engine and search shortcuts."
         case .extensions:
             "Browser extensions and their permissions."
+        case .engines:
+            "Rendering engines: WebKit and installed engines like Chromium."
         case .userCustomization:
             "User styles (CSS) and scripts (JavaScript) for websites."
         case .storage:
@@ -170,6 +175,11 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(id: "extensions.installed", title: "Installed extensions", keywords: ["extensions", "installed", "plugins", "addons"]),
                 SearchableSettingItem(id: "extensions.gallery", title: "Extension gallery", keywords: ["gallery", "browse", "chrome", "firefox"]),
                 SearchableSettingItem(id: "extensions.install", title: "Install extension", keywords: ["install", "add", "extension", "crx", "xpi"]),
+            ]
+        case .engines:
+            [
+                SearchableSettingItem(id: "engines.installed", title: "Installed engines", keywords: ["engine", "engines", "webkit", "chromium", "blink", "renderer"]),
+                SearchableSettingItem(id: "engines.folder", title: "Engines folder", keywords: ["engine", "folder", "install", "location"]),
             ]
         case .userCustomization:
             [
@@ -330,6 +340,8 @@ struct SettingsContentView: View {
                 SearchSettingsView(highlightedItemId: highlightedItemId)
             case .extensions:
                 ExtensionSettingsView(highlightedItemId: highlightedItemId)
+            case .engines:
+                EnginesSettingsView(highlightedItemId: highlightedItemId)
             case .userCustomization:
                 UserCustomizationSettingsView(highlightedItemId: highlightedItemId)
             case .storage:

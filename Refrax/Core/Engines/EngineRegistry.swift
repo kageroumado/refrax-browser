@@ -27,6 +27,9 @@ final class EngineRegistry {
     /// Every usable engine, system WebKit first.
     private(set) var descriptors: [EngineDescriptor] = [EngineRegistry.systemWebKit]
 
+    /// Engines whose code is loaded and running in this session.
+    private(set) var runningEngines: Set<EngineID> = [.systemWebKit]
+
     @ObservationIgnored private var bundles: [EngineID: EngineBundle] = [:]
     @ObservationIgnored private var hosts: [EngineID: ExternalEngineHost] = [:]
 
@@ -86,7 +89,31 @@ final class EngineRegistry {
             hosts[id] = nil
             throw error
         }
+        runningEngines.insert(id)
         return host
+    }
+
+    /// Where an installed engine's bundle lives.
+    func bundleURL(for id: EngineID) -> URL? {
+        bundles[id]?.url
+    }
+
+    /// Moves an installed engine to the Trash, and with `removingData`, everything it stored.
+    ///
+    /// An engine loaded in this session can't be unloaded, so removing it waits for a relaunch.
+    func uninstall(_ id: EngineID, removingData: Bool) throws {
+        guard let bundle = bundles[id] else { throw EngineError.notInstalled(id) }
+        guard !runningEngines.contains(id) else { throw EngineError.inUse(id) }
+        let fileManager = FileManager.default
+        try fileManager.trashItem(at: bundle.url.deletingLastPathComponent(), resultingItemURL: nil)
+        if removingData {
+            let data = dataDirectory.appending(path: id.rawValue, directoryHint: .isDirectory)
+            if fileManager.fileExists(atPath: data.path(percentEncoded: false)) {
+                try fileManager.trashItem(at: data, resultingItemURL: nil)
+            }
+        }
+        Logger.info("Removed engine \(id)\(removingData ? " and its data" : "")", category: Logger.engines)
+        refresh()
     }
 
     /// Stops every running engine. Called once, at quit.
@@ -95,5 +122,6 @@ final class EngineRegistry {
             host.shutdown()
         }
         hosts.removeAll()
+        runningEngines = [.systemWebKit]
     }
 }

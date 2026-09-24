@@ -43,6 +43,7 @@ extension WebPage {
             observe(page)
             page.perform(.setZoom(factor: backingWebView.pageZoom))
         }
+        tabPage.engineID = id == .systemWebKit ? nil : id.rawValue
         Logger.info("Page \(tabPage.id) now renders with \(id): \(currentURL.absoluteString)", category: Logger.engines)
     }
 

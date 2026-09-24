@@ -180,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             downloadManager: downloadManager,
             customSearchEngineManager: customSearchEngineManager,
             passwordsManager: passwordsManager,
+            engineRegistry: engineRegistry,
         ),
     )
 
@@ -344,6 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.windowManager = WindowManager(modelContainer: modelContainer)
         self.spaceManager = SpaceManager(state: browserState)
         self.pagePool = WebPagePool(state: browserState)
+        pagePool.engineRegistry = engineRegistry
         self.groupManager = TabGroupManager(state: browserState)
         self.readerModeManager = ReaderModeManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()

@@ -309,3 +309,45 @@ struct RendererTerminationPolicyTests {
         #expect(state.rendererHealth == .running)
     }
 }
+
+// MARK: - Registry
+
+@Suite("EngineRegistry", .tags(.engines))
+@MainActor
+struct EngineRegistryTests {
+    private func makeRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let bundle = root.appending(path: "Engines/test.engine.example/Example.engine/Contents")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "test.engine.example",
+            "NSPrincipalClass": "ExampleEngineHost",
+            "RFXEngineContractVersion": "1.0",
+            "RFXEngineDisplayName": "Example",
+        ]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: bundle.appending(path: "Info.plist"))
+        return root
+    }
+
+    @Test("Discovers installed bundles after system WebKit and resolves names")
+    func discovery() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let registry = EngineRegistry(applicationSupport: root)
+        #expect(registry.descriptors.map(\.id) == [.systemWebKit, EngineID(rawValue: "test.engine.example")])
+        #expect(registry.resolve("example") == EngineID(rawValue: "test.engine.example"))
+        #expect(registry.resolve("WEBKIT") == .systemWebKit)
+        #expect(registry.resolve("gecko") == nil)
+    }
+
+    @Test("Uninstalling removes the engine; system WebKit can't be removed")
+    func uninstall() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let registry = EngineRegistry(applicationSupport: root)
+        try registry.uninstall(EngineID(rawValue: "test.engine.example"), removingData: true)
+        #expect(registry.descriptors.map(\.id) == [.systemWebKit])
+        #expect(throws: EngineError.self) { try registry.uninstall(.systemWebKit, removingData: false) }
+    }
+}

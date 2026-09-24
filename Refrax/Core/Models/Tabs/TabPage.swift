@@ -162,6 +162,14 @@ final class TabPage: Identifiable {
     ///   subsequent navigations within the same session.
     var scrollPositionY: Double?
 
+    // MARK: - Rendering Engine
+
+    /// The engine this page renders with, as an ``EngineID`` raw value; `nil` for system WebKit.
+    ///
+    /// Remembered so the page returns to its engine after relaunch or eviction. A page
+    /// whose engine is no longer installed renders with WebKit until it is reinstalled.
+    var engineID: String?
+
     // MARK: - Initialization
     
     /// Creates a new tab page.

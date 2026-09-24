@@ -228,6 +228,10 @@ final class WebPagePool {
 
     // MARK: - Page Access
 
+    /// Installed engines; pages whose tab remembers a non-WebKit engine are restored onto it.
+    /// Nil where no engines are available (tests).
+    var engineRegistry: EngineRegistry?
+
     /// Gets or creates a WebPage for a tab page.
     ///
     /// Pages are created lazily. Under memory pressure, low-priority pages
@@ -266,7 +270,27 @@ final class WebPagePool {
         navigationDeciders[tabPage.id] = navigationDecider
         pagesVersion += 1
 
+        restoreEngine(for: page)
         return page
+    }
+
+    /// Moves a page whose tab remembers another engine onto it before WebKit loads anything.
+    ///
+    /// When that engine is no longer installed, or fails to start, the page loads in WebKit.
+    private func restoreEngine(for page: WebPage) {
+        guard let rawID = page.tabPage.engineID, let engineRegistry else { return }
+        let id = EngineID(rawValue: rawID)
+        guard id != .systemWebKit, engineRegistry.descriptor(for: id) != nil else { return }
+        page.initialLoadPending = false
+        Task { [weak page] in
+            guard let page else { return }
+            do {
+                try await page.switchEngine(to: id, registry: engineRegistry)
+            } catch {
+                Logger.error("Restoring \(id) for page \(page.tabPage.id) failed: \(error)", category: Logger.engines)
+                page.load(page.tabPage.url)
+            }
+        }
     }
 
     /// Creates a popup page using the provided WebKit configuration.

@@ -177,6 +177,7 @@ nonisolated enum EngineError: LocalizedError, Equatable {
     case failedToLoad(EngineID, reason: String)
     case failedToStart(EngineID, reason: String)
     case pageClosed
+    case inUse(EngineID)
     case unsupported(EngineCapabilities)
     case scriptFailed(String)
     case malformedMessage(String)
@@ -193,6 +194,8 @@ nonisolated enum EngineError: LocalizedError, Equatable {
             "The engine \(id) could not start: \(reason)"
         case .pageClosed:
             "The page was closed."
+        case .inUse:
+            "The engine is rendering open pages. Quit Refrax, then remove it."
         case .unsupported:
             "The engine does not support this feature."
         case let .scriptFailed(message):
