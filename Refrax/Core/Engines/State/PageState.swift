@@ -8,7 +8,7 @@ import Observation
 /// Built only by ``PageReducer`` from ``PageEvent``s, so it can never disagree
 /// with what the engine reported.
 nonisolated struct PageSnapshot: Hashable, Sendable {
-    /// The URL the page shows: set at commit and by same-document navigations.
+    /// The URL the page shows: the visible URL the engine last reported.
     var url: URL?
     /// The URL a provisional navigation is heading to, before it commits.
     var pendingURL: URL?
@@ -54,8 +54,10 @@ nonisolated enum PageReducer {
             state.faviconURLs = []
             state.themeColor = nil
             state.topEdgeColor = nil
+            // A commit proves a live renderer: this is how a crashed page recovers.
+            state.rendererHealth = .running
 
-        case let .sameDocumentNavigation(url):
+        case let .urlChanged(url):
             state.url = url
 
         case let .navigationFinished(_, statusCode):

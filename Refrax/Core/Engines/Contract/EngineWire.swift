@@ -65,8 +65,8 @@ nonisolated enum EngineWire {
             return try .navigationRedirected(url: checked(url))
         case let .navigationCommitted(url, isBackForward):
             return try .navigationCommitted(url: checked(url), isBackForward: isBackForward)
-        case let .sameDocumentNavigation(url):
-            return try .sameDocumentNavigation(url: checked(url))
+        case let .urlChanged(url):
+            return try .urlChanged(url: checked(url))
         case let .navigationFinished(url, statusCode):
             return try .navigationFinished(url: checked(url), statusCode: statusCode.map { min(max($0, 0), 999) })
         case let .navigationFailed(failure):

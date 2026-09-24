@@ -326,36 +326,24 @@ final class WebPage: Identifiable {
     // These properties use the WebKit backingProperty pattern: lazy KVO observation
     // created on first access, reading values directly from backingWebView.
 
-    /// The URL for the current webpage.
+    /// The URL the page shows.
     var url: URL? {
-        if enginePage != nil { return engineState.url }
-        return backingProperty(\.url, backedBy: \.url)
+        state.url
     }
 
     /// The page title.
     var title: String {
-        if enginePage != nil { return engineState.title }
-        return backingProperty(\.title, backedBy: \.title) { $0 ?? "" }
+        state.title
     }
 
     /// An estimate of completion percentage of the current navigation (0.0 to 1.0).
-    ///
-    /// Throttled to only notify observers when progress changes by at least 1% (0.01)
-    /// to reduce high-frequency updates during page loads (50-100 KVO events).
-    /// Always updates when progress reaches 1.0 (complete).
     var estimatedProgress: Double {
-        if enginePage != nil { return engineState.progress }
-        access(keyPath: \.estimatedProgress)
-        return _estimatedProgress
+        state.progress
     }
-
-    @ObservationIgnored
-    private var _estimatedProgress: Double = 0
 
     /// Whether the webpage is currently loading content.
     var isLoading: Bool {
-        if enginePage != nil { return engineState.isLoading }
-        return backingProperty(\.isLoading, backedBy: \.isLoading)
+        state.isLoading
     }
 
     /// The trust management object for evaluating server certificates.
@@ -365,7 +353,7 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage loaded all resources through secure connections.
     var hasOnlySecureContent: Bool {
-        if enginePage != nil { return engineState.security == .secure }
+        if enginePage != nil { return state.security == .secure }
         return backingProperty(\.hasOnlySecureContent, backedBy: \.hasOnlySecureContent)
     }
 
@@ -569,8 +557,13 @@ final class WebPage: Identifiable {
     /// the built-in WebKit view renders it. See `WebPage+Engine.swift`.
     var enginePage: (any EnginePage)?
 
-    /// State reported by `enginePage`, built by `PageReducer`. Read only while `enginePage` is set.
-    let engineState = PageState()
+    /// The page's state as reported by the engine rendering it, built by `PageReducer`.
+    /// The single source of the core page properties (`url`, `title`, loading, history).
+    let state = PageState()
+
+    /// Reports WebKit's observable properties into `state` while WebKit renders the page.
+    @ObservationIgnored
+    private var webKitObserver: WebKitPageObserver?
 
     /// Tasks consuming `enginePage`'s event and request streams.
     @ObservationIgnored
@@ -583,14 +576,12 @@ final class WebPage: Identifiable {
 
     /// Whether there is a back item in the history.
     var canGoBack: Bool {
-        if enginePage != nil { return engineState.canGoBack }
-        return !backForwardList.backList.isEmpty
+        state.canGoBack
     }
 
     /// Whether there is a forward item in the history.
     var canGoForward: Bool {
-        if enginePage != nil { return engineState.canGoForward }
-        return !backForwardList.forwardList.isEmpty
+        state.canGoForward
     }
 
     /// The array of items that precede the current item.
@@ -800,7 +791,7 @@ final class WebPage: Identifiable {
         }
 
         if enginePage != nil {
-            return switch engineState.security {
+            return switch state.security {
             case .secure: .secure
             case .mixedContent: .mixedContent
             case .insecure, .notApplicable: .insecure
@@ -1238,8 +1229,10 @@ final class WebPage: Identifiable {
         // Start process state observation for crash detection
         self.processStateObserver = ProcessStateObserver(wkWebView: backingWebView)
 
-        // Set up throttled progress observation (1% threshold to reduce notification overhead)
-        setupThrottledProgressObservation()
+        state.reset(to: WebKitPageObserver.snapshot(of: backingWebView))
+        webKitObserver = WebKitPageObserver(webView: backingWebView) { [weak self] event in
+            self?.receiveWebKitEvent(event)
+        }
 
         // Attach autofill manager
         dependencies.autoFillManager.attach(to: backingWebView, url: tabPage.url)
@@ -1366,37 +1359,6 @@ final class WebPage: Identifiable {
         backingProperty(keyPath, backedBy: backingKeyPath) { $0 }
     }
 
-    /// Sets up throttled KVO observation for estimatedProgress.
-    ///
-    /// Unlike other KVO-backed properties that use `backingProperty`, this observation
-    /// includes a threshold check to only notify observers when progress changes by
-    /// at least 1% (0.01). This reduces 50-100 KVO events during page load to ~100
-    /// meaningful updates, significantly reducing @Observable notification overhead.
-    private func setupThrottledProgressObservation() {
-        // Wrap key path in Sendable box for thread-safe capture in KVO closure
-        let boxedKeyPath = UncheckedSendableKeyPathBox(keyPath: \WebPage.estimatedProgress)
-
-        observations.contents[\WebPage.estimatedProgress] = backingWebView.observe(
-            \.estimatedProgress,
-            options: [.new],
-        ) { [_$observationRegistrar, unowned self] _, change in
-            guard let newProgress = change.newValue else { return }
-
-            // KVO callbacks for WKWebView run on main thread
-            MainActor.assumeIsolated {
-                // Always update when progress reaches 1.0 (complete)
-                // Otherwise, only update if progress changed by at least 1%
-                let threshold = 0.01
-                guard newProgress >= 1.0 || abs(_estimatedProgress - newProgress) >= threshold else {
-                    return
-                }
-
-                _$observationRegistrar.willSet(self, keyPath: boxedKeyPath.keyPath)
-                _estimatedProgress = newProgress
-                _$observationRegistrar.didSet(self, keyPath: boxedKeyPath.keyPath)
-            }
-        }
-    }
 }
 
 // MARK: - KVO Observation Storage

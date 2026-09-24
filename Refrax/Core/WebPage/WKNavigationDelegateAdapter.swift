@@ -139,7 +139,10 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
 
     // MARK: - Navigation Events
 
-    func webView(_: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if let url = webView.url {
+            owner?.receiveWebKitEvent(.navigationStarted(url: url))
+        }
         yieldNavigationProgress(kind: .startedProvisionalNavigation, cocoaNavigation: navigation)
 
         // Cancel any in-progress translation when navigating away
@@ -154,11 +157,15 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     func webView(_: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
         if let url = owner?.backingWebView.url {
             owner?.redirectChain.append(url)
+            owner?.receiveWebKitEvent(.navigationRedirected(url: url))
         }
         yieldNavigationProgress(kind: .receivedServerRedirect, cocoaNavigation: navigation)
     }
 
-    func webView(_: WKWebView, didCommit navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let owner, let url = webView.url {
+            owner.receiveWebKitEvent(.navigationCommitted(url: url, isBackForward: owner.isBackForwardNavigation))
+        }
         yieldNavigationProgress(kind: .committed, cocoaNavigation: navigation)
 
         // Notify extensions of URL change
@@ -167,8 +174,11 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
         }
     }
 
-    func webView(_: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         owner?.redirectChain.reset()
+        if let url = webView.url {
+            owner?.receiveWebKitEvent(.navigationFinished(url: url, statusCode: owner?.httpErrorCode))
+        }
         yieldNavigationProgress(kind: .finished, cocoaNavigation: navigation)
 
         // Notify extensions of loading complete and title change
@@ -198,13 +208,15 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
         }
     }
 
-    func webView(_: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
         owner?.redirectChain.reset()
+        owner?.receiveWebKitEvent(.webKitNavigationFailed(error, url: webView.url, isProvisional: true))
         failNavigationProgress(kind: WebPage.NavigationError.failedProvisionalNavigation(error), cocoaNavigation: navigation)
     }
 
-    func webView(_: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
         owner?.redirectChain.reset()
+        owner?.receiveWebKitEvent(.webKitNavigationFailed(error, url: webView.url, isProvisional: false))
         failNavigationProgress(kind: error, cocoaNavigation: navigation)
     }
 
@@ -236,6 +248,7 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     /// Called when the web process becomes unresponsive.
     @objc(_webViewWebProcessDidBecomeUnresponsive:)
     func _webViewWebProcessDidBecomeUnresponsive(_: WKWebView) {
+        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .unresponsive(since: .now)))
         guard let pageID = owner?.tabPage.id, let pagePool else { return }
 
         Logger.warning("Process became unresponsive", category: Logger.tabs)
@@ -245,6 +258,7 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     /// Called when an unresponsive web process becomes responsive again.
     @objc(_webViewWebProcessDidBecomeResponsive:)
     func _webViewWebProcessDidBecomeResponsive(_: WKWebView) {
+        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .running))
         guard let pageID = owner?.tabPage.id, let pagePool else { return }
 
         Logger.info("Process became responsive", category: Logger.tabs)
@@ -261,6 +275,7 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
 
     /// Notifies the page pool of process termination.
     private func notifyProcessTermination(reason: _WKProcessTerminationReason) {
+        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .terminated(reason: RendererTerminationReason(reason))))
         guard let pageID = owner?.tabPage.id, let pagePool else { return }
         pagePool.handleProcessTermination(for: pageID, reason: reason)
     }

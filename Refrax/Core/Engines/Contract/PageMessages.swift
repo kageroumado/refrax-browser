@@ -13,8 +13,10 @@ nonisolated enum PageEvent: Codable, Hashable, Sendable {
     case navigationRedirected(url: URL)
     /// A main-frame navigation committed: the page now shows `url`.
     case navigationCommitted(url: URL, isBackForward: Bool)
-    /// The URL changed without a new document (fragment navigation, `history.pushState`).
-    case sameDocumentNavigation(url: URL)
+    /// The page's visible URL changed: a navigation began showing its destination,
+    /// a navigation committed, or the document changed its own URL (fragment,
+    /// `history.pushState`). Distinct from ``navigationCommitted``, which marks a new document.
+    case urlChanged(url: URL)
     /// The main frame finished loading. `statusCode` is nil for non-HTTP loads.
     case navigationFinished(url: URL, statusCode: Int?)
     /// A main-frame navigation failed.

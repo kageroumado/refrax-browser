@@ -101,7 +101,7 @@ since 1970, optional fields may be omitted or `null`.
 | `navigationStarted` | `url` | A main-frame navigation began (provisional) |
 | `navigationRedirected` | `url` | The provisional navigation was redirected |
 | `navigationCommitted` | `url`, `isBackForward` | The page now shows `url` (new document) |
-| `sameDocumentNavigation` | `url` | URL changed without a new document (fragment, `pushState`) |
+| `urlChanged` | `url` | The visible URL changed: a navigation began showing its destination, a commit, or a fragment / `pushState` change |
 | `navigationFinished` | `url`, `statusCode?` | Main frame finished loading |
 | `navigationFailed` | `failure` | See below |
 | `titleChanged` | `title` | |

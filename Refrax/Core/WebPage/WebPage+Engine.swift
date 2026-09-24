@@ -19,9 +19,10 @@ extension WebPage {
         let currentURL = url ?? tabPage.url
 
         if id == .systemWebKit {
-            let zoom = enginePage == nil ? nil : engineState.zoom
+            let zoom = enginePage == nil ? nil : state.zoom
             tearDownEnginePage()
             if let zoom { backingWebView.pageZoom = zoom }
+            state.reset(to: WebKitPageObserver.snapshot(of: backingWebView))
             load(currentURL)
         } else {
             let host = try await registry.host(for: id)
@@ -37,7 +38,7 @@ extension WebPage {
             httpErrorCode = nil
             httpErrorURL = nil
             crashError = nil
-            engineState.reset(to: PageSnapshot(url: currentURL, title: tabPage.title))
+            state.reset(to: PageSnapshot(url: currentURL, title: tabPage.title))
             enginePage = page
             observe(page)
             page.perform(.setZoom(factor: backingWebView.pageZoom))
@@ -55,12 +56,19 @@ extension WebPage {
         enginePage = nil
     }
 
+    /// Applies an event from the built-in WebKit view. Ignored while another engine renders
+    /// the page: the paused web view's late events must not overwrite that engine's state.
+    func receiveWebKitEvent(_ event: PageEvent) {
+        guard enginePage == nil else { return }
+        state.apply(event)
+    }
+
     /// Consumes a page's event and request streams for as long as it lives.
     private func observe(_ page: any EnginePage) {
         let events = Task { [weak self] in
             for await event in page.events {
                 guard let self, !Task.isCancelled else { return }
-                engineState.apply(event)
+                state.apply(event)
                 handleEngineEvent(event)
             }
         }
@@ -80,7 +88,7 @@ extension WebPage {
 // MARK: - Event Effects
 
 extension WebPage {
-    /// Side effects of engine events on the rest of Refrax. State itself lives in `engineState`.
+    /// Side effects of engine events on the rest of Refrax. State itself lives in `state`.
     private func handleEngineEvent(_ event: PageEvent) {
         switch event {
         case let .navigationCommitted(url, isBackForward):
@@ -104,7 +112,7 @@ extension WebPage {
             }
 
         case .faviconsChanged:
-            if let url = engineState.url {
+            if let url = state.url {
                 refreshEngineFavicon(for: url, clearingPrevious: false)
             }
 
@@ -117,7 +125,7 @@ extension WebPage {
         case let .rendererHealthChanged(.terminated(reason)):
             Logger.warning("\(activeEngineID) renderer terminated (\(reason.rawValue)) for page \(tabPage.id)", category: Logger.engines)
             httpErrorCode = NSURLErrorNetworkConnectionLost
-            httpErrorURL = engineState.url ?? tabPage.url
+            httpErrorURL = state.url ?? tabPage.url
 
         default:
             break
@@ -129,8 +137,8 @@ extension WebPage {
         let previousHost = lastCommittedURL?.host
 
         tabPage.url = url
-        if !engineState.title.isEmpty {
-            tabPage.title = engineState.title
+        if !state.title.isEmpty {
+            tabPage.title = state.title
         }
         httpErrorCode = nil
         httpErrorURL = nil

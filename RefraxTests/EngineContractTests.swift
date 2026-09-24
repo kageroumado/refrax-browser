@@ -61,13 +61,13 @@ struct PageReducerTests {
         #expect(recovered.failure == nil)
     }
 
-    @Test("Same-document navigation moves the URL without resetting the page")
+    @Test("A URL change moves the URL without resetting the page")
     func sameDocument() {
         let fragment = URL(string: "https://example.com/#section")!
         let state = reduce([
             .navigationCommitted(url: example, isBackForward: false),
             .titleChanged(title: "Example"),
-            .sameDocumentNavigation(url: fragment),
+            .urlChanged(url: fragment),
         ])
         #expect(state.url == fragment)
         #expect(state.title == "Example")

@@ -237,7 +237,7 @@ class Client : public CefClient,
 
   void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
     if (frame->IsMain()) {
-      [owner_ emit:@"sameDocumentNavigation" fields:@{@"url" : JSONString(url)}];
+      [owner_ emit:@"urlChanged" fields:@{@"url" : JSONString(url)}];
     }
   }
 
