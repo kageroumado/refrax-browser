@@ -123,10 +123,10 @@ final class ReaderModeManager {
 
     private var isSetUp = false
     private var availabilityScriptID: UUID?
-    private var messageHandler: ReaderModeMessageHandler?
 
     /// Content world for scripts (isolated from page scripts).
-    private let scriptWorld = WKContentWorld.world(name: "RefraxScripts")
+    private static let scriptWorldName = "RefraxScripts"
+    private let scriptWorld = WKContentWorld.world(name: scriptWorldName)
 
     // MARK: - Constants
 
@@ -157,15 +157,10 @@ final class ReaderModeManager {
     // MARK: - Message Handler
 
     private func registerMessageHandler() {
-        let handler = ReaderModeMessageHandler { [weak self] event in
+        state.scriptChannels.register(Self.messageHandlerName, world: .isolated(name: Self.scriptWorldName)) { [weak self] message, _ in
+            guard let event = ReaderModeEvent(message.body) else { return }
             self?.handleEvent(event)
         }
-        messageHandler = handler
-        state.webPageConfiguration.userContentController.add(
-            handler,
-            contentWorld: scriptWorld,
-            name: Self.messageHandlerName,
-        )
     }
 
     // MARK: - Script Registration
@@ -509,36 +504,22 @@ enum ReaderModeEvent {
     case error(url: String, message: String)
 }
 
-// MARK: - Message Handler
+// MARK: - Message Parsing
 
-final class ReaderModeMessageHandler: NSObject, WKScriptMessageHandler {
-    private let onEvent: (ReaderModeEvent) -> Void
-
-    init(onEvent: @escaping (ReaderModeEvent) -> Void) {
-        self.onEvent = onEvent
-    }
-
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any],
-              let type = body["type"] as? String,
-              let urlString = body["url"] as? String
-        else { return }
+extension ReaderModeEvent {
+    /// Parses a message from the reader-mode scripts. Returns `nil` for malformed or unknown messages.
+    init?(_ body: ScriptValue) {
+        guard let type = body["type"]?.stringValue, let url = body["url"]?.stringValue else { return nil }
 
         switch type {
         case "availability":
-            let available = body["available"] as? Bool ?? false
-            onEvent(.availability(url: urlString, available: available))
-
+            self = .availability(url: url, available: body["available"]?.boolValue ?? false)
         case "extracted":
-            let article = body["article"] as? [String: Any]
-            onEvent(.extracted(url: urlString, article: article))
-
+            self = .extracted(url: url, article: body["article"]?.foundationValue as? [String: Any])
         case "error":
-            let message = body["error"] as? String ?? "Unknown error"
-            onEvent(.error(url: urlString, message: message))
-
+            self = .error(url: url, message: body["error"]?.stringValue ?? "Unknown error")
         default:
-            break
+            return nil
         }
     }
 }

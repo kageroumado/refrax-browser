@@ -238,17 +238,23 @@ nonisolated enum ScriptValue: Hashable, Sendable {
         if case let .string(value) = self { value } else { nil }
     }
 
+    /// The Boolean, if this is one.
+    var boolValue: Bool? {
+        if case let .bool(value) = self { value } else { nil }
+    }
+
     /// The member named `key`, if this is an object that has one.
     subscript(key: String) -> ScriptValue? {
         if case let .object(members) = self { members[key] } else { nil }
     }
 
-    /// The Foundation form callers that predate the contract expect.
+    /// The Foundation form callers that predate the contract expect. Numbers are `NSNumber`,
+    /// as WebKit delivers them, so `as? Int` succeeds for integral values.
     var foundationValue: Any? {
         switch self {
         case .null: nil
         case let .bool(value): value
-        case let .number(value): value
+        case let .number(value): NSNumber(value: value)
         case let .string(value): value
         case let .array(values): values.map { $0.foundationValue ?? NSNull() }
         case let .object(values): values.mapValues { $0.foundationValue ?? NSNull() }

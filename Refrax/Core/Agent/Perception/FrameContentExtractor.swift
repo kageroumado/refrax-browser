@@ -1,12 +1,12 @@
 import Foundation
 import WebKit
 
-/// Extracts content from cross-origin iframes by injecting a `WKUserScript` into all frames.
+/// Extracts content from cross-origin iframes by injecting a script into all frames.
 ///
 /// WebKit's native `_requestTextExtraction` enforces same-origin policy in the web process,
 /// returning empty children for cross-origin `WKTextExtractionIFrameItem` nodes. This extractor
 /// works around that limitation by injecting a content script into every frame (including
-/// cross-origin ones) via `WKUserScript` with `injectedFrames: .allFrames`.
+/// cross-origin ones).
 ///
 /// The injected script walks the DOM inside each subframe, collects interactive elements with
 /// bounding rects, and posts the results back via `webkit.messageHandlers.refraxFrameContent`.
@@ -15,13 +15,13 @@ import WebKit
 ///
 /// ```swift
 /// // During app setup (before creating web pages)
-/// FrameContentExtractor.shared.install(on: userContentController)
+/// FrameContentExtractor.shared.install(in: browserState)
 ///
 /// // When building the page content tree, query for frame content
 /// let content = FrameContentExtractor.shared.content(forOrigin: "https://consent.cookiebot.com")
 /// ```
 @MainActor
-final class FrameContentExtractor: NSObject {
+final class FrameContentExtractor {
     /// Singleton instance.
     static let shared = FrameContentExtractor()
 
@@ -46,29 +46,26 @@ final class FrameContentExtractor: NSObject {
 
     private var isInstalled = false
 
-    /// Installs the frame content extraction script and message handler on a `WKUserContentController`.
+    /// Registers the frame content extraction script and its channel.
     ///
     /// Call this once during app initialization, before creating any web pages.
     /// The script is injected into all frames (including cross-origin) at document end.
-    ///
-    /// - Parameter controller: The user content controller shared across all web pages.
-    func install(on controller: WKUserContentController) {
+    func install(in state: BrowserState) {
         guard !isInstalled else { return }
         isInstalled = true
 
-        // Register the message handler
-        controller.add(self, name: Self.messageHandlerName)
-
-        // Load and inject the content script
-        let scriptSource = loadScript()
-        let script = WKUserScript(
-            source: scriptSource,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: false,
+        state.scriptChannels.register(Self.messageHandlerName) { [weak self] message, _ in
+            guard let body = message.body.foundationValue as? [String: Any] else { return }
+            self?.receive(body)
+        }
+        state.scriptRegistry.register(
+            WKUserScript(source: loadScript(), injectionTime: .atDocumentEnd, forMainFrameOnly: false),
+            source: .system(name: "frameContent"),
+            priority: ScriptRegistry.Priority.system,
         )
-        controller.addUserScript(script)
+        state.scriptRegistry.apply(to: state.webPageConfiguration.userContentController)
 
-        Logger.debug("[FrameContentExtractor] Installed script + message handler", category: Logger.agent)
+        Logger.debug("[FrameContentExtractor] Installed script + channel", category: Logger.agent)
     }
 
     // MARK: - Content Access
@@ -154,39 +151,33 @@ final class FrameContentExtractor: NSObject {
     }
 }
 
-// MARK: - WKScriptMessageHandler
+// MARK: - Message Handling
 
-extension FrameContentExtractor: WKScriptMessageHandler {
-    nonisolated func userContentController(
-        _: WKUserContentController,
-        didReceive message: WKScriptMessage,
-    ) {
-        MainActor.assumeIsolated {
-            guard let body = message.body as? [String: Any],
-                  let frameOrigin = body["frameOrigin"] as? String
-            else { return }
+extension FrameContentExtractor {
+    /// Stores the content one frame's script posted. `body` is untrusted page input.
+    private func receive(_ body: [String: Any]) {
+        guard let frameOrigin = body["frameOrigin"] as? String else { return }
 
-            let elements = self.parseElements(from: body["elements"] as? [[String: Any]] ?? [])
-            let summary = self.parseSummary(from: body["summary"] as? [String: Any])
-            let viewportWidth = body["viewportWidth"] as? Int ?? 0
-            let viewportHeight = body["viewportHeight"] as? Int ?? 0
-            let frameURL = body["frameURL"] as? String ?? frameOrigin
+        let elements = parseElements(from: body["elements"] as? [[String: Any]] ?? [])
+        let summary = parseSummary(from: body["summary"] as? [String: Any])
+        let viewportWidth = body["viewportWidth"] as? Int ?? 0
+        let viewportHeight = body["viewportHeight"] as? Int ?? 0
+        let frameURL = body["frameURL"] as? String ?? frameOrigin
 
-            let content = FrameContent(
-                origin: frameOrigin,
-                url: frameURL,
-                elements: elements,
-                summary: summary,
-                viewportSize: CGSize(width: viewportWidth, height: viewportHeight),
-                receivedAt: Date(),
-            )
+        let content = FrameContent(
+            origin: frameOrigin,
+            url: frameURL,
+            elements: elements,
+            summary: summary,
+            viewportSize: CGSize(width: viewportWidth, height: viewportHeight),
+            receivedAt: Date(),
+        )
 
-            self.frameContents[frameOrigin] = content
-            Logger.debug(
-                "[FrameContentExtractor] Received \(elements.count) elements from \(frameOrigin)",
-                category: Logger.agent,
-            )
-        }
+        frameContents[frameOrigin] = content
+        Logger.debug(
+            "[FrameContentExtractor] Received \(elements.count) elements from \(frameOrigin)",
+            category: Logger.agent,
+        )
     }
 
     private nonisolated func parseElements(from data: [[String: Any]]) -> [FrameElement] {

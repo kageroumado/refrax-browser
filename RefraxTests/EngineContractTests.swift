@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 @testable import Refrax
+import Synchronization
 import Testing
 
 extension Tag {
@@ -404,5 +405,67 @@ struct EngineScriptTests {
         router.unregister("isolatedChannel")
         router.dispatch(ScriptMessage(channel: "isolatedChannel", body: .null, frameURL: nil, isMainFrame: true), from: nil)
         #expect(received == ["page:1"])
+    }
+
+    @Test("Every dispatch settles the script's promise exactly once")
+    func replies() async {
+        struct Failure: LocalizedError {
+            var errorDescription: String? { "nope" }
+        }
+        let router = ScriptChannelRouter(userContentController: WKUserContentController())
+        router.register("oneWay") { _, _ in }
+        router.register("answers", replyingWith: { message, _ in .number((message.body["n"].flatMap { if case let .number(n) = $0 { n } else { nil } } ?? 0) * 2) })
+        router.register("fails", replyingWith: { _, _ in throw Failure() })
+
+        let replies = Mutex<[String: [ScriptReply]]>([:])
+        func send(_ channel: String, _ body: ScriptValue = .null) {
+            router.dispatch(ScriptMessage(channel: channel, body: body, frameURL: nil, isMainFrame: true), from: nil) { reply in
+                replies.withLock { $0[channel, default: []].append(reply) }
+            }
+        }
+        send("oneWay")
+        send("answers", .object(["n": .number(21)]))
+        send("fails")
+        send("unknown")
+        await Task.yield()
+
+        replies.withLock { replies in
+            #expect(replies["oneWay"] == [.value(value: .null)])
+            #expect(replies["answers"] == [.value(value: .number(42))])
+            #expect(replies["fails"] == [.error(message: "nope")])
+            #expect(replies["unknown"] == [.error(message: "Unknown channel")])
+        }
+    }
+
+    @Test("Replies use the contract's labeled-case wire form")
+    func replyWire() throws {
+        let value = try String(decoding: EngineWire.encode(ScriptReply.value(value: .object(["a": .bool(true)]))), as: UTF8.self)
+        #expect(value == #"{"value":{"value":{"a":true}}}"#)
+        let error = try String(decoding: EngineWire.encode(ScriptReply.error(message: "x")), as: UTF8.self)
+        #expect(error == #"{"error":{"message":"x"}}"#)
+    }
+
+    @Test("Foundation numbers bridge to Int for handlers written against WebKit messages")
+    func foundationNumbers() {
+        let body = ScriptValue.object(["index": .number(3), "ratio": .number(0.5)]).foundationValue as? [String: Any]
+        #expect(body?["index"] as? Int == 3)
+        #expect(body?["ratio"] as? Int == nil)
+        #expect(body?["ratio"] as? Double == 0.5)
+    }
+
+    @Test("Reader mode messages parse from script values", arguments: [
+        (ScriptValue.object(["type": .string("availability"), "url": .string("https://a.example"), "available": .bool(true)]), "availability:true"),
+        (.object(["type": .string("error"), "url": .string("https://a.example")]), "error:Unknown error"),
+        (.object(["type": .string("availability")]), "nil"),
+        (.object(["type": .string("other"), "url": .string("https://a.example")]), "nil"),
+    ])
+    func readerMessages(body: ScriptValue, expected: String) {
+        let description = switch ReaderModeEvent(body) {
+        case let .availability(_, available): "availability:\(available)"
+        case let .error(_, message): "error:\(message)"
+        case .extracted: "extracted"
+        case nil: "nil"
+        }
+        #expect(description == expected)
     }
 }

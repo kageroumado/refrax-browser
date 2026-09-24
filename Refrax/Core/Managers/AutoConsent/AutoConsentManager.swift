@@ -50,11 +50,11 @@ final class AutoConsentManager {
 
     private var isSetUp = false
     private var scriptID: UUID?
-    private var messageHandler: AutoConsentMessageHandler?
     private var settingsObservationTask: Task<Void, Never>?
 
     /// Content world for scripts (isolated from page scripts).
-    private let scriptWorld = WKContentWorld.world(name: "RefraxScripts")
+    private static let scriptWorldName = "RefraxScripts"
+    private let scriptWorld = WKContentWorld.world(name: scriptWorldName)
 
     // MARK: - Constants
 
@@ -126,17 +126,9 @@ final class AutoConsentManager {
     private func registerScripts() {
         guard scriptID == nil else { return }
 
-        // Register message handler
-        let handler = AutoConsentMessageHandler { [weak self] event in
-            self?.handleConsentEvent(event)
+        state.scriptChannels.register(Self.messageHandlerName, world: .isolated(name: Self.scriptWorldName)) { [weak self] message, _ in
+            self?.handleMessage(message) ?? .null
         }
-        handler.siteSettingsManager = state.siteSettingsManager
-        messageHandler = handler
-        state.webPageConfiguration.userContentController.add(
-            handler,
-            contentWorld: scriptWorld,
-            name: Self.messageHandlerName,
-        )
 
         // Create and register the user script
         let scriptSource = generateInjectionScript()
@@ -163,13 +155,7 @@ final class AutoConsentManager {
             scriptID = nil
         }
 
-        if messageHandler != nil {
-            state.webPageConfiguration.userContentController.removeScriptMessageHandler(
-                forName: Self.messageHandlerName,
-                contentWorld: scriptWorld,
-            )
-            messageHandler = nil
-        }
+        state.scriptChannels.unregister(Self.messageHandlerName)
 
         rebuildUserScripts()
     }
@@ -253,13 +239,13 @@ final class AutoConsentManager {
             }
           }
         
-          // Post message to native
+          // Post message to native; resolves with native's reply
           function postMessage(type, data) {
             try {
-              if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[HANDLER_NAME]) {
-                window.webkit.messageHandlers[HANDLER_NAME].postMessage({ type, ...data });
-              }
-            } catch (e) {}
+              return window.webkit.messageHandlers[HANDLER_NAME].postMessage({ type, ...data });
+            } catch (e) {
+              return Promise.reject(e);
+            }
           }
         
           // Process a single rule
@@ -298,7 +284,7 @@ final class AutoConsentManager {
                 rule: rule.name,
                 action: action,
                 url: location.href
-              });
+              }).catch(() => {});
         
               // Hide any remaining overlay elements
               if (rule.hide && rule.hide.length > 0) {
@@ -315,7 +301,7 @@ final class AutoConsentManager {
                 rule: rule.name,
                 action: 'hide',
                 url: location.href
-              });
+              }).catch(() => {});
               return true;
             }
         
@@ -370,39 +356,40 @@ final class AutoConsentManager {
             setTimeout(() => observer && observer.disconnect(), 30000);
           }
         
-          // Callback from native with enabled status
-          window.__autoConsentCallback = function(enabled) {
-            siteEnabled = enabled;
-            if (enabled) {
-              startProcessing();
-            } else if (observer) {
-              observer.disconnect();
-            }
-          };
-        
-          // Ask native if autoconsent is enabled for this site
-          postMessage('checkEnabled', {});
-        
-          // Fallback: if native doesn't respond within 100ms, assume enabled
-          setTimeout(() => {
-            if (siteEnabled === null) {
+          // Ask native whether autoconsent runs on this site; run if native can't answer
+          postMessage('checkEnabled', {}).then(
+            (enabled) => {
+              siteEnabled = enabled !== false;
+              if (siteEnabled) startProcessing();
+            },
+            () => {
               siteEnabled = true;
               startProcessing();
-            }
-          }, 100);
+            },
+          );
         })();
         """
     }
 
-    // MARK: - Event Handling
+    // MARK: - Message Handling
 
-    private func handleConsentEvent(_ event: AutoConsentEvent) {
-        switch event {
-        case let .action(ruleName, action, url):
-            Logger.info(
-                "AutoConsent: \(action) via '\(ruleName)' on \(url)",
-                category: Logger.tabs,
-            )
+    /// Answers `checkEnabled` with whether auto-consent runs on the sending frame's site, and logs actions.
+    private func handleMessage(_ message: ScriptMessage) -> ScriptValue {
+        switch message.body["type"]?.stringValue {
+        case "checkEnabled":
+            guard let url = message.frameURL else { return .bool(isEnabled) }
+            return .bool(isEnabled(for: url))
+
+        case "action":
+            if let rule = message.body["rule"]?.stringValue,
+               let action = message.body["action"]?.stringValue,
+               let url = message.body["url"]?.stringValue {
+                Logger.info("AutoConsent: \(action) via '\(rule)' on \(url)", category: Logger.tabs)
+            }
+            return .null
+
+        default:
+            return .null
         }
     }
 
@@ -424,65 +411,5 @@ final class AutoConsentManager {
     func isEnabled(for url: URL) -> Bool {
         guard let host = url.host else { return isEnabled }
         return isEnabled(for: host)
-    }
-}
-
-// MARK: - Event Types
-
-enum AutoConsentEvent {
-    case action(ruleName: String, action: String, url: String)
-}
-
-// MARK: - Message Handler
-
-final class AutoConsentMessageHandler: NSObject, WKScriptMessageHandler {
-    private let onEvent: (AutoConsentEvent) -> Void
-
-    /// Site settings manager for per-site disable checking.
-    ///
-    /// Set when handler needs to respond to `checkEnabled` messages.
-    weak var siteSettingsManager: SiteSettingsManager?
-
-    init(onEvent: @escaping (AutoConsentEvent) -> Void) {
-        self.onEvent = onEvent
-    }
-
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any],
-              let type = body["type"] as? String
-        else { return }
-
-        switch type {
-        case "checkEnabled":
-            handleCheckEnabled(message: message)
-
-        case "action":
-            if let ruleName = body["rule"] as? String,
-               let action = body["action"] as? String,
-               let url = body["url"] as? String {
-                onEvent(.action(ruleName: ruleName, action: action, url: url))
-            }
-
-        default:
-            break
-        }
-    }
-
-    /// Handles `checkEnabled` messages by checking site settings and responding via callback.
-    private func handleCheckEnabled(message: WKScriptMessage) {
-        guard let webView = message.webView else { return }
-
-        let domain = message.frameInfo.securityOrigin.host
-        var enabled = true
-
-        // Check if site has autoconsent disabled
-        if siteSettingsManager?.settings(for: domain)?.disableAutoConsent == true {
-            enabled = false
-            Logger.debug("AutoConsent disabled for \(domain) via site settings", category: Logger.tabs)
-        }
-
-        // Respond to JavaScript via callback
-        let script = "window.__autoConsentCallback && window.__autoConsentCallback(\(enabled));"
-        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 }

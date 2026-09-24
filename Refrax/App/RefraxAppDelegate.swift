@@ -538,7 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Install frame content extraction for cross-origin iframe support.
         // Must be installed before any web pages are created so the script
         // is injected into all frames from the start.
-        FrameContentExtractor.shared.install(on: browserState.webPageConfiguration.userContentController)
+        FrameContentExtractor.shared.install(in: browserState)
 
         super.init()
 

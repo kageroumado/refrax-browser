@@ -606,6 +606,8 @@ class App : public CefApp, public CefBrowserProcessHandler {
   NSMutableArray<NSString*>* _installedScriptIdentifiers;
   /// Binding name → channels that world's scripts may post to.
   NSMutableDictionary<NSString*, NSSet<NSString*>*>* _channelsByBinding;
+  /// Binding name → the global that settles that world's pending calls; fixed for the page's life.
+  NSMutableDictionary<NSString*, NSString*>* _resolversByBinding;
 }
 
 @synthesize delegate = _delegate;
@@ -622,6 +624,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
     _pendingDevToolsCalls = [NSMutableDictionary dictionary];
     _installedScriptIdentifiers = [NSMutableArray array];
     _channelsByBinding = [NSMutableDictionary dictionary];
+    _resolversByBinding = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -864,8 +867,11 @@ class App : public CefApp, public CefBrowserProcessHandler {
   }
   NSDictionary* message = ParseObject([payload dataUsingEncoding:NSUTF8StringEncoding]);
   NSString* channel = message[@"channel"];
+  NSNumber* callID = message[@"id"];
+  NSNumber* contextID = params[@"executionContextId"];
   // A script may only post on channels granted to its world.
-  if (![channel isKindOfClass:NSString.class] || ![allowed containsObject:channel]) {
+  if (![channel isKindOfClass:NSString.class] || ![allowed containsObject:channel] ||
+      ![callID isKindOfClass:NSNumber.class] || ![contextID isKindOfClass:NSNumber.class]) {
     return;
   }
   NSData* delivered = [NSJSONSerialization dataWithJSONObject:@{
@@ -874,7 +880,26 @@ class App : public CefApp, public CefBrowserProcessHandler {
     @"frameURL" : _lastCommittedURL ?: NSNull.null,
     @"isMainFrame" : @YES,
   } options:0 error:nil];
-  [_delegate enginePage:self didReceiveScriptMessage:delivered];
+  NSString* resolver = _resolversByBinding[params[@"name"]];
+  __weak RFXChromiumPage* weakSelf = self;
+  [_delegate enginePage:self
+      didReceiveScriptMessage:delivered
+                        reply:^(NSData* reply) {
+                          [weakSelf settleScriptCall:callID.longLongValue
+                                            resolver:resolver
+                                             context:contextID
+                                               reply:reply];
+                        }];
+}
+
+/// Settles a `postMessage` promise in the execution context that made the call.
+- (void)settleScriptCall:(long long)callID resolver:(NSString*)resolver context:(NSNumber*)context reply:(NSData*)reply {
+  NSString* json = [[NSString alloc] initWithData:reply encoding:NSUTF8StringEncoding];
+  if (!resolver || !ParseObject(reply)) {
+    json = @"{\"error\":{\"message\":\"Invalid reply\"}}";
+  }
+  NSString* expression = [NSString stringWithFormat:@"globalThis['%@'] && globalThis['%@'](%lld, %@)", resolver, resolver, callID, json];
+  [self callDevTools:@"Runtime.evaluate" params:@{@"expression" : expression, @"contextId" : context} completion:nil];
 }
 
 // MARK: Injected scripts
@@ -908,12 +933,15 @@ class App : public CefApp, public CefBrowserProcessHandler {
     }
     NSString* binding = [NSString stringWithFormat:@"__refraxChannel%lu", (unsigned long)world.hash];
     _channelsByBinding[binding] = channels;
+    NSString* resolver = _resolversByBinding[binding] ?: [NSString stringWithFormat:@"__refraxSettle%@",
+        [NSUUID.UUID.UUIDString stringByReplacingOccurrencesOfString:@"-" withString:@""]];
+    _resolversByBinding[binding] = resolver;
     NSMutableDictionary* bindingParams = [@{@"name" : binding} mutableCopy];
     if (world.length) {
       bindingParams[@"executionContextName"] = world;
     }
     [self callDevTools:@"Runtime.addBinding" params:bindingParams completion:nil];
-    [self addScript:[self preludeForBinding:binding channels:channels] world:world];
+    [self addScript:[self preludeForBinding:binding resolver:resolver channels:channels] world:world];
   }
 
   for (NSDictionary* script in scripts) {
@@ -959,20 +987,39 @@ class App : public CefApp, public CefBrowserProcessHandler {
   [_installedScriptIdentifiers addObject:identifier];
 }
 
-- (NSString*)preludeForBinding:(NSString*)binding channels:(NSSet<NSString*>*)channels {
+/// The prelude gives each call an id and a pending promise, settled when Refrax's reply
+/// is evaluated into the same context through `resolver`. The resolver's name is random
+/// per install; in the page world the page can still reach it, which only lets the page
+/// settle its own calls early.
+- (NSString*)preludeForBinding:(NSString*)binding resolver:(NSString*)resolver channels:(NSSet<NSString*>*)channels {
   NSData* names = [NSJSONSerialization dataWithJSONObject:channels.allObjects options:0 error:nil];
   return [NSString stringWithFormat:
       @"(function() {"
        "const post = globalThis['%@'];"
        "if (typeof post !== 'function') return;"
        "delete globalThis['%@'];"
+       "const pending = new Map();"
+       "let nextID = 1;"
+       "Object.defineProperty(globalThis, '%@', { value(id, reply) {"
+       "  const call = pending.get(id);"
+       "  if (!call) return;"
+       "  pending.delete(id);"
+       "  if (reply && reply.value) call.resolve(reply.value.value);"
+       "  else call.reject(new Error(reply && reply.error ? reply.error.message : 'No reply'));"
+       "} });"
        "const handlers = {};"
        "for (const channel of %@) {"
-       "  handlers[channel] = Object.freeze({ postMessage(body) { post(JSON.stringify({ channel, body })); } });"
+       "  handlers[channel] = Object.freeze({ postMessage(body) {"
+       "    const id = nextID++;"
+       "    return new Promise((resolve, reject) => {"
+       "      pending.set(id, { resolve, reject });"
+       "      post(JSON.stringify({ channel, body, id }));"
+       "    });"
+       "  } });"
        "}"
        "globalThis.webkit = Object.freeze({ messageHandlers: Object.freeze(handlers) });"
        "})();",
-      binding, binding, [[NSString alloc] initWithData:names encoding:NSUTF8StringEncoding]];
+      binding, binding, resolver, [[NSString alloc] initWithData:names encoding:NSUTF8StringEncoding]];
 }
 
 // MARK: JavaScript

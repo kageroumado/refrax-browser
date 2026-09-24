@@ -137,11 +137,11 @@ final class ExternalEnginePage: NSObject, EnginePage {
     let engine: EngineDescriptor
     let events: AsyncStream<PageEvent>
     let requests: AsyncStream<PageRequest>
-    let messages: AsyncStream<ScriptMessage>
+    let messages: AsyncStream<ScriptMessageDelivery>
 
     private let eventContinuation: AsyncStream<PageEvent>.Continuation
     private let requestContinuation: AsyncStream<PageRequest>.Continuation
-    private let messageContinuation: AsyncStream<ScriptMessage>.Continuation
+    private let messageContinuation: AsyncStream<ScriptMessageDelivery>.Continuation
     private var runtimePage: (any RFXEnginePage)?
     private var malformedMessages = 0
 
@@ -247,12 +247,19 @@ extension ExternalEnginePage: RFXEnginePageDelegate {
         })
     }
 
-    func enginePage(_: any RFXEnginePage, didReceiveScriptMessage message: Data) {
+    func enginePage(_: any RFXEnginePage, didReceiveScriptMessage message: Data, reply: @escaping (Data) -> Void) {
+        let once = ReplyOnce(reply)
+        let decoded: ScriptMessage
         do {
-            try messageContinuation.yield(EngineWire.decode(ScriptMessage.self, from: message))
+            decoded = try EngineWire.decode(ScriptMessage.self, from: message)
         } catch {
             reject(error)
+            once.send((try? EngineWire.encode(ScriptReply.error(message: "Rejected message"))) ?? Data())
+            return
         }
+        messageContinuation.yield(ScriptMessageDelivery(message: decoded) { answer in
+            once.send((try? EngineWire.encode(answer)) ?? Data())
+        })
     }
 }
 

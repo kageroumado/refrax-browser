@@ -168,7 +168,13 @@ window.webkit.messageHandlers.<channel>.postMessage(body)
 Engines provide exactly that object in each world, containing only the channels granted to that
 world's scripts, and deliver each message with `didReceiveScriptMessage`:
 `{ "channel", "body": <JSON>, "frameURL?", "isMainFrame" }`. A message on a channel the world was
-not granted is dropped by the engine. Channels granted to isolated-world scripts must not be
+not granted is dropped by the engine.
+
+`postMessage` returns a promise. Refrax calls the delivery's `reply` exactly once with a
+`ScriptReply` — `{"value":{"value":<JSON>}}` resolves the promise with the value (`null` for
+one-way channels, once the handler has run); `{"error":{"message"}}` rejects it with an `Error`.
+The engine settles the promise in the execution context that made the call; if that context is
+gone (navigation, frame removed), the reply is discarded. Channels granted to isolated-world scripts must not be
 reachable from page-world scripts. (Some of Refrax's own scripts run in the page world because
 they observe page APIs; their channels are reachable by the page and their handlers treat every
 message as untrusted.)

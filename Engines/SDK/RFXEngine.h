@@ -48,8 +48,11 @@ NS_SWIFT_UI_ACTOR
 - (void)enginePage:(id<RFXEnginePage>)page
         didRequest:(NSData *)request
              reply:(void (^)(NSData *answer))reply;
-/// `message`: JSON ScriptMessage posted by a Refrax-injected script.
-- (void)enginePage:(id<RFXEnginePage>)page didReceiveScriptMessage:(NSData *)message;
+/// `message`: JSON ScriptMessage posted by a Refrax-injected script. `reply` takes JSON
+/// ScriptReply, settles the script's `postMessage` promise, and is called once.
+- (void)enginePage:(id<RFXEnginePage>)page
+    didReceiveScriptMessage:(NSData *)message
+                      reply:(void (^)(NSData *reply))reply;
 @end
 
 // MARK: - Engine (implemented by the engine)

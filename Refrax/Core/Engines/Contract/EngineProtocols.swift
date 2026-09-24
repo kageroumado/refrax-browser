@@ -105,6 +105,20 @@ nonisolated struct ScriptMessage: Codable, Hashable, Sendable {
     let isMainFrame: Bool
 }
 
+/// What a script's `postMessage` promise settles with.
+nonisolated enum ScriptReply: Codable, Hashable, Sendable {
+    /// Resolves the promise with `value`.
+    case value(value: ScriptValue)
+    /// Rejects the promise with an `Error` carrying `message`.
+    case error(message: String)
+}
+
+/// A script message plus the one-shot reply its `postMessage` promise waits on.
+nonisolated struct ScriptMessageDelivery: Sendable {
+    let message: ScriptMessage
+    let reply: @Sendable (ScriptReply) -> Void
+}
+
 // MARK: - Host
 
 nonisolated enum HostEvent: Hashable, Sendable {
@@ -162,8 +176,8 @@ protocol EnginePage: AnyObject {
     var events: AsyncStream<PageEvent> { get }
     /// Decisions the engine is waiting on.
     var requests: AsyncStream<PageRequest> { get }
-    /// Messages from Refrax-injected scripts (``InjectedScript/channels``).
-    var messages: AsyncStream<ScriptMessage> { get }
+    /// Messages from Refrax-injected scripts (``InjectedScript/channels``). Each is replied to once.
+    var messages: AsyncStream<ScriptMessageDelivery> { get }
 
     /// The view that displays the page. Owned by the page; hosts re-parent it.
     var view: NSView { get }

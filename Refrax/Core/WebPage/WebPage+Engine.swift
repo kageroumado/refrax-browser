@@ -106,9 +106,12 @@ extension WebPage {
             }
         }
         let messages = Task { [weak self] in
-            for await message in page.messages {
-                guard let self, !Task.isCancelled else { return }
-                backingNavigationDelegate.pagePool?.state.scriptChannels.dispatch(message, from: self)
+            for await delivery in page.messages {
+                guard let self, !Task.isCancelled, let router = backingNavigationDelegate.pagePool?.state.scriptChannels else {
+                    delivery.reply(.error(message: "The page closed"))
+                    continue
+                }
+                router.dispatch(delivery.message, from: self, reply: delivery.reply)
             }
         }
         engineTasks = [events, requests, messages]
