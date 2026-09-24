@@ -37,6 +37,11 @@ nonisolated enum PageEvent: Codable, Hashable, Sendable {
     case mediaChanged(media: PageMedia)
     case fullscreenChanged(state: PageFullscreen)
     case rendererHealthChanged(health: RendererHealth)
+    /// Bytes written so far for a download Refrax gave a destination (``PageRequestKind/download``).
+    case downloadProgressed(id: String, receivedBytes: Int64, totalBytes: Int64?)
+    /// The download's file is complete at the destination Refrax chose.
+    case downloadFinished(id: String)
+    case downloadFailed(id: String, reason: String)
 }
 
 /// Why a main-frame navigation failed, in engine-neutral terms.
@@ -160,6 +165,8 @@ nonisolated enum PageCommand: Codable, Hashable, Sendable {
     case devTools(command: DevToolsCommand)
     /// Watchdog: terminate the renderer; the page reports `.terminated(.requestedByBrowser)`.
     case terminateRenderer
+    /// Stops a download the engine is writing; it reports `downloadFailed`.
+    case cancelDownload(id: String)
 }
 
 nonisolated struct URLRequestSpec: Codable, Hashable, Sendable {
@@ -273,8 +280,9 @@ nonisolated enum PageRequestKind: Codable, Hashable, Sendable {
     case openURL(url: URL, disposition: OpenDisposition, userGesture: Bool)
     case permission(kind: PermissionKind, origin: URL)
     case javaScriptDialog(dialog: JavaScriptDialog)
-    /// Where to save a download; answered with a destination or a cancel.
-    case download(url: URL, suggestedFilename: String, mimeType: String?)
+    /// Where to save a download; answered with a destination or a cancel. `id` names the download
+    /// in its progress events; the engine writes the file itself, since only it holds the session.
+    case download(id: String, url: URL, suggestedFilename: String, mimeType: String?, totalBytes: Int64?)
 }
 
 nonisolated enum OpenDisposition: String, Codable, Hashable, Sendable {

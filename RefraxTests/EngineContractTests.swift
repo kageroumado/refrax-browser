@@ -457,6 +457,19 @@ struct EngineScriptTests {
         }
     }
 
+    @Test("Download events and requests are validated like every other message")
+    func downloadWire() throws {
+        let progressed = try EngineWire.decodeEvent(Data(#"{"downloadProgressed":{"id":"7","receivedBytes":-5,"totalBytes":-1}}"#.utf8))
+        #expect(progressed == .downloadProgressed(id: "7", receivedBytes: 0, totalBytes: 0))
+
+        let request = try EngineWire.decodeRequest(Data(#"{"download":{"id":"7","url":"https://a.example/f.zip","suggestedFilename":"f.zip","totalBytes":42}}"#.utf8))
+        #expect(request == .download(id: "7", url: URL(string: "https://a.example/f.zip")!, suggestedFilename: "f.zip", mimeType: nil, totalBytes: 42))
+
+        #expect(throws: (any Error).self) {
+            try EngineWire.decodeRequest(Data(#"{"download":{"id":"7","url":"javascript:alert(1)","suggestedFilename":"f"}}"#.utf8))
+        }
+    }
+
     @Test("Replies use the contract's labeled-case wire form")
     func replyWire() throws {
         let value = try String(decoding: EngineWire.encode(ScriptReply.value(value: .object(["a": .bool(true)]))), as: UTF8.self)

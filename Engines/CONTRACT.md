@@ -147,7 +147,7 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 | `openURL` | `url`, `disposition` (`currentTab`\|`foregroundTab`\|`backgroundTab`\|`popup`\|`newWindow`), `userGesture` | `{"handled":{}}` — Refrax opens it |
 | `permission` | `kind` (`camera`, `microphone`, `cameraAndMicrophone`, `geolocation`, `notifications`, `screenCapture`, `clipboardRead`), `origin` | `{"allow":{}}` \| `{"deny":{}}` |
 | `javaScriptDialog` | `dialog`: `{ "kind": alert\|confirm\|prompt\|beforeUnload, "message", "defaultText?", "origin?" }` | `{"confirm":{"text":…?}}` \| `{"cancel":{}}` |
-| `download` | `url`, `suggestedFilename`, `mimeType?` | `{"saveTo":{"url":"file:///…"}}` \| `{"cancel":{}}` |
+| `download` | `id`, `url`, `suggestedFilename`, `mimeType?`, `totalBytes?` | `{"saveTo":{"url":"file:///…"}}` \| `{"cancel":{}}` |
 
 Engines never show their own dialog or permission UI. Refrax answers `permission` from the
 site's settings or asks the user, and shows `javaScriptDialog` in the page's own pane, labeled
@@ -158,6 +158,11 @@ pending questions, answering them `cancel` / `deny`.
 
 Refrax never lets an engine choose where files land: the answer to `download` is the destination.
 Until an answer arrives the engine waits; if the page closes first, the engine cancels.
+The engine then writes the file itself, since only it holds the page's session (cookies, `blob:`
+data, POST bodies), and reports `downloadProgressed { id, receivedBytes, totalBytes? }`, then
+exactly one of `downloadFinished { id }` or `downloadFailed { id, reason }`. `cancelDownload { id }`
+stops it. Refrax renames the partial file, sets its quarantine attributes, and shows the download;
+a download still running when its page closes is reported failed.
 
 ### 4.4 Scripts
 

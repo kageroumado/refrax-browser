@@ -22,6 +22,9 @@
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+
+#include <map>
+#include <set>
 #include "include/cef_devtools_message_observer.h"
 #include "include/cef_parser.h"
 #include "include/cef_request_context.h"
@@ -469,24 +472,66 @@ class Client : public CefClient,
     [owner_ emit:@"rendererHealthChanged" fields:@{@"health" : @{@"terminated" : @{@"reason" : reason}}}];
   }
 
+  // MARK: Downloads — Refrax picks the destination and tracks the transfer; Chromium writes the file.
+
   bool OnBeforeDownload(CefRefPtr<CefBrowser>,
                         CefRefPtr<CefDownloadItem> download_item,
                         const CefString& suggested_name,
                         CefRefPtr<CefBeforeDownloadCallback> callback) override {
+    uint32_t downloadID = download_item->GetId();
     NSString* mimeType = ToNS(download_item->GetMimeType());
+    int64_t totalBytes = download_item->GetTotalBytes();
     [owner_ request:@"download"
              fields:@{
+               @"id" : DownloadName(downloadID),
                @"url" : ToNS(download_item->GetURL()),
                @"suggestedFilename" : ToNS(suggested_name),
                @"mimeType" : mimeType.length ? mimeType : NSNull.null,
+               @"totalBytes" : totalBytes > 0 ? @(totalBytes) : NSNull.null,
              }
               reply:^(NSString* name, NSDictionary* fields) {
                 NSString* path = [name isEqualToString:@"saveTo"] ? FilePath(fields[@"url"]) : nil;
                 if (path) {
+                  accepted_downloads_.insert(downloadID);
                   callback->Continue(ToStd(path), false);
                 }
               }];
     return true;
+  }
+
+  void OnDownloadUpdated(CefRefPtr<CefBrowser>,
+                         CefRefPtr<CefDownloadItem> download_item,
+                         CefRefPtr<CefDownloadItemCallback> callback) override {
+    uint32_t downloadID = download_item->GetId();
+    if (!accepted_downloads_.count(downloadID)) {
+      return;
+    }
+    NSString* name = DownloadName(downloadID);
+    if (download_item->IsComplete()) {
+      ForgetDownload(downloadID);
+      [owner_ emit:@"downloadFinished" fields:@{@"id" : name}];
+    } else if (download_item->IsCanceled() || download_item->IsInterrupted()) {
+      ForgetDownload(downloadID);
+      NSString* reason = download_item->IsCanceled() ? @"Cancelled" : @"The transfer was interrupted";
+      [owner_ emit:@"downloadFailed" fields:@{@"id" : name, @"reason" : reason}];
+    } else {
+      download_callbacks_[downloadID] = callback;
+      int64_t totalBytes = download_item->GetTotalBytes();
+      [owner_ emit:@"downloadProgressed"
+            fields:@{
+              @"id" : name,
+              @"receivedBytes" : @(download_item->GetReceivedBytes()),
+              @"totalBytes" : totalBytes > 0 ? @(totalBytes) : NSNull.null,
+            }];
+    }
+  }
+
+  /// Stops a download Refrax accepted; Chromium then reports it canceled.
+  void CancelDownload(NSString* name) {
+    auto callback = download_callbacks_.find(static_cast<uint32_t>(name.longLongValue));
+    if (callback != download_callbacks_.end()) {
+      callback->second->Cancel();
+    }
   }
 
   // MARK: Dialogs — Refrax shows them in the page's pane and answers through the contract.
@@ -628,6 +673,13 @@ class Client : public CefClient,
     return text.length > limit ? [[text substringToIndex:limit] stringByAppendingString:@"…"] : text;
   }
 
+  static NSString* DownloadName(uint32_t downloadID) { return [NSString stringWithFormat:@"%u", downloadID]; }
+
+  void ForgetDownload(uint32_t downloadID) {
+    accepted_downloads_.erase(downloadID);
+    download_callbacks_.erase(downloadID);
+  }
+
   static NSString* SecurityOf(CefRefPtr<CefBrowser> browser, NSString* url) {
     NSString* scheme = [NSURL URLWithString:url].scheme.lowercaseString;
     if ([scheme isEqualToString:@"http"]) {
@@ -646,6 +698,8 @@ class Client : public CefClient,
 
   __weak RFXChromiumPage* owner_;
   CefRefPtr<Blocker> blocker_ = new Blocker();
+  std::set<uint32_t> accepted_downloads_;
+  std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>> download_callbacks_;
 
   IMPLEMENT_REFCOUNTING(Client);
 };
@@ -923,6 +977,9 @@ class App : public CefApp, public CefBrowserProcessHandler {
   } else if ([name isEqualToString:@"setVisibility"]) {
     _hidden = [fields[@"visibility"] isEqual:@"hidden"];
     if (host) host->WasHidden(_hidden || _container.window == nil);
+  } else if ([name isEqualToString:@"cancelDownload"]) {
+    NSString* downloadID = fields[@"id"];
+    if (_client && [downloadID isKindOfClass:NSString.class]) _client->CancelDownload(downloadID);
   } else if ([name isEqualToString:@"focus"]) {
     if (host) host->SetFocus(true);
   } else if ([name isEqualToString:@"devTools"]) {

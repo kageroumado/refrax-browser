@@ -112,6 +112,10 @@ nonisolated enum PageReducer {
 
         case let .rendererHealthChanged(health):
             state.rendererHealth = health
+
+        case .downloadProgressed, .downloadFinished, .downloadFailed:
+            // Downloads outlive the page's state; `DownloadManager` tracks them.
+            break
         }
     }
 }

@@ -92,6 +92,9 @@ final class DownloadManager {
     /// Downloads performed by WebKit's own `WKDownload` (blob: URLs), by ID.
     private var webKitTasks: [UUID: WebKitDownloadTask] = [:]
 
+    /// Downloads plug-in engines are writing, by download ID.
+    private var engineTransfers: [UUID: EngineTransfer] = [:]
+
     /// Downloads pending Photos import on completion.
     /// Maps download ID to whether the file should be deleted after import.
     private var photosImportPending: [UUID: Bool] = [:]
@@ -574,40 +577,18 @@ final class DownloadManager {
             return nil
         }
 
-        var filename = FilenameUtilities.sanitize(suggestedFilename)
-        filename = FilenameUtilities.ensureExtension(for: filename, mimeType: response.mimeType)
-
-        let destinationDirectory = downloadDirectory(for: customDownloadPath)
-        let fm = FileManager.default
-        do {
-            if !fm.fileExists(atPath: destinationDirectory.path) {
-                try fm.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-            }
-            filename = try FilenameUtilities.uniqueFilename(for: filename, in: destinationDirectory)
-        } catch {
-            Logger.error("Cannot prepare WebKit download destination: \(error)", category: Logger.downloads)
-            return nil
-        }
-
-        let download = Download(
+        guard let download = prepareAdoptedDownload(
             sourceURL: sourceURL,
-            suggestedFilename: filename,
-            destinationDirectory: destinationDirectory,
-            originatingPageURL: originatingURL,
-            originatingPageTitle: originatingTitle,
+            suggestedFilename: suggestedFilename,
             mimeType: response.mimeType,
+            totalBytes: response.expectedContentLength > 0 ? response.expectedContentLength : nil,
+            originatingURL: originatingURL,
+            originatingTitle: originatingTitle,
+            customDownloadPath: customDownloadPath,
             spaceID: spaceID,
             spaceName: spaceName,
             colorTag: colorTag,
-        )
-        if response.expectedContentLength > 0 {
-            download.totalBytes = response.expectedContentLength
-        }
-        download.markDownloading()
-
-        modelContext.insert(download)
-        downloads.insert(download, at: 0)
-        scheduleSave()
+        ) else { return nil }
 
         let task = WebKitDownloadTask(download: download, wkDownload: wkDownload)
         task.onProgress = { [weak self] task in
@@ -625,8 +606,59 @@ final class DownloadManager {
         updateAggregateProgress()
         onDownloadStarted?(download)
 
-        Logger.info("WebKit download started: \(filename)", category: Logger.downloads)
-        return destinationDirectory.appendingPathComponent("\(filename).download")
+        Logger.info("WebKit download started: \(download.destinationFilename)", category: Logger.downloads)
+        return download.currentFileURL
+    }
+
+    /// Creates the record for a download another component transfers (WebKit, an engine):
+    /// a sanitized, unique name in the space's folder, marked downloading.
+    private func prepareAdoptedDownload(
+        sourceURL: URL,
+        suggestedFilename: String,
+        mimeType: String?,
+        totalBytes: Int64?,
+        originatingURL: URL?,
+        originatingTitle: String?,
+        customDownloadPath: String?,
+        spaceID: UUID?,
+        spaceName: String?,
+        colorTag: Int?,
+    ) -> Download? {
+        var filename = FilenameUtilities.sanitize(suggestedFilename)
+        filename = FilenameUtilities.ensureExtension(for: filename, mimeType: mimeType)
+
+        let destinationDirectory = downloadDirectory(for: customDownloadPath)
+        let fm = FileManager.default
+        do {
+            if !fm.fileExists(atPath: destinationDirectory.path) {
+                try fm.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            }
+            filename = try FilenameUtilities.uniqueFilename(for: filename, in: destinationDirectory)
+        } catch {
+            Logger.error("Cannot prepare download destination: \(error)", category: Logger.downloads)
+            return nil
+        }
+
+        let download = Download(
+            sourceURL: sourceURL,
+            suggestedFilename: filename,
+            destinationDirectory: destinationDirectory,
+            originatingPageURL: originatingURL,
+            originatingPageTitle: originatingTitle,
+            mimeType: mimeType,
+            spaceID: spaceID,
+            spaceName: spaceName,
+            colorTag: colorTag,
+        )
+        if let totalBytes {
+            download.totalBytes = totalBytes
+        }
+        download.markDownloading()
+
+        modelContext.insert(download)
+        downloads.insert(download, at: 0)
+        scheduleSave()
+        return download
     }
 
     /// Completes an adopted WebKit download: renames the `.download` file,
@@ -641,7 +673,14 @@ final class DownloadManager {
         task.stopObservingProgress()
         webKitTasks.removeValue(forKey: id)
 
-        let download = task.download
+        completeAdoptedDownload(task.download)
+        Logger.info("WebKit download completed: \(task.download.destinationFilename)", category: Logger.downloads)
+        return true
+    }
+
+    /// Finishes an adopted download whose file is complete: renames the `.download` file,
+    /// stamps quarantine, and applies the space color tag.
+    private func completeAdoptedDownload(_ download: Download) {
         let partialURL = download.currentFileURL
         download.markCompleted()
         let finalURL = download.finalFileURL
@@ -651,7 +690,7 @@ final class DownloadManager {
             do {
                 try fm.moveItem(at: partialURL, to: finalURL)
             } catch {
-                Logger.warning("Failed to finalize WebKit download: \(error)", category: Logger.downloads)
+                Logger.warning("Failed to finalize download: \(error)", category: Logger.downloads)
             }
         }
 
@@ -668,8 +707,8 @@ final class DownloadManager {
         }
 
         applyColorTagIfNeeded(to: download)
-        unpublishFileProgress(for: id)
-        // Blob transfers finish near-instantly, so the sidebar button may never
+        unpublishFileProgress(for: download.id)
+        // Some transfers finish near-instantly, so the sidebar button may never
         // observe the active state — the completion window keeps it visible.
         latestCompletionDate = Date()
         updateAggregateProgress()
@@ -677,9 +716,87 @@ final class DownloadManager {
         onDownloadCompleted?(download)
 
         NSWorkspace.shared.noteFileSystemChanged(finalURL.path)
+    }
 
-        Logger.info("WebKit download completed: \(download.destinationFilename)", category: Logger.downloads)
-        return true
+    // MARK: - Engine Downloads
+
+    /// A download a plug-in engine writes into the destination Refrax chose.
+    private struct EngineTransfer {
+        let download: Download
+        let cancel: () -> Void
+        var lastBytes: Int64 = 0
+        var lastUpdate = Date()
+    }
+
+    /// Creates the record for a download an engine will write and returns the file URL the engine
+    /// writes to. The engine reports progress through ``updateEngineDownload(_:receivedBytes:totalBytes:)``
+    /// and ends with ``finishEngineDownload(_:)`` or ``failEngineDownload(_:reason:)``.
+    ///
+    /// - Parameter cancel: Stops the engine's transfer; called when the user cancels.
+    func adoptEngineDownload(
+        sourceURL: URL,
+        suggestedFilename: String,
+        mimeType: String?,
+        totalBytes: Int64?,
+        originatingURL: URL?,
+        originatingTitle: String?,
+        customDownloadPath: String?,
+        spaceID: UUID?,
+        spaceName: String?,
+        colorTag: Int?,
+        cancel: @escaping () -> Void,
+    ) -> (id: UUID, destination: URL)? {
+        guard let download = prepareAdoptedDownload(
+            sourceURL: sourceURL,
+            suggestedFilename: suggestedFilename,
+            mimeType: mimeType,
+            totalBytes: totalBytes,
+            originatingURL: originatingURL,
+            originatingTitle: originatingTitle,
+            customDownloadPath: customDownloadPath,
+            spaceID: spaceID,
+            spaceName: spaceName,
+            colorTag: colorTag,
+        ) else { return nil }
+
+        engineTransfers[download.id] = EngineTransfer(download: download, cancel: cancel)
+        updateAggregateProgress()
+        onDownloadStarted?(download)
+        Logger.info("Engine download started: \(download.destinationFilename)", category: Logger.downloads)
+        return (download.id, download.currentFileURL)
+    }
+
+    func updateEngineDownload(_ id: UUID, receivedBytes: Int64, totalBytes: Int64?) {
+        guard var transfer = engineTransfers[id] else { return }
+        let now = Date()
+        let elapsed = now.timeIntervalSince(transfer.lastUpdate)
+        let speed = elapsed > 0 ? Double(receivedBytes - transfer.lastBytes) / elapsed : 0
+        transfer.lastBytes = receivedBytes
+        transfer.lastUpdate = now
+        engineTransfers[id] = transfer
+
+        transfer.download.updateLiveProgress(bytesReceived: receivedBytes, totalBytes: totalBytes, bytesPerSecond: max(speed, 0))
+        publishFileProgress(for: transfer.download, fileURL: transfer.download.currentFileURL)
+        updateFileProgress(for: transfer.download)
+        updateAggregateProgress()
+        onProgressChanged?()
+    }
+
+    func finishEngineDownload(_ id: UUID) {
+        guard let transfer = engineTransfers.removeValue(forKey: id) else { return }
+        completeAdoptedDownload(transfer.download)
+        Logger.info("Engine download completed: \(transfer.download.destinationFilename)", category: Logger.downloads)
+    }
+
+    func failEngineDownload(_ id: UUID, reason: String) {
+        guard let transfer = engineTransfers.removeValue(forKey: id) else { return }
+        let error = DownloadError.engineFailed(reason)
+        transfer.download.markFailed(error: error, resumeData: nil)
+        unpublishFileProgress(for: id)
+        updateAggregateProgress()
+        scheduleSave()
+        onDownloadFailed?(transfer.download, error)
+        Logger.warning("Engine download failed: \(transfer.download.destinationFilename) - \(reason)", category: Logger.downloads)
     }
 
     /// Marks an adopted WebKit download as failed.
@@ -794,6 +911,15 @@ final class DownloadManager {
             updateAggregateProgress()
             scheduleSave()
             Logger.info("WebKit download cancelled: \(webKitTask.download.destinationFilename)", category: Logger.downloads)
+            return
+        }
+
+        if let transfer = engineTransfers.removeValue(forKey: id) {
+            transfer.cancel()
+            transfer.download.markFailed(error: DownloadError.cancelled, resumeData: nil)
+            updateAggregateProgress()
+            scheduleSave()
+            Logger.info("Engine download cancelled: \(transfer.download.destinationFilename)", category: Logger.downloads)
             return
         }
 
@@ -1773,6 +1899,8 @@ enum DownloadError: LocalizedError {
     case cancelled
     case fileOperationFailed(any Error)
     case networkError(any Error)
+    /// A rendering engine's transfer failed, with the engine's reason.
+    case engineFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -1788,6 +1916,8 @@ enum DownloadError: LocalizedError {
             "File operation failed: \(error.localizedDescription)"
         case let .networkError(error):
             "Network error: \(error.localizedDescription)"
+        case let .engineFailed(reason):
+            "Download failed: \(reason)"
         }
     }
 }

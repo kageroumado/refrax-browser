@@ -572,6 +572,10 @@ final class WebPage: Identifiable {
     @ObservationIgnored
     var engineTasks: [Task<Void, Never>] = []
 
+    /// Downloads the engine page is writing: the engine's download ID to Refrax's.
+    @ObservationIgnored
+    var engineDownloads: [String: UUID] = [:]
+
     /// Whether the engine's developer tools are open for this page.
     @ObservationIgnored
     var isEngineDevToolsShown = false

@@ -53,6 +53,11 @@ extension WebPage {
             task.cancel()
         }
         engineTasks.removeAll()
+        // The engine's transfers end with its page.
+        for downloadID in engineDownloads.values {
+            backingNavigationDelegate.downloadManager?.failEngineDownload(downloadID, reason: "The page closed")
+        }
+        engineDownloads.removeAll()
         enginePage?.close()
         enginePage = nil
     }
@@ -173,6 +178,21 @@ extension WebPage {
         case let .hoveredLinkChanged(url):
             onHoveredLinkChanged?(url)
 
+        case let .downloadProgressed(id, receivedBytes, totalBytes):
+            if let downloadID = engineDownloads[id] {
+                backingNavigationDelegate.downloadManager?.updateEngineDownload(downloadID, receivedBytes: receivedBytes, totalBytes: totalBytes)
+            }
+
+        case let .downloadFinished(id):
+            if let downloadID = engineDownloads.removeValue(forKey: id) {
+                backingNavigationDelegate.downloadManager?.finishEngineDownload(downloadID)
+            }
+
+        case let .downloadFailed(id, reason):
+            if let downloadID = engineDownloads.removeValue(forKey: id) {
+                backingNavigationDelegate.downloadManager?.failEngineDownload(downloadID, reason: reason)
+            }
+
         case let .fullscreenChanged(state):
             followEngineFullscreen(state)
 
@@ -250,11 +270,27 @@ extension WebPage {
             }
             return .handled
 
-        case let .download(_, suggestedFilename, _):
-            let folder = URL.downloadsDirectory
-            let sanitized = FilenameUtilities.sanitize(suggestedFilename)
-            guard let filename = try? FilenameUtilities.uniqueFilename(for: sanitized, in: folder) else { return .cancel }
-            return .saveTo(url: folder.appending(path: filename))
+        case let .download(id, url, suggestedFilename, mimeType, totalBytes):
+            // The engine writes the file (only it holds the session); Refrax picks the place,
+            // shows progress, and quarantines it when done.
+            guard let downloadManager = backingNavigationDelegate.downloadManager else { return .cancel }
+            let space = tabPage.tab?.space
+            let engine = enginePage
+            guard let adopted = downloadManager.adoptEngineDownload(
+                sourceURL: url,
+                suggestedFilename: suggestedFilename,
+                mimeType: mimeType,
+                totalBytes: totalBytes,
+                originatingURL: self.url,
+                originatingTitle: title,
+                customDownloadPath: space?.customDownloadPath,
+                spaceID: space?.id,
+                spaceName: space?.name,
+                colorTag: space?.downloadColorTag,
+                cancel: { [weak engine] in engine?.perform(.cancelDownload(id: id)) },
+            ) else { return .cancel }
+            engineDownloads[id] = adopted.id
+            return .saveTo(url: adopted.destination)
 
         case let .permission(kind, origin):
             return await decidePermission(kind, host: origin.host() ?? "") ? .allow : .deny

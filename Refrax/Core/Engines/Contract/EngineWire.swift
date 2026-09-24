@@ -91,6 +91,12 @@ nonisolated enum EngineWire {
             return try .hoveredLinkChanged(url: url.map(checked))
         case let .zoomChanged(factor):
             return .zoomChanged(factor: clamped(factor, 0.1 ... 10))
+        case let .downloadProgressed(id, receivedBytes, totalBytes):
+            return .downloadProgressed(id: capped(id), receivedBytes: max(receivedBytes, 0), totalBytes: totalBytes.map { max($0, 0) })
+        case let .downloadFinished(id):
+            return .downloadFinished(id: capped(id))
+        case let .downloadFailed(id, reason):
+            return .downloadFailed(id: capped(id), reason: capped(reason))
         case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             return event
@@ -110,11 +116,13 @@ nonisolated enum EngineWire {
                 defaultText: dialog.defaultText.map(capped),
                 origin: dialog.origin.map(checked),
             ))
-        case let .download(url, suggestedFilename, mimeType):
+        case let .download(id, url, suggestedFilename, mimeType, totalBytes):
             return try .download(
+                id: capped(id),
                 url: checked(url),
                 suggestedFilename: capped(suggestedFilename),
                 mimeType: mimeType.map(capped),
+                totalBytes: totalBytes.map { max($0, 0) },
             )
         }
     }
