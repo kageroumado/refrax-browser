@@ -6,21 +6,40 @@ import WebKit
 extension WebPage {
     /// Shows the Web Inspector for this page.
     func showWebInspector() {
+        if let enginePage {
+            enginePage.perform(.devTools(command: .show))
+            isEngineDevToolsShown = true
+            return
+        }
         webInspectorManager?.showInspector(for: tabPage.id, webView: backingWebView)
     }
 
     /// Closes the Web Inspector for this page.
     func closeWebInspector() {
+        if let enginePage {
+            enginePage.perform(.devTools(command: .hide))
+            isEngineDevToolsShown = false
+            return
+        }
         webInspectorManager?.closeInspector(for: tabPage.id, webView: backingWebView)
     }
 
     /// Toggles the Web Inspector visibility.
     func toggleWebInspector() {
+        if enginePage != nil {
+            isEngineDevToolsShown ? closeWebInspector() : showWebInspector()
+            return
+        }
         webInspectorManager?.toggleInspector(for: tabPage.id, webView: backingWebView)
     }
 
     /// Shows the JavaScript console in the Web Inspector.
     func showJavaScriptConsole() {
+        if let enginePage {
+            enginePage.perform(.devTools(command: .showConsole))
+            isEngineDevToolsShown = true
+            return
+        }
         webInspectorManager?.showJavaScriptConsole(for: tabPage.id, webView: backingWebView)
     }
 
@@ -36,7 +55,8 @@ extension WebPage {
 
     /// Whether the Web Inspector is currently shown.
     var isInspectorShown: Bool {
-        webInspectorManager?.isInspectorShown(for: tabPage.id) ?? false
+        if enginePage != nil { return isEngineDevToolsShown }
+        return webInspectorManager?.isInspectorShown(for: tabPage.id) ?? false
     }
 
     /// Toggles page profiling (Timeline Recording) in the Web Inspector.
@@ -46,17 +66,23 @@ extension WebPage {
 
     /// Toggles element selection mode in the Web Inspector.
     func toggleElementSelection() {
+        if let enginePage {
+            enginePage.perform(.devTools(command: .toggleElementSelection))
+            return
+        }
         webInspectorManager?.toggleElementSelection(for: tabPage.id, webView: backingWebView)
     }
 
     /// Whether page profiling (Timeline Recording) is active.
     var isProfilingPage: Bool {
-        webInspectorManager?.isProfilingPage(for: tabPage.id, webView: backingWebView) ?? false
+        guard enginePage == nil else { return false }
+        return webInspectorManager?.isProfilingPage(for: tabPage.id, webView: backingWebView) ?? false
     }
 
     /// Whether element selection mode is active.
     var isElementSelectionActive: Bool {
-        webInspectorManager?.isElementSelectionActive(for: tabPage.id, webView: backingWebView) ?? false
+        guard enginePage == nil else { return false }
+        return webInspectorManager?.isElementSelectionActive(for: tabPage.id, webView: backingWebView) ?? false
     }
 
     /// Empties website caches for the current page's origin.

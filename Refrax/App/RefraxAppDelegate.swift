@@ -353,8 +353,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.readerModeManager = ReaderModeManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()
         self.contentScriptManager = ContentScriptManager(state: browserState)
+        Task { [contentScriptManager, engineRegistry] in
+            await contentScriptManager.contentBlockingManager.setPolicyHandler { policy in
+                engineRegistry.apply(.contentBlocking(policy: policy))
+            }
+        }
         self.autoConsentManager = AutoConsentManager(state: browserState)
         self.extensionManager = ExtensionManager(state: browserState)
+        extensionManager.onPackagesChanged = { [engineRegistry] packages in
+            engineRegistry.apply(.extensions(extensions: packages))
+        }
+        engineRegistry.apply(.extensions(extensions: extensionManager.enginePackages))
         self.keyboardShortcutsManager = KeyboardShortcutsManager(windowManager: windowManager)
         
         self.menuBarManager = MenuBarManager(

@@ -569,6 +569,10 @@ final class WebPage: Identifiable {
     @ObservationIgnored
     var engineTasks: [Task<Void, Never>] = []
 
+    /// Whether the engine's developer tools are open for this page.
+    @ObservationIgnored
+    var isEngineDevToolsShown = false
+
     // MARK: - Back-Forward List
 
     /// The webpage's back-forward navigation list.

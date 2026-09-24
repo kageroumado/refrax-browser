@@ -77,6 +77,9 @@ actor ContentBlockingManager {
     /// Total number of active blocking rules.
     private(set) var totalRuleCount: Int = 0
 
+    /// Receives the enabled lists' raw text whenever they change, for engines other than WebKit.
+    private var policyHandler: (@MainActor @Sendable (ContentBlockingPolicy) -> Void)?
+
     /// Timestamp of last successful update.
     private(set) var lastUpdateTime: Date?
 
@@ -126,6 +129,24 @@ actor ContentBlockingManager {
         await loadOrCompileRules()
 
         Logger.info("ContentBlockingManager setup complete (\(totalRuleCount) rules)", category: Logger.tabs)
+        await publishPolicy()
+    }
+
+    /// Sends the current lists to `handler` now (once set up) and after every change.
+    func setPolicyHandler(_ handler: @escaping @MainActor @Sendable (ContentBlockingPolicy) -> Void) async {
+        policyHandler = handler
+        if isSetUp {
+            await publishPolicy()
+        }
+    }
+
+    /// Reads the enabled lists' cached text and hands it to the policy handler.
+    private func publishPolicy() async {
+        guard let policyHandler else { return }
+        let lists = filterLists.filter(\.isEnabled).compactMap { list in
+            loadCachedFilterContent(forListID: list.id).map { ContentBlockingPolicy.FilterList(id: list.id, contents: $0) }
+        }
+        await policyHandler(ContentBlockingPolicy(isEnabled: true, lists: lists, allowlistedHosts: []))
     }
 
     // MARK: - Filter List Management
@@ -148,6 +169,7 @@ actor ContentBlockingManager {
             // Remove compiled rules for this list
             await removeCompiledRules(forListID: id)
         }
+        await publishPolicy()
     }
 
     /// Adds a custom filter list.
@@ -206,6 +228,7 @@ actor ContentBlockingManager {
 
         lastUpdateTime = Date()
         Logger.info("Filter list update complete (\(totalRuleCount) rules)", category: Logger.tabs)
+        await publishPolicy()
     }
 
     /// Updates a single filter list.

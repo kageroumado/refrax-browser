@@ -165,7 +165,6 @@ extension MenuBarManager {
         guard menu.title == "Develop" else { return }
 
         guard let controller = activeWindowController else { return }
-        let inspectorManager = NSApplication.shared.typedDelegate.webInspectorManager
         let activeWebPage = controller.windowState.activeWebPage
 
         for item in menu.items {
@@ -173,19 +172,15 @@ extension MenuBarManager {
 
             switch item.tag {
             case DevelopMenuItemTag.toggleInspector.rawValue:
-                let isShown = activeWebPage.map { inspectorManager.isInspectorShown(for: $0.tabPage.id) } ?? false
+                let isShown = activeWebPage?.isInspectorShown ?? false
                 item.title = isShown ? "Close Web Inspector" : "Show Web Inspector"
 
             case DevelopMenuItemTag.timelineRecording.rawValue:
-                let isProfiling = activeWebPage.map {
-                    inspectorManager.isProfilingPage(for: $0.tabPage.id, webView: $0.backingWebView)
-                } ?? false
+                let isProfiling = activeWebPage?.isProfilingPage ?? false
                 item.title = isProfiling ? "Stop Timeline Recording" : "Start Timeline Recording"
 
             case DevelopMenuItemTag.elementSelection.rawValue:
-                let isSelecting = activeWebPage.map {
-                    inspectorManager.isElementSelectionActive(for: $0.tabPage.id, webView: $0.backingWebView)
-                } ?? false
+                let isSelecting = activeWebPage?.isElementSelectionActive ?? false
                 item.title = isSelecting ? "Stop Element Selection" : "Start Element Selection"
 
             default:

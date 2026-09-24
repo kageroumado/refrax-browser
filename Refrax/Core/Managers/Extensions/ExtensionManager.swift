@@ -96,7 +96,36 @@ final class ExtensionManager {
     private var privateControllers: [UUID: WKWebExtensionController] = [:]
 
     /// All installed extensions (persisted metadata).
-    private(set) var installedExtensions: [InstalledExtension] = []
+    private(set) var installedExtensions: [InstalledExtension] = [] {
+        didSet { onPackagesChanged?(enginePackages) }
+    }
+
+    /// Called with the installed extensions whenever they change, for engines other than WebKit.
+    @ObservationIgnored
+    var onPackagesChanged: (([ExtensionPackage]) -> Void)?
+
+    /// Installed extensions as the engine contract describes them: unpacked, read-only directories
+    /// with the permissions the user granted in Refrax.
+    var enginePackages: [ExtensionPackage] {
+        installedExtensions.compactMap { extension_ in
+            let directory: URL
+            switch extension_.source {
+            case let .localFolder(url):
+                directory = url
+            case .crxFile, .xpiFile, .bundled:
+                directory = extractedFolderURL(for: extension_)
+            case .chromeWebStore, .firefoxAddons, .refraxGallery:
+                return nil
+            }
+            return ExtensionPackage(
+                id: extension_.uniqueIdentifier,
+                directory: directory,
+                grantedPermissions: extension_.grantedPermissions.keys.sorted(),
+                grantedHostPatterns: extension_.grantedMatchPatterns.keys.sorted(),
+                isEnabled: extension_.isEnabled,
+            )
+        }
+    }
 
     /// Global extension settings.
     private(set) var globalSettings = ExtensionGlobalSettings()

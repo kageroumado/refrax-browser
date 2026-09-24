@@ -14,7 +14,10 @@
 #import "CrApplication.h"
 
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_set>
 
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
@@ -22,6 +25,7 @@
 #include "include/cef_devtools_message_observer.h"
 #include "include/cef_parser.h"
 #include "include/cef_request_context.h"
+#include "include/cef_resource_request_handler.h"
 #include "include/cef_ssl_status.h"
 #include "include/cef_version.h"
 #include "include/wrapper/cef_library_loader.h"
@@ -121,6 +125,107 @@ NSString* DispositionName(cef_window_open_disposition_t disposition) {
       return @"foregroundTab";
   }
 }
+
+// MARK: Content blocking
+
+/// The network rules this engine enforces from Refrax's filter lists: hosts from
+/// `||host^` rules (and `@@||host^` exceptions) with no options, or only
+/// `third-party`. That covers most of EasyList's network rules with an O(depth)
+/// lookup; cosmetic and pattern rules are not applied by this engine.
+struct BlockRules {
+  std::unordered_set<std::string> blocked;
+  std::unordered_set<std::string> exceptions;
+};
+
+std::mutex g_rulesMutex;
+std::shared_ptr<const BlockRules> g_rules;
+
+std::shared_ptr<const BlockRules> CurrentRules() {
+  std::lock_guard<std::mutex> lock(g_rulesMutex);
+  return g_rules;
+}
+
+void SetRules(std::shared_ptr<const BlockRules> rules) {
+  std::lock_guard<std::mutex> lock(g_rulesMutex);
+  g_rules = std::move(rules);
+}
+
+/// The host of a `||host^[$options]` rule, or empty when the rule is anything else.
+std::string HostOfDomainRule(NSString* rule) {
+  if (![rule hasPrefix:@"||"]) {
+    return {};
+  }
+  NSRange caret = [rule rangeOfString:@"^"];
+  if (caret.location == NSNotFound) {
+    return {};
+  }
+  NSString* options = [rule substringFromIndex:NSMaxRange(caret)];
+  if (options.length && ![options isEqualToString:@"$third-party"] && ![options isEqualToString:@"$3p"]) {
+    return {};
+  }
+  NSString* host = [rule substringWithRange:NSMakeRange(2, caret.location - 2)].lowercaseString;
+  NSCharacterSet* invalid =
+      [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789.-"] invertedSet];
+  if (!host.length || [host rangeOfCharacterFromSet:invalid].location != NSNotFound) {
+    return {};
+  }
+  return ToStd(host);
+}
+
+std::shared_ptr<const BlockRules> ParseRules(NSArray<NSString*>* lists) {
+  auto rules = std::make_shared<BlockRules>();
+  for (NSString* contents in lists) {
+    [contents enumerateLinesUsingBlock:^(NSString* line, BOOL*) {
+      NSString* rule = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+      BOOL isException = [rule hasPrefix:@"@@"];
+      std::string host = HostOfDomainRule(isException ? [rule substringFromIndex:2] : rule);
+      if (!host.empty()) {
+        (isException ? rules->exceptions : rules->blocked).insert(host);
+      }
+    }];
+  }
+  return rules;
+}
+
+/// Whether `host` or any parent domain is blocked and not excepted.
+bool IsBlocked(const BlockRules& rules, std::string host) {
+  bool blocked = false;
+  while (!host.empty()) {
+    if (rules.exceptions.count(host)) {
+      return false;
+    }
+    blocked = blocked || rules.blocked.count(host);
+    size_t dot = host.find('.');
+    host = dot == std::string::npos ? std::string() : host.substr(dot + 1);
+  }
+  return blocked;
+}
+
+/// Cancels subresource requests to blocked hosts. Called on CEF's IO thread.
+class Blocker : public CefResourceRequestHandler {
+ public:
+  ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>,
+                                   CefRefPtr<CefFrame>,
+                                   CefRefPtr<CefRequest> request,
+                                   CefRefPtr<CefCallback>) override {
+    if (request->GetResourceType() == RT_MAIN_FRAME) {
+      return RV_CONTINUE;
+    }
+    std::shared_ptr<const BlockRules> rules = CurrentRules();
+    CefURLParts parts;
+    if (!rules || !CefParseURL(request->GetURL(), parts)) {
+      return RV_CONTINUE;
+    }
+    std::string host = CefString(&parts.host).ToString();
+    for (char& character : host) {
+      character = static_cast<char>(tolower(character));
+    }
+    return IsBlocked(*rules, host) ? RV_CANCEL : RV_CONTINUE;
+  }
+
+ private:
+  IMPLEMENT_REFCOUNTING(Blocker);
+};
 
 }  // namespace
 
@@ -239,6 +344,16 @@ class Client : public CefClient,
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser>,
+                                                                 CefRefPtr<CefFrame>,
+                                                                 CefRefPtr<CefRequest>,
+                                                                 bool,
+                                                                 bool,
+                                                                 const CefString&,
+                                                                 bool&) override {
+    return blocker_;
+  }
 
   void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
     if (frame->IsMain()) {
@@ -411,6 +526,7 @@ class Client : public CefClient,
   }
 
   __weak RFXChromiumPage* owner_;
+  CefRefPtr<Blocker> blocker_ = new Blocker();
 
   IMPLEMENT_REFCOUNTING(Client);
 };
@@ -1071,8 +1187,24 @@ static __weak RFXChromiumEngineHost* g_current;
   if (!ParseCase(update, &name, &fields)) {
     return;
   }
-  // Content blocking, extensions, and site settings aren't applied by this engine.
-  if ([name isEqualToString:@"scripts"] && [fields[@"scripts"] isKindOfClass:NSArray.class]) {
+  // Extensions and site settings aren't applied by this engine.
+  if ([name isEqualToString:@"contentBlocking"]) {
+    NSDictionary* policy = fields[@"policy"];
+    BOOL enabled = [policy[@"isEnabled"] boolValue];
+    NSMutableArray<NSString*>* lists = [NSMutableArray array];
+    for (NSDictionary* list in policy[@"lists"]) {
+      if ([list[@"contents"] isKindOfClass:NSString.class]) {
+        [lists addObject:list[@"contents"]];
+      }
+    }
+    if (!enabled) {
+      SetRules(nullptr);
+      return;
+    }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+      SetRules(ParseRules(lists));
+    });
+  } else if ([name isEqualToString:@"scripts"] && [fields[@"scripts"] isKindOfClass:NSArray.class]) {
     _scripts = [fields[@"scripts"] copy];
     for (RFXChromiumPage* page in _livePages) {
       [page installScripts:_scripts];
