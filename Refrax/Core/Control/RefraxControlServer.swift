@@ -1973,47 +1973,51 @@ final class RefraxControlServer {
     private func handlePageExecJS(_ params: ControlRequest.PageExecJSParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
 
-        if params.noGesture == true {
-            // Without-gesture evaluation takes a plain expression/program, not a
-            // function body — no return-wrapping. Preserves the page's transient
-            // user activation.
-            do {
-                let result = try await webPage.evaluateJavaScriptWithoutUserGesture(params.script)
-                let resultString = result.map { "\($0)" } ?? "undefined"
-                return .javascript(resultString)
-            } catch let error as NSError where error.domain == "WKErrorDomain" {
-                let jsMessage = error.userInfo["WKJavaScriptExceptionMessage"] as? String
-                    ?? error.localizedDescription
-                return .error(CTL.ErrorInfo(code: "javascript_error", message: jsMessage))
-            }
-        }
-
-        // callAsyncJavaScript treats the string as a function body, so expressions
-        // like "document.title" need an explicit `return` to produce a value.
-        // Auto-wrap scripts that don't contain a return statement.
-        let script = if params.script.contains("return ") || params.script.contains("return\n") {
-            params.script
-        } else {
-            "return \(params.script)"
-        }
         do {
-            let result = try await webPage.callJavaScript(script)
-            let resultString = result.map { "\($0)" } ?? "undefined"
-            return .javascript(resultString)
-        } catch let error as NSError where error.domain == "WKErrorDomain" {
-            // Extract the actual JS exception message from WKError userInfo
-            let jsMessage = error.userInfo["WKJavaScriptExceptionMessage"] as? String
-                ?? error.localizedDescription
-            let jsLine = error.userInfo["WKJavaScriptExceptionLineNumber"] as? Int
-            let jsColumn = error.userInfo["WKJavaScriptExceptionColumnNumber"] as? Int
-            var detail = jsMessage
-            if let line = jsLine {
-                detail += " (line \(line)"
-                if let col = jsColumn { detail += ", col \(col)" }
-                detail += ")"
+            let result = if params.noGesture == true {
+                // A plain program, evaluated without a gesture: preserves the page's transient activation.
+                try await webPage.evaluateJavaScriptWithoutUserGesture(params.script)
+            } else {
+                try await execute(params.script, in: webPage)
             }
-            return .error(CTL.ErrorInfo(code: "javascript_error", message: detail))
+            return .javascript(result.map { "\($0)" } ?? "undefined")
+        } catch {
+            return .error(CTL.ErrorInfo(code: "javascript_error", message: Self.javaScriptErrorDetail(error)))
         }
+    }
+
+    /// Runs `script` and returns its value, whatever shape it has:
+    ///
+    /// 1. As one expression (`document.title`, an IIFE, a promise, which is awaited).
+    /// 2. If that is a syntax error and the script uses `return`: as a function body.
+    /// 3. Otherwise as a program, whose value is its last statement's (`var n = 2; n * 2`).
+    private func execute(_ script: String, in webPage: WebPage) async throws -> Any? {
+        do {
+            return try await webPage.callJavaScript("return (\(script)\n)")
+        } catch where Self.javaScriptErrorDetail(error).contains("SyntaxError") {
+            if script.contains(/\breturn\b/) {
+                return try await webPage.callJavaScript(script)
+            }
+            return try await webPage.evaluateJavaScriptWithoutUserGesture(script)
+        }
+    }
+
+    /// The JavaScript exception message (with position, when WebKit reports it) for any engine.
+    private static func javaScriptErrorDetail(_ error: any Error) -> String {
+        if case let .scriptFailed(message) = error as? EngineError {
+            return message
+        }
+        let nsError = error as NSError
+        guard nsError.domain == "WKErrorDomain" else { return error.localizedDescription }
+        var detail = nsError.userInfo["WKJavaScriptExceptionMessage"] as? String ?? error.localizedDescription
+        if let line = nsError.userInfo["WKJavaScriptExceptionLineNumber"] as? Int {
+            detail += " (line \(line)"
+            if let column = nsError.userInfo["WKJavaScriptExceptionColumnNumber"] as? Int {
+                detail += ", col \(column)"
+            }
+            detail += ")"
+        }
+        return detail
     }
 
     private func handlePageVideoViewer(_ params: ControlRequest.PageVideoViewerParams) async throws -> ControlResponse {
