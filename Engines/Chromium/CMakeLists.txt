@@ -1,6 +1,7 @@
-# Builds the Chromium engine plug-in (RefraxChromium.dylib) and its helper
-# executable against a CEF binary distribution. Scripts/build-chromium-engine.sh
-# drives this and assembles the result into an installable engine directory.
+# Builds the Chromium engine's executable (RefraxChromium, loaded by Refrax as
+# the principal class of Chromium.engine) and its helper against a CEF binary
+# distribution. Scripts/build-chromium-engine.sh drives this and assembles the
+# engine bundle.
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CONFIGURATION_TYPES Release)
 project(RefraxChromium LANGUAGES C CXX)
@@ -15,7 +16,7 @@ add_subdirectory(${CEF_LIBCEF_DLL_WRAPPER_PATH} libcef_dll_wrapper)
 
 set(RFX_OBJC_FLAGS -fobjc-arc -Wno-error)
 
-add_library(RefraxChromium SHARED Sources/RFXChromium.mm Sources/RFXChromium.h)
+add_library(RefraxChromium SHARED Sources/RFXChromiumEngine.mm ../SDK/RFXEngine.h Sources/CrApplication.h)
 SET_LIBRARY_TARGET_PROPERTIES(RefraxChromium)
 add_dependencies(RefraxChromium libcef_dll_wrapper)
 target_compile_options(RefraxChromium PRIVATE ${RFX_OBJC_FLAGS})

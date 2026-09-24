@@ -171,7 +171,7 @@ struct PositionedAdapter: NSViewRepresentable {
         // While a plug-in engine renders the page, the paused WebKit view stays in
         // place underneath it and must not take hit tests meant for the engine's view.
         // Runs after the display-mode update, which unhides the web view on activation.
-        let isEngineHosted = page?.engineSession != nil
+        let isEngineHosted = page?.enginePage != nil
         if webView.isHidden != isEngineHosted {
             webView.isHidden = isEngineHosted
         }

@@ -1,21 +1,21 @@
 import AppKit
 import SwiftUI
 
-/// Displays a plug-in engine session's content view.
+/// Displays an engine page's view.
 ///
-/// The session owns its view; this host only re-parents it, so the page's
+/// The page owns its view; this host only re-parents it, so the page's
 /// rendering state survives SwiftUI rebuilding the surrounding hierarchy.
 struct EngineContentView: NSViewRepresentable {
-    let session: any EnginePageSession
+    let page: any EnginePage
 
     func makeNSView(context _: Context) -> EngineHostView {
         let host = EngineHostView()
-        host.attach(session.contentView)
+        host.attach(page.view)
         return host
     }
 
     func updateNSView(_ host: EngineHostView, context _: Context) {
-        host.attach(session.contentView)
+        host.attach(page.view)
     }
 
     static func dismantleNSView(_ host: EngineHostView, coordinator _: ()) {

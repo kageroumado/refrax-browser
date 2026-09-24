@@ -98,8 +98,8 @@ struct PaneContentWrapper: View {
             .webViewFindNavigator(isPresented: findNavigatorBinding)
 
             // A plug-in engine renders over the paused WebKit view it replaces.
-            if hasContent, isOwner, let engineSession = webPage?.engineSession {
-                EngineContentView(session: engineSession)
+            if hasContent, isOwner, let enginePage = webPage?.enginePage {
+                EngineContentView(page: enginePage)
                     .allowsHitTesting(!shouldIgnoreAllEvents)
             }
 

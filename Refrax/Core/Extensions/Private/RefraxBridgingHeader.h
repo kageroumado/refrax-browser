@@ -75,9 +75,13 @@
 // CoreGraphics private APIs (GPU hardware window capture)
 #import "CoreGraphics/CoreGraphicsSPI.h"
 
-// Chromium engine plug-in protocols. The plug-in is dlopen'd at runtime, so
-// only its Objective-C protocols are visible here, never its classes.
-#import "../../../../Engines/Chromium/Sources/RFXChromium.h"
+// Engine bundle interface (Engines/CONTRACT.md). Engines load at runtime, so
+// only these Objective-C protocols are visible here, never engine classes.
+#import "../../../../Engines/SDK/RFXEngine.h"
+
+// Chromium's NSApplication protocols, adopted by RefraxApplication for the
+// in-process CEF engine.
+#import "../../../../Engines/Chromium/Sources/CrApplication.h"
 
 // Note: MediaPlaybackCore APIs are loaded dynamically at runtime
 // to avoid linker dependencies on private frameworks.

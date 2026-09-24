@@ -33,10 +33,10 @@ extension WebPage {
         in frame: FrameInfo? = nil,
         contentWorld: WKContentWorld? = nil,
     ) async throws -> Any? {
-        if let engineSession {
-            return try await engineSession.evaluateJavaScript(
-                Self.engineFunctionCall(functionBody, arguments: arguments),
-            )
+        if let enginePage {
+            return try await enginePage.evaluate(
+                ScriptRequest(source: Self.engineFunctionCall(functionBody, arguments: arguments)),
+            ).foundationValue
         }
         return try await backingWebView.callAsyncJavaScript(
             functionBody,
@@ -55,8 +55,8 @@ extension WebPage {
         in frame: FrameInfo? = nil,
         contentWorld: WKContentWorld = .page,
     ) async throws -> Any? {
-        if let engineSession {
-            return try await engineSession.evaluateJavaScript(script)
+        if let enginePage {
+            return try await enginePage.evaluate(ScriptRequest(source: script)).foundationValue
         }
         return try await backingWebView.evaluateJavaScript(script, in: frame?.wrapped, contentWorld: contentWorld)
     }
@@ -71,8 +71,8 @@ extension WebPage {
     /// page content world only.
     @discardableResult
     func evaluateJavaScriptWithoutUserGesture(_ script: String) async throws -> Any? {
-        if let engineSession {
-            return try await engineSession.evaluateJavaScript(script)
+        if let enginePage {
+            return try await enginePage.evaluate(ScriptRequest(source: script)).foundationValue
         }
         return try await backingWebView.evaluateJavaScriptWithoutUserGesture(script)
     }

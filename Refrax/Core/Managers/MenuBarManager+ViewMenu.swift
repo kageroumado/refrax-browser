@@ -274,17 +274,28 @@ extension MenuBarManager {
         activeWindowController?.reloadPageFromOrigin()
     }
 
-    /// Reloads the active page in the other rendering engine (WebKit ⇄ Chromium).
+    /// Reloads the active page in the other rendering engine: system WebKit ⇄ the first installed engine.
     @objc
     func switchRenderingEngine(_: Any?) {
         guard let page = activeWindowController?.windowState.activeWebPage else { return }
-        let target: RenderingEngineKind = page.activeEngine == .webKit ? .chromium : .webKit
-        do {
-            try page.switchEngine(to: target)
-        } catch {
-            Logger.error("Switching to \(target.displayName) failed: \(error)", category: Logger.engines)
-            NSAlert(error: error).runModal()
+        let registry = NSApp.typedDelegate.engineRegistry
+        guard let target = alternateEngine(for: page, in: registry) else { return }
+        Task {
+            do {
+                try await page.switchEngine(to: target.id, registry: registry)
+            } catch {
+                Logger.error("Switching to \(target.displayName) failed: \(error)", category: Logger.engines)
+                NSAlert(error: error).runModal()
+            }
         }
+    }
+
+    /// The engine the switch command moves `page` to.
+    private func alternateEngine(for page: WebPage?, in registry: EngineRegistry) -> EngineDescriptor? {
+        if let page, page.activeEngineID != .systemWebKit {
+            return EngineRegistry.systemWebKit
+        }
+        return registry.descriptors.first { $0.id != .systemWebKit }
     }
 
     @objc
@@ -379,8 +390,9 @@ extension MenuBarManager {
 
         if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {
             let page = activeWindowController?.windowState.activeWebPage
-            let target: RenderingEngineKind = page?.activeEngine == .chromium ? .webKit : .chromium
-            engineItem.title = "Reload in \(target.displayName)"
+            let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
+            engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
+            engineItem.isHidden = target == nil
         }
 
         // Find sidebar mode submenu

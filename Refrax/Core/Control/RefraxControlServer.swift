@@ -226,7 +226,7 @@ final class RefraxControlServer {
         case let .tabReload(params):
             try handleTabReload(params)
         case let .tabEngine(params):
-            try handleTabEngine(params)
+            try await handleTabEngine(params)
         case let .tabIsLoading(params):
             try handleTabIsLoading(params)
         case let .tabURL(params):
@@ -1848,17 +1848,18 @@ final class RefraxControlServer {
         return .ok(mode)
     }
 
-    private func handleTabEngine(_ params: ControlRequest.TabEngineParams) throws -> ControlResponse {
+    private func handleTabEngine(_ params: ControlRequest.TabEngineParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+        let registry = NSApp.typedDelegate.engineRegistry
         guard let name = params.engine else {
-            return .ok(webPage.activeEngine.displayName)
+            return .ok(registry.descriptor(for: webPage.activeEngineID)?.displayName ?? webPage.activeEngineID.rawValue)
         }
-        guard let engine = RenderingEngineKind.allCases.first(where: { $0.rawValue.lowercased() == name.lowercased() }) else {
-            let known = RenderingEngineKind.allCases.map(\.rawValue).joined(separator: ", ")
-            throw ControlError.invalidParams("Unknown engine '\(name)'. Known engines: \(known)")
+        guard let id = registry.resolve(name), let descriptor = registry.descriptor(for: id) else {
+            let known = registry.descriptors.map { "\($0.displayName) (\($0.id))" }.joined(separator: ", ")
+            throw ControlError.invalidParams("Unknown engine '\(name)'. Installed engines: \(known)")
         }
-        try webPage.switchEngine(to: engine)
-        return .ok("Reloading in \(engine.displayName)")
+        try await webPage.switchEngine(to: id, registry: registry)
+        return .ok("Reloading in \(descriptor.displayName)")
     }
 
     private func handleTabIsLoading(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {

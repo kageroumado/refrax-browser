@@ -328,13 +328,13 @@ final class WebPage: Identifiable {
 
     /// The URL for the current webpage.
     var url: URL? {
-        if let engineSession { return engineSession.url }
+        if enginePage != nil { return engineState.url }
         return backingProperty(\.url, backedBy: \.url)
     }
 
     /// The page title.
     var title: String {
-        if let engineSession { return engineSession.title }
+        if enginePage != nil { return engineState.title }
         return backingProperty(\.title, backedBy: \.title) { $0 ?? "" }
     }
 
@@ -344,7 +344,7 @@ final class WebPage: Identifiable {
     /// to reduce high-frequency updates during page loads (50-100 KVO events).
     /// Always updates when progress reaches 1.0 (complete).
     var estimatedProgress: Double {
-        if let engineSession { return engineSession.estimatedProgress }
+        if enginePage != nil { return engineState.progress }
         access(keyPath: \.estimatedProgress)
         return _estimatedProgress
     }
@@ -354,7 +354,7 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage is currently loading content.
     var isLoading: Bool {
-        if let engineSession { return engineSession.isLoading }
+        if enginePage != nil { return engineState.isLoading }
         return backingProperty(\.isLoading, backedBy: \.isLoading)
     }
 
@@ -365,7 +365,7 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage loaded all resources through secure connections.
     var hasOnlySecureContent: Bool {
-        if let engineSession { return engineSession.url?.scheme == "https" }
+        if enginePage != nil { return engineState.security == .secure }
         return backingProperty(\.hasOnlySecureContent, backedBy: \.hasOnlySecureContent)
     }
 
@@ -565,9 +565,16 @@ final class WebPage: Identifiable {
 
     // MARK: - Rendering Engine
 
-    /// The session hosting this page's content on a plug-in engine, or nil while
-    /// the built-in WebKit view hosts it. See `WebPage+Engine.swift`.
-    var engineSession: (any EnginePageSession)?
+    /// The page in a plug-in engine rendering this page's content, or nil while
+    /// the built-in WebKit view renders it. See `WebPage+Engine.swift`.
+    var enginePage: (any EnginePage)?
+
+    /// State reported by `enginePage`, built by `PageReducer`. Read only while `enginePage` is set.
+    let engineState = PageState()
+
+    /// Tasks consuming `enginePage`'s event and request streams.
+    @ObservationIgnored
+    var engineTasks: [Task<Void, Never>] = []
 
     // MARK: - Back-Forward List
 
@@ -576,13 +583,13 @@ final class WebPage: Identifiable {
 
     /// Whether there is a back item in the history.
     var canGoBack: Bool {
-        if let engineSession { return engineSession.canGoBack }
+        if enginePage != nil { return engineState.canGoBack }
         return !backForwardList.backList.isEmpty
     }
 
     /// Whether there is a forward item in the history.
     var canGoForward: Bool {
-        if let engineSession { return engineSession.canGoForward }
+        if enginePage != nil { return engineState.canGoForward }
         return !backForwardList.forwardList.isEmpty
     }
 
@@ -792,10 +799,12 @@ final class WebPage: Identifiable {
             return .insecure
         }
 
-        // Chromium enforces certificate validity itself and refuses to render
-        // an invalid one, so a committed https page on it is a trusted one.
-        if engineSession != nil {
-            return .secure
+        if enginePage != nil {
+            return switch engineState.security {
+            case .secure: .secure
+            case .mixedContent: .mixedContent
+            case .insecure, .notApplicable: .insecure
+            }
         }
 
         let cert = certificateInfo

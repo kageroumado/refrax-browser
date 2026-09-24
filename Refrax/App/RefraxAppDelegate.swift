@@ -93,6 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let scheduledTasksManager: ScheduledTasksManager
     let localNetworkDirectory = LocalNetworkDirectory()
 
+    /// Installed rendering engines; system WebKit plus any engine bundles.
+    let engineRegistry = EngineRegistry(applicationSupport: Directories.appStorage)
+
     // Other managers
     let windowManager: WindowManager
     let menuBarManager: MenuBarManager
@@ -945,8 +948,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         CrashMonitor.markCleanShutdown()
 
-        // Closing Chromium's browsers before exit lets its profiles flush cookies and storage.
-        ChromiumEngine.shared.shutdown()
+        // Stopping engines before exit lets their profiles flush cookies and storage.
+        engineRegistry.shutdown()
 
         Task { await controlHost.stop() }
 

@@ -1,26 +1,30 @@
 #!/bin/zsh
-# Builds the Chromium engine plug-in and installs it where Refrax looks for it.
+# Builds the in-process Chromium (CEF) engine bundle and installs it where Refrax
+# discovers engines.
 #
 #   Scripts/build-chromium-engine.sh [--release]
 #
 # Environment:
 #   CEF_ROOT   CEF binary distribution (minimal is enough). Default: ~/Developer/.cef/sdk-154
-#   IDENTITY   codesign identity; must share the app's Team ID or library validation
-#              rejects the framework. Default: the identity that signed the last debug build.
+#   IDENTITY   codesign identity; must share the app's Team ID, which Refrax checks
+#              before loading an engine. Default: the identity that signed the last debug build.
 #
-# Output (debug): ~/Library/Application Support/website.refrax.browser.debug/Engines/Chromium/
-#   Chromium Embedded Framework.framework   cloned from CEF_ROOT, re-signed
-#   RefraxChromium.dylib                    the Objective-C engine plug-in
-#   Refrax Chromium Helper[ (GPU|Renderer|Alerts)].app
-#   engine.json                             versions, read by the app
+# Output (debug): ~/Library/Application Support/website.refrax.browser.debug/Engines/
+#   website.refrax.engine.chromium/Chromium.engine/Contents/
+#     Info.plist                     engine descriptor (Engines/CONTRACT.md)
+#     MacOS/RefraxChromium           principal class RFXChromiumEngineHost
+#     Frameworks/Chromium Embedded Framework.framework
+#     Frameworks/Refrax Chromium Helper[ (GPU|Renderer|Alerts)].app
 set -euo pipefail
 
 REPO=${0:A:h:h}
 CEF_ROOT=${CEF_ROOT:-$HOME/Developer/.cef/sdk-154}
 BUILD_DIR=${BUILD_DIR:-$HOME/Developer/.cef/build}
-BUNDLE_ID=website.refrax.browser.debug
-[[ "${1:-}" == "--release" ]] && BUNDLE_ID=website.refrax.browser
-DEST="$HOME/Library/Application Support/$BUNDLE_ID/Engines/Chromium"
+APP_BUNDLE_ID=website.refrax.browser.debug
+[[ "${1:-}" == "--release" ]] && APP_BUNDLE_ID=website.refrax.browser
+ENGINE_ID=website.refrax.engine.chromium
+ENGINES="$HOME/Library/Application Support/$APP_BUNDLE_ID/Engines"
+DEST="$ENGINES/$ENGINE_ID/Chromium.engine"
 HELPER_NAME="Refrax Chromium Helper"
 
 if [[ -z "${IDENTITY:-}" ]]; then
@@ -32,30 +36,54 @@ if [[ -z "${IDENTITY:-}" ]]; then
 fi
 [[ -n "$IDENTITY" ]] || { echo "No signing identity; set IDENTITY" >&2; exit 1; }
 
-echo "==> Building plug-in against $CEF_ROOT"
+sign() {  # path [entitlements plist]
+  local args=(--force --options runtime --timestamp=none --sign "$IDENTITY")
+  [[ -n "${2:-}" ]] && args+=(--entitlements "$2")
+  codesign "${args[@]}" "$1" 2>&1 | grep -v "replacing existing signature" || true
+}
+
+echo "==> Building against $CEF_ROOT"
 mkdir -p "$BUILD_DIR"
 cmake -S "$REPO/Engines/Chromium" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DPROJECT_ARCH=arm64 -DCEF_ROOT="$CEF_ROOT" > /dev/null
 ninja -C "$BUILD_DIR" RefraxChromium RefraxChromiumHelper | tail -1
 
-echo "==> Installing into $DEST"
-mkdir -p "$DEST"
-FRAMEWORK="$DEST/Chromium Embedded Framework.framework"
-if [[ ! -d "$FRAMEWORK" ]]; then
-  # APFS clone: no extra disk space until either copy changes.
-  cp -cR "$CEF_ROOT/Release/Chromium Embedded Framework.framework" "$FRAMEWORK"
-fi
-# Every binary is replaced by rename, never rewritten in place: a running Refrax
-# has these files mapped, and rewriting a mapped signed binary gets the process
-# killed with "Code Signature Invalid". A rename leaves it the old inode.
-install_atomically() {  # source, destination [--sign]
-  local staging="$2.staging"
-  cp -f "$1" "$staging"
-  if [[ "${3:-}" == "--sign" ]]; then
-    codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$staging" 2>&1 | grep -v "replacing existing" || true
-  fi
-  mv -f "$staging" "$2"
-}
+CEF_VERSION=$(sed -n 's/^#define CEF_VERSION "\(.*\)"/\1/p' "$CEF_ROOT/include/cef_version.h")
+CHROMIUM_VERSION=$(grep -E '^#define CHROME_VERSION_(MAJOR|MINOR|BUILD|PATCH) ' "$CEF_ROOT/include/cef_version.h" | awk '{print $3}' | paste -sd. -)
+
+# Assemble in a staging bundle, then swap it in by rename: a running Refrax has
+# the installed binaries mapped, and rewriting a mapped signed binary gets the
+# process killed with "Code Signature Invalid". A rename leaves it the old inode.
+STAGING="$DEST.staging"
+[[ -e "$STAGING" ]] && trash "$STAGING"
+mkdir -p "$STAGING/Contents/MacOS" "$STAGING/Contents/Frameworks"
+echo "==> Assembling $STAGING"
+
+cp -cR "$CEF_ROOT/Release/Chromium Embedded Framework.framework" "$STAGING/Contents/Frameworks/"
+cp "$BUILD_DIR/libRefraxChromium.dylib" "$STAGING/Contents/MacOS/RefraxChromium"
+
+cat > "$STAGING/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>$ENGINE_ID</string>
+  <key>CFBundleName</key><string>Chromium</string>
+  <key>CFBundleExecutable</key><string>RefraxChromium</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>$CEF_VERSION</string>
+  <key>NSPrincipalClass</key><string>RFXChromiumEngineHost</string>
+  <key>RFXEngineContractVersion</key><string>1.0</string>
+  <key>RFXEngineDisplayName</key><string>Chromium</string>
+  <key>RFXEngineVersion</key><string>Chromium $CHROMIUM_VERSION</string>
+  <key>RFXEngineVendor</key><string>Refrax (CEF)</string>
+  <key>RFXEngineOutOfProcess</key><false/>
+  <key>RFXEngineCapabilities</key><array>
+    <string>javaScriptEvaluation</string><string>findInPage</string><string>zoom</string>
+    <string>devTools</string><string>downloads</string>
+  </array>
+</dict></plist>
+PLIST
 
 ENTITLEMENTS_DIR=$(mktemp -d)
 write_entitlements() {  # name, keys...
@@ -73,15 +101,15 @@ write_entitlements() {  # name, keys...
 make_helper() {  # suffix (e.g. " (GPU)"), bundle-id suffix, entitlement keys...
   local suffix=$1 idsuffix=$2; shift 2
   local name="$HELPER_NAME$suffix"
-  local app="$DEST/$name.app"
+  local app="$STAGING/Contents/Frameworks/$name.app"
   mkdir -p "$app/Contents/MacOS"
-  install_atomically "$BUILD_DIR/RefraxChromiumHelper" "$app/Contents/MacOS/$name"
+  cp "$BUILD_DIR/RefraxChromiumHelper" "$app/Contents/MacOS/$name"
   cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>$name</string>
-  <key>CFBundleIdentifier</key><string>$BUNDLE_ID.chromium.helper$idsuffix</string>
+  <key>CFBundleIdentifier</key><string>$ENGINE_ID.helper$idsuffix</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
@@ -91,15 +119,13 @@ make_helper() {  # suffix (e.g. " (GPU)"), bundle-id suffix, entitlement keys...
 </dict></plist>
 PLIST
   local ent; ent=$(write_entitlements "helper$idsuffix" "$@")
-  codesign --force --options runtime --timestamp=none --entitlements "$ent" --sign "$IDENTITY" "$app" 2>&1 | grep -v "replacing existing signature" || true
+  sign "$app" "$ent"
 }
 
 echo "==> Signing with: $IDENTITY"
-for lib in "$FRAMEWORK"/Libraries/*.dylib; do
-  codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$lib" 2>&1 | grep -v "replacing existing" || true
-done
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$FRAMEWORK" 2>&1 | grep -v "replacing existing" || true
-install_atomically "$BUILD_DIR/libRefraxChromium.dylib" "$DEST/RefraxChromium.dylib" --sign
+FRAMEWORK="$STAGING/Contents/Frameworks/Chromium Embedded Framework.framework"
+for lib in "$FRAMEWORK"/Libraries/*.dylib; do sign "$lib"; done
+sign "$FRAMEWORK"
 
 # Entitlements follow Chrome's (and Arc's) helpers. The base helper hosts utility
 # processes, which load code signed by other teams (the Widevine CDM).
@@ -109,14 +135,17 @@ make_helper " (GPU)" ".gpu" $JIT
 make_helper " (Renderer)" ".renderer" $JIT
 make_helper " (Alerts)" ".alerts"
 
-CEF_VERSION=$(sed -n 's/^#define CEF_VERSION "\(.*\)"/\1/p' "$CEF_ROOT/include/cef_version.h")
-CHROMIUM_VERSION=$(grep -E '^#define CHROME_VERSION_(MAJOR|MINOR|BUILD|PATCH) ' "$CEF_ROOT/include/cef_version.h" | awk '{print $3}' | paste -sd. -)
-cat > "$DEST/engine.json" <<JSON
-{
-  "cefVersion": "$CEF_VERSION",
-  "chromiumVersion": "$CHROMIUM_VERSION",
-  "plugin": "RefraxChromium.dylib",
-  "helper": "$HELPER_NAME.app/Contents/MacOS/$HELPER_NAME"
-}
-JSON
+sign "$STAGING/Contents/MacOS/RefraxChromium"
+sign "$STAGING"
+codesign --verify --strict --deep "$STAGING"
+
+echo "==> Installing $DEST"
+mkdir -p "${DEST:h}"
+if [[ -d "$DEST" ]]; then
+  mv "$DEST" "$DEST.previous.$$"
+  mv "$STAGING" "$DEST"
+  trash "$DEST.previous.$$"
+else
+  mv "$STAGING" "$DEST"
+fi
 echo "==> Installed Chromium $CHROMIUM_VERSION (CEF $CEF_VERSION)"
