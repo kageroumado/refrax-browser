@@ -561,6 +561,9 @@ final class WebPage: Identifiable {
     /// The single source of the core page properties (`url`, `title`, loading, history).
     let state = PageState()
 
+    /// Questions the page is waiting on the user to answer: dialogs and permission requests.
+    let prompts = PagePrompts()
+
     /// Reports WebKit's observable properties into `state` while WebKit renders the page.
     @ObservationIgnored
     private var webKitObserver: WebKitPageObserver?

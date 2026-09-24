@@ -4,24 +4,6 @@ import WebKit
 // MARK: - Dialog Result Types
 
 extension WebPage {
-    /// The result of handling a JavaScript `confirm()` dialog.
-    enum JavaScriptConfirmResult: Hashable, Sendable {
-        /// The user pressed OK.
-        case ok
-
-        /// The user pressed Cancel.
-        case cancel
-    }
-
-    /// The result of handling a JavaScript `prompt()` dialog.
-    enum JavaScriptPromptResult: Hashable, Sendable {
-        /// The user pressed OK with the specified text.
-        case ok(String)
-
-        /// The user pressed Cancel.
-        case cancel
-    }
-
     /// The result of handling a file input prompt.
     enum FileInputPromptResult: Hashable, Sendable {
         /// The user selected the specified files.
@@ -35,73 +17,10 @@ extension WebPage {
 // MARK: - Dialog Presenting Protocol
 
 extension WebPage {
-    /// Allows providing custom behavior to handle JavaScript actions and provide a response.
+    /// Presents the window-level panels a page can open: the file picker.
     ///
-    /// Typically when handling these, some UI should be presented to the user for them to provide a response,
-    /// which will then be communicated back to JavaScript.
-    ///
-    /// When these methods are invoked, JavaScript is blocked until the async method returns.
-    ///
-    /// ## Example
-    ///
-    /// ```swift
-    /// struct MyDialogPresenter: WebPage.DialogPresenting {
-    ///     @MainActor
-    ///     func handleJavaScriptAlert(
-    ///         message: String,
-    ///         initiatedBy frame: WebPage.FrameInfo
-    ///     ) async {
-    ///         // Show alert UI
-    ///     }
-    ///
-    ///     @MainActor
-    ///     func handleJavaScriptConfirm(
-    ///         message: String,
-    ///         initiatedBy frame: WebPage.FrameInfo
-    ///     ) async -> WebPage.JavaScriptConfirmResult {
-    ///         // Show confirm UI and return result
-    ///         return .ok
-    ///     }
-    /// }
-    /// ```
+    /// JavaScript dialogs are page questions (`PagePrompts`), shown in the page's own pane.
     protocol DialogPresenting {
-        /// A JavaScript `alert()` function has been invoked.
-        ///
-        /// - Parameters:
-        ///   - message: The message provided by JavaScript.
-        ///   - frame: Information about the frame that initiated the call.
-        @MainActor
-        func handleJavaScriptAlert(
-            message: String,
-            initiatedBy frame: WebPage.FrameInfo,
-        ) async
-
-        /// A JavaScript `confirm()` function has been invoked.
-        ///
-        /// - Parameters:
-        ///   - message: The message provided by JavaScript.
-        ///   - frame: Information about the frame that initiated the call.
-        /// - Returns: The result of handling the dialog.
-        @MainActor
-        func handleJavaScriptConfirm(
-            message: String,
-            initiatedBy frame: WebPage.FrameInfo,
-        ) async -> WebPage.JavaScriptConfirmResult
-
-        /// A JavaScript `prompt()` function has been invoked.
-        ///
-        /// - Parameters:
-        ///   - message: The message provided by JavaScript.
-        ///   - defaultText: The initial text for the input field.
-        ///   - frame: Information about the frame that initiated the call.
-        /// - Returns: The result of handling the dialog.
-        @MainActor
-        func handleJavaScriptPrompt(
-            message: String,
-            defaultText: String?,
-            initiatedBy frame: WebPage.FrameInfo,
-        ) async -> WebPage.JavaScriptPromptResult
-
         /// A file input element has been activated.
         ///
         /// - Parameters:
@@ -119,34 +38,6 @@ extension WebPage {
 // MARK: - Default Implementation
 
 extension WebPage.DialogPresenting {
-    /// Default implementation: immediately returns.
-    @MainActor
-    func handleJavaScriptAlert(
-        message _: String,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async {
-        // No-op by default
-    }
-
-    /// Default implementation: returns `.cancel`.
-    @MainActor
-    func handleJavaScriptConfirm(
-        message _: String,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async -> WebPage.JavaScriptConfirmResult {
-        .cancel
-    }
-
-    /// Default implementation: returns `.cancel`.
-    @MainActor
-    func handleJavaScriptPrompt(
-        message _: String,
-        defaultText _: String?,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async -> WebPage.JavaScriptPromptResult {
-        .cancel
-    }
-
     /// Default implementation: returns `.cancel`.
     @MainActor
     func handleFileInputPrompt(

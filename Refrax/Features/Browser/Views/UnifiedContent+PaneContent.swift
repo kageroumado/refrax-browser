@@ -396,128 +396,6 @@ private struct ExtensionPermissionPromptModifier: ViewModifier {
     }
 }
 
-private struct AlertModifier: ViewModifier {
-    @Bindable var state: DialogState
-
-    func body(content: Content) -> some View {
-        content.alert(
-            state.alert?.message ?? "",
-            isPresented: isPresented,
-        ) {
-            Button("OK", action: dismiss)
-        }
-    }
-
-    private var isPresented: Binding<Bool> {
-        Binding(
-            get: { state.alert != nil },
-            set: { if !$0 { dismiss() } },
-        )
-    }
-
-    private func dismiss() {
-        guard let alert = state.alert else { return }
-        alert.continuation.resume()
-        state.alert = nil
-    }
-}
-
-private struct ConfirmModifier: ViewModifier {
-    @Bindable var state: DialogState
-
-    func body(content: Content) -> some View {
-        content.alert(
-            state.confirm?.message ?? "",
-            isPresented: isPresented,
-        ) {
-            Button("OK") { dismiss(result: .ok) }
-            Button("Cancel", role: .cancel) { dismiss(result: .cancel) }
-        }
-    }
-
-    private var isPresented: Binding<Bool> {
-        Binding(
-            get: { state.confirm != nil },
-            set: { if !$0 { dismiss(result: .cancel) } },
-        )
-    }
-
-    private func dismiss(result: WebPage.JavaScriptConfirmResult) {
-        guard let confirm = state.confirm else { return }
-        confirm.continuation.resume(returning: result)
-        state.confirm = nil
-    }
-}
-
-private struct PromptModifier: ViewModifier {
-    @Bindable var state: DialogState
-
-    func body(content: Content) -> some View {
-        content.sheet(item: promptBinding) { info in
-            PromptDialogView(info: info) { result in
-                info.continuation.resume(returning: result)
-                state.prompt = nil
-            }
-        }
-    }
-
-    private var promptBinding: Binding<DialogState.PromptInfo?> {
-        Binding(
-            get: { state.prompt },
-            set: { state.prompt = $0 },
-        )
-    }
-}
-
-private struct PromptDialogView: View {
-    let info: DialogState.PromptInfo
-    let onComplete: (WebPage.JavaScriptPromptResult) -> Void
-
-    @State private var text: String
-    @State private var didComplete = false
-    @Environment(\.dismiss) private var dismiss
-
-    init(
-        info: DialogState.PromptInfo,
-        onComplete: @escaping (WebPage.JavaScriptPromptResult) -> Void,
-    ) {
-        self.info = info
-        self.onComplete = onComplete
-        _text = State(initialValue: info.defaultText ?? "")
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(info.message)
-                .font(.headline)
-
-            TextField("", text: $text)
-                .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { complete(result: .cancel) }
-                Button("OK") { complete(result: .ok(text)) }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(minWidth: 360)
-        .onDisappear {
-            if !didComplete {
-                complete(result: .cancel)
-            }
-        }
-    }
-
-    private func complete(result: WebPage.JavaScriptPromptResult) {
-        guard !didComplete else { return }
-        didComplete = true
-        onComplete(result)
-        dismiss()
-    }
-}
-
 private struct FileInputModifier: ViewModifier {
     @Bindable var state: DialogState
 
@@ -674,15 +552,13 @@ private final class ClientIdentityPanelBridge: NSObject {
 
 /// Combines all dialog-related modifiers.
 ///
-/// Applied to the outer view to handle JavaScript dialogs and file pickers.
+/// Applied to the outer view to handle file pickers and certificate choice. JavaScript
+/// dialogs and permission requests belong to their page (`PagePromptModifier`).
 private struct DialogModifiers: ViewModifier {
     @Bindable var dialogState: DialogState
 
     func body(content: Content) -> some View {
         content
-            .modifier(AlertModifier(state: dialogState))
-            .modifier(ConfirmModifier(state: dialogState))
-            .modifier(PromptModifier(state: dialogState))
             .modifier(FileInputModifier(state: dialogState))
             .modifier(ClientCertificateModifier(state: dialogState))
             .modifier(ExtensionPermissionPromptModifier())
@@ -709,6 +585,7 @@ private struct PageOverlayModifiers: ViewModifier {
             content
                 .modifier(FocusBlurModifier(page: webPage, isEnabled: hasContent && !isLayoutMode))
                 .modifier(TimeLimitModifier(page: webPage, isEnabled: hasContent && !isLayoutMode))
+                .modifier(PagePromptModifier(prompts: webPage.prompts, isEnabled: !isLayoutMode))
         } else {
             content
         }

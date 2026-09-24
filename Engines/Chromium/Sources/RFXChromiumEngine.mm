@@ -309,6 +309,8 @@ class Blocker : public CefResourceRequestHandler {
 - (void)handleDevToolsEvent:(NSString*)method params:(NSData*)params;
 - (void)installScripts:(NSArray<NSDictionary*>*)scripts;
 - (void)handleBeforeClose;
+/// The main frame's last committed URL.
+@property(nonatomic, readonly, nullable) NSString* lastCommittedURL;
 - (void)handleCommitWithURL:(NSString*)url isBackForward:(BOOL)isBackForward;
 - (void)handleFinishWithURL:(NSString*)url statusCode:(int)statusCode;
 @end
@@ -335,6 +337,8 @@ class Client : public CefClient,
                public CefLifeSpanHandler,
                public CefRequestHandler,
                public CefDownloadHandler,
+               public CefJSDialogHandler,
+               public CefPermissionHandler,
                public CefDevToolsMessageObserver {
  public:
   explicit Client(RFXChromiumPage* owner) : owner_(owner) {}
@@ -344,6 +348,8 @@ class Client : public CefClient,
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
+  CefRefPtr<CefPermissionHandler> GetPermissionHandler() override { return this; }
 
   CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser>,
                                                                  CefRefPtr<CefFrame>,
@@ -483,6 +489,66 @@ class Client : public CefClient,
     return true;
   }
 
+  // MARK: Dialogs — Refrax shows them in the page's pane and answers through the contract.
+
+  bool OnJSDialog(CefRefPtr<CefBrowser>,
+                  const CefString& origin_url,
+                  JSDialogType dialog_type,
+                  const CefString& message_text,
+                  const CefString& default_prompt_text,
+                  CefRefPtr<CefJSDialogCallback> callback,
+                  bool&) override {
+    NSString* kind = dialog_type == JSDIALOGTYPE_CONFIRM ? @"confirm" : dialog_type == JSDIALOGTYPE_PROMPT ? @"prompt" : @"alert";
+    NSString* defaultText = dialog_type == JSDIALOGTYPE_PROMPT ? Capped(ToNS(default_prompt_text)) : nil;
+    RequestDialog(kind, Capped(ToNS(message_text)), defaultText, ToNS(origin_url), callback);
+    return true;
+  }
+
+  bool OnBeforeUnloadDialog(CefRefPtr<CefBrowser>,
+                            const CefString& message_text,
+                            bool,
+                            CefRefPtr<CefJSDialogCallback> callback) override {
+    RequestDialog(@"beforeUnload", Capped(ToNS(message_text)), nil, [owner_ lastCommittedURL], callback);
+    return true;
+  }
+
+  // MARK: Permissions — Refrax decides from site settings or asks the user.
+
+  bool OnRequestMediaAccessPermission(CefRefPtr<CefBrowser>,
+                                      CefRefPtr<CefFrame>,
+                                      const CefString& requesting_origin,
+                                      uint32_t requested_permissions,
+                                      CefRefPtr<CefMediaAccessCallback> callback) override {
+    constexpr uint32_t desktop = CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE;
+    bool audio = requested_permissions & CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE;
+    bool video = requested_permissions & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE;
+    NSString* kind = (requested_permissions & desktop) ? @"screenCapture"
+                     : audio && video                  ? @"cameraAndMicrophone"
+                     : video                           ? @"camera"
+                                                       : @"microphone";
+    RequestPermission(kind, ToNS(requesting_origin), ^(bool allowed) {
+      callback->Continue(allowed ? requested_permissions : CEF_MEDIA_PERMISSION_NONE);
+    });
+    return true;
+  }
+
+  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser>,
+                              uint64_t,
+                              const CefString& requesting_origin,
+                              uint32_t requested_permissions,
+                              CefRefPtr<CefPermissionPromptCallback> callback) override {
+    NSString* kind = PermissionKind(requested_permissions);
+    if (!kind) {
+      // A permission Refrax has no setting or prompt for.
+      callback->Continue(CEF_PERMISSION_RESULT_DENY);
+      return true;
+    }
+    RequestPermission(kind, ToNS(requesting_origin), ^(bool allowed) {
+      callback->Continue(allowed ? CEF_PERMISSION_RESULT_ACCEPT : CEF_PERMISSION_RESULT_DENY);
+    });
+    return true;
+  }
+
   void OnDevToolsMethodResult(CefRefPtr<CefBrowser>,
                               int message_id,
                               bool success,
@@ -507,6 +573,59 @@ class Client : public CefClient,
              fields:@{@"url" : target, @"disposition" : DispositionName(disposition), @"userGesture" : @(user_gesture)}
               reply:^(NSString*, NSDictionary*){
               }];
+  }
+
+  void RequestDialog(NSString* kind,
+                     NSString* message,
+                     NSString* defaultText,
+                     NSString* origin,
+                     CefRefPtr<CefJSDialogCallback> callback) {
+    NSDictionary* dialog = @{
+      @"kind" : kind,
+      @"message" : message ?: @"",
+      @"defaultText" : defaultText ?: NSNull.null,
+      @"origin" : origin.length ? origin : NSNull.null,
+    };
+    [owner_ request:@"javaScriptDialog"
+             fields:@{@"dialog" : dialog}
+              reply:^(NSString* name, NSDictionary* fields) {
+                NSString* text = [fields[@"text"] isKindOfClass:NSString.class] ? fields[@"text"] : @"";
+                callback->Continue([name isEqualToString:@"confirm"], ToStd(text));
+              }];
+  }
+
+  void RequestPermission(NSString* kind, NSString* origin, void (^decided)(bool allowed)) {
+    [owner_ request:@"permission"
+             fields:@{@"kind" : kind, @"origin" : origin}
+              reply:^(NSString* name, NSDictionary*) {
+                decided([name isEqualToString:@"allow"]);
+              }];
+  }
+
+  /// The contract kind for a single permission, or nil for one Refrax doesn't model.
+  static NSString* PermissionKind(uint32_t permissions) {
+    switch (permissions) {
+      case CEF_PERMISSION_TYPE_GEOLOCATION:
+        return @"geolocation";
+      case CEF_PERMISSION_TYPE_NOTIFICATIONS:
+        return @"notifications";
+      case CEF_PERMISSION_TYPE_CLIPBOARD:
+        return @"clipboardRead";
+      case CEF_PERMISSION_TYPE_CAMERA_STREAM:
+        return @"camera";
+      case CEF_PERMISSION_TYPE_MIC_STREAM:
+        return @"microphone";
+      case CEF_PERMISSION_TYPE_CAMERA_STREAM | CEF_PERMISSION_TYPE_MIC_STREAM:
+        return @"cameraAndMicrophone";
+      default:
+        return nil;
+    }
+  }
+
+  /// Dialog text within the contract's string cap (8 KiB).
+  static NSString* Capped(NSString* text) {
+    constexpr NSUInteger limit = 2000;
+    return text.length > limit ? [[text substringToIndex:limit] stringByAppendingString:@"…"] : text;
   }
 
   static NSString* SecurityOf(CefRefPtr<CefBrowser> browser, NSString* url) {
@@ -656,6 +775,10 @@ class App : public CefApp, public CefBrowserProcessHandler {
                    ParseCase(answer, &answerName, &answerFields);
                    reply(answerName, answerFields);
                  }];
+}
+
+- (nullable NSString*)lastCommittedURL {
+  return _lastCommittedURL;
 }
 
 - (void)handleCommitWithURL:(NSString*)url isBackForward:(BOOL)isBackForward {

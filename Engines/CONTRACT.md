@@ -149,6 +149,13 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 | `javaScriptDialog` | `dialog`: `{ "kind": alert\|confirm\|prompt\|beforeUnload, "message", "defaultText?", "origin?" }` | `{"confirm":{"text":…?}}` \| `{"cancel":{}}` |
 | `download` | `url`, `suggestedFilename`, `mimeType?` | `{"saveTo":{"url":"file:///…"}}` \| `{"cancel":{}}` |
 
+Engines never show their own dialog or permission UI. Refrax answers `permission` from the
+site's settings or asks the user, and shows `javaScriptDialog` in the page's own pane, labeled
+with `origin`; a question stays with its page, so a background page's dialog waits until the page
+is shown. A permission Refrax has no `kind` for is denied by the engine. Dialog text over 2,000
+characters is truncated by the engine (strings are capped, §6). A committed navigation dismisses
+pending questions, answering them `cancel` / `deny`.
+
 Refrax never lets an engine choose where files land: the answer to `download` is the destination.
 Until an answer arrives the engine waits; if the page closes first, the engine cancels.
 

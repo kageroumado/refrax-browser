@@ -7,56 +7,6 @@ final class BrowserDialogPresenter: WebPage.DialogPresenting {
         self.dialogState = dialogState
     }
     
-    // MARK: - JavaScript Alert
-    
-    func handleJavaScriptAlert(
-        message: String,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async {
-        Logger.info("JS Alert: \(message)", category: Logger.navigation)
-        
-        await withCheckedContinuation { continuation in
-            dialogState.alert = DialogState.AlertInfo(
-                message: message,
-                continuation: continuation,
-            )
-        }
-    }
-    
-    // MARK: - JavaScript Confirm
-    
-    func handleJavaScriptConfirm(
-        message: String,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async -> WebPage.JavaScriptConfirmResult {
-        Logger.info("JS Confirm: \(message)", category: Logger.navigation)
-        
-        return await withCheckedContinuation { continuation in
-            dialogState.confirm = DialogState.ConfirmInfo(
-                message: message,
-                continuation: continuation,
-            )
-        }
-    }
-    
-    // MARK: - JavaScript Prompt
-    
-    func handleJavaScriptPrompt(
-        message: String,
-        defaultText: String?,
-        initiatedBy _: WebPage.FrameInfo,
-    ) async -> WebPage.JavaScriptPromptResult {
-        Logger.info("JS Prompt: \(message)", category: Logger.navigation)
-        
-        return await withCheckedContinuation { continuation in
-            dialogState.prompt = DialogState.PromptInfo(
-                message: message,
-                defaultText: defaultText,
-                continuation: continuation,
-            )
-        }
-    }
-    
     // MARK: - File Input
 
     func handleFileInputPrompt(

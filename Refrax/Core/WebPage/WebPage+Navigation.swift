@@ -92,6 +92,7 @@ extension WebPage {
 
     /// Notifies the session that it is being terminated.
     func onSessionEnding() {
+        prompts.dismissAll()
         historyDebounceTask?.cancel()
         historyDebounceTask = nil
 

@@ -62,14 +62,28 @@ extension WebPage {
     func receiveWebKitEvent(_ event: PageEvent) {
         guard enginePage == nil else { return }
         state.apply(event)
-        routeToWatchdog(event)
+        applyCommonEffects(event)
     }
 
-    /// Renderer health, from any engine, goes to the pool's watchdog.
-    private func routeToWatchdog(_ event: PageEvent) {
-        if case let .rendererHealthChanged(health) = event {
+    /// Effects every engine's events have alike.
+    ///
+    /// - Renderer health goes to the pool's watchdog.
+    /// - A committed navigation dismisses the questions the previous document asked.
+    private func applyCommonEffects(_ event: PageEvent) {
+        switch event {
+        case let .rendererHealthChanged(health):
             backingNavigationDelegate.pagePool?.handleRendererHealth(for: tabPage.id, health: health)
+        case .navigationCommitted:
+            prompts.dismissAll()
+        default:
+            break
         }
+    }
+
+    /// Whether the site at `host` may use `kind`: its site setting, or the user's answer.
+    func decidePermission(_ kind: PermissionKind, host: String) async -> Bool {
+        guard let siteSettingsManager = backingNavigationDelegate.pagePool?.siteSettingsManager else { return false }
+        return await PagePermissions(siteSettingsManager: siteSettingsManager).decide(kind, host: host, prompts: prompts)
     }
 
     /// Terminates the process rendering this page (watchdog action for a hung renderer).
@@ -92,7 +106,7 @@ extension WebPage {
             for await event in page.events {
                 guard let self, !Task.isCancelled else { return }
                 state.apply(event)
-                routeToWatchdog(event)
+                applyCommonEffects(event)
                 handleEngineEvent(event)
             }
         }
@@ -102,7 +116,14 @@ extension WebPage {
                     request.reply(.cancel)
                     return
                 }
-                request.reply(answer(request.kind))
+                // Answered concurrently: a dialog waiting on the user must not hold up a download.
+                Task.immediate(name: "Answer page request") { [weak self] in
+                    guard let self else {
+                        request.reply(.cancel)
+                        return
+                    }
+                    await request.reply(answer(request.kind))
+                }
             }
         }
         let messages = Task { [weak self] in
@@ -215,7 +236,7 @@ extension WebPage {
     ///
     /// Permission and dialog requests are denied: the permission broker and dialog
     /// presenter are WebKit-only until they speak the contract.
-    private func answer(_ request: PageRequestKind) -> PageRequestAnswer {
+    private func answer(_ request: PageRequestKind) async -> PageRequestAnswer {
         switch request {
         case let .openURL(url, disposition, _):
             let decider = backingNavigationDelegate.navigationDecider
@@ -235,11 +256,22 @@ extension WebPage {
             guard let filename = try? FilenameUtilities.uniqueFilename(for: sanitized, in: folder) else { return .cancel }
             return .saveTo(url: folder.appending(path: filename))
 
-        case .permission:
-            return .deny
+        case let .permission(kind, origin):
+            return await decidePermission(kind, host: origin.host() ?? "") ? .allow : .deny
 
-        case .javaScriptDialog:
-            return .cancel
+        case let .javaScriptDialog(dialog):
+            let origin = dialog.origin?.host() ?? ""
+            let question: PageQuestion = switch dialog.kind {
+            case .alert: .alert(message: dialog.message, origin: origin)
+            case .confirm: .confirm(message: dialog.message, origin: origin)
+            case .prompt: .prompt(message: dialog.message, defaultText: dialog.defaultText, origin: origin)
+            case .beforeUnload: .leavePage(origin: origin)
+            }
+            return switch await prompts.ask(question) {
+            case .accept, .acceptAndRemember: .confirm(text: nil)
+            case let .text(text): .confirm(text: text)
+            case .decline: .cancel
+            }
         }
     }
 }

@@ -175,7 +175,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         runJavaScriptAlertPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
     ) async {
-        await dialogPresenter.handleJavaScriptAlert(message: message, initiatedBy: .init(frame))
+        _ = await owner?.prompts.ask(.alert(message: message, origin: frame.securityOrigin.host))
     }
 
     func webView(
@@ -183,12 +183,8 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
     ) async -> Bool {
-        let result = await dialogPresenter.handleJavaScriptConfirm(message: message, initiatedBy: .init(frame))
-
-        return switch result {
-        case .ok: true
-        case .cancel: false
-        }
+        guard let owner else { return false }
+        return await owner.prompts.ask(.confirm(message: message, origin: frame.securityOrigin.host)) == .accept
     }
 
     func webView(
@@ -197,16 +193,12 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         defaultText: String?,
         initiatedByFrame frame: WKFrameInfo,
     ) async -> String? {
-        let result = await dialogPresenter.handleJavaScriptPrompt(
-            message: prompt,
-            defaultText: defaultText,
-            initiatedBy: .init(frame),
-        )
-
-        return switch result {
-        case let .ok(value): value
-        case .cancel: nil
+        guard let owner else { return nil }
+        let question = PageQuestion.prompt(message: prompt, defaultText: defaultText, origin: frame.securityOrigin.host)
+        if case let .text(text) = await owner.prompts.ask(question) {
+            return text
         }
+        return nil
     }
 
     func webView(
@@ -270,74 +262,18 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
     }
 
     func webView(
-        _ webView: WKWebView,
+        _: WKWebView,
         decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
-        initiatedBy frame: WKFrameInfo,
+        initiatedBy _: WKFrameInfo,
         type: WKMediaCaptureType,
     ) async -> WKPermissionDecision {
-        guard let owner else {
-            return .deny
+        guard let owner else { return .deny }
+        let kind: PermissionKind = switch type {
+        case .camera: .camera
+        case .microphone: .microphone
+        default: .cameraAndMicrophone
         }
-
-        // First check site settings
-        let decision = await owner.configuration.deviceSensorAuthorization.decisionHandler(
-            .mediaCapture(type),
-            .init(frame),
-            origin,
-        )
-
-        // If already decided (allow or deny), return immediately
-        guard decision == .prompt else {
-            return decision
-        }
-
-        // Settings say "ask" - show our custom permission dialog
-        guard let window = webView.window else {
-            // No window to present dialog - fall back to WebKit's native prompt
-            return .prompt
-        }
-
-        let result = await MediaCapturePermissionAlert.present(
-            for: type,
-            origin: origin,
-            in: window,
-        )
-
-        switch result {
-        case .allowOnce:
-            return .grant
-
-        case .alwaysAllow:
-            // Save to site settings for future visits
-            saveMediaCapturePermission(type: type, domain: origin.host, allow: true)
-            return .grant
-
-        case .deny:
-            return .deny
-        }
-    }
-
-    /// Saves media capture permission to site settings.
-    private func saveMediaCapturePermission(type: WKMediaCaptureType, domain: String, allow: Bool) {
-        guard let siteSettingsManager = pagePool?.siteSettingsManager else { return }
-
-        let settings = siteSettingsManager.settingsOrCreate(for: domain)
-        let policy: PermissionPolicy = allow ? .allow : .deny
-
-        switch type {
-        case .camera:
-            settings.cameraPermission = policy
-        case .microphone:
-            settings.microphonePermission = policy
-        case .cameraAndMicrophone:
-            settings.cameraPermission = policy
-            settings.microphonePermission = policy
-        @unknown default:
-            break
-        }
-
-        siteSettingsManager.save(settings)
-        Logger.info("Saved \(type) permission for \(domain): \(policy)", category: Logger.security)
+        return await owner.decidePermission(kind, host: origin.host) ? .grant : .deny
     }
 
     /// Handles screen/window capture permission requests.
@@ -366,9 +302,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         )
     }
 
-    /// Handles geolocation permission requests.
-    ///
-    /// Delegates to `PermissionDecisionResolver.locationPermission(for:)`.
+    /// Handles geolocation permission requests through the site's setting or the page's prompt.
     @objc(_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
     func _webView(
         _: WKWebView,
@@ -376,13 +310,13 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         initiatedByFrame _: WKFrameInfo,
         decisionHandler: @escaping (WKPermissionDecision) -> Void,
     ) {
-        resolvePermission(
-            for: origin,
-            permissionType: "Geolocation",
-            defaultDecision: .prompt,
-            resolve: { $0.locationPermission(for: $1) },
-            decisionHandler: decisionHandler,
-        )
+        guard let owner else {
+            decisionHandler(.deny)
+            return
+        }
+        Task.immediate(name: "Geolocation permission") {
+            decisionHandler(await owner.decidePermission(.geolocation, host: origin.host) ? .grant : .deny)
+        }
     }
 
     // MARK: - Context Menu Support
