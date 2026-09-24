@@ -53,6 +53,48 @@ extension WebPage {
         webInspectorManager?.showPageSource(for: tabPage.id, webView: backingWebView)
     }
 
+    /// Restores this page's inspector when it comes on screen.
+    func inspectorPageDidBecomeVisible() {
+        guard enginePage == nil else { return }
+        webInspectorManager?.tabDidBecomeVisible(tabPage.id, webView: backingWebView)
+    }
+
+    /// Detaches this page's inspector before it leaves the screen.
+    func inspectorPageWillBecomeHidden() {
+        guard enginePage == nil else { return }
+        webInspectorManager?.tabWillBecomeHidden(tabPage.id, webView: backingWebView)
+    }
+
+    /// Shows the inspector docked (`attached`) or in its own window. Engines choose their own placement.
+    func showWebInspector(attached: Bool?) {
+        guard enginePage == nil else { return showWebInspector() }
+        webInspectorManager?.showInspector(for: tabPage.id, webView: backingWebView, attached: attached)
+    }
+
+    /// Toggles the inspector, opening it docked (`attached`) or in its own window.
+    func toggleWebInspector(attached: Bool) {
+        guard enginePage == nil else { return toggleWebInspector() }
+        webInspectorManager?.toggleInspector(for: tabPage.id, webView: backingWebView, attached: attached)
+    }
+
+    /// Docks the WebKit inspector on `side`.
+    func attachWebInspector(side: WebInspectorManager.AttachmentSide) {
+        guard enginePage == nil else { return }
+        webInspectorManager?.attachInspector(for: tabPage.id, webView: backingWebView, side: side)
+    }
+
+    /// Moves the WebKit inspector into its own window.
+    func detachWebInspector() {
+        guard enginePage == nil else { return }
+        webInspectorManager?.detachInspector(for: tabPage.id, webView: backingWebView)
+    }
+
+    /// Shows the resources panel, a WebKit inspector feature.
+    func showInspectorResources() {
+        guard enginePage == nil else { return }
+        webInspectorManager?.showPageResources(for: tabPage.id, webView: backingWebView)
+    }
+
     /// Whether the Web Inspector is currently shown.
     var isInspectorShown: Bool {
         if enginePage != nil { return isEngineDevToolsShown }

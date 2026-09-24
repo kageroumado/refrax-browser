@@ -154,7 +154,7 @@ final class WebPagePool {
     init(state: BrowserState) {
         self.state = state
         state.scriptChannels.pageResolver = { [weak self] webView in
-            self?.activePages.values.first { $0.backingWebView === webView }
+            self?.activePages.values.first { $0.owns(webView) }
         }
 
         // Configure termination handler with settings
@@ -1037,7 +1037,7 @@ final class WebPagePool {
 
         // Install link preview manager for Shift+Click support
         if state.settings.shiftClickLinkPreviewEnabled {
-            page.backingWebView.linkPreviewManager = LinkPreviewManager(webView: page.backingWebView)
+            page.webKitView.linkPreviewManager = LinkPreviewManager(webView: page.webKitView)
         }
 
         return (page, navigationDecider)

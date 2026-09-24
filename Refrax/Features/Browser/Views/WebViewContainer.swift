@@ -135,7 +135,7 @@ struct WebViewContainer: View {
 
                 // Notify page of visibility (creates history entry if missing)
                 page.onBecameVisible()
-                page.webInspectorManager?.tabDidBecomeVisible(page.tabPage.id, webView: page.backingWebView)
+                page.inspectorPageDidBecomeVisible()
 
                 // Record interaction for address bar focus tracking
                 windowState.recordInteraction(with: page.tabPage.id)
@@ -150,7 +150,7 @@ struct WebViewContainer: View {
         .onDisappear {
             // Skip history tracking for custom ownership ID (reflected windows).
             if !usesCustomOwnershipID {
-                page.webInspectorManager?.tabWillBecomeHidden(page.tabPage.id, webView: page.backingWebView)
+                page.inspectorPageWillBecomeHidden()
 
                 // Unregister from activity manager
                 historyActivityManager.unregisterPage(page.tabPage.id, windowID: windowID)

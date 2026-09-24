@@ -56,7 +56,7 @@ extension WebPage {
         contentWorld: WKContentWorld = .page,
     ) async throws -> Any? {
         if let enginePage {
-            return try await enginePage.evaluate(ScriptRequest(source: script)).foundationValue
+            return try await enginePage.evaluate(ScriptRequest(source: script, world: ScriptRequest.World(contentWorld))).foundationValue
         }
         return try await backingWebView.evaluateJavaScript(script, in: frame?.wrapped, contentWorld: contentWorld)
     }

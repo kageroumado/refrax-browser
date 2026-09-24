@@ -214,7 +214,7 @@ final class ProcessAudioTapManager: NSObject {
     }
 
     private func gpuProcessIdentifier(for page: WebPage) -> pid_t? {
-        let pid = page.backingWebView._gpuProcessIdentifier
+        let pid = page.gpuProcessIdentifier ?? 0
         return pid > 0 ? pid : nil
     }
 

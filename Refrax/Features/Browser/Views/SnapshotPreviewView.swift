@@ -36,11 +36,8 @@ struct SnapshotPreviewView: View {
     }
 
     private func captureSnapshot() async {
-        let configuration = WKSnapshotConfiguration()
-        configuration.afterScreenUpdates = true
-
         do {
-            let image = try await webPage.backingWebView.takeSnapshot(configuration: configuration)
+            let image = try await webPage.snapshot()
             snapshot = image
         } catch {
             Logger.warning("Failed to capture snapshot: \(error)", category: Logger.ui)

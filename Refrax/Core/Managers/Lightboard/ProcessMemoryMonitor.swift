@@ -359,7 +359,7 @@ final class ProcessMemoryMonitor {
     private func buildWebViewMapping() -> [ObjectIdentifier: UUID] {
         var map: [ObjectIdentifier: UUID] = [:]
         for (tabPageID, webPage) in pagePool.activePages {
-            let viewID = ObjectIdentifier(webPage.backingWebView as WKWebView)
+            let viewID = ObjectIdentifier(webPage.webKitView as WKWebView)
             map[viewID] = tabPageID
         }
         return map
@@ -419,7 +419,7 @@ final class ProcessMemoryMonitor {
         var unloadedIDs: [UUID] = []
 
         for (tabPageID, webPage) in pagePool.activePages {
-            if webPage.backingWebView._webProcessIdentifier == pid {
+            if webPage.contentProcessIdentifier == pid {
                 unloadedIDs.append(tabPageID)
             }
         }

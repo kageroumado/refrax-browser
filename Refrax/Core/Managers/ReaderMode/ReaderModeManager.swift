@@ -231,7 +231,7 @@ final class ReaderModeManager {
 
             // Inject and run availability check
             let script = generateAvailabilityCheckScript()
-            webPage.backingWebView.evaluateJavaScript(script, in: nil, in: scriptWorld) { _ in }
+            Task { _ = try? await webPage.evaluateJavaScript(script, contentWorld: scriptWorld) }
 
             // Timeout after 3 seconds
             Task {
@@ -289,7 +289,7 @@ final class ReaderModeManager {
             pendingExtractions[url] = continuation
 
             // Inject and run extraction
-            webPage.backingWebView.evaluateJavaScript(script, in: nil, in: scriptWorld) { _ in }
+            Task { _ = try? await webPage.evaluateJavaScript(script, contentWorld: scriptWorld) }
 
             // Timeout after 10 seconds
             Task {

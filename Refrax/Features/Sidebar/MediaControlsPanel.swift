@@ -474,12 +474,13 @@ struct MediaSectionView: View {
                 if section.type.isMedia {
                     Button {
                         mediaControlsManager.resetCollapseTimer()
-                        section.webPage.backingWebView._togglePictureInPicture()
+                        let page = section.webPage
+                        Task { await page.togglePiP() }
                     } label: {
                         Label("PiP", systemImage: "pip.enter")
                             .font(.system(size: 10))
                     }
-                    .disabled(!section.webPage.backingWebView._canTogglePictureInPicture)
+                    .disabled(!section.webPage.canTogglePiP)
                 }
             }
             .buttonStyle(.plain)

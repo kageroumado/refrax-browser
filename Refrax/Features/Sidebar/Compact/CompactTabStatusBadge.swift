@@ -122,7 +122,7 @@ struct CompactTabStatusBadge: View {
         switch state {
         case .crashed, .unresponsive, .suspended:
             for webPage in webPages {
-                webPage.backingWebView.reload()
+                _ = webPage.reload()
             }
 
         case .playingAudio:

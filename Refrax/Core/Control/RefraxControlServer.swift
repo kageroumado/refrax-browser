@@ -519,7 +519,7 @@ final class RefraxControlServer {
 
             let mode: ScreenshotMode = params.mode == .full ? .fullPage : .visibleArea
             let data = try await ScreenshotService.takeScreenshot(of: webPage, mode: mode)
-            let size = webPage.backingWebView.bounds.size
+            let size = webPage.contentView.bounds.size
             return buildScreenshotResponse(data: data, logicalSize: size, scaleFactor: scaleFactor, grid: grid, logical: logical)
         }
     }
@@ -704,15 +704,13 @@ final class RefraxControlServer {
 
         switch params.scope {
         case .viewport, .full, .mainContent:
-            let webView = webPage.backingWebView
             let url = webPage.url ?? .blank
-            let title = webPage.title
 
             if params.fresh == true {
                 PageContentExtractor.clearCache(for: url)
             }
 
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
             let scope: PageContentFormatter.Scope = switch params.scope {
             case .full: .full
             case .mainContent: .mainContent
@@ -747,10 +745,7 @@ final class RefraxControlServer {
             }
 
             let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-            let webView = webPage.backingWebView
-            let url = webPage.url ?? .blank
-            let title = webPage.title
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
 
             guard let node = tree.findNode(byRef: ref) else {
                 return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(ref)' not found"))
@@ -761,15 +756,7 @@ final class RefraxControlServer {
                 interaction.nodeIdentifier = nativeID
                 if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
                 do {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                        webView._performInteraction(interaction) { result in
-                            if let error = result.error {
-                                continuation.resume(throwing: error)
-                            } else {
-                                continuation.resume()
-                            }
-                        }
-                    }
+                    try await webPage.performInteraction(interaction)
                 } catch {
                     return .error(CTL.ErrorInfo(code: "interaction_failed", message: mapWebKitError(error)))
                 }
@@ -834,15 +821,7 @@ final class RefraxControlServer {
                 let interaction = _WKTextExtractionInteraction(action: .click)
                 interaction.location = CGPoint(x: x, y: y)
                 do {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                        webPage.backingWebView._performInteraction(interaction) { result in
-                            if let error = result.error {
-                                continuation.resume(throwing: error)
-                            } else {
-                                continuation.resume()
-                            }
-                        }
-                    }
+                    try await webPage.performInteraction(interaction)
                 } catch {
                     try await webPage.callJavaScript("document.elementFromPoint(\(x), \(y))?.click()")
                 }
@@ -908,11 +887,7 @@ final class RefraxControlServer {
         }
 
         let element = frameContent.elements[frameRef.elementIndex]
-        let tree = try await PageContentExtractor.extract(
-            from: webPage.backingWebView,
-            url: webPage.url ?? .blank,
-            title: webPage.title,
-        )
+        let tree = try await webPage.perceive()
         let iframeRect = findIframeRect(in: tree.root, origin: origin) ?? .zero
 
         return ResolvedFrameElement(
@@ -1022,12 +997,9 @@ final class RefraxControlServer {
         }
 
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let webView = webPage.backingWebView
 
         if let ref = params.elementRef {
-            let url = webPage.url ?? .blank
-            let title = webPage.title
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
 
             guard let node = tree.findNode(byRef: ref) else {
                 return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(ref)' not found"))
@@ -1038,15 +1010,7 @@ final class RefraxControlServer {
                 focusInteraction.nodeIdentifier = nativeID
                 if Self.supportsScrollToVisible { focusInteraction.scrollToVisible = true }
                 do {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                        webView._performInteraction(focusInteraction) { result in
-                            if let error = result.error {
-                                continuation.resume(throwing: error)
-                            } else {
-                                continuation.resume()
-                            }
-                        }
-                    }
+                    try await webPage.performInteraction(focusInteraction)
                 } catch {
                     return .error(CTL.ErrorInfo(code: "interaction_failed", message: mapWebKitError(error)))
                 }
@@ -1056,15 +1020,7 @@ final class RefraxControlServer {
                 if Self.supportsScrollToVisible { typeInteraction.scrollToVisible = true }
                 typeInteraction.text = params.text
                 do {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                        webView._performInteraction(typeInteraction) { result in
-                            if let error = result.error {
-                                continuation.resume(throwing: error)
-                            } else {
-                                continuation.resume()
-                            }
-                        }
-                    }
+                    try await webPage.performInteraction(typeInteraction)
                 } catch {
                     return .error(CTL.ErrorInfo(code: "interaction_failed", message: mapWebKitError(error)))
                 }
@@ -1091,10 +1047,7 @@ final class RefraxControlServer {
         // Ref-based scroll: scroll an element into view
         if let ref = params.ref {
             let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-            let webView = webPage.backingWebView
-            let url = webPage.url ?? .blank
-            let title = webPage.title
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
 
             guard let node = tree.findNode(byRef: ref) else {
                 return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(ref)' not found"))
@@ -2013,7 +1966,7 @@ final class RefraxControlServer {
 
     private func handlePageFindDismiss(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        webPage.backingWebView._hideFindUI()
+        webPage.hideFindUI()
         return .ok("Find dismissed")
     }
 
@@ -2209,10 +2162,7 @@ final class RefraxControlServer {
 
     private func handleVisualHighlight(_ params: ControlRequest.VisualHighlightParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: nil, pageID: nil)
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
 
         guard let node = tree.findNode(byRef: params.ref) else {
             return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(params.ref)' not found"))
@@ -2242,10 +2192,7 @@ final class RefraxControlServer {
 
     private func handleVisualClick(_ params: ControlRequest.VisualClickParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: nil, pageID: nil)
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
 
         guard let node = tree.findNode(byRef: params.ref) else {
             return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(params.ref)' not found"))
@@ -2258,15 +2205,7 @@ final class RefraxControlServer {
         if let nativeID = node.nativeID {
             let interaction = _WKTextExtractionInteraction(action: .click)
             interaction.nodeIdentifier = nativeID
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                webView._performInteraction(interaction) { result in
-                    if let error = result.error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
-                    }
-                }
-            }
+            try await webPage.performInteraction(interaction)
         } else {
             let centerX = node.rect.midX
             let centerY = node.rect.midY
@@ -2280,10 +2219,7 @@ final class RefraxControlServer {
         let webPage = try resolveWebPage(tabID: nil, pageID: nil)
 
         if let ref = params.ref {
-            let webView = webPage.backingWebView
-            let url = webPage.url ?? .blank
-            let title = webPage.title
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
 
             guard let node = tree.findNode(byRef: ref) else {
                 return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(ref)' not found"))
@@ -2618,24 +2554,19 @@ final class RefraxControlServer {
 
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let tabPageID = webPage.tabPage.id
-        let webView = webPage.backingWebView
         let action = params.action?.lowercased() ?? "toggle"
 
         switch action {
         case "show", "open":
-            let attached = params.side != "detached"
-            webInspectorManager.showInspector(for: tabPageID, webView: webView, attached: attached)
+            webPage.showWebInspector(attached: params.side != "detached")
         case "close", "hide":
-            webInspectorManager.closeInspector(for: tabPageID, webView: webView)
+            webPage.closeWebInspector()
         case "attach":
-            let side: WebInspectorManager.AttachmentSide = params.side == "right" ? .right : .bottom
-            webInspectorManager.attachInspector(for: tabPageID, webView: webView, side: side)
+            webPage.attachWebInspector(side: params.side == "right" ? .right : .bottom)
         case "detach":
-            webInspectorManager.detachInspector(for: tabPageID, webView: webView)
+            webPage.detachWebInspector()
         default:
-            let attached = params.side != "detached"
-            webInspectorManager.toggleInspector(for: tabPageID, webView: webView, attached: attached)
+            webPage.toggleWebInspector(attached: params.side != "detached")
         }
 
         return .ok("Inspector \(action)")
@@ -2643,25 +2574,25 @@ final class RefraxControlServer {
 
     private func handleDevConsole(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        webInspectorManager.showJavaScriptConsole(for: webPage.tabPage.id, webView: webPage.backingWebView)
+        webPage.showJavaScriptConsole()
         return .ok("JavaScript console opened")
     }
 
     private func handleDevResources(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        webInspectorManager.showPageResources(for: webPage.tabPage.id, webView: webPage.backingWebView)
+        webPage.showInspectorResources()
         return .ok("Page resources opened")
     }
 
     private func handleDevProfiling(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        webInspectorManager.togglePageProfiling(for: webPage.tabPage.id, webView: webPage.backingWebView)
+        webPage.toggleTimelineRecording()
         return .ok("Page profiling toggled")
     }
 
     private func handleDevElementSelection(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        webInspectorManager.toggleElementSelection(for: webPage.tabPage.id, webView: webPage.backingWebView)
+        webPage.toggleElementSelection()
         return .ok("Element selection toggled")
     }
 
@@ -2768,10 +2699,7 @@ final class RefraxControlServer {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
 
         if let ref = params.ref {
-            let webView = webPage.backingWebView
-            let url = webPage.url ?? .blank
-            let title = webPage.title
-            let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+            let tree = try await webPage.perceive()
 
             guard let node = tree.findNode(byRef: ref) else {
                 return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(ref)' not found"))
@@ -2817,10 +2745,7 @@ final class RefraxControlServer {
         }
 
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
 
         guard let node = tree.findNode(byRef: params.ref) else {
             return .error(CTL.ErrorInfo(code: "not_found", message: "Element ref '\(params.ref)' not found"))
@@ -3297,16 +3222,12 @@ extension RefraxControlServer {
 
     private func handleClickAndRead(_ params: ControlRequest.ClickAndReadParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-
         // Resolve click target and perform click
         if let ref = params.ref {
-            try await performClick(ref: ref, webPage: webPage, webView: webView, url: url, title: title)
+            try await performClick(ref: ref, webPage: webPage)
         } else if let fuzzyText = params.fuzzyText {
-            let resolved = try await resolveFuzzyText(fuzzyText, webView: webView, url: url, title: title)
-            try await performClick(ref: resolved.ref, webPage: webPage, webView: webView, url: url, title: title)
+            let resolved = try await resolveFuzzyText(fuzzyText, webPage: webPage)
+            try await performClick(ref: resolved.ref, webPage: webPage)
         } else if let x = params.x, let y = params.y {
             try await webPage.callJavaScript("document.elementFromPoint(\(x), \(y))?.click()")
         } else {
@@ -3385,10 +3306,7 @@ extension RefraxControlServer {
 
     private func handleFindElements(_ params: ControlRequest.FindElementsParams) async throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
 
         let limit = params.limit ?? 10
         var results: [CTL.FoundElementInfo] = []
@@ -3540,10 +3458,7 @@ extension RefraxControlServer {
         webPage: WebPage,
         scope: ControlRequest.PageContentParams.Scope?,
     ) async throws -> ControlResponse {
-        let webView = webPage.backingWebView
-        let url = webPage.url ?? .blank
-        let title = webPage.title
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
         let formatterScope: PageContentFormatter.Scope = switch scope {
         case .full: .full
         case .mainContent: .mainContent
@@ -3554,8 +3469,8 @@ extension RefraxControlServer {
     }
 
     /// Performs a click on an element by ref, extracting content tree and using native interaction.
-    private func performClick(ref: String, webPage: WebPage, webView: WKWebView, url: URL, title: String) async throws {
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+    private func performClick(ref: String, webPage: WebPage) async throws {
+        let tree = try await webPage.perceive()
 
         guard let node = tree.findNode(byRef: ref) else {
             throw ControlError.elementNotFound(ref: ref, message: "Element ref '\(ref)' not found")
@@ -3565,15 +3480,7 @@ extension RefraxControlServer {
             let interaction = _WKTextExtractionInteraction(action: .click)
             interaction.nodeIdentifier = nativeID
             if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                webView._performInteraction(interaction) { result in
-                    if let error = result.error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
-                    }
-                }
-            }
+            try await webPage.performInteraction(interaction)
         } else {
             try await webPage.callJavaScript("document.elementFromPoint(\(node.rect.midX), \(node.rect.midY))?.click()")
         }
@@ -3582,11 +3489,9 @@ extension RefraxControlServer {
     /// Resolves fuzzy text to a single interactive element ref by matching visible text content.
     private func resolveFuzzyText(
         _ fuzzyText: String,
-        webView: WKWebView,
-        url: URL,
-        title: String,
+        webPage: WebPage,
     ) async throws -> (ref: String, nativeID: String?) {
-        let tree = try await PageContentExtractor.extract(from: webView, url: url, title: title)
+        let tree = try await webPage.perceive()
         let searchText = fuzzyText.lowercased()
         var matches: [(ref: String, nativeID: String?, text: String)] = []
 

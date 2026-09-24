@@ -193,7 +193,7 @@ final class TabHealthProvider {
 
         // Get memory info from process monitor
         let processSnapshot = memoryMonitor.processSnapshot(for: tabPage.id)
-        let processPID = webPage?.backingWebView._webProcessIdentifier ?? 0
+        let processPID = webPage?.contentProcessIdentifier ?? 0
         let processMemory = processSnapshot?.physicalFootprint ?? 0
         let estimatedTabMemory = processSnapshot?.estimatedPerTabMemory ?? 0
         let tabsInProcess = processSnapshot?.tabPageIDs.count ?? 0

@@ -113,7 +113,7 @@ final class ReflectedViewController: NSWindowController, NSWindowDelegate {
         webPage.claimOwnership(id: ownershipID)
 
         // Use the WebView's actual bounds for size
-        let webViewBounds = webPage.backingWebView.bounds
+        let webViewBounds = webPage.contentView.bounds
         var size = NSSize(width: webViewBounds.width, height: webViewBounds.height)
 
         // Fallback to default if bounds are invalid

@@ -377,7 +377,7 @@ private struct LinkPreviewPanelView: View {
     // MARK: - Web Content
 
     private var webContent: some View {
-        WebViewWrapper(webView: webPage.backingWebView)
+        WebViewWrapper(webView: webPage.webKitView)
             .clipShape(RoundedRectangle(cornerRadius: Layout.innerCornerRadius))
             .padding([.leading, .trailing, .bottom], Layout.contentInset)
     }

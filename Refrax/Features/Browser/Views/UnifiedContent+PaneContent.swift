@@ -149,7 +149,7 @@ struct PaneContentWrapper: View {
             // Notify page of visibility (creates history entry if missing)
             if let webPage, let tabPage {
                 webPage.onBecameVisible()
-                webPage.webInspectorManager?.tabDidBecomeVisible(tabPage.id, webView: webPage.backingWebView)
+                webPage.inspectorPageDidBecomeVisible()
 
                 // Record interaction for address bar focus tracking
                 windowState.recordInteraction(with: tabPage.id)
@@ -194,7 +194,7 @@ struct PaneContentWrapper: View {
 
                 // Notify page of visibility
                 webPage.onBecameVisible()
-                webPage.webInspectorManager?.tabDidBecomeVisible(tabPage.id, webView: webPage.backingWebView)
+                webPage.inspectorPageDidBecomeVisible()
 
                 // Record interaction for address bar focus tracking
                 windowState.recordInteraction(with: tabPage.id)
@@ -277,7 +277,7 @@ struct PaneContentWrapper: View {
     private func handleDisappear() {
         guard let webPage, let tabPage else { return }
 
-        webPage.webInspectorManager?.tabWillBecomeHidden(tabPage.id, webView: webPage.backingWebView)
+        webPage.inspectorPageWillBecomeHidden()
 
         // Unregister from activity manager
         historyActivityManager.unregisterPage(tabPage.id, windowID: windowID)

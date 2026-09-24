@@ -810,7 +810,7 @@ extension RefraxWindowController {
         // Wait for page to render before sampling
         Task { @MainActor [weak self] in
             // Wait for WebKit's next presentation update
-            await webPage.backingWebView.waitForPresentationUpdate()
+            await webPage.waitForPresentationUpdate()
             // Additional delay for page content to fully render (first paint may be blank)
             try? await Task.sleep(for: .milliseconds(100))
             guard let self else { return }

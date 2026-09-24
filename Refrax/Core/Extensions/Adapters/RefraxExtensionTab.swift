@@ -70,9 +70,11 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         return nil
     }
 
-    func mainWebView(for _: WKWebExtensionContext) -> WKWebView? {
-        guard let tabPage else { return nil }
-        return pagePool?.existingPage(for: tabPage.id)?.backingWebView
+    /// The tab's WebKit view. WebKit extensions run only while WebKit renders the page.
+    func webView(for _: WKWebExtensionContext) -> WKWebView? {
+        guard let tabPage, let page = pagePool?.existingPage(for: tabPage.id),
+              page.activeEngineID == .systemWebKit else { return nil }
+        return page.webKitView
     }
 
     func tabTitle(for _: WKWebExtensionContext) -> String? {
@@ -114,7 +116,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         guard let tabPage, let page = pagePool?.existingPage(for: tabPage.id) else {
             return .zero
         }
-        return page.backingWebView.frame.size
+        return page.contentView.frame.size
     }
 
     func isLoadingComplete(for _: WKWebExtensionContext) -> Bool {
@@ -128,7 +130,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         guard let tabPage, let page = pagePool?.existingPage(for: tabPage.id) else {
             return 1.0
         }
-        return Double(page.backingWebView.pageZoom)
+        return page.zoomFactor
     }
 
     // MARK: - Actions
@@ -239,7 +241,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         guard let page = pagePool?.existingPage(for: tabPage.id) else { return nil }
 
         // Use WebKit's language detection if available
-        if let languageCode = page.backingWebView._pageLanguage {
+        if let languageCode = page.pageLanguage {
             return Locale(identifier: languageCode)
         }
         return nil
@@ -248,7 +250,7 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     func setZoomFactor(_ zoomFactor: Double, for _: WKWebExtensionContext) async throws {
         guard let tabPage else { return }
         guard let page = pagePool?.existingPage(for: tabPage.id) else { return }
-        page.backingWebView.pageZoom = CGFloat(zoomFactor)
+        page.setZoom(Int((zoomFactor * 100).rounded()))
     }
 
     func setMuted(_ muted: Bool, for _: WKWebExtensionContext) async throws {
@@ -283,11 +285,3 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     }
 }
 
-// MARK: - Private WKWebView Extensions
-
-private extension WKWebView {
-    /// Private WebKit API for page language detection.
-    var _pageLanguage: String? {
-        value(forKey: "_pageLanguage") as? String
-    }
-}

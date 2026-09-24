@@ -515,7 +515,7 @@ struct TabStatusIndicators: View {
     private var crashedIndicator: some View {
         Button {
             for webPage in webPages {
-                webPage.backingWebView.reload()
+                _ = webPage.reload()
             }
         } label: {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -533,7 +533,7 @@ struct TabStatusIndicators: View {
     private var unresponsiveIndicator: some View {
         Button {
             for webPage in webPages {
-                webPage.backingWebView.reload()
+                _ = webPage.reload()
             }
         } label: {
             Image(systemName: "hourglass")
@@ -551,7 +551,7 @@ struct TabStatusIndicators: View {
     private var unloadedIndicator: some View {
         Button {
             for webPage in webPages where webPage.needsReload {
-                webPage.backingWebView.reload()
+                _ = webPage.reload()
             }
         } label: {
             Image(systemName: "moon.zzz.fill")

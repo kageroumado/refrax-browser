@@ -257,3 +257,69 @@ extension EngineProfileSpec {
         }
     }
 }
+
+// MARK: - Engine-Neutral Access
+
+extension WebPage {
+    /// The view showing this page's content, whichever engine renders it.
+    var contentView: NSView {
+        enginePage?.view ?? backingWebView
+    }
+
+    /// The built-in WebKit view, for WebKit-only features (link previews, thumbnails,
+    /// the extension host, agent perception). Callers check ``activeEngineID`` first:
+    /// while another engine renders the page this view is paused and shows stale content.
+    var webKitView: WebPageWebView {
+        backingWebView
+    }
+
+    /// Whether `webView` is this page's WebKit view.
+    func owns(_ webView: WKWebView) -> Bool {
+        backingWebView === webView
+    }
+
+    /// Renders the visible page into an image.
+    func snapshot(of rect: CGRect? = nil) async throws -> NSImage {
+        if let enginePage {
+            let image = try await enginePage.snapshot(of: rect)
+            return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        }
+        let configuration = WKSnapshotConfiguration()
+        if let rect {
+            configuration.rect = rect
+        }
+        return try await backingWebView.takeSnapshot(configuration: configuration)
+    }
+
+    /// Waits until the page's latest changes are on screen.
+    func waitForPresentationUpdate() async {
+        guard enginePage == nil else { return }
+        await backingWebView.waitForPresentationUpdate()
+    }
+
+    /// The process rendering the page's content, when the engine exposes it.
+    var contentProcessIdentifier: pid_t? {
+        guard enginePage == nil else { return nil }
+        let pid = backingWebView._webProcessIdentifier
+        return pid > 0 ? pid : nil
+    }
+
+    /// The GPU process compositing the page, when the engine exposes it.
+    var gpuProcessIdentifier: pid_t? {
+        guard enginePage == nil else { return nil }
+        let pid = backingWebView._gpuProcessIdentifier
+        return pid > 0 ? pid : nil
+    }
+
+    /// The page's detected language, when the engine reports one.
+    var pageLanguage: String? {
+        enginePage == nil ? backingWebView._pageLanguage : nil
+    }
+}
+
+private extension WKWebView {
+    /// WebKit's detected page language (private, read through KVC).
+    var _pageLanguage: String? {
+        value(forKey: "_pageLanguage") as? String
+    }
+}

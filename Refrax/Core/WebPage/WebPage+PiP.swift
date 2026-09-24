@@ -23,7 +23,7 @@ extension WebPage {
     /// `false` for many pages where PiP works (measured on YouTube). Use
     /// ``pipState()`` for an authoritative answer.
     var canTogglePiP: Bool {
-        backingWebView._canTogglePictureInPicture
+        enginePage == nil && backingWebView._canTogglePictureInPicture
     }
 
     /// Whether the playback-controls session reports PiP as active.

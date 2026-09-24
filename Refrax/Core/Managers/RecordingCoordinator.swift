@@ -134,7 +134,7 @@ final class RecordingCoordinator {
         recordingWebPage = webPage
 
         // Get the web view's frame in window coordinates
-        let webViewFrame = webPage.backingWebView.frame
+        let webViewFrame = webPage.contentView.frame
 
         // Cancel any previous startup task
         startupTask?.cancel()

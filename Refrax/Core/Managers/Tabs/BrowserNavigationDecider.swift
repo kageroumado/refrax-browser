@@ -797,7 +797,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
     private func showLinkPreview(for url: URL) async {
         await MainActor.run {
             guard let session = tabManager.state.webPage(for: tabPage.id),
-                  let linkPreviewManager = session.backingWebView.linkPreviewManager
+                  let linkPreviewManager = session.webKitView.linkPreviewManager
             else {
                 // Fallback: open in new tab if preview unavailable
                 Logger.warning("Link preview unavailable, opening in new tab", category: Logger.navigation)

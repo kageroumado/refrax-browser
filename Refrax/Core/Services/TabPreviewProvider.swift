@@ -321,7 +321,7 @@ final class TabPreviewProvider {
 
     /// Creates a configured `_WKThumbnailView` for a web page.
     private func makeThumbnailView(for webPage: WebPage) -> _WKThumbnailView {
-        let thumbnailView = _WKThumbnailView(frame: .zero, from: webPage.backingWebView)
+        let thumbnailView = _WKThumbnailView(frame: .zero, from: webPage.webKitView)
 
         thumbnailView.scale = Constants.thumbnailScale
         thumbnailView.maximumSnapshotSize = Constants.thumbnailSize

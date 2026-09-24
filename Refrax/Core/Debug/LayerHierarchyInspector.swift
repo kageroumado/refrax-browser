@@ -237,7 +237,7 @@ enum LayerHierarchyInspector {
             return
         }
 
-        let webView = webPage.backingWebView
+        let webView = webPage.webKitView
         print("\n🔍 Inspecting WKWebView layer hierarchy...")
         dumpLayerHierarchy(of: webView)
 

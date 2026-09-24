@@ -359,7 +359,7 @@ extension UnifiedContentView {
         // switching between tabs with different layout types.
         // IMPORTANT: Use existingPage to avoid creating pages during body evaluation.
         if let webPage = pagePool.existingPage(for: page) {
-            let webViewFrame = webPage.backingWebView.frame
+            let webViewFrame = webPage.contentView.frame
             // Only use if the frame has valid dimensions (webView was displayed before)
             if webViewFrame.width > 0, webViewFrame.height > 0 {
                 return webViewFrame

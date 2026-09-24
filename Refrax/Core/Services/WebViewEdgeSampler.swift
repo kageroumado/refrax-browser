@@ -205,7 +205,7 @@ final class WebViewEdgeSampler {
         isSampling = true
         defer { isSampling = false }
 
-        let wkWebView = webPage.backingWebView
+        let wkWebView = webPage.webKitView
 
         let viewportHeight = wkWebView.bounds.height
         guard viewportHeight > 0 else { return }

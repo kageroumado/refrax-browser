@@ -284,7 +284,7 @@ final class WidgetDataManager {
 
         var seenPIDs = Set<pid_t>()
         for page in pagePool.activePages.values {
-            let pid = page.backingWebView._webProcessIdentifier
+            let pid = page.contentProcessIdentifier ?? 0
             if pid > 0, !seenPIDs.contains(pid) {
                 seenPIDs.insert(pid)
                 webContentMemory += Double(memoryForProcess(pid)) / 1_024 / 1_024

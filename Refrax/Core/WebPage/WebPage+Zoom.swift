@@ -3,11 +3,21 @@ import Foundation
 // MARK: - Zoom Control
 
 extension WebPage {
-    /// Applies a zoom level to the page using WKWebView.pageZoom.
+    /// Applies a zoom level, in percent, through whichever engine renders the page.
     func setZoom(_ zoom: Int) {
         let clampedZoom = max(50, min(300, zoom))
         currentZoom = clampedZoom
-        backingWebView.pageZoom = Double(clampedZoom) / 100.0
+        let factor = Double(clampedZoom) / 100.0
+        if let enginePage {
+            enginePage.perform(.setZoom(factor: factor))
+        } else {
+            backingWebView.pageZoom = factor
+        }
+    }
+
+    /// The page zoom as a multiplier, 1.0 being 100%.
+    var zoomFactor: Double {
+        enginePage == nil ? backingWebView.pageZoom : state.zoom
     }
 
     /// Increases zoom level to the next standard value.

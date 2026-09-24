@@ -406,7 +406,7 @@ final class AgentChatManager {
             }
 
             let tree = try await PageContentExtractor.extract(
-                from: page.backingWebView,
+                from: page.webKitView,
                 url: url,
                 title: page.title,
             )
