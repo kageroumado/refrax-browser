@@ -29,7 +29,7 @@ struct TabHealthSnapshot: Identifiable {
     let processState: TabProcessState
 
     /// Reason for last termination, if any.
-    let lastTerminationReason: _WKProcessTerminationReason?
+    let lastTerminationReason: RendererTerminationReason?
 
     /// Whether the tab has crashed and not yet been reloaded.
     let hasCrashed: Bool

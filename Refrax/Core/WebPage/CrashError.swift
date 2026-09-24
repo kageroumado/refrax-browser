@@ -7,8 +7,8 @@ import Foundation
 /// when this is present, giving the user actionable information about what
 /// happened and the ability to retry.
 struct CrashError: Equatable {
-    /// The termination reason reported by WebKit.
-    let reason: _WKProcessTerminationReason
+    /// Why the engine's renderer ended.
+    let reason: RendererTerminationReason
 
     /// Number of crashes within the tracking window.
     let crashCount: Int

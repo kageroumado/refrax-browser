@@ -76,7 +76,7 @@ final class WebKitPageObserver {
 
 // MARK: - Navigation Lifecycle
 
-extension PageEvent {
+nonisolated extension PageEvent {
     /// The contract event for a WebKit main-frame navigation failure.
     static func webKitNavigationFailed(_ error: any Error, url: URL?, isProvisional: Bool) -> PageEvent {
         let nsError = error as NSError
@@ -107,14 +107,15 @@ extension PageEvent {
     }
 }
 
-extension RendererTerminationReason {
+nonisolated extension RendererTerminationReason {
     init(_ reason: _WKProcessTerminationReason) {
         self = switch reason {
         case .exceededMemoryLimit: .exceededMemoryLimit
         case .exceededCPULimit: .exceededCPULimit
         case .requestedByClient: .requestedByBrowser
         case .crash: .crashed
-        default: .unknown
+        case .exceededSharedProcessCrashLimit: .sharedProcessCrashed
+        @unknown default: .unknown
         }
     }
 }

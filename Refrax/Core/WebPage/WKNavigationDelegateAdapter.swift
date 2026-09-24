@@ -237,7 +237,7 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
         let terminationReason = _WKProcessTerminationReason(rawValue: reason) ?? .crash
 
         Logger.info(
-            "Process termination callback: \(terminationReason.logDescription)",
+            "Process termination callback: \(RendererTerminationReason(terminationReason).logDescription)",
             category: Logger.tabs,
         )
 
@@ -248,21 +248,15 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     /// Called when the web process becomes unresponsive.
     @objc(_webViewWebProcessDidBecomeUnresponsive:)
     func _webViewWebProcessDidBecomeUnresponsive(_: WKWebView) {
-        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .unresponsive(since: .now)))
-        guard let pageID = owner?.tabPage.id, let pagePool else { return }
-
         Logger.warning("Process became unresponsive", category: Logger.tabs)
-        pagePool.handleProcessUnresponsive(for: pageID)
+        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .unresponsive(since: .now)))
     }
 
     /// Called when an unresponsive web process becomes responsive again.
     @objc(_webViewWebProcessDidBecomeResponsive:)
     func _webViewWebProcessDidBecomeResponsive(_: WKWebView) {
-        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .running))
-        guard let pageID = owner?.tabPage.id, let pagePool else { return }
-
         Logger.info("Process became responsive", category: Logger.tabs)
-        pagePool.handleProcessResponsive(for: pageID)
+        owner?.receiveWebKitEvent(.rendererHealthChanged(health: .running))
     }
 
     /// Legacy crash callback (fallback when reason not available).
@@ -273,11 +267,9 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
         notifyProcessTermination(reason: .crash)
     }
 
-    /// Notifies the page pool of process termination.
+    /// Reports the web content process ending; the page routes it to the watchdog.
     private func notifyProcessTermination(reason: _WKProcessTerminationReason) {
         owner?.receiveWebKitEvent(.rendererHealthChanged(health: .terminated(reason: RendererTerminationReason(reason))))
-        guard let pageID = owner?.tabPage.id, let pagePool else { return }
-        pagePool.handleProcessTermination(for: pageID, reason: reason)
     }
 
     // MARK: - Same-Document Navigation (WKNavigationDelegatePrivate)

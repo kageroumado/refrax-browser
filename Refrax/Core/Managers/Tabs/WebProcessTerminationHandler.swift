@@ -27,12 +27,8 @@ import Observation
 ///     ToastManager.shared.show(message)
 /// }
 ///
-/// // In navigation delegate:
-/// func _webView(_ webView: WKWebView,
-///               webContentProcessDidTerminateWithReason reason: _WKProcessTerminationReason) {
-///     guard let page = pagePool.page(for: webView) else { return }
-///     handler.handleTermination(for: page, reason: reason)
-/// }
+/// // When a page's engine reports its renderer ended:
+/// handler.handleTermination(for: page, reason: .crashed)
 /// ```
 @Observable
 final class WebProcessTerminationHandler {
@@ -81,13 +77,13 @@ final class WebProcessTerminationHandler {
 
     /// Records a single termination event for analytics and throttling.
     struct TerminationEvent: Sendable {
-        let reason: _WKProcessTerminationReason
+        let reason: RendererTerminationReason
         let timestamp: Date
         let url: URL?
 
         /// Whether this event represents a true crash (not intentional termination).
         var isCrash: Bool {
-            reason == .crash || reason == .exceededSharedProcessCrashLimit
+            reason.isCrash
         }
     }
 
@@ -121,9 +117,10 @@ final class WebProcessTerminationHandler {
     ///   - reason: The reason for termination.
     func handleTermination(
         for page: WebPage,
-        reason: _WKProcessTerminationReason,
+        reason: RendererTerminationReason,
     ) {
         let pageID = page.tabPage.id
+        cancelUnresponsiveTermination(for: pageID)
         let event = TerminationEvent(
             reason: reason,
             timestamp: Date(),
@@ -183,6 +180,7 @@ final class WebProcessTerminationHandler {
             "Process unresponsive for '\(page.tabPage.title)'",
             category: Logger.tabs,
         )
+        scheduleUnresponsiveTermination(for: page)
     }
 
     /// Handles responsive process notification.
@@ -190,11 +188,47 @@ final class WebProcessTerminationHandler {
     /// - Parameter page: The page whose process became responsive.
     func handleResponsive(for page: WebPage) {
         page.processStateObserver?.markResponsive()
+        cancelUnresponsiveTermination(for: page.tabPage.id)
 
         Logger.info(
             "Process responsive for '\(page.tabPage.title)'",
             category: Logger.tabs,
         )
+    }
+
+    // MARK: - Hung Renderers
+
+    /// A renderer still unresponsive after this long is terminated and the page reloaded.
+    ///
+    /// Long on purpose: WebKit's process kill also takes down every page sharing
+    /// the process, so it is reserved for renderers that are truly stuck.
+    static let unresponsiveTerminationDelay: Duration = .seconds(45)
+
+    @ObservationIgnored
+    private var unresponsiveTerminations: [UUID: Task<Void, Never>] = [:]
+
+    private func scheduleUnresponsiveTermination(for page: WebPage) {
+        let pageID = page.tabPage.id
+        unresponsiveTerminations[pageID]?.cancel()
+        unresponsiveTerminations[pageID] = Task { [weak self, weak page] in
+            try? await Task.sleep(for: Self.unresponsiveTerminationDelay)
+            guard !Task.isCancelled, let page, case .unresponsive = page.state.rendererHealth else { return }
+            self?.unresponsiveTerminations[pageID] = nil
+            Logger.warning(
+                "Terminating renderer for '\(page.tabPage.title)': unresponsive for \(Self.unresponsiveTerminationDelay)",
+                category: Logger.tabs,
+            )
+            guard page.terminateRenderer() else { return }
+            // An intentional termination is not auto-recovered; this one reloads because
+            // the user never asked for the page to go away.
+            try? await Task.sleep(for: .milliseconds(500))
+            page.load(page.tabPage.url)
+            self?.toastPresenter?("\"\(page.tabPage.title.prefix(30))\" stopped responding and was reloaded")
+        }
+    }
+
+    private func cancelUnresponsiveTermination(for pageID: UUID) {
+        unresponsiveTerminations.removeValue(forKey: pageID)?.cancel()
     }
 
     // MARK: - Crash Tracking
@@ -238,7 +272,7 @@ final class WebProcessTerminationHandler {
     /// Schedules automatic recovery reload for a crashed tab.
     private func scheduleRecovery(
         for page: WebPage,
-        reason: _WKProcessTerminationReason,
+        reason: RendererTerminationReason,
         event _: TerminationEvent,
     ) {
         let pageID = page.tabPage.id
@@ -303,7 +337,7 @@ final class WebProcessTerminationHandler {
     }
 
     /// Shows a toast notification about crash recovery.
-    private func showRecoveryToast(for page: WebPage, reason: _WKProcessTerminationReason) {
+    private func showRecoveryToast(for page: WebPage, reason: RendererTerminationReason) {
         let title = page.tabPage.title.isEmpty
             ? "Page"
             : "\"\(page.tabPage.title.prefix(30))\""

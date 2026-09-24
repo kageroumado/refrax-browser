@@ -132,16 +132,13 @@ nonisolated enum RendererHealth: Codable, Hashable, Sendable {
 
 nonisolated enum RendererTerminationReason: String, Codable, Hashable, Sendable {
     case crashed
+    /// A process shared by several pages crashed too often and the engine stopped relaunching it.
+    case sharedProcessCrashed
     case exceededMemoryLimit
     case exceededCPULimit
     /// Refrax or the engine asked for it (watchdog kill, memory pressure eviction).
     case requestedByBrowser
     case unknown
-
-    /// Whether reloading is likely to help rather than crash again immediately.
-    var isRecoverable: Bool {
-        self != .exceededCPULimit
-    }
 }
 
 // MARK: - Page Commands

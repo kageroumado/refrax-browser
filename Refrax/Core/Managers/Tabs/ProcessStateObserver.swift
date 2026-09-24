@@ -80,7 +80,7 @@ final class ProcessStateObserver {
     /// The reason for the most recent process termination.
     ///
     /// `nil` if no termination has occurred during this observer's lifetime.
-    private(set) var lastTerminationReason: _WKProcessTerminationReason?
+    private(set) var lastTerminationReason: RendererTerminationReason?
 
     /// Timestamp of the most recent termination.
     private(set) var lastTerminationTime: Date?
@@ -220,7 +220,7 @@ final class ProcessStateObserver {
     /// Called from navigation delegate when process termination is detected.
     ///
     /// - Parameter reason: The reason for termination.
-    func recordTermination(reason: _WKProcessTerminationReason) {
+    func recordTermination(reason: RendererTerminationReason) {
         lastTerminationReason = reason
         lastTerminationTime = Date()
         isUnresponsive = false
@@ -270,103 +270,6 @@ private final class ObservationStorage {
             observation.invalidate()
         }
         contents.removeAll()
-    }
-}
-
-// MARK: - _WKProcessTerminationReason Extensions
-
-extension _WKProcessTerminationReason {
-    /// Whether the termination is recoverable via automatic reload.
-    var isRecoverable: Bool {
-        switch self {
-        case .exceededMemoryLimit, .crash, .exceededCPULimit, .exceededSharedProcessCrashLimit:
-            true
-        case .requestedByClient:
-            false
-        @unknown default:
-            false
-        }
-    }
-
-    /// Whether the user should be notified of this termination.
-    var shouldNotifyUser: Bool {
-        switch self {
-        case .crash, .exceededSharedProcessCrashLimit:
-            true
-        case .exceededMemoryLimit, .exceededCPULimit, .requestedByClient:
-            false
-        @unknown default:
-            false
-        }
-    }
-
-    /// Suggested delay before attempting recovery reload.
-    var recoveryDelay: Duration {
-        switch self {
-        case .exceededMemoryLimit:
-            .seconds(1)
-        case .exceededCPULimit:
-            .seconds(2)
-        case .crash, .exceededSharedProcessCrashLimit:
-            .milliseconds(500)
-        case .requestedByClient:
-            .zero
-        @unknown default:
-            .milliseconds(500)
-        }
-    }
-
-    /// Human-readable description for logging.
-    var logDescription: String {
-        switch self {
-        case .exceededMemoryLimit:
-            "exceeded memory limit (OOM)"
-        case .exceededCPULimit:
-            "exceeded CPU limit"
-        case .requestedByClient:
-            "requested by client"
-        case .crash:
-            "crashed"
-        case .exceededSharedProcessCrashLimit:
-            "exceeded shared process crash limit"
-        @unknown default:
-            "unknown reason (\(rawValue))"
-        }
-    }
-
-    /// Stable slug for the crash telemetry endpoint — the server aggregates
-    /// by exact string, so these must not change between releases.
-    var telemetryReason: String {
-        switch self {
-        case .exceededMemoryLimit:
-            "oom"
-        case .exceededCPULimit:
-            "cpu_limit"
-        case .requestedByClient:
-            "requested_by_client"
-        case .crash:
-            "crash"
-        case .exceededSharedProcessCrashLimit:
-            "shared_process_crash_limit"
-        @unknown default:
-            "unknown_\(rawValue)"
-        }
-    }
-
-    /// User-facing description for toast messages.
-    var userDescription: String {
-        switch self {
-        case .exceededMemoryLimit:
-            "ran out of memory"
-        case .exceededCPULimit:
-            "was using too much CPU"
-        case .crash, .exceededSharedProcessCrashLimit:
-            "crashed unexpectedly"
-        case .requestedByClient:
-            "was closed"
-        @unknown default:
-            "encountered an error"
-        }
     }
 }
 

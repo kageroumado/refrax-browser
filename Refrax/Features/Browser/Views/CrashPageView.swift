@@ -321,7 +321,7 @@ private struct CrashInfo {
                 ]
             )
 
-        case .crash, .exceededSharedProcessCrashLimit:
+        case .crashed, .sharedProcessCrashed:
             let crashCountText = error.crashCount > 1
                 ? "It crashed \(error.crashCount) times recently, so automatic recovery was stopped."
                 : "Automatic recovery was not attempted."
@@ -341,7 +341,7 @@ private struct CrashInfo {
                 ]
             )
 
-        case .requestedByClient:
+        case .requestedByBrowser:
             return CrashInfo(
                 title: "Page Was Stopped",
                 subtitle: "The web process was intentionally terminated",
@@ -354,7 +354,7 @@ private struct CrashInfo {
                 ]
             )
 
-        @unknown default:
+        case .unknown:
             return CrashInfo(
                 title: "Page Process Ended",
                 subtitle: "The web process terminated unexpectedly",

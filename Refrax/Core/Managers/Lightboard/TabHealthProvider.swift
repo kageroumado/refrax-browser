@@ -162,7 +162,7 @@ final class TabHealthProvider {
         // Determine process state
         let processState: TabProcessState
         let hasCrashed: Bool
-        let lastTerminationReason: _WKProcessTerminationReason?
+        let lastTerminationReason: RendererTerminationReason?
 
         if let observer = webPage?.processStateObserver {
             hasCrashed = observer.lastTerminationReason?.isRecoverable == true &&

@@ -492,45 +492,27 @@ final class WebPagePool {
 
     // MARK: - Process Termination Handling
 
-    /// Handles a web content process termination with reason.
+    /// Routes a change in a page's renderer health to the watchdog, whichever engine reported it.
     ///
-    /// Called from `WKNavigationDelegatePrivate` when a process terminates.
-    /// Coordinates crash detection, recovery, and user notification.
-    ///
-    /// - Parameters:
-    ///   - pageID: The tab page ID whose process terminated.
-    ///   - reason: The reason for termination.
-    func handleProcessTermination(for pageID: TabPage.ID, reason: _WKProcessTerminationReason) {
+    /// Coordinates crash recovery, hung-renderer termination, and user notification.
+    func handleRendererHealth(for pageID: TabPage.ID, health: RendererHealth) {
         guard let page = activePages[pageID] else {
-            Logger.warning(
-                "Process termination for unknown page: \(pageID)",
-                category: Logger.tabs,
-            )
+            Logger.warning("Renderer health change for unknown page: \(pageID)", category: Logger.tabs)
             return
         }
-
-        terminationHandler.handleTermination(for: page, reason: reason)
-
-        // If terminated due to memory pressure, record for monitoring
-        if reason == .exceededMemoryLimit {
-            MemoryPressureMonitor.shared.recordEviction()
+        switch health {
+        case let .terminated(reason):
+            terminationHandler.handleTermination(for: page, reason: reason)
+            if reason == .exceededMemoryLimit {
+                MemoryPressureMonitor.shared.recordEviction()
+            }
+        case .unresponsive:
+            terminationHandler.handleUnresponsive(for: page)
+        case .running:
+            terminationHandler.handleResponsive(for: page)
+        case .suspended:
+            break
         }
-    }
-
-    /// Handles web process becoming unresponsive.
-    ///
-    /// - Parameter pageID: The tab page ID whose process became unresponsive.
-    func handleProcessUnresponsive(for pageID: TabPage.ID) {
-        guard let page = activePages[pageID] else { return }
-        terminationHandler.handleUnresponsive(for: page)
-    }
-
-    /// Handles web process becoming responsive again.
-    ///
-    /// - Parameter pageID: The tab page ID whose process became responsive.
-    func handleProcessResponsive(for pageID: TabPage.ID) {
-        guard let page = activePages[pageID] else { return }
-        terminationHandler.handleResponsive(for: page)
     }
 
     /// Handles WebKit closing a web view (e.g., tryClose timeout or window.close()).

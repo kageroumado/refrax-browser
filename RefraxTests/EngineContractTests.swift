@@ -253,3 +253,59 @@ struct EngineBundleTests {
         #expect(EngineBundle(url: bundle) == nil)
     }
 }
+
+// MARK: - Renderer termination policy
+
+@Suite("Renderer termination policy", .tags(.engines))
+struct RendererTerminationPolicyTests {
+    @Test("Telemetry slugs never change")
+    func telemetrySlugs() {
+        let slugs = Dictionary(uniqueKeysWithValues: [
+            RendererTerminationReason.exceededMemoryLimit, .exceededCPULimit, .requestedByBrowser, .crashed,
+            .sharedProcessCrashed, .unknown,
+        ].map { ($0, $0.telemetryReason) })
+        #expect(slugs == [
+            .exceededMemoryLimit: "oom", .exceededCPULimit: "cpu_limit", .requestedByBrowser: "requested_by_client",
+            .crashed: "crash", .sharedProcessCrashed: "shared_process_crash_limit", .unknown: "unknown",
+        ])
+    }
+
+    @Test("Intentional terminations stay unloaded; crashes recover and count")
+    func recoverability() {
+        #expect(!RendererTerminationReason.requestedByBrowser.isRecoverable)
+        #expect(RendererTerminationReason.exceededMemoryLimit.isRecoverable)
+        #expect(!RendererTerminationReason.exceededMemoryLimit.isCrash)
+        #expect(RendererTerminationReason.crashed.isCrash)
+        #expect(RendererTerminationReason.sharedProcessCrashed.isCrash)
+    }
+
+    @Test("WebKit termination reasons map to contract reasons")
+    func webKitReasons() {
+        #expect(RendererTerminationReason(_WKProcessTerminationReason.crash) == .crashed)
+        #expect(RendererTerminationReason(_WKProcessTerminationReason.exceededMemoryLimit) == .exceededMemoryLimit)
+        #expect(RendererTerminationReason(_WKProcessTerminationReason.requestedByClient) == .requestedByBrowser)
+        #expect(RendererTerminationReason(_WKProcessTerminationReason.exceededSharedProcessCrashLimit) == .sharedProcessCrashed)
+    }
+
+    @Test("WebKit navigation errors map to failure kinds")
+    func webKitFailures() {
+        let url = URL(string: "https://nope.test/")!
+        func kind(_ domain: String, _ code: Int) -> NavigationFailure.Kind? {
+            guard case let .navigationFailed(failure) = PageEvent.webKitNavigationFailed(
+                NSError(domain: domain, code: code), url: url, isProvisional: true,
+            ) else { return nil }
+            return failure.kind
+        }
+        #expect(kind(NSURLErrorDomain, NSURLErrorCannotFindHost) == .cannotFindHost)
+        #expect(kind(NSURLErrorDomain, NSURLErrorCancelled) == .cancelled)
+        #expect(kind(NSURLErrorDomain, NSURLErrorServerCertificateUntrusted) == .certificateInvalid)
+        #expect(kind("WebKitErrorDomain", 102) == .cancelled)
+    }
+
+    @Test("A commit revives a terminated renderer")
+    func commitRevives() {
+        var state = PageSnapshot(rendererHealth: .terminated(reason: .crashed))
+        PageReducer.reduce(&state, .navigationCommitted(url: URL(string: "https://a.test/")!, isBackForward: false))
+        #expect(state.rendererHealth == .running)
+    }
+}

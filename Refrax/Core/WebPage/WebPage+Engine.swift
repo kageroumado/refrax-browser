@@ -61,6 +61,28 @@ extension WebPage {
     func receiveWebKitEvent(_ event: PageEvent) {
         guard enginePage == nil else { return }
         state.apply(event)
+        routeToWatchdog(event)
+    }
+
+    /// Renderer health, from any engine, goes to the pool's watchdog.
+    private func routeToWatchdog(_ event: PageEvent) {
+        if case let .rendererHealthChanged(health) = event {
+            backingNavigationDelegate.pagePool?.handleRendererHealth(for: tabPage.id, health: health)
+        }
+    }
+
+    /// Terminates the process rendering this page (watchdog action for a hung renderer).
+    ///
+    /// Returns false when the engine can't terminate its renderer on request.
+    @discardableResult
+    func terminateRenderer() -> Bool {
+        guard let enginePage else {
+            backingWebView._killWebContentProcess()
+            return true
+        }
+        guard enginePage.engine.capabilities.contains(.rendererControl) else { return false }
+        enginePage.perform(.terminateRenderer)
+        return true
     }
 
     /// Consumes a page's event and request streams for as long as it lives.
@@ -69,6 +91,7 @@ extension WebPage {
             for await event in page.events {
                 guard let self, !Task.isCancelled else { return }
                 state.apply(event)
+                routeToWatchdog(event)
                 handleEngineEvent(event)
             }
         }
@@ -121,11 +144,6 @@ extension WebPage {
 
         case let .fullscreenChanged(state):
             followEngineFullscreen(state)
-
-        case let .rendererHealthChanged(.terminated(reason)):
-            Logger.warning("\(activeEngineID) renderer terminated (\(reason.rawValue)) for page \(tabPage.id)", category: Logger.engines)
-            httpErrorCode = NSURLErrorNetworkConnectionLost
-            httpErrorURL = state.url ?? tabPage.url
 
         default:
             break
