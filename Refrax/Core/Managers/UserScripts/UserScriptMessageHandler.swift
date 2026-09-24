@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import WebKit
 
 /// Errors that can occur when handling user script messages.
 enum UserScriptError: LocalizedError {
@@ -31,8 +30,8 @@ enum UserScriptError: LocalizedError {
 
 /// Handles messages from user scripts for GM_* API implementation.
 ///
-/// This handler receives messages posted via `webkit.messageHandlers.userscript.postMessage()`
-/// from the injected GM_* API shim and executes the corresponding native operations.
+/// Answers the `userscript` channel, which the injected GM_* API shim posts to
+/// (`webkit.messageHandlers.userscript.postMessage()`), with the result of the native operation.
 ///
 /// ## Supported Actions
 ///
@@ -45,10 +44,11 @@ enum UserScriptError: LocalizedError {
 ///
 /// ## Security
 ///
-/// - Storage is isolated by script namespace
+/// - Storage is isolated by script namespace. The namespace is the one whose world the
+///   message came from; the message body can't name another script's namespace.
 /// - Cross-origin requests require @connect whitelist
 /// - Internal/local network requests are blocked even with wildcard @connect
-final class UserScriptMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
+final class UserScriptMessageHandler {
     private weak var scriptManager: UserScriptManager?
     private let storageManager: UserScriptStorageManager
 
@@ -57,29 +57,20 @@ final class UserScriptMessageHandler: NSObject, WKScriptMessageHandlerWithReply 
     init(scriptManager: UserScriptManager, storageManager: UserScriptStorageManager) {
         self.scriptManager = scriptManager
         self.storageManager = storageManager
-        super.init()
-    }
-
-    // MARK: - WKScriptMessageHandlerWithReply
-
-    func userContentController(
-        _: WKUserContentController,
-        didReceive message: WKScriptMessage,
-    ) async -> (Any?, String?) {
-        do {
-            let result = try await handleMessage(message)
-            return (result, nil)
-        } catch {
-            return (nil, error.localizedDescription)
-        }
     }
 
     // MARK: - Message Handling
 
-    private func handleMessage(_ message: WKScriptMessage) async throws -> Any? {
-        guard let body = message.body as? [String: Any],
-              let action = body["action"] as? String,
-              let namespace = body["namespace"] as? String else {
+    /// Performs the GM_* call in `message` for the scripts of `namespace`.
+    func handle(_ message: ScriptMessage, namespace: String) async throws -> ScriptValue {
+        guard let body = message.body.foundationValue as? [String: Any] else {
+            throw UserScriptError.invalidMessage
+        }
+        return try await ScriptValue(foundation: perform(body, namespace: namespace))
+    }
+
+    private func perform(_ body: [String: Any], namespace: String) async throws -> Any? {
+        guard let action = body["action"] as? String else {
             throw UserScriptError.invalidMessage
         }
 

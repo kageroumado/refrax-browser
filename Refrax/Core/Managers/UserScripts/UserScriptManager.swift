@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 import SwiftData
@@ -54,8 +55,14 @@ final class UserScriptManager {
     /// Reference to user content controller for script application.
     private weak var userContentController: WKUserContentController?
 
-    /// Message handler for GM_* API calls.
+    /// Router the per-namespace `userscript` channels are opened on.
+    private weak var scriptChannels: ScriptChannelRouter?
+
+    /// Performs GM_* API calls.
     private var messageHandler: UserScriptMessageHandler?
+
+    /// Worlds with an open `userscript` channel.
+    private var channelWorlds: [ScriptRequest.World] = []
 
     // MARK: - Initialization
 
@@ -71,14 +78,17 @@ final class UserScriptManager {
     /// - Parameters:
     ///   - scriptRegistry: Registry for managing user scripts.
     ///   - userContentController: Controller to apply scripts to.
+    ///   - scriptChannels: Router for the GM_* API channels.
     ///   - storageManager: Storage manager for GM_* value storage.
     func configure(
         scriptRegistry: ScriptRegistry,
         userContentController: WKUserContentController,
+        scriptChannels: ScriptChannelRouter,
         storageManager: UserScriptStorageManager,
     ) {
         self.scriptRegistry = scriptRegistry
         self.userContentController = userContentController
+        self.scriptChannels = scriptChannels
         messageHandler = UserScriptMessageHandler(
             scriptManager: self,
             storageManager: storageManager,
@@ -207,6 +217,10 @@ final class UserScriptManager {
             scriptRegistry.unregister(id: id)
         }
         registeredScriptIDs.removeAll()
+        for world in channelWorlds {
+            scriptChannels?.unregister(Self.channelName, world: world)
+        }
+        channelWorlds.removeAll()
 
         let enabledScripts = scripts.filter(\.isEnabled)
         guard !enabledScripts.isEmpty else {
@@ -218,11 +232,8 @@ final class UserScriptManager {
         let byNamespace = Dictionary(grouping: enabledScripts, by: \.namespace)
 
         for (namespace, namespaceScripts) in byNamespace {
-            let worldName = sanitizeWorldName(namespace)
-            let world = WKContentWorld.world(name: "userscript.\(worldName)")
-
-            // Register message handler for this world
-            registerMessageHandler(for: world, userContentController: userContentController)
+            let world = WKContentWorld.world(name: worldName(for: namespace))
+            openChannel(in: world, namespace: namespace)
 
             // Inject GM API shim for this namespace
             injectGMAPIShim(for: namespaceScripts, in: world, registry: scriptRegistry)
@@ -237,26 +248,25 @@ final class UserScriptManager {
         Logger.info("Rebuilt user script injection with \(enabledScripts.count) scripts", category: Logger.tabs)
     }
 
-    private func sanitizeWorldName(_ namespace: String) -> String {
-        // Remove characters that might cause issues in world names
+    private static let channelName = "userscript"
+
+    /// A world name unique to `namespace`: readable, plus a digest so namespaces that
+    /// sanitize to the same characters ("a b", "ab") never share a world or storage.
+    private func worldName(for namespace: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_"))
-        return namespace.unicodeScalars
-            .filter { allowed.contains($0) }
-            .map { String($0) }
-            .joined()
+        let readable = String(String.UnicodeScalarView(namespace.unicodeScalars.filter { allowed.contains($0) }))
+        let digest = SHA256.hash(data: Data(namespace.utf8)).prefix(4).map { String(format: "%02x", $0) }.joined()
+        return "userscript.\(readable).\(digest)"
     }
 
-    private func registerMessageHandler(for world: WKContentWorld, userContentController: WKUserContentController) {
-        guard let messageHandler else { return }
-
-        // Remove existing handler if present (safe to call even if not registered)
-        userContentController.removeScriptMessageHandler(forName: "userscript", contentWorld: world)
-
-        userContentController.addScriptMessageHandler(
-            messageHandler,
-            contentWorld: world,
-            name: "userscript",
-        )
+    /// Opens the GM_* API channel for scripts in `world`, answering as `namespace`.
+    private func openChannel(in world: WKContentWorld, namespace: String) {
+        guard let scriptChannels, let messageHandler else { return }
+        let channelWorld = ScriptRequest.World(world)
+        scriptChannels.register(Self.channelName, world: channelWorld, replyingWith: { message, _ in
+            try await messageHandler.handle(message, namespace: namespace)
+        })
+        channelWorlds.append(channelWorld)
     }
 
     private func injectGMAPIShim(

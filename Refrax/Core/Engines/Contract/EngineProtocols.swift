@@ -100,6 +100,8 @@ nonisolated struct SiteSettingsRule: Codable, Hashable, Sendable {
 /// other external input.
 nonisolated struct ScriptMessage: Codable, Hashable, Sendable {
     let channel: String
+    /// The world of the script that posted. Engines report it; the page can't choose it.
+    let world: ScriptRequest.World
     let body: ScriptValue
     let frameURL: URL?
     let isMainFrame: Bool

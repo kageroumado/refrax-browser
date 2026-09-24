@@ -126,9 +126,9 @@ final class AutoConsentManager {
     private func registerScripts() {
         guard scriptID == nil else { return }
 
-        state.scriptChannels.register(Self.messageHandlerName, world: .isolated(name: Self.scriptWorldName)) { [weak self] message, _ in
+        state.scriptChannels.register(Self.messageHandlerName, world: .isolated(name: Self.scriptWorldName), replyingWith: { [weak self] message, _ in
             self?.handleMessage(message) ?? .null
-        }
+        })
 
         // Create and register the user script
         let scriptSource = generateInjectionScript()
@@ -155,7 +155,7 @@ final class AutoConsentManager {
             scriptID = nil
         }
 
-        state.scriptChannels.unregister(Self.messageHandlerName)
+        state.scriptChannels.unregister(Self.messageHandlerName, world: .isolated(name: Self.scriptWorldName))
 
         rebuildUserScripts()
     }

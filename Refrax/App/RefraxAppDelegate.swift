@@ -532,6 +532,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         userScriptManager.configure(
             scriptRegistry: browserState.scriptRegistry,
             userContentController: browserState.webPageConfiguration.userContentController,
+            scriptChannels: browserState.scriptChannels,
             storageManager: userScriptStorageManager,
         )
 

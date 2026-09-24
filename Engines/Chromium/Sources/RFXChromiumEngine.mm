@@ -608,6 +608,8 @@ class App : public CefApp, public CefBrowserProcessHandler {
   NSMutableDictionary<NSString*, NSSet<NSString*>*>* _channelsByBinding;
   /// Binding name → the global that settles that world's pending calls; fixed for the page's life.
   NSMutableDictionary<NSString*, NSString*>* _resolversByBinding;
+  /// Binding name → the contract world its scripts run in.
+  NSMutableDictionary<NSString*, NSDictionary*>* _worldsByBinding;
 }
 
 @synthesize delegate = _delegate;
@@ -625,6 +627,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
     _installedScriptIdentifiers = [NSMutableArray array];
     _channelsByBinding = [NSMutableDictionary dictionary];
     _resolversByBinding = [NSMutableDictionary dictionary];
+    _worldsByBinding = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -876,6 +879,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
   }
   NSData* delivered = [NSJSONSerialization dataWithJSONObject:@{
     @"channel" : channel,
+    @"world" : _worldsByBinding[params[@"name"]] ?: @{@"page" : @{}},
     @"body" : message[@"body"] ?: NSNull.null,
     @"frameURL" : _lastCommittedURL ?: NSNull.null,
     @"isMainFrame" : @YES,
@@ -936,6 +940,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
     NSString* resolver = _resolversByBinding[binding] ?: [NSString stringWithFormat:@"__refraxSettle%@",
         [NSUUID.UUID.UUIDString stringByReplacingOccurrencesOfString:@"-" withString:@""]];
     _resolversByBinding[binding] = resolver;
+    _worldsByBinding[binding] = world.length ? @{@"isolated" : @{@"name" : world}} : @{@"page" : @{}};
     NSMutableDictionary* bindingParams = [@{@"name" : binding} mutableCopy];
     if (world.length) {
       bindingParams[@"executionContextName"] = world;

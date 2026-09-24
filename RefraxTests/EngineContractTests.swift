@@ -400,11 +400,31 @@ struct EngineScriptTests {
         #expect(router.channelNames(in: .page) == ["pageChannel"])
         #expect(router.channelNames(in: .isolated(name: "RefraxScripts")) == ["isolatedChannel"])
 
-        router.dispatch(ScriptMessage(channel: "pageChannel", body: .object(["n": .string("1")]), frameURL: nil, isMainFrame: true), from: nil)
-        router.dispatch(ScriptMessage(channel: "unknown", body: .null, frameURL: nil, isMainFrame: true), from: nil)
-        router.unregister("isolatedChannel")
-        router.dispatch(ScriptMessage(channel: "isolatedChannel", body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.dispatch(ScriptMessage(channel: "pageChannel", world: .page, body: .object(["n": .string("1")]), frameURL: nil, isMainFrame: true), from: nil)
+        router.dispatch(ScriptMessage(channel: "unknown", world: .page, body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.unregister("isolatedChannel", world: .isolated(name: "RefraxScripts"))
+        router.dispatch(ScriptMessage(channel: "isolatedChannel", world: .isolated(name: "RefraxScripts"), body: .null, frameURL: nil, isMainFrame: true), from: nil)
         #expect(received == ["page:1"])
+    }
+
+    @Test("A channel name opened in two worlds reaches the handler of the posting world")
+    func routesByWorld() {
+        let router = ScriptChannelRouter(userContentController: WKUserContentController())
+        let worldA = ScriptRequest.World.isolated(name: "userscript.a")
+        let worldB = ScriptRequest.World.isolated(name: "userscript.b")
+        var received: [String] = []
+        router.register("userscript", world: worldA) { _, _ in received.append("a") }
+        router.register("userscript", world: worldB) { _, _ in received.append("b") }
+
+        router.dispatch(ScriptMessage(channel: "userscript", world: worldB, body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.dispatch(ScriptMessage(channel: "userscript", world: .page, body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.unregister("userscript", world: worldB)
+        router.dispatch(ScriptMessage(channel: "userscript", world: worldB, body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.dispatch(ScriptMessage(channel: "userscript", world: worldA, body: .null, frameURL: nil, isMainFrame: true), from: nil)
+
+        #expect(received == ["b", "a"])
+        #expect(router.channelNames(in: worldA) == ["userscript"])
+        #expect(router.channelNames(in: worldB).isEmpty)
     }
 
     @Test("Every dispatch settles the script's promise exactly once")
@@ -419,7 +439,7 @@ struct EngineScriptTests {
 
         let replies = Mutex<[String: [ScriptReply]]>([:])
         func send(_ channel: String, _ body: ScriptValue = .null) {
-            router.dispatch(ScriptMessage(channel: channel, body: body, frameURL: nil, isMainFrame: true), from: nil) { reply in
+            router.dispatch(ScriptMessage(channel: channel, world: .page, body: body, frameURL: nil, isMainFrame: true), from: nil) { reply in
                 replies.withLock { $0[channel, default: []].append(reply) }
             }
         }
