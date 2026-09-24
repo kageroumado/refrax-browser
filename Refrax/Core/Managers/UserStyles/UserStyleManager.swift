@@ -243,6 +243,7 @@ final class UserStyleManager {
                 userScript,
                 source: .extension(id: "userStyles"),
                 priority: ScriptRegistry.Priority.extension,
+                world: WKContentWorld.world(name: "RefraxScripts"),
             )
 
             Logger.info("Rebuilt user style injection with \(enabledStyles.count) styles", category: Logger.tabs)

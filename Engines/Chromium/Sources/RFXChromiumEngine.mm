@@ -20,6 +20,7 @@
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_devtools_message_observer.h"
+#include "include/cef_parser.h"
 #include "include/cef_request_context.h"
 #include "include/cef_ssl_status.h"
 #include "include/cef_version.h"
@@ -200,6 +201,8 @@ NSString* DispositionName(cef_window_open_disposition_t disposition) {
 - (void)emit:(NSString*)name fields:(nullable NSDictionary*)fields;
 - (void)request:(NSString*)name fields:(NSDictionary*)fields reply:(void (^)(NSString* name, NSDictionary* fields))reply;
 - (void)handleDevToolsResult:(int)messageID success:(BOOL)success data:(NSData*)data;
+- (void)handleDevToolsEvent:(NSString*)method params:(NSData*)params;
+- (void)installScripts:(NSArray<NSDictionary*>*)scripts;
 - (void)handleBeforeClose;
 - (void)handleCommitWithURL:(NSString*)url isBackForward:(BOOL)isBackForward;
 - (void)handleFinishWithURL:(NSString*)url statusCode:(int)statusCode;
@@ -211,6 +214,8 @@ NSString* DispositionName(cef_window_open_disposition_t disposition) {
 - (void)contextDidInitialize;
 - (void)scheduleWorkAfter:(int64_t)delayMs;
 - (void)pageDidClose:(RFXChromiumPage*)page;
+/// The scripts from the latest `scripts` policy (Engines/CONTRACT.md §4.5).
+@property (nonatomic, readonly, copy) NSArray<NSDictionary*>* scripts;
 @end
 
 // MARK: - CEF client
@@ -371,6 +376,10 @@ class Client : public CefClient,
     [owner_ handleDevToolsResult:message_id success:success data:[NSData dataWithBytes:result length:result_size]];
   }
 
+  void OnDevToolsEvent(CefRefPtr<CefBrowser>, const CefString& method, const void* params, size_t params_size) override {
+    [owner_ handleDevToolsEvent:ToNS(method) params:[NSData dataWithBytes:params length:params_size]];
+  }
+
   void Detach() { owner_ = nil; }
 
  private:
@@ -477,7 +486,10 @@ class App : public CefApp, public CefBrowserProcessHandler {
   BOOL _closed;
   double _zoomFactor;
   int _nextMessageID;
-  NSMutableDictionary<NSNumber*, void (^)(NSData*, NSError*)>* _pendingEvaluations;
+  NSMutableDictionary<NSNumber*, void (^)(NSDictionary*, NSError*)>* _pendingDevToolsCalls;
+  NSMutableArray<NSString*>* _installedScriptIdentifiers;
+  /// Binding name → channels that world's scripts may post to.
+  NSMutableDictionary<NSString*, NSSet<NSString*>*>* _channelsByBinding;
 }
 
 @synthesize delegate = _delegate;
@@ -491,7 +503,9 @@ class App : public CefApp, public CefBrowserProcessHandler {
     _pendingURL = url;
     _zoomFactor = 1.0;
     _nextMessageID = 1;
-    _pendingEvaluations = [NSMutableDictionary dictionary];
+    _pendingDevToolsCalls = [NSMutableDictionary dictionary];
+    _installedScriptIdentifiers = [NSMutableArray array];
+    _channelsByBinding = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -571,6 +585,11 @@ class App : public CefApp, public CefBrowserProcessHandler {
     return;
   }
   _devToolsRegistration = _browser->GetHost()->AddDevToolsMessageObserver(_client);
+  // Blink's page agent injects new-document scripts only while the Page domain is
+  // enabled, and Runtime.bindingCalled is delivered only while Runtime is.
+  [self callDevTools:@"Page.enable" params:@{} completion:nil];
+  [self callDevTools:@"Runtime.enable" params:@{} completion:nil];
+  [self installScripts:[RFXChromiumEngineHost current].scripts];
   [self applyZoom];
   [self containerDidLayout];
 }
@@ -593,10 +612,10 @@ class App : public CefApp, public CefBrowserProcessHandler {
   } else {
     [self handleBeforeClose];
   }
-  for (void (^completion)(NSData*, NSError*) in _pendingEvaluations.allValues) {
-    completion(nil, MakeError(3, @"The page closed before the script finished."));
+  for (void (^completion)(NSDictionary*, NSError*) in _pendingDevToolsCalls.allValues) {
+    completion(nil, MakeError(3, @"The page closed before the DevTools call finished."));
   }
-  [_pendingEvaluations removeAllObjects];
+  [_pendingDevToolsCalls removeAllObjects];
 }
 
 - (void)handleBeforeClose {
@@ -679,6 +698,167 @@ class App : public CefApp, public CefBrowserProcessHandler {
   }
 }
 
+// MARK: DevTools protocol
+
+/// Calls a DevTools protocol method on this page's browser.
+- (void)callDevTools:(NSString*)method
+              params:(NSDictionary*)params
+          completion:(nullable void (^)(NSDictionary* _Nullable result, NSError* _Nullable error))completion {
+  if (!_browser) {
+    if (completion) completion(nil, MakeError(1, @"The page has not been created yet."));
+    return;
+  }
+  NSData* json = [NSJSONSerialization dataWithJSONObject:params ?: @{} options:0 error:nil];
+  CefRefPtr<CefValue> value =
+      CefParseJSON(ToStd([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]), JSON_PARSER_RFC);
+  CefRefPtr<CefDictionaryValue> dictionary = value ? value->GetDictionary() : nullptr;
+  int messageID = _nextMessageID++;
+  if (completion) {
+    _pendingDevToolsCalls[@(messageID)] = [completion copy];
+  }
+  if (_browser->GetHost()->ExecuteDevToolsMethod(messageID, ToStd(method), dictionary) == 0) {
+    [_pendingDevToolsCalls removeObjectForKey:@(messageID)];
+    if (completion) completion(nil, MakeError(2, [NSString stringWithFormat:@"%@ could not be sent.", method]));
+  }
+}
+
+- (void)handleDevToolsResult:(int)messageID success:(BOOL)success data:(NSData*)data {
+  void (^completion)(NSDictionary*, NSError*) = _pendingDevToolsCalls[@(messageID)];
+  if (!completion) {
+    return;
+  }
+  [_pendingDevToolsCalls removeObjectForKey:@(messageID)];
+  NSDictionary* json = ParseObject(data);
+  if (!success || !json) {
+    completion(nil, MakeError(4, [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"DevTools error"));
+  } else {
+    completion(json, nil);
+  }
+}
+
+- (void)handleDevToolsEvent:(NSString*)method params:(NSData*)paramsData {
+  if (![method isEqualToString:@"Runtime.bindingCalled"]) {
+    return;
+  }
+  NSDictionary* params = ParseObject(paramsData);
+  NSSet<NSString*>* allowed = _channelsByBinding[params[@"name"]];
+  NSString* payload = params[@"payload"];
+  if (!allowed || ![payload isKindOfClass:NSString.class]) {
+    return;
+  }
+  NSDictionary* message = ParseObject([payload dataUsingEncoding:NSUTF8StringEncoding]);
+  NSString* channel = message[@"channel"];
+  // A script may only post on channels granted to its world.
+  if (![channel isKindOfClass:NSString.class] || ![allowed containsObject:channel]) {
+    return;
+  }
+  NSData* delivered = [NSJSONSerialization dataWithJSONObject:@{
+    @"channel" : channel,
+    @"body" : message[@"body"] ?: NSNull.null,
+    @"frameURL" : _lastCommittedURL ?: NSNull.null,
+    @"isMainFrame" : @YES,
+  } options:0 error:nil];
+  [_delegate enginePage:self didReceiveScriptMessage:delivered];
+}
+
+// MARK: Injected scripts
+
+/// Installs Refrax's scripts in this page, replacing the previous set.
+///
+/// Each world gets a binding scoped to it and a prelude giving its scripts the
+/// same `window.webkit.messageHandlers.<channel>.postMessage(body)` call they
+/// use in WebKit, limited to the channels granted to that world.
+- (void)installScripts:(NSArray<NSDictionary*>*)scripts {
+  if (!_browser) {
+    return;
+  }
+  for (NSString* identifier in _installedScriptIdentifiers) {
+    [self callDevTools:@"Page.removeScriptToEvaluateOnNewDocument" params:@{@"identifier" : identifier} completion:nil];
+  }
+  [_installedScriptIdentifiers removeAllObjects];
+
+  NSMutableDictionary<NSString*, NSMutableSet<NSString*>*>* channelsByWorld = [NSMutableDictionary dictionary];
+  for (NSDictionary* script in scripts) {
+    NSString* world = [self worldNameOf:script] ?: @"";
+    NSMutableSet* channels = channelsByWorld[world] ?: [NSMutableSet set];
+    [channels addObjectsFromArray:script[@"channels"] ?: @[]];
+    channelsByWorld[world] = channels;
+  }
+
+  for (NSString* world in channelsByWorld) {
+    NSSet<NSString*>* channels = channelsByWorld[world];
+    if (channels.count == 0) {
+      continue;
+    }
+    NSString* binding = [NSString stringWithFormat:@"__refraxChannel%lu", (unsigned long)world.hash];
+    _channelsByBinding[binding] = channels;
+    NSMutableDictionary* bindingParams = [@{@"name" : binding} mutableCopy];
+    if (world.length) {
+      bindingParams[@"executionContextName"] = world;
+    }
+    [self callDevTools:@"Runtime.addBinding" params:bindingParams completion:nil];
+    [self addScript:[self preludeForBinding:binding channels:channels] world:world];
+  }
+
+  for (NSDictionary* script in scripts) {
+    NSString* source = script[@"source"];
+    if (![source isKindOfClass:NSString.class]) {
+      continue;
+    }
+    if ([script[@"mainFrameOnly"] boolValue]) {
+      source = [NSString stringWithFormat:@"if (window.top === window) {\n%@\n}", source];
+    }
+    if ([script[@"injectionTime"] isEqual:@"documentEnd"]) {
+      source = [NSString stringWithFormat:
+          @"(function(run){ document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', run, {once: true}) : run(); })(function() {\n%@\n});",
+          source];
+    }
+    [self addScript:source world:[self worldNameOf:script] ?: @""];
+  }
+}
+
+- (nullable NSString*)worldNameOf:(NSDictionary*)script {
+  NSDictionary* world = script[@"world"];
+  NSString* name = [world isKindOfClass:NSDictionary.class] ? world[@"isolated"][@"name"] : nil;
+  return [name isKindOfClass:NSString.class] ? name : nil;
+}
+
+- (void)addScript:(NSString*)source world:(NSString*)world {
+  NSMutableDictionary* params = [@{@"source" : source, @"runImmediately" : @YES} mutableCopy];
+  if (world.length) {
+    params[@"worldName"] = world;
+  }
+  __weak RFXChromiumPage* weakSelf = self;
+  [self callDevTools:@"Page.addScriptToEvaluateOnNewDocument"
+              params:params
+          completion:^(NSDictionary* result, NSError*) {
+            NSString* identifier = result[@"identifier"];
+            if ([identifier isKindOfClass:NSString.class]) {
+              [weakSelf recordScriptIdentifier:identifier];
+            }
+          }];
+}
+
+- (void)recordScriptIdentifier:(NSString*)identifier {
+  [_installedScriptIdentifiers addObject:identifier];
+}
+
+- (NSString*)preludeForBinding:(NSString*)binding channels:(NSSet<NSString*>*)channels {
+  NSData* names = [NSJSONSerialization dataWithJSONObject:channels.allObjects options:0 error:nil];
+  return [NSString stringWithFormat:
+      @"(function() {"
+       "const post = globalThis['%@'];"
+       "if (typeof post !== 'function') return;"
+       "delete globalThis['%@'];"
+       "const handlers = {};"
+       "for (const channel of %@) {"
+       "  handlers[channel] = Object.freeze({ postMessage(body) { post(JSON.stringify({ channel, body })); } });"
+       "}"
+       "globalThis.webkit = Object.freeze({ messageHandlers: Object.freeze(handlers) });"
+       "})();",
+      binding, binding, [[NSString alloc] initWithData:names encoding:NSUTF8StringEncoding]];
+}
+
 // MARK: JavaScript
 
 - (void)evaluateScript:(NSData*)requestData completion:(void (^)(NSData*, NSError*))completion {
@@ -688,42 +868,28 @@ class App : public CefApp, public CefBrowserProcessHandler {
     completion(nil, MakeError(6, @"The script request has no source."));
     return;
   }
-  if (!_browser) {
-    completion(nil, MakeError(1, @"The page has not been created yet."));
-    return;
-  }
-  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
-  params->SetString("expression", ToStd(source));
-  params->SetBool("returnByValue", true);
-  params->SetBool("awaitPromise", true);
-  params->SetBool("userGesture", [request[@"userGesture"] boolValue]);
-  int messageID = _nextMessageID++;
-  _pendingEvaluations[@(messageID)] = [completion copy];
-  if (_browser->GetHost()->ExecuteDevToolsMethod(messageID, "Runtime.evaluate", params) == 0) {
-    [_pendingEvaluations removeObjectForKey:@(messageID)];
-    completion(nil, MakeError(2, @"Runtime.evaluate could not be sent."));
-  }
-}
-
-- (void)handleDevToolsResult:(int)messageID success:(BOOL)success data:(NSData*)data {
-  void (^completion)(NSData*, NSError*) = _pendingEvaluations[@(messageID)];
-  if (!completion) {
-    return;
-  }
-  [_pendingEvaluations removeObjectForKey:@(messageID)];
-  NSDictionary* json = ParseObject(data);
-  if (!success || !json) {
-    completion(nil, MakeError(4, [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"DevTools error"));
-    return;
-  }
-  NSDictionary* exception = json[@"exceptionDetails"];
-  if (exception) {
-    NSString* message = exception[@"exception"][@"description"] ?: exception[@"text"] ?: @"JavaScript exception";
-    completion(nil, MakeError(5, message));
-    return;
-  }
-  id value = json[@"result"][@"value"] ?: NSNull.null;
-  completion([NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingFragmentsAllowed error:nil], nil);
+  NSDictionary* params = @{
+    @"expression" : source,
+    @"returnByValue" : @YES,
+    @"awaitPromise" : @YES,
+    @"userGesture" : @([request[@"userGesture"] boolValue]),
+  };
+  [self callDevTools:@"Runtime.evaluate"
+              params:params
+          completion:^(NSDictionary* json, NSError* error) {
+            if (error) {
+              completion(nil, error);
+              return;
+            }
+            NSDictionary* exception = json[@"exceptionDetails"];
+            if (exception) {
+              NSString* message = exception[@"exception"][@"description"] ?: exception[@"text"] ?: @"JavaScript exception";
+              completion(nil, MakeError(5, message));
+              return;
+            }
+            id value = json[@"result"][@"value"] ?: NSNull.null;
+            completion([NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingFragmentsAllowed error:nil], nil);
+          }];
 }
 
 // MARK: Snapshots
@@ -737,6 +903,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
 // MARK: - Engine host
 
 @implementation RFXChromiumEngineHost {
+  NSArray<NSDictionary*>* _scripts;
   CefRefPtr<App> _app;
   RFXChromiumPump* _pump;
   BOOL _running;
@@ -748,6 +915,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
 }
 
 @synthesize delegate = _delegate;
+@synthesize scripts = _scripts;
 
 static __weak RFXChromiumEngineHost* g_current;
 
@@ -898,7 +1066,18 @@ static __weak RFXChromiumEngineHost* g_current;
 }
 
 - (void)applyPolicy:(NSData*)update {
-  // This engine renders without Refrax's content blocking, scripts, and extensions.
+  NSString* name = nil;
+  NSDictionary* fields = nil;
+  if (!ParseCase(update, &name, &fields)) {
+    return;
+  }
+  // Content blocking, extensions, and site settings aren't applied by this engine.
+  if ([name isEqualToString:@"scripts"] && [fields[@"scripts"] isKindOfClass:NSArray.class]) {
+    _scripts = [fields[@"scripts"] copy];
+    for (RFXChromiumPage* page in _livePages) {
+      [page installScripts:_scripts];
+    }
+  }
 }
 
 - (void)removeProfile:(NSData*)profileData completion:(void (^)(void))completion {

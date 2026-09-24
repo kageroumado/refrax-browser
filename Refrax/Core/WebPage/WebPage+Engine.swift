@@ -105,7 +105,13 @@ extension WebPage {
                 request.reply(answer(request.kind))
             }
         }
-        engineTasks = [events, requests]
+        let messages = Task { [weak self] in
+            for await message in page.messages {
+                guard let self, !Task.isCancelled else { return }
+                backingNavigationDelegate.pagePool?.state.scriptChannels.dispatch(message, from: self)
+            }
+        }
+        engineTasks = [events, requests, messages]
     }
 }
 

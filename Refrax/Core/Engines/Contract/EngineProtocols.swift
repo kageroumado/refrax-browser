@@ -13,6 +13,25 @@ nonisolated enum PolicyUpdate: Codable, Hashable, Sendable {
     case siteSettings(rules: [SiteSettingsRule])
 }
 
+nonisolated extension PolicyUpdate {
+    /// Which part of the engine's configuration an update replaces.
+    enum Category: Hashable, Sendable {
+        case contentBlocking
+        case scripts
+        case extensions
+        case siteSettings
+    }
+
+    var category: Category {
+        switch self {
+        case .contentBlocking: .contentBlocking
+        case .scripts: .scripts
+        case .extensions: .extensions
+        case .siteSettings: .siteSettings
+        }
+    }
+}
+
 nonisolated struct ContentBlockingPolicy: Codable, Hashable, Sendable {
     nonisolated struct FilterList: Codable, Hashable, Sendable {
         /// Stable identifier, e.g. "easylist".
@@ -44,6 +63,16 @@ nonisolated struct InjectedScript: Codable, Hashable, Sendable {
     let excludes: [String]
     /// Names of message channels this script may post to (see ``EnginePage/messages``).
     let channels: [String]
+}
+
+nonisolated extension InjectedScript {
+    /// The same script, allowed to post to `channels`.
+    func granting(_ channels: [String]) -> InjectedScript {
+        InjectedScript(
+            id: id, source: source, injectionTime: injectionTime, world: world, mainFrameOnly: mainFrameOnly,
+            matches: matches, excludes: excludes, channels: channels,
+        )
+    }
 }
 
 nonisolated struct ExtensionPackage: Codable, Hashable, Sendable {

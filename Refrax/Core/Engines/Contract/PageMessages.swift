@@ -233,6 +233,16 @@ nonisolated enum ScriptValue: Hashable, Sendable {
         }
     }
 
+    /// The string, if this is one.
+    var stringValue: String? {
+        if case let .string(value) = self { value } else { nil }
+    }
+
+    /// The member named `key`, if this is an object that has one.
+    subscript(key: String) -> ScriptValue? {
+        if case let .object(members) = self { members[key] } else { nil }
+    }
+
     /// The Foundation form callers that predate the contract expect.
     var foundationValue: Any? {
         switch self {

@@ -286,6 +286,7 @@ final class UserScriptManager {
             userScript,
             source: .extension(id: "userscript.shim.\(namespace)"),
             priority: ScriptRegistry.Priority.agent - 1, // Shim runs before scripts
+            world: world,
         )
         registeredScriptIDs.append(id)
     }
@@ -304,6 +305,7 @@ final class UserScriptManager {
             userScript,
             source: .extension(id: "userscript.\(script.id.uuidString)"),
             priority: ScriptRegistry.Priority.agent,
+            world: world,
         )
         registeredScriptIDs.append(id)
     }

@@ -158,10 +158,20 @@ Until an answer arrives the engine waits; if the page closes first, the engine c
 and completes with the result as a plain JSON value (`42`, `"x"`, `{"a":[true,null]}`). Scripts
 must not be given a synthetic user gesture unless `userGesture` is true.
 
-Scripts Refrax injects (policy `scripts`, §4.5) may post messages on the channels they were
-granted; the engine delivers them with `didReceiveScriptMessage`:
-`{ "channel", "body": <JSON>, "frameURL?", "isMainFrame" }`. Posting to a channel the script was
-not granted is dropped by the engine. No channel is ever reachable from page-world scripts.
+Scripts Refrax injects (policy `scripts`, §4.5) post messages with the WebKit call shape, in the
+world they run in:
+
+```js
+window.webkit.messageHandlers.<channel>.postMessage(body)
+```
+
+Engines provide exactly that object in each world, containing only the channels granted to that
+world's scripts, and deliver each message with `didReceiveScriptMessage`:
+`{ "channel", "body": <JSON>, "frameURL?", "isMainFrame" }`. A message on a channel the world was
+not granted is dropped by the engine. Channels granted to isolated-world scripts must not be
+reachable from page-world scripts. (Some of Refrax's own scripts run in the page world because
+they observe page APIs; their channels are reachable by the page and their handlers treat every
+message as untrusted.)
 
 ### 4.5 Policy (Refrax → engine)
 

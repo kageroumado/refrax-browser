@@ -46,7 +46,7 @@ final class ContentScriptManager {
     private var thirdPartyCookieRuleList: WKContentRuleList?
     private var thirdPartyCookieBlockingEnabled = false
     private var gpcScriptID: UUID?
-    private var gpcMessageHandler: GPCMessageHandler?
+    private var isGPCChannelOpen = false
     private var gpcTelemetryHosts: Set<String> = []
     private var settingsObservationTask: Task<Void, Never>?
 
@@ -65,7 +65,6 @@ final class ContentScriptManager {
     private var hideSignInPromptsScriptID: UUID?
 
     // Credential submission detection
-    private var credentialSubmitHandler: CredentialSubmitHandler?
 
     // AutoFill sub-frame focus reporting
     private var autoFillFocusHandler: AutoFillFocusHandler?
@@ -74,7 +73,6 @@ final class ContentScriptManager {
     // Web store integration
     private var webStoreEarlyScriptID: UUID?
     private var webStoreScriptID: UUID?
-    private var webStoreInstallHandler: WebStoreInstallHandler?
 
     // Appearance observation
     private var appearanceObserver: NSKeyValueObservation?
@@ -504,19 +502,16 @@ final class ContentScriptManager {
     }
 
     private func updateGPCTelemetryHandler(isEnabled: Bool) {
-        let controller = state.webPageConfiguration.userContentController
-
         if isEnabled {
-            if gpcMessageHandler == nil {
-                let handler = GPCMessageHandler { [weak self] urlString in
-                    self?.recordGPCUsage(urlString: urlString)
+            if !isGPCChannelOpen {
+                state.scriptChannels.register(Constants.App.gpcMessageHandlerName) { [weak self] message, _ in
+                    self?.recordGPCUsage(urlString: message.body["url"]?.stringValue ?? message.body.stringValue)
                 }
-                gpcMessageHandler = handler
-                controller.add(handler, name: Constants.App.gpcMessageHandlerName)
+                isGPCChannelOpen = true
             }
-        } else if gpcMessageHandler != nil {
-            controller.removeScriptMessageHandler(forName: Constants.App.gpcMessageHandlerName)
-            gpcMessageHandler = nil
+        } else if isGPCChannelOpen {
+            state.scriptChannels.unregister(Constants.App.gpcMessageHandlerName)
+            isGPCChannelOpen = false
             gpcTelemetryHosts.removeAll()
         }
     }
@@ -805,19 +800,16 @@ final class ContentScriptManager {
     /// only fires for traditional HTML form submissions. Modern sites often
     /// use JavaScript (fetch/XHR) for login, which bypasses that delegate.
     private func setupCredentialDetection() {
-        let controller = state.webPageConfiguration.userContentController
-
-        // Register message handler
-        let handler = CredentialSubmitHandler { [weak self] username, password, urlString, topLevelURL in
+        state.scriptChannels.register(Constants.App.credentialSubmitHandlerName) { [weak self] message, page in
+            guard let username = message.body["username"]?.stringValue,
+                  let password = message.body["password"]?.stringValue else { return }
             self?.handleCredentialSubmission(
                 username: username,
                 password: password,
-                urlString: urlString,
-                topLevelURL: topLevelURL,
+                urlString: message.body["url"]?.stringValue,
+                topLevelURL: page?.url,
             )
         }
-        credentialSubmitHandler = handler
-        controller.add(handler, name: Constants.App.credentialSubmitHandlerName)
 
         // Register the detection script
         let script = WKUserScript(
@@ -918,14 +910,12 @@ final class ContentScriptManager {
     /// buttons with "Add to Refrax" and intercepts clicks to trigger
     /// native extension installation.
     private func setupWebStoreIntegration() {
-        let controller = state.webPageConfiguration.userContentController
-
-        // Register message handler
-        let handler = WebStoreInstallHandler { [weak self] store, extensionID, name, webView in
-            self?.handleWebStoreInstall(store: store, extensionID: extensionID, name: name, webView: webView)
+        state.scriptChannels.register(WebStoreIntegrationScript.messageHandlerName) { [weak self] message, page in
+            guard let store = message.body["store"]?.stringValue,
+                  let extensionID = message.body["extensionID"]?.stringValue,
+                  let page else { return }
+            self?.handleWebStoreInstall(store: store, extensionID: extensionID, name: message.body["name"]?.stringValue, page: page)
         }
-        webStoreInstallHandler = handler
-        controller.add(handler, name: WebStoreIntegrationScript.messageHandlerName)
 
         // Register early CSS override at document start (prevents white flash on CWS)
         let earlyScript = WKUserScript(
@@ -956,7 +946,7 @@ final class ContentScriptManager {
     }
 
     /// Handles an extension install request from the web store content script.
-    private func handleWebStoreInstall(store: String, extensionID: String, name: String?, webView: WKWebView) {
+    private func handleWebStoreInstall(store: String, extensionID: String, name: String?, page: WebPage) {
         guard let webStore = WebStore(rawValue: store) else {
             Logger.warning("Unknown web store: \(store)", category: Logger.extensions)
             return
@@ -973,7 +963,7 @@ final class ContentScriptManager {
                 "Extension '\(name ?? extensionID)' is already installed",
                 category: Logger.extensions,
             )
-            updateWebStoreButton(status: "already_installed", webView: webView)
+            updateWebStoreButton(status: "already_installed", page: page)
             return
         }
 
@@ -992,21 +982,21 @@ final class ContentScriptManager {
                     "Successfully installed '\(installed.displayName)' from \(store) web store",
                     category: Logger.extensions,
                 )
-                updateWebStoreButton(status: "installed", webView: webView)
+                updateWebStoreButton(status: "installed", page: page)
             } catch {
                 Logger.error(
                     "Failed to install extension '\(extensionID)' from \(store): \(error)",
                     category: Logger.extensions,
                 )
-                updateWebStoreButton(status: "error", webView: webView)
+                updateWebStoreButton(status: "error", page: page)
             }
         }
     }
 
     /// Updates the web store install button via JavaScript evaluation.
-    private func updateWebStoreButton(status: String, webView: WKWebView) {
+    private func updateWebStoreButton(status: String, page: WebPage) {
         let js = "window.__refraxUpdateInstallButton && window.__refraxUpdateInstallButton('\(status)')"
-        webView.evaluateJavaScript(js)
+        Task { _ = try? await page.evaluateJavaScript(js) }
     }
 
     // MARK: - Form Data Queries
@@ -1034,54 +1024,6 @@ final class ContentScriptManager {
 }
 
 // MARK: - Script Message Handling
-
-private final class GPCMessageHandler: NSObject, WKScriptMessageHandler {
-    private let onMessage: (String?) -> Void
-
-    init(onMessage: @escaping (String?) -> Void) {
-        self.onMessage = onMessage
-    }
-
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        let urlString: String? = if let body = message.body as? [String: Any] {
-            body["url"] as? String
-        } else if let body = message.body as? String {
-            body
-        } else {
-            nil
-        }
-
-        onMessage(urlString)
-    }
-}
-
-/// Message handler for credential submission detection.
-///
-/// Receives messages from the credential detection JavaScript when
-/// a login form is submitted (either via traditional form submission
-/// or AJAX/fetch).
-private final class CredentialSubmitHandler: NSObject, WKScriptMessageHandler {
-    private let onCredentials: (String, String, String?, URL?) -> Void
-
-    /// Creates a handler with a callback for credential submissions.
-    ///
-    /// - Parameter onCredentials: Callback with (username, password, frame url, top-level url).
-    init(onCredentials: @escaping (String, String, String?, URL?) -> Void) {
-        self.onCredentials = onCredentials
-    }
-
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any],
-              let username = body["username"] as? String,
-              let password = body["password"] as? String
-        else {
-            return
-        }
-
-        let urlString = body["url"] as? String
-        onCredentials(username, password, urlString, message.webView?.url)
-    }
-}
 
 /// Message handler for credential-field focus reported from sub-frames.
 ///
@@ -1127,30 +1069,4 @@ private final class AutoFillFocusHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// Message handler for web store extension installation.
-///
-/// Receives messages from the web store integration script when
-/// the user clicks "Add to Refrax" on Chrome Web Store or Firefox Add-ons.
-private final class WebStoreInstallHandler: NSObject, WKScriptMessageHandler {
-    private let onInstall: (String, String, String?, WKWebView) -> Void
 
-    /// Creates a handler with a callback for install requests.
-    ///
-    /// - Parameter onInstall: Callback with (store, extensionID, name, webView).
-    init(onInstall: @escaping (String, String, String?, WKWebView) -> Void) {
-        self.onInstall = onInstall
-    }
-
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any],
-              let store = body["store"] as? String,
-              let extensionID = body["extensionID"] as? String,
-              let webView = message.webView
-        else {
-            return
-        }
-
-        let name = body["name"] as? String
-        onInstall(store, extensionID, name, webView)
-    }
-}

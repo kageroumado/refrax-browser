@@ -346,6 +346,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.spaceManager = SpaceManager(state: browserState)
         self.pagePool = WebPagePool(state: browserState)
         pagePool.engineRegistry = engineRegistry
+        browserState.scriptRegistry.onApply = { [engineRegistry, scriptChannels = browserState.scriptChannels] scripts in
+            engineRegistry.apply(.scripts(scripts: scripts.map { $0.granting(scriptChannels.channelNames(in: $0.world)) }))
+        }
         self.groupManager = TabGroupManager(state: browserState)
         self.readerModeManager = ReaderModeManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()

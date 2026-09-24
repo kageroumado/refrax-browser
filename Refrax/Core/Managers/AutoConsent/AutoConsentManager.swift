@@ -151,6 +151,7 @@ final class AutoConsentManager {
             script,
             source: .system(name: "autoconsent"),
             priority: ScriptRegistry.Priority.system,
+            world: scriptWorld,
         )
 
         rebuildUserScripts()

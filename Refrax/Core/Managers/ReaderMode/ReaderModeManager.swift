@@ -185,6 +185,7 @@ final class ReaderModeManager {
             script,
             source: .system(name: "reader-availability"),
             priority: ScriptRegistry.Priority.system,
+            world: scriptWorld,
         )
 
         state.scriptRegistry.apply(to: state.webPageConfiguration.userContentController)

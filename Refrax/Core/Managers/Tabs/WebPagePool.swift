@@ -153,6 +153,9 @@ final class WebPagePool {
 
     init(state: BrowserState) {
         self.state = state
+        state.scriptChannels.pageResolver = { [weak self] webView in
+            self?.activePages.values.first { $0.backingWebView === webView }
+        }
 
         // Configure termination handler with settings
         terminationHandler.configure(with: state.settings)

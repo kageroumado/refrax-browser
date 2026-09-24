@@ -31,6 +31,8 @@ final class EngineRegistry {
     private(set) var runningEngines: Set<EngineID> = [.systemWebKit]
 
     @ObservationIgnored private var bundles: [EngineID: EngineBundle] = [:]
+    /// The latest policy per category, replayed to each engine as it starts.
+    @ObservationIgnored private var policy: [PolicyUpdate.Category: PolicyUpdate] = [:]
     @ObservationIgnored private var hosts: [EngineID: ExternalEngineHost] = [:]
 
     let enginesDirectory: URL
@@ -90,7 +92,18 @@ final class EngineRegistry {
             throw error
         }
         runningEngines.insert(id)
+        for update in policy.values {
+            host.apply(update)
+        }
         return host
+    }
+
+    /// Sends policy to every running engine now and every engine that starts later.
+    func apply(_ update: PolicyUpdate) {
+        policy[update.category] = update
+        for host in hosts.values {
+            host.apply(update)
+        }
     }
 
     /// Where an installed engine's bundle lives.

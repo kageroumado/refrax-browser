@@ -196,6 +196,9 @@ final class BrowserState {
     @ObservationIgnored
     let scriptRegistry: ScriptRegistry
 
+    /// Channels Refrax-injected scripts post to, delivered to handlers for any engine.
+    let scriptChannels: ScriptChannelRouter
+
     /// Download manager for handling file downloads.
     ///
     /// Set by TabManager after initialization (late-bound to avoid circular dependency).
@@ -440,6 +443,7 @@ final class BrowserState {
         config.websiteDataStore = .default()
         settingsApplier.apply(to: &config)
         self.webPageConfiguration = config
+        self.scriptChannels = ScriptChannelRouter(userContentController: config.userContentController)
 
         // Start observing settings changes
         startSettingsObservation()

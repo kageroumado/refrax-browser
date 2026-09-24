@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 @testable import Refrax
 import Testing
 
@@ -349,5 +350,59 @@ struct EngineRegistryTests {
         try registry.uninstall(EngineID(rawValue: "test.engine.example"), removingData: true)
         #expect(registry.descriptors.map(\.id) == [.systemWebKit])
         #expect(throws: EngineError.self) { try registry.uninstall(.systemWebKit, removingData: false) }
+    }
+}
+
+// MARK: - Scripts and channels
+
+@Suite("Engine scripts and channels", .tags(.engines))
+@MainActor
+struct EngineScriptTests {
+    @Test("The registry exports scripts in injection order with their worlds")
+    func exportsScripts() {
+        let registry = ScriptRegistry()
+        let isolated = WKContentWorld.world(name: "RefraxScripts")
+        registry.register(
+            WKUserScript(source: "late()", injectionTime: .atDocumentEnd, forMainFrameOnly: true),
+            source: .system(name: "late"), priority: 50,
+        )
+        registry.register(
+            WKUserScript(source: "early()", injectionTime: .atDocumentStart, forMainFrameOnly: false, in: isolated),
+            source: .system(name: "early"), priority: 10, world: isolated,
+        )
+        let scripts = registry.injectedScripts
+        #expect(scripts.map(\.source) == ["early()", "late()"])
+        #expect(scripts[0].world == .isolated(name: "RefraxScripts"))
+        #expect(scripts[0].injectionTime == .documentStart)
+        #expect(!scripts[0].mainFrameOnly)
+        #expect(scripts[1].world == .page)
+        #expect(scripts[1].mainFrameOnly)
+    }
+
+    @Test("Applying scripts announces them to engines")
+    func announcesOnApply() {
+        let registry = ScriptRegistry()
+        var announced: [InjectedScript]?
+        registry.onApply = { announced = $0 }
+        registry.register(WKUserScript(source: "x()", injectionTime: .atDocumentEnd, forMainFrameOnly: true), source: .system(name: "x"))
+        registry.apply(to: WKUserContentController())
+        #expect(announced?.map(\.source) == ["x()"])
+    }
+
+    @Test("The router grants channels per world and delivers to the right handler")
+    func routes() {
+        let router = ScriptChannelRouter(userContentController: WKUserContentController())
+        var received: [String] = []
+        router.register("pageChannel") { message, _ in received.append("page:\(message.body["n"]?.stringValue ?? "")") }
+        router.register("isolatedChannel", world: .isolated(name: "RefraxScripts")) { _, _ in received.append("isolated") }
+
+        #expect(router.channelNames(in: .page) == ["pageChannel"])
+        #expect(router.channelNames(in: .isolated(name: "RefraxScripts")) == ["isolatedChannel"])
+
+        router.dispatch(ScriptMessage(channel: "pageChannel", body: .object(["n": .string("1")]), frameURL: nil, isMainFrame: true), from: nil)
+        router.dispatch(ScriptMessage(channel: "unknown", body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        router.unregister("isolatedChannel")
+        router.dispatch(ScriptMessage(channel: "isolatedChannel", body: .null, frameURL: nil, isMainFrame: true), from: nil)
+        #expect(received == ["page:1"])
     }
 }

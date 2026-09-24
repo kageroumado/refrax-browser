@@ -61,6 +61,9 @@ final class ScriptRegistry {
         let id: UUID
         let source: ScriptSource
         let script: WKUserScript
+        /// The world the script runs in. `WKUserScript` doesn't expose it, and engines other
+        /// than WebKit need it to create the same isolation.
+        let world: WKContentWorld
         let priority: Int
         let registrationOrder: UInt64
     }
@@ -82,6 +85,9 @@ final class ScriptRegistry {
     private var registrations: [Registration] = []
     private var registrationCounter: UInt64 = 0
 
+    /// Called after the scripts are applied, with them in injection order, for engines other than WebKit.
+    var onApply: (([InjectedScript]) -> Void)?
+
     /// The current number of registered scripts.
     var count: Int { registrations.count }
 
@@ -96,18 +102,21 @@ final class ScriptRegistry {
     ///   - script: The user script to register.
     ///   - source: The source of the script (system, extension, or agent).
     ///   - priority: The injection priority (lower values execute first). Default is 100.
+    ///   - world: The content world `script` was created in. Default is the page world.
     /// - Returns: A unique identifier for unregistering the script.
     @discardableResult
     func register(
         _ script: WKUserScript,
         source: ScriptSource,
         priority: Int = 100,
+        world: WKContentWorld = .page,
     ) -> UUID {
         let id = UUID()
         let registration = Registration(
             id: id,
             source: source,
             script: script,
+            world: world,
             priority: priority,
             registrationOrder: registrationCounter,
         )
@@ -215,15 +224,34 @@ final class ScriptRegistry {
     func apply(to controller: WKUserContentController) {
         controller.removeAllUserScripts()
 
-        let sorted = registrations.sorted { lhs, rhs in
+        for registration in orderedRegistrations {
+            controller.addUserScript(registration.script)
+        }
+        onApply?(injectedScripts)
+    }
+
+    /// The registered scripts in engine-neutral form, in injection order.
+    var injectedScripts: [InjectedScript] {
+        orderedRegistrations.map { registration in
+            InjectedScript(
+                id: "\(registration.source).\(registration.id.uuidString)",
+                source: registration.script.source,
+                injectionTime: registration.script.injectionTime == .atDocumentStart ? .documentStart : .documentEnd,
+                world: ScriptRequest.World(registration.world),
+                mainFrameOnly: registration.script.isForMainFrameOnly,
+                matches: [],
+                excludes: [],
+                channels: [],
+            )
+        }
+    }
+
+    private var orderedRegistrations: [Registration] {
+        registrations.sorted { lhs, rhs in
             if lhs.priority != rhs.priority {
                 return lhs.priority < rhs.priority
             }
             return lhs.registrationOrder < rhs.registrationOrder
-        }
-
-        for registration in sorted {
-            controller.addUserScript(registration.script)
         }
     }
 }
@@ -239,6 +267,19 @@ extension ScriptRegistry.ScriptSource: CustomStringConvertible {
             "extension(\(id))"
         case let .agent(sessionID):
             "agent(\(sessionID.uuidString.prefix(8)))"
+        }
+    }
+}
+
+// MARK: - Content Worlds
+
+extension ScriptRequest.World {
+    /// The contract's name for a WebKit content world.
+    init(_ world: WKContentWorld) {
+        if world == .page {
+            self = .page
+        } else {
+            self = .isolated(name: world.name ?? "default")
         }
     }
 }
