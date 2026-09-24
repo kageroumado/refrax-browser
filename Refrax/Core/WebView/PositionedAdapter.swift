@@ -168,6 +168,14 @@ struct PositionedAdapter: NSViewRepresentable {
 
     /// Applies dynamic properties that change based on current state.
     private func applyDynamicProperties(_ webView: WebPageWebView, adapter: CocoaWebViewAdapter, environment: EnvironmentValues) {
+        // While a plug-in engine renders the page, the paused WebKit view stays in
+        // place underneath it and must not take hit tests meant for the engine's view.
+        // Runs after the display-mode update, which unhides the web view on activation.
+        let isEngineHosted = page?.engineSession != nil
+        if webView.isHidden != isEngineHosted {
+            webView.isHidden = isEngineHosted
+        }
+
         // Event blocking - changes based on layout mode, reader, etc.
         if webView._ignoresAllEvents != ignoresAllEvents {
             webView._ignoresAllEvents = ignoresAllEvents

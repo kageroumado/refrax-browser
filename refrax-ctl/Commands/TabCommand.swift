@@ -33,6 +33,7 @@ struct TabCommand: AsyncParsableCommand {
             MarkUnread.self,
             CopyURL.self,
             Reload.self,
+            Engine.self,
             IsLoading.self,
             GetURL.self,
             WaitLoaded.self,
@@ -734,6 +735,38 @@ struct TabCommand: AsyncParsableCommand {
         func run() async throws {
             let response = try ControlClient.send(
                 .tabReload(.init(tabID: tab, pageID: page, fromOrigin: fromOrigin ? true : nil)),
+            )
+            handleResponse(response)
+        }
+    }
+
+    struct Engine: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "engine",
+            abstract: "Show or switch a tab's rendering engine",
+            discussion: """
+            Without an argument, prints the engine rendering the page. With one,
+            reloads the page's current URL in that engine (webkit or chromium).
+
+            Examples:
+              refrax-ctl tab engine
+              refrax-ctl tab engine chromium
+              refrax-ctl tab engine webkit --tab 3
+            """,
+        )
+
+        @Argument(help: "Engine to switch to: webkit or chromium")
+        var engine: String?
+
+        @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
+        var tab: String?
+
+        @Option(name: .long, help: "Page ID (for multi-page tabs)")
+        var page: String?
+
+        func run() async throws {
+            let response = try ControlClient.send(
+                .tabEngine(.init(tabID: tab, pageID: page, engine: engine)),
             )
             handleResponse(response)
         }

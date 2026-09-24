@@ -945,6 +945,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         CrashMonitor.markCleanShutdown()
 
+        // Closing Chromium's browsers before exit lets its profiles flush cookies and storage.
+        ChromiumEngine.shared.shutdown()
+
         Task { await controlHost.stop() }
 
         Task {

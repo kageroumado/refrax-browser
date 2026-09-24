@@ -97,6 +97,12 @@ struct PaneContentWrapper: View {
             )
             .webViewFindNavigator(isPresented: findNavigatorBinding)
 
+            // A plug-in engine renders over the paused WebKit view it replaces.
+            if hasContent, isOwner, let engineSession = webPage?.engineSession {
+                EngineContentView(session: engineSession)
+                    .allowsHitTesting(!shouldIgnoreAllEvents)
+            }
+
             // Overlays only when we have content and not in layout mode
             if hasContent, !isLayoutMode, let webPage, let tabPage {
                 overlays(for: webPage, tabPage: tabPage)

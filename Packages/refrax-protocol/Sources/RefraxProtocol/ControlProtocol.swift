@@ -75,6 +75,7 @@ public enum ControlRequest: Sendable {
     case tabMarkUnread(TabIDParams)
     case tabCopyURL(TabCopyURLParams)
     case tabReload(TabReloadParams)
+    case tabEngine(TabEngineParams)
     case tabIsLoading(OptionalTabIDParams)
     case tabURL(OptionalTabIDParams)
     case tabWaitLoaded(TabWaitLoadedParams)
@@ -531,6 +532,19 @@ public extension ControlRequest {
             self.tabID = tabID
             self.pageID = pageID
             self.fromOrigin = fromOrigin
+        }
+    }
+
+    /// Reports the page's rendering engine, or moves the page to `engine` ("webKit" or "chromium").
+    struct TabEngineParams: Codable, Sendable {
+        public var tabID: String?
+        public var pageID: String?
+        public var engine: String?
+
+        public init(tabID: String? = nil, pageID: String? = nil, engine: String? = nil) {
+            self.tabID = tabID
+            self.pageID = pageID
+            self.engine = engine
         }
     }
 
@@ -1381,6 +1395,7 @@ extension ControlRequest: Codable {
         case tabMarkUnread
         case tabCopyURL
         case tabReload
+        case tabEngine
         case tabIsLoading
         case tabURL
         case tabWaitLoaded
@@ -1573,6 +1588,7 @@ extension ControlRequest: Codable {
         case .tabMarkUnread: self = try .tabMarkUnread(TabIDParams(from: decoder))
         case .tabCopyURL: self = try .tabCopyURL(TabCopyURLParams(from: decoder))
         case .tabReload: self = try .tabReload(TabReloadParams(from: decoder))
+        case .tabEngine: self = try .tabEngine(TabEngineParams(from: decoder))
         case .tabIsLoading: self = try .tabIsLoading(OptionalTabIDParams(from: decoder))
         case .tabURL: self = try .tabURL(OptionalTabIDParams(from: decoder))
         case .tabWaitLoaded: self = try .tabWaitLoaded(TabWaitLoadedParams(from: decoder))
@@ -1815,6 +1831,9 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .tabReload(params):
             try container.encode("tabReload", forKey: .type)
+            try params.encode(to: encoder)
+        case let .tabEngine(params):
+            try container.encode("tabEngine", forKey: .type)
             try params.encode(to: encoder)
         case let .tabIsLoading(params):
             try container.encode("tabIsLoading", forKey: .type)

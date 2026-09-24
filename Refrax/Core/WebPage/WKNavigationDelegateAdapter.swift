@@ -22,7 +22,7 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
     // MARK: - Properties
 
     /// The navigation decider that handles policy decisions.
-    private var navigationDecider: BrowserNavigationDecider
+    private(set) var navigationDecider: BrowserNavigationDecider
 
     /// Reference to the owning WebPage.
     weak var owner: WebPage?

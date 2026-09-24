@@ -327,6 +327,8 @@ struct WebViewContainer: View {
         } else if let url = page.deepLinkURL, let deepLink = DeepLink(url: url) {
             // Show deep link view for internal browser pages (SSL errors, etc.)
             DeepLinkView(deepLink: deepLink)
+        } else if isOwner, let engineSession = page.engineSession {
+            EngineContentView(session: engineSession)
         } else {
             configuredWebView(isOwner: isOwner)
         }

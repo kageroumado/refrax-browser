@@ -27,6 +27,7 @@ enum Logger: @unchecked Sendable {
     nonisolated static let system = OSLog(subsystem: Constants.App.bundleID, category: "system")
     nonisolated static let updates = OSLog(subsystem: Constants.App.bundleID, category: "updates")
     nonisolated static let lightboard = OSLog(subsystem: Constants.App.bundleID, category: "lightboard")
+    nonisolated static let engines = OSLog(subsystem: Constants.App.bundleID, category: "engines")
 
     // MARK: - Logging Methods
 

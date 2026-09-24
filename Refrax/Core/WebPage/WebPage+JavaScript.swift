@@ -33,7 +33,12 @@ extension WebPage {
         in frame: FrameInfo? = nil,
         contentWorld: WKContentWorld? = nil,
     ) async throws -> Any? {
-        try await backingWebView.callAsyncJavaScript(
+        if let engineSession {
+            return try await engineSession.evaluateJavaScript(
+                Self.engineFunctionCall(functionBody, arguments: arguments),
+            )
+        }
+        return try await backingWebView.callAsyncJavaScript(
             functionBody,
             arguments: arguments,
             in: frame?.wrapped,
@@ -50,7 +55,10 @@ extension WebPage {
         in frame: FrameInfo? = nil,
         contentWorld: WKContentWorld = .page,
     ) async throws -> Any? {
-        try await backingWebView.evaluateJavaScript(script, in: frame?.wrapped, contentWorld: contentWorld)
+        if let engineSession {
+            return try await engineSession.evaluateJavaScript(script)
+        }
+        return try await backingWebView.evaluateJavaScript(script, in: frame?.wrapped, contentWorld: contentWorld)
     }
 
     /// Evaluates JavaScript without synthesizing a user gesture.
@@ -63,6 +71,22 @@ extension WebPage {
     /// page content world only.
     @discardableResult
     func evaluateJavaScriptWithoutUserGesture(_ script: String) async throws -> Any? {
-        try await backingWebView.evaluateJavaScriptWithoutUserGesture(script)
+        if let engineSession {
+            return try await engineSession.evaluateJavaScript(script)
+        }
+        return try await backingWebView.evaluateJavaScriptWithoutUserGesture(script)
+    }
+
+    /// Wraps a `callJavaScript` function body as an expression for engines that
+    /// only evaluate scripts: an async function applied to the JSON-encoded arguments.
+    ///
+    /// Plug-in engines evaluate in the main world; `frame` and `contentWorld` are WebKit-only.
+    private static func engineFunctionCall(_ functionBody: String, arguments: [String: Any]) throws -> String {
+        let names = arguments.keys.sorted()
+        let values = try names.map { name in
+            let data = try JSONSerialization.data(withJSONObject: arguments[name] ?? NSNull(), options: .fragmentsAllowed)
+            return String(decoding: data, as: UTF8.self)
+        }
+        return "(async function(\(names.joined(separator: ", "))) {\n\(functionBody)\n})(\(values.joined(separator: ", ")))"
     }
 }

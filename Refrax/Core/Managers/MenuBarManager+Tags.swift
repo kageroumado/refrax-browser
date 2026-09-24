@@ -22,4 +22,7 @@ enum MenuItemTag: Int {
     // View menu - sidebar mode
     case sidebarModeOverlay = 3_001
     case sidebarModeCompact = 3_002
+
+    // View menu - rendering engine
+    case switchRenderingEngine = 3_010
 }

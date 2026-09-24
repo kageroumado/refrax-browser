@@ -113,6 +113,18 @@ extension MenuBarManager {
         reloadFromOriginItem.target = self
         viewMenu.addItem(reloadFromOriginItem)
 
+        // The title tracks the active page's engine; see updateViewMenu.
+        let switchEngineItem = NSMenuItem(
+            title: "Reload in Chromium",
+            action: #selector(switchRenderingEngine(_:)),
+            keyEquivalent: "r",
+        )
+        switchEngineItem.keyEquivalentModifierMask = [.command, .option, .control]
+        switchEngineItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        switchEngineItem.tag = MenuItemTag.switchRenderingEngine.rawValue
+        switchEngineItem.target = self
+        viewMenu.addItem(switchEngineItem)
+
         viewMenu.addItem(.separator())
 
         // Zoom controls
@@ -262,6 +274,19 @@ extension MenuBarManager {
         activeWindowController?.reloadPageFromOrigin()
     }
 
+    /// Reloads the active page in the other rendering engine (WebKit ⇄ Chromium).
+    @objc
+    func switchRenderingEngine(_: Any?) {
+        guard let page = activeWindowController?.windowState.activeWebPage else { return }
+        let target: RenderingEngineKind = page.activeEngine == .webKit ? .chromium : .webKit
+        do {
+            try page.switchEngine(to: target)
+        } catch {
+            Logger.error("Switching to \(target.displayName) failed: \(error)", category: Logger.engines)
+            NSAlert(error: error).runModal()
+        }
+    }
+
     @objc
     func actualSize(_: Any?) {
         guard let controller = activeWindowController,
@@ -351,6 +376,12 @@ extension MenuBarManager {
     /// Updates sidebar mode menu item checkmarks based on current setting.
     func updateViewMenu(_ menu: NSMenu) {
         guard menu.title == "View" || menu.title == "Sidebar Mode" else { return }
+
+        if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {
+            let page = activeWindowController?.windowState.activeWebPage
+            let target: RenderingEngineKind = page?.activeEngine == .chromium ? .webKit : .chromium
+            engineItem.title = "Reload in \(target.displayName)"
+        }
 
         // Find sidebar mode submenu
         let sidebarModeMenu: NSMenu? = if menu.title == "Sidebar Mode" {

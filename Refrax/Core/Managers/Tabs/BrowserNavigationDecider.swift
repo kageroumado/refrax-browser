@@ -596,7 +596,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
     ///
     /// Before creating the tab, routing rules are evaluated. If a rule matches,
     /// its action is executed instead of the default behavior.
-    private func openInNewTab(url: URL, activate: Bool) {
+    func openInNewTab(url: URL, activate: Bool) {
         // Check routing rules
         let ruleEngine = tabManager.ruleEngine
         let referrer = tabPage.url

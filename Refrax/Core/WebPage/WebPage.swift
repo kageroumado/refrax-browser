@@ -328,12 +328,14 @@ final class WebPage: Identifiable {
 
     /// The URL for the current webpage.
     var url: URL? {
-        backingProperty(\.url, backedBy: \.url)
+        if let engineSession { return engineSession.url }
+        return backingProperty(\.url, backedBy: \.url)
     }
 
     /// The page title.
     var title: String {
-        backingProperty(\.title, backedBy: \.title) { $0 ?? "" }
+        if let engineSession { return engineSession.title }
+        return backingProperty(\.title, backedBy: \.title) { $0 ?? "" }
     }
 
     /// An estimate of completion percentage of the current navigation (0.0 to 1.0).
@@ -342,6 +344,7 @@ final class WebPage: Identifiable {
     /// to reduce high-frequency updates during page loads (50-100 KVO events).
     /// Always updates when progress reaches 1.0 (complete).
     var estimatedProgress: Double {
+        if let engineSession { return engineSession.estimatedProgress }
         access(keyPath: \.estimatedProgress)
         return _estimatedProgress
     }
@@ -351,7 +354,8 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage is currently loading content.
     var isLoading: Bool {
-        backingProperty(\.isLoading, backedBy: \.isLoading)
+        if let engineSession { return engineSession.isLoading }
+        return backingProperty(\.isLoading, backedBy: \.isLoading)
     }
 
     /// The trust management object for evaluating server certificates.
@@ -361,7 +365,8 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage loaded all resources through secure connections.
     var hasOnlySecureContent: Bool {
-        backingProperty(\.hasOnlySecureContent, backedBy: \.hasOnlySecureContent)
+        if let engineSession { return engineSession.url?.scheme == "https" }
+        return backingProperty(\.hasOnlySecureContent, backedBy: \.hasOnlySecureContent)
     }
 
     /// The fullscreen state of the page.
@@ -558,6 +563,12 @@ final class WebPage: Identifiable {
         set { backingWebView.isInspectable = newValue }
     }
 
+    // MARK: - Rendering Engine
+
+    /// The session hosting this page's content on a plug-in engine, or nil while
+    /// the built-in WebKit view hosts it. See `WebPage+Engine.swift`.
+    var engineSession: (any EnginePageSession)?
+
     // MARK: - Back-Forward List
 
     /// The webpage's back-forward navigation list.
@@ -565,12 +576,14 @@ final class WebPage: Identifiable {
 
     /// Whether there is a back item in the history.
     var canGoBack: Bool {
-        !backForwardList.backList.isEmpty
+        if let engineSession { return engineSession.canGoBack }
+        return !backForwardList.backList.isEmpty
     }
 
     /// Whether there is a forward item in the history.
     var canGoForward: Bool {
-        !backForwardList.forwardList.isEmpty
+        if let engineSession { return engineSession.canGoForward }
+        return !backForwardList.forwardList.isEmpty
     }
 
     /// The array of items that precede the current item.
@@ -777,6 +790,12 @@ final class WebPage: Identifiable {
 
         if url.scheme?.lowercased() == "http" {
             return .insecure
+        }
+
+        // Chromium enforces certificate validity itself and refuses to render
+        // an invalid one, so a committed https page on it is a trusted one.
+        if engineSession != nil {
+            return .secure
         }
 
         let cert = certificateInfo

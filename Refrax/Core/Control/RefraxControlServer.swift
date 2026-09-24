@@ -225,6 +225,8 @@ final class RefraxControlServer {
             try handleTabCopyURL(params)
         case let .tabReload(params):
             try handleTabReload(params)
+        case let .tabEngine(params):
+            try handleTabEngine(params)
         case let .tabIsLoading(params):
             try handleTabIsLoading(params)
         case let .tabURL(params):
@@ -1844,6 +1846,19 @@ final class RefraxControlServer {
         _ = webPage.reload(fromOrigin: fromOrigin)
         let mode = fromOrigin ? "Reloading from origin" : "Reloading"
         return .ok(mode)
+    }
+
+    private func handleTabEngine(_ params: ControlRequest.TabEngineParams) throws -> ControlResponse {
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+        guard let name = params.engine else {
+            return .ok(webPage.activeEngine.displayName)
+        }
+        guard let engine = RenderingEngineKind.allCases.first(where: { $0.rawValue.lowercased() == name.lowercased() }) else {
+            let known = RenderingEngineKind.allCases.map(\.rawValue).joined(separator: ", ")
+            throw ControlError.invalidParams("Unknown engine '\(name)'. Known engines: \(known)")
+        }
+        try webPage.switchEngine(to: engine)
+        return .ok("Reloading in \(engine.displayName)")
     }
 
     private func handleTabIsLoading(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {

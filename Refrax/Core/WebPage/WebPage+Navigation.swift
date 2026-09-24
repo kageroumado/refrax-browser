@@ -111,6 +111,8 @@ extension WebPage {
         // Save scroll position before the session ends (app termination, page eviction)
         saveScrollPosition()
 
+        tearDownEngineSession()
+
         // End domain time tracking session
         domainTimeTracker.endCurrentSession()
 
@@ -218,6 +220,11 @@ extension WebPage {
         let generation = startNewNavigation()
         updateAutoFillURL(url)
 
+        if let engineSession {
+            engineSession.load(url)
+            return Self.engineNavigationSequence()
+        }
+
         // WKWebView requires loadFileURL for local file:// URLs (security restriction)
         if url.isFileURL {
             let readAccessURL = url.deletingLastPathComponent()
@@ -270,6 +277,11 @@ extension WebPage {
             }
         }
 
+        if let engineSession {
+            engineSession.load(url)
+            return Self.engineNavigationSequence()
+        }
+
         if url.isFileURL {
             let readAccessURL = url.deletingLastPathComponent()
             return toNavigationSequence { $0.loadFileURL(url, allowingReadAccessTo: readAccessURL) }
@@ -289,6 +301,10 @@ extension WebPage {
 
         if let url = request.url {
             updateAutoFillURL(url)
+            if let engineSession {
+                engineSession.load(url)
+                return Self.engineNavigationSequence()
+            }
         }
 
         loadTask = Task { [weak self] in
@@ -414,6 +430,10 @@ extension WebPage {
 extension WebPage {
     /// Navigates backward in the page history.
     func goBack() {
+        if let engineSession {
+            engineSession.goBack()
+            return
+        }
         guard let backItem = backForwardList.backList.last else { return }
         clearDeepLinkIfNeeded()
         isBackForwardNavigation = true
@@ -422,6 +442,10 @@ extension WebPage {
 
     /// Navigates forward in the page history.
     func goForward() {
+        if let engineSession {
+            engineSession.goForward()
+            return
+        }
         guard let forwardItem = backForwardList.forwardList.first else { return }
         isBackForwardNavigation = true
         loadBackForwardItem(forwardItem)
@@ -440,6 +464,11 @@ extension WebPage {
                 await faviconCache.clearFavicon(forHost: host)
             }
             tabPage.faviconData = nil
+        }
+
+        if let engineSession {
+            engineSession.reload(fromOrigin: fromOrigin)
+            return Self.engineNavigationSequence()
         }
 
         loadTask = Task { [weak self] in
@@ -497,6 +526,10 @@ extension WebPage {
     /// content (e.g., fresh tab navigating to an unreachable host), displays an
     /// error page so the user isn't left staring at a blank page.
     func stopLoading() {
+        if let engineSession {
+            engineSession.stopLoading()
+            return
+        }
         let wasLoading = backingWebView.isLoading
         let hasErrorPage = httpErrorCode != nil
         let hasCommittedContent = lastCommittedURL != nil
@@ -981,7 +1014,7 @@ extension WebPage {
         }
     }
 
-    private func updateAutoFillURL(_ url: URL) {
+    func updateAutoFillURL(_ url: URL) {
         autoFillManager.updateURL(url)
     }
 
@@ -998,6 +1031,14 @@ extension WebPage {
 
         indefiniteNavigations[id] = continuation
         return stream
+    }
+
+    /// The sequence returned for navigations a plug-in engine performs.
+    ///
+    /// Engine navigations report through `EnginePageSessionDelegate` rather than
+    /// WebKit's `WKNavigation` events, so there is nothing to stream.
+    private static func engineNavigationSequence() -> AsyncThrowingStream<NavigationEvent, any Error> {
+        AsyncThrowingStream { $0.finish() }
     }
 
     private func toNavigationSequence(

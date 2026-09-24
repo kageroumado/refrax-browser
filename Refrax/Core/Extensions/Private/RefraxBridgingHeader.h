@@ -75,6 +75,10 @@
 // CoreGraphics private APIs (GPU hardware window capture)
 #import "CoreGraphics/CoreGraphicsSPI.h"
 
+// Chromium engine plug-in protocols. The plug-in is dlopen'd at runtime, so
+// only its Objective-C protocols are visible here, never its classes.
+#import "../../../../Engines/Chromium/Sources/RFXChromium.h"
+
 // Note: MediaPlaybackCore APIs are loaded dynamically at runtime
 // to avoid linker dependencies on private frameworks.
 // See ProcessAudioTapManager.swift for implementation.
