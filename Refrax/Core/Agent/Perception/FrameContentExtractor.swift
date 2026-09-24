@@ -10,6 +10,8 @@ import WebKit
 ///
 /// The injected script walks the DOM inside each subframe, collects interactive elements with
 /// bounding rects, and posts the results back via `webkit.messageHandlers.refraxFrameContent`.
+/// It runs in the isolated `RefraxScripts` world, and each result is filed under the origin the
+/// engine reports for the posting frame, so a page can't plant content under another origin.
 ///
 /// ## Usage
 ///
@@ -27,6 +29,15 @@ final class FrameContentExtractor {
 
     /// Message handler name matching the JavaScript constant.
     static let messageHandlerName = "refraxFrameContent"
+
+    /// The isolated world the extraction script runs in.
+    static let worldName = "RefraxScripts"
+
+    /// A frame URL's origin in `location.origin` form.
+    static func origin(of url: URL) -> String? {
+        guard let scheme = url.scheme, let host = url.host() else { return nil }
+        return url.port.map { "\(scheme)://\(host):\($0)" } ?? "\(scheme)://\(host)"
+    }
 
     // MARK: - Stored Frame Content
 
@@ -54,14 +65,18 @@ final class FrameContentExtractor {
         guard !isInstalled else { return }
         isInstalled = true
 
-        state.scriptChannels.register(Self.messageHandlerName) { [weak self] message, _ in
-            guard let body = message.body.foundationValue as? [String: Any] else { return }
-            self?.receive(body)
+        let world = WKContentWorld.world(name: Self.worldName)
+        state.scriptChannels.register(Self.messageHandlerName, world: ScriptRequest.World(world)) { [weak self] message, _ in
+            guard !message.isMainFrame, let frameURL = message.frameURL, let origin = Self.origin(of: frameURL),
+                  let body = message.body.foundationValue as? [String: Any]
+            else { return }
+            self?.receive(body, origin: origin, url: frameURL)
         }
         state.scriptRegistry.register(
-            WKUserScript(source: loadScript(), injectionTime: .atDocumentEnd, forMainFrameOnly: false),
+            WKUserScript(source: loadScript(), injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: world),
             source: .system(name: "frameContent"),
             priority: ScriptRegistry.Priority.system,
+            world: world,
         )
         state.scriptRegistry.apply(to: state.webPageConfiguration.userContentController)
 
@@ -124,20 +139,6 @@ final class FrameContentExtractor {
         frameContents.removeValue(forKey: origin)
     }
 
-    /// Requests re-extraction from all frames by evaluating the trigger function.
-    ///
-    /// - Parameter webView: The web view containing the frames.
-    func requestReExtraction(from webView: WKWebView) {
-        // The injected script exposes __refraxExtractFrameContent in each frame.
-        // We can't call it directly in cross-origin frames, but since the script
-        // is already injected, navigations/reloads will trigger it automatically.
-        // For dynamic content, the caller should clear + wait for new postMessage.
-        webView._evaluateJavaScriptWithoutUserGesture(
-            "document.querySelectorAll('iframe').forEach(f => { try { f.contentWindow.__refraxExtractFrameContent && f.contentWindow.__refraxExtractFrameContent() } catch(e) {} })",
-            completionHandler: nil,
-        )
-    }
-
     // MARK: - Script Loading
 
     private func loadScript() -> String {
@@ -154,15 +155,14 @@ final class FrameContentExtractor {
 // MARK: - Message Handling
 
 extension FrameContentExtractor {
-    /// Stores the content one frame's script posted. `body` is untrusted page input.
-    private func receive(_ body: [String: Any]) {
-        guard let frameOrigin = body["frameOrigin"] as? String else { return }
-
+    /// Stores the content one frame's script posted. `body` is untrusted page input; `origin`
+    /// and `url` come from the engine.
+    private func receive(_ body: [String: Any], origin frameOrigin: String, url: URL) {
         let elements = parseElements(from: body["elements"] as? [[String: Any]] ?? [])
         let summary = parseSummary(from: body["summary"] as? [String: Any])
         let viewportWidth = body["viewportWidth"] as? Int ?? 0
         let viewportHeight = body["viewportHeight"] as? Int ?? 0
-        let frameURL = body["frameURL"] as? String ?? frameOrigin
+        let frameURL = url.absoluteString
 
         let content = FrameContent(
             origin: frameOrigin,

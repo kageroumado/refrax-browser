@@ -185,8 +185,6 @@
       const summary = extractTextSummary();
 
       window.webkit.messageHandlers[HANDLER_NAME].postMessage({
-        frameOrigin: location.origin,
-        frameURL: location.href,
         elements: elements,
         summary: summary,
         viewportWidth: document.documentElement.clientWidth || window.innerWidth,
@@ -204,6 +202,4 @@
     document.addEventListener('DOMContentLoaded', () => setTimeout(postResults, 100));
   }
 
-  // Also listen for a re-extraction request from native
-  window.__refraxExtractFrameContent = postResults;
 })();

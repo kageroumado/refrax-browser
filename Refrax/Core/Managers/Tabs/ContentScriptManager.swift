@@ -71,7 +71,7 @@ final class ContentScriptManager {
     private var autoFillFocusScriptID: UUID?
 
     // Web store integration
-    private var webStoreEarlyScriptID: UUID?
+    private var webStorePageScriptID: UUID?
     private var webStoreScriptID: UUID?
 
     // Appearance observation
@@ -505,7 +505,7 @@ final class ContentScriptManager {
         if isEnabled {
             if !isGPCChannelOpen {
                 state.scriptChannels.register(Constants.App.gpcMessageHandlerName) { [weak self] message, _ in
-                    self?.recordGPCUsage(urlString: message.body["url"]?.stringValue ?? message.body.stringValue)
+                    self?.recordGPCUsage(url: message.frameURL)
                 }
                 isGPCChannelOpen = true
             }
@@ -521,13 +521,8 @@ final class ContentScriptManager {
         state.scriptRegistry.apply(to: state.webPageConfiguration.userContentController)
     }
 
-    private func recordGPCUsage(urlString: String?) {
-        guard let urlString,
-              let url = URL(string: urlString),
-              let host = url.host?.lowercased()
-        else {
-            return
-        }
+    private func recordGPCUsage(url: URL?) {
+        guard let host = url?.host()?.lowercased() else { return }
 
         // Log once per host to keep telemetry lightweight.
         if gpcTelemetryHosts.insert(host).inserted {
@@ -803,10 +798,11 @@ final class ContentScriptManager {
         state.scriptChannels.register(Constants.App.credentialSubmitHandlerName) { [weak self] message, page in
             guard let username = message.body["username"]?.stringValue,
                   let password = message.body["password"]?.stringValue else { return }
+            // The script runs in the page world, so the frame comes from the engine, never the body.
             self?.handleCredentialSubmission(
                 username: username,
                 password: password,
-                urlString: message.body["url"]?.stringValue,
+                frameURL: message.frameURL,
                 topLevelURL: page?.url,
             )
         }
@@ -835,10 +831,9 @@ final class ContentScriptManager {
     private func handleCredentialSubmission(
         username: String,
         password: String,
-        urlString: String?,
+        frameURL: URL?,
         topLevelURL: URL?,
     ) {
-        let frameURL = urlString.flatMap(URL.init(string:))
         guard let frameURL = frameURL ?? topLevelURL else {
             Logger.debug("Credential submission ignored - invalid URL", category: Logger.autoFill)
             return
@@ -910,93 +905,68 @@ final class ContentScriptManager {
     /// buttons with "Add to Refrax" and intercepts clicks to trigger
     /// native extension installation.
     private func setupWebStoreIntegration() {
-        state.scriptChannels.register(WebStoreIntegrationScript.messageHandlerName) { [weak self] message, page in
-            guard let store = message.body["store"]?.stringValue,
-                  let extensionID = message.body["extensionID"]?.stringValue,
-                  let page else { return }
-            self?.handleWebStoreInstall(store: store, extensionID: extensionID, name: message.body["name"]?.stringValue, page: page)
+        let world = ScriptRequest.World.isolated(name: WebStoreIntegrationScript.worldName)
+        state.scriptChannels.register(WebStoreIntegrationScript.messageHandlerName, world: world) { [weak self] message, page in
+            guard let page else { return }
+            self?.handleWebStoreInstall(message, page: page)
         }
 
-        // Register early CSS override at document start (prevents white flash on CWS)
-        let earlyScript = WKUserScript(
-            source: WebStoreIntegrationScript.earlyStyleScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true,
-        )
-        webStoreEarlyScriptID = state.scriptRegistry.register(
-            earlyScript,
-            source: .system(name: "webStoreEarlyStyle"),
+        webStorePageScriptID = state.scriptRegistry.register(
+            WKUserScript(source: WebStoreIntegrationScript.pageEnvironmentScript, injectionTime: .atDocumentStart, forMainFrameOnly: true),
+            source: .system(name: "webStorePageEnvironment"),
             priority: ScriptRegistry.Priority.system,
         )
-
-        // Register the main content script at document end
-        let script = WKUserScript(
-            source: WebStoreIntegrationScript.script,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true,
-        )
+        let webKitWorld = world.webKitWorld
         webStoreScriptID = state.scriptRegistry.register(
-            script,
+            WKUserScript(
+                source: WebStoreIntegrationScript.storeScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: webKitWorld,
+            ),
             source: .system(name: "webStoreIntegration"),
             priority: ScriptRegistry.Priority.system,
+            world: webKitWorld,
         )
 
         rebuildUserScripts()
         Logger.info("Web store integration script installed", category: Logger.extensions)
     }
 
-    /// Handles an extension install request from the web store content script.
-    private func handleWebStoreInstall(store: String, extensionID: String, name: String?, page: WebPage) {
-        guard let webStore = WebStore(rawValue: store) else {
-            Logger.warning("Unknown web store: \(store)", category: Logger.extensions)
+    /// Handles an "Add to Refrax" click: accepted only from a store's own main frame, for a
+    /// well-formed ID, and only after the user confirms in the page's pane.
+    private func handleWebStoreInstall(_ message: ScriptMessage, page: WebPage) {
+        guard let request = WebStoreInstallRequest(message) else {
+            Logger.warning("Rejected a web store install request from \(message.frameURL?.host() ?? "unknown")", category: Logger.extensions)
             return
         }
 
-        // Check if already installed
-        let existingSource: ExtensionSource = switch webStore {
-        case .chrome: .chromeWebStore(extensionID: extensionID)
-        case .firefox: .firefoxAddons(extensionID: extensionID)
-        }
-
-        if state.extensionManager.installedExtensions.contains(where: { $0.source == existingSource }) {
-            Logger.info(
-                "Extension '\(name ?? extensionID)' is already installed",
-                category: Logger.extensions,
-            )
+        if state.extensionManager.installedExtensions.contains(where: { $0.source == request.source }) {
             updateWebStoreButton(status: "already_installed", page: page)
             return
         }
 
-        Logger.info(
-            "Web store install requested: \(name ?? extensionID) from \(store)",
-            category: Logger.extensions,
-        )
-
-        Task {
+        Task.immediate(name: "Web store install") {
+            let question = PageQuestion.installExtension(name: request.name, store: request.store.displayName, origin: request.host)
+            guard await page.prompts.ask(question) == .accept else {
+                updateWebStoreButton(status: "cancelled", page: page)
+                return
+            }
             do {
-                let installed = try await state.extensionManager.installFromWebStore(
-                    extensionID: extensionID,
-                    store: webStore,
-                )
-                Logger.info(
-                    "Successfully installed '\(installed.displayName)' from \(store) web store",
-                    category: Logger.extensions,
-                )
+                let installed = try await state.extensionManager.installFromWebStore(extensionID: request.extensionID, store: request.store)
+                Logger.info("Installed '\(installed.displayName)' from \(request.store)", category: Logger.extensions)
                 updateWebStoreButton(status: "installed", page: page)
             } catch {
-                Logger.error(
-                    "Failed to install extension '\(extensionID)' from \(store): \(error)",
-                    category: Logger.extensions,
-                )
+                Logger.error("Failed to install extension '\(request.extensionID)' from \(request.store): \(error)", category: Logger.extensions)
                 updateWebStoreButton(status: "error", page: page)
             }
         }
     }
 
-    /// Updates the web store install button via JavaScript evaluation.
+    /// Updates the page's install button, in the world whose script drew it.
     private func updateWebStoreButton(status: String, page: WebPage) {
         let js = "window.__refraxUpdateInstallButton && window.__refraxUpdateInstallButton('\(status)')"
-        Task { _ = try? await page.evaluateJavaScript(js) }
+        Task { _ = try? await page.evaluateJavaScript(js, contentWorld: .world(name: WebStoreIntegrationScript.worldName)) }
     }
 
     // MARK: - Form Data Queries

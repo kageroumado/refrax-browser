@@ -2,18 +2,24 @@ import Foundation
 
 /// JavaScript content script for Chrome Web Store and Firefox Add-ons integration.
 ///
-/// On CWS: spoofs Chrome environment at document start, waits for CWS to build
+/// On CWS: spoofs the Chrome environment at document start, waits for CWS to build
 /// the DOM, then scrapes extension info and replaces the entire page body with
 /// a clean custom page that has a working "Add to Refrax" button.
+///
+/// Installing asks the user first, and Refrax accepts the request only from a store's main
+/// frame (`ContentScriptManager.handleWebStoreInstall`).
 ///
 /// On AMO: replaces "Add to Firefox" buttons with "Add to Refrax" buttons.
 enum WebStoreIntegrationScript {
     /// Message handler name for receiving install requests from the content script.
     static let messageHandlerName = "refraxWebStoreInstall"
 
-    /// Single script injected at document start. Handles everything:
-    /// Chrome API spoofing, page replacement after load, button wiring.
-    static let earlyStyleScript = """
+    /// The isolated world the store UI runs in.
+    static let worldName = "RefraxScripts"
+
+    /// The Chrome environment the stores check for, in the page's own world at document start.
+    /// It carries no channel: page scripts can reach everything in their world.
+    static let pageEnvironmentScript = """
     (() => {
       const hostname = location.hostname;
       const isCWS = hostname === 'chromewebstore.google.com';
@@ -57,6 +63,17 @@ enum WebStoreIntegrationScript {
           });
         }
       } catch (e) {}
+    })();
+    """
+
+    /// The "Add to Refrax" UI, in the isolated `RefraxScripts` world at document start: page
+    /// scripts can't post its install channel or click its buttons with synthetic events.
+    static let storeScript = """
+    (() => {
+      const hostname = location.hostname;
+      const isCWS = hostname === 'chromewebstore.google.com';
+      const isAMO = hostname === 'addons.mozilla.org';
+      if (!isCWS && !isAMO) return;
 
       var _setTimeout = window.setTimeout;
       var _MutationObserver = window.MutationObserver;
@@ -206,8 +223,8 @@ enum WebStoreIntegrationScript {
             }
           };
 
-          btn.onclick = function() {
-            if (!handler) return;
+          btn.onclick = function(event) {
+            if (!handler || !event.isTrusted) return;
             btn.disabled = true;
             btn.textContent = 'Installing\\u2026';
             btn.style.opacity = '0.7';
@@ -328,7 +345,8 @@ enum WebStoreIntegrationScript {
               }
             };
 
-            newBtn.onclick = function() {
+            newBtn.onclick = function(event) {
+              if (!event.isTrusted) return;
               newBtn.disabled = true;
               newBtn.textContent = 'Installing\\u2026';
               newBtn.style.opacity = '0.7';
@@ -354,9 +372,67 @@ enum WebStoreIntegrationScript {
       }
     })();
     """
+}
 
-    /// Document-end script — no longer needed (everything is in earlyStyleScript).
-    static let script = """
-    (() => {})();
-    """
+// MARK: - Install Requests
+
+/// An "Add to Refrax" request that came from a store's own main frame for a well-formed ID.
+struct WebStoreInstallRequest: Equatable {
+    let store: WebStore
+    let extensionID: String
+    /// The store page's name for the extension, shown when asking the user.
+    let name: String
+    let host: String
+
+    private static let maximumNameLength = 80
+
+    /// Validates `message` against where the engine says it came from; the body only names the ID.
+    init?(_ message: ScriptMessage) {
+        guard message.isMainFrame, let url = message.frameURL, url.scheme == "https",
+              let host = url.host(), let store = WebStore(host: host),
+              message.body["store"]?.stringValue == store.rawValue,
+              let extensionID = message.body["extensionID"]?.stringValue, store.accepts(extensionID: extensionID)
+        else { return nil }
+
+        let name = (message.body["name"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        self.store = store
+        self.extensionID = extensionID
+        self.name = name.isEmpty ? extensionID : String(name.prefix(Self.maximumNameLength))
+        self.host = host
+    }
+
+    var source: ExtensionSource {
+        switch store {
+        case .chrome: .chromeWebStore(extensionID: extensionID)
+        case .firefox: .firefoxAddons(extensionID: extensionID)
+        }
+    }
+}
+
+extension WebStore {
+    /// The store served from `host`.
+    init?(host: String) {
+        switch host {
+        case "chromewebstore.google.com": self = .chrome
+        case "addons.mozilla.org": self = .firefox
+        default: return nil
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .chrome: "Chrome Web Store"
+        case .firefox: "Firefox Add-ons"
+        }
+    }
+
+    /// Whether `extensionID` has the store's ID shape. The ID becomes part of a download URL.
+    func accepts(extensionID: String) -> Bool {
+        switch self {
+        case .chrome:
+            extensionID.wholeMatch(of: /[a-p]{32}/) != nil
+        case .firefox:
+            extensionID.wholeMatch(of: /[A-Za-z0-9_@{}\-][A-Za-z0-9._@{}\-]{0,199}/) != nil
+        }
+    }
 }

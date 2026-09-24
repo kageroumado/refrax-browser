@@ -1000,12 +1000,14 @@ class App : public CefApp, public CefBrowserProcessHandler {
       ![callID isKindOfClass:NSNumber.class] || ![contextID isKindOfClass:NSNumber.class]) {
     return;
   }
+  // The prelude reads the posting frame's location and position before page scripts run.
+  NSString* frameURL = [message[@"frameURL"] isKindOfClass:NSString.class] ? message[@"frameURL"] : nil;
   NSData* delivered = [NSJSONSerialization dataWithJSONObject:@{
     @"channel" : channel,
     @"world" : _worldsByBinding[params[@"name"]] ?: @{@"page" : @{}},
     @"body" : message[@"body"] ?: NSNull.null,
-    @"frameURL" : _lastCommittedURL ?: NSNull.null,
-    @"isMainFrame" : @YES,
+    @"frameURL" : frameURL ?: NSNull.null,
+    @"isMainFrame" : @([message[@"isMainFrame"] boolValue]),
   } options:0 error:nil];
   NSString* resolver = _resolversByBinding[params[@"name"]];
   __weak RFXChromiumPage* weakSelf = self;
@@ -1126,6 +1128,8 @@ class App : public CefApp, public CefBrowserProcessHandler {
        "const post = globalThis['%@'];"
        "if (typeof post !== 'function') return;"
        "delete globalThis['%@'];"
+       "const stringify = JSON.stringify;"
+       "const frame = () => ({ frameURL: location.href, isMainFrame: window.top === window });"
        "const pending = new Map();"
        "let nextID = 1;"
        "Object.defineProperty(globalThis, '%@', { value(id, reply) {"
@@ -1141,7 +1145,7 @@ class App : public CefApp, public CefBrowserProcessHandler {
        "    const id = nextID++;"
        "    return new Promise((resolve, reject) => {"
        "      pending.set(id, { resolve, reject });"
-       "      post(JSON.stringify({ channel, body, id }));"
+       "      post(stringify({ channel, body, id, ...frame() }));"
        "    });"
        "  } });"
        "}"
