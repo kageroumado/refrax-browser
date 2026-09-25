@@ -351,7 +351,12 @@ actor ContentBlockingManager {
     }
 
     private func removeCompiledRules(forListID listID: String) async {
-        let keysToRemove = Array(compiledRuleLists.keys.filter { $0.hasPrefix(listID) })
+        // Identifiers are "<listID>-<chunkIndex>". A bare prefix match would also catch
+        // "easylist-cookies-0" when removing "easylist", so the remainder must be the index.
+        let chunkPrefix = "\(listID)-"
+        let keysToRemove = Array(compiledRuleLists.keys.filter { key in
+            key.hasPrefix(chunkPrefix) && Int(key.dropFirst(chunkPrefix.count)) != nil
+        })
 
         for key in keysToRemove {
             if let ruleList = compiledRuleLists.removeValue(forKey: key) {
