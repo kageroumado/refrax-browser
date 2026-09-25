@@ -1,0 +1,231 @@
+#!/bin/bash
+# forge — builds the Chromium engine. Plan: Docs/plans/engine-forge.md.
+#
+#   eval "$(Scripts/forge/forge env)"
+#   forge doctor | bootstrap | fetch | prepare | gen | build | status
+#
+# FORGE is the workspace (default: the Ugreen SSD on the Mac Studio). A host with the forge
+# elsewhere exports FORGE before running, e.g. FORGE=~/Forge/chromium on the MacBook.
+#
+# The source and toolchains come through ungoogled-chromium-macos at the tag pinned in
+# Scripts/forge/ungoogled-macos.txt: a shallow git clone of Chromium (which carries the PGO
+# profile the official build uses), ungoogled's LLVM, Rust nightly and Node, ungoogled's
+# pruning, patches and domain substitution. Refrax's GN args are appended to ungoogled's.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+FORGE="${FORGE:-/Volumes/Ugreen/Projects/refrax/engines/chromium}"
+UNGOOGLED_TAG="$(tr -d '[:space:]' <"$SCRIPT_DIR/ungoogled-macos.txt")"
+REFRAX_ARGS="$REPO_ROOT/Engines/Chromium/args.gn"
+
+UNGOOGLED="$FORGE/ungoogled"
+MAIN_REPO="$UNGOOGLED/ungoogled-chromium"
+SRC="$FORGE/src"
+OUT="$SRC/out/Release"
+LOGS="$FORGE/logs"
+PYTHON="/opt/homebrew/bin/python3.13"   # depot_tools rejects 3.14
+MIN_FREE_GB="${FORGE_MIN_FREE_GB:-150}"
+TARGETS=(chrome)
+
+# The macOS SDK Chromium pins (mac_sdk_official_version), from Xcode or the Command Line Tools.
+# A newer SDK is unusable: the 27 SDK's .tbd stubs name targets ungoogled's LLVM cannot parse.
+mac_sdk() {
+    local version dir
+    version=$(sed -n 's/^ *mac_sdk_official_version = "\(.*\)"/\1/p' \
+        "$SRC/build/config/mac/mac_sdk.gni" 2>/dev/null)
+    [[ -n "$version" ]] || return 1
+    for dir in "$(xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs" \
+        /Library/Developer/CommandLineTools/SDKs; do
+        [[ -d "$dir/MacOSX$version.sdk" ]] && { echo "$dir/MacOSX$version.sdk"; return; }
+    done
+    return 1
+}
+
+log() { printf '[forge %s] %s\n' "$(date '+%H:%M:%S')" "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+
+cmd_env() {
+    cat <<EOF
+export FORGE="$FORGE"
+export PATH="$FORGE/bin:$SCRIPT_DIR:/opt/homebrew/bin:\$PATH"
+export DEPOT_TOOLS_UPDATE=0
+export DEPOT_TOOLS_METRICS=0
+export NO_COLOR=1
+EOF
+    local sdk
+    sdk=$(mac_sdk) && echo "export SDKROOT=\"$sdk\""
+    return 0
+}
+
+# One line per check; exit 1 when any fails.
+cmd_doctor() {
+    local failed=0
+    check() {
+        local label="$1"; shift
+        if "$@" >/dev/null 2>&1; then printf '  ok    %s\n' "$label"
+        else printf '  FAIL  %s\n' "$label"; failed=1; fi
+    }
+    local free_gb
+    mkdir -p "$FORGE"
+    free_gb=$(df -g "$FORGE" | awk 'NR==2 {print $4}')
+    check "arm64 host" test "$(uname -m)" = arm64
+    check "macOS 26 or later" test "$(sw_vers -productVersion | cut -d. -f1)" -ge 26
+    check "≥ ${MIN_FREE_GB} GB free at $FORGE (${free_gb} GB)" test "$free_gb" -ge "$MIN_FREE_GB"
+    check "full Xcode selected" bash -c 'xcode-select -p | grep -q "\.app/Contents/Developer"'
+    check "macOS SDK" xcrun --sdk macosx --show-sdk-path
+    check "Metal toolchain" xcrun metal --version
+    check "python3.13 with httplib2" "$PYTHON" -c 'import httplib2, socks'
+    local tool
+    for tool in git ninja go greadlink node xz rsync; do
+        check "$tool" command -v "$tool"
+    done
+    check "Refrax GN args" test -f "$REFRAX_ARGS"
+    if [[ -f "$SRC/build/config/mac/mac_sdk.gni" ]]; then
+        check "macOS SDK Chromium pins ($(mac_sdk || echo missing))" mac_sdk
+    fi
+    check "no other forge run" bash -c "test ! -d '$FORGE/.lock' || ! kill -0 \$(cat '$FORGE/.lock/pid' 2>/dev/null) 2>/dev/null"
+    return "$failed"
+}
+
+# Serializes runs; a lock left by a dead process is taken over.
+acquire_lock() {
+    if ! mkdir "$FORGE/.lock" 2>/dev/null; then
+        local holder
+        holder=$(cat "$FORGE/.lock/pid" 2>/dev/null || true)
+        if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then
+            die "forge run $holder holds $FORGE/.lock"
+        fi
+    fi
+    mkdir -p "$FORGE/.lock"
+    echo $$ >"$FORGE/.lock/pid"
+    trap 'trash "$FORGE/.lock" 2>/dev/null || mv "$FORGE/.lock" "$FORGE/.lock.stale.$$"' EXIT
+}
+
+stamp() { echo "$SRC/.forge-$1"; }
+
+cmd_bootstrap() {
+    mkdir -p "$FORGE"/{bin,downloads,logs,artifacts}
+    ln -sf "$PYTHON" "$FORGE/bin/python3"
+    if [[ ! -d "$UNGOOGLED/.git" ]]; then
+        log "cloning ungoogled-chromium-macos $UNGOOGLED_TAG"
+        git clone -q -c advice.detachedHead=false --recurse-submodules -b "$UNGOOGLED_TAG" \
+            https://github.com/ungoogled-software/ungoogled-chromium-macos.git "$UNGOOGLED"
+    else
+        git -C "$UNGOOGLED" fetch -q --tags origin
+        git -C "$UNGOOGLED" -c advice.detachedHead=false checkout -q "$UNGOOGLED_TAG"
+        git -C "$UNGOOGLED" submodule update -q --init --recursive
+    fi
+    # ungoogled's scripts hard-code build/src and build/download_cache under their checkout.
+    # The tree lives there and $FORGE/src points at it; git cannot clone through a symlink.
+    mkdir -p "$UNGOOGLED/build"
+    [[ -L "$UNGOOGLED/build/src" ]] && mv "$UNGOOGLED/build/src" "$FORGE/.src-link.$$" && trash "$FORGE/.src-link.$$"
+    ln -sfn "$UNGOOGLED/build/src" "$SRC"
+    ln -sfn "$FORGE/downloads" "$UNGOOGLED/build/download_cache"
+    log "ungoogled-chromium-macos $(git -C "$UNGOOGLED" describe --tags), Chromium $(chromium_version)"
+}
+
+chromium_version() { cat "$MAIN_REPO/chromium_version.txt"; }
+
+cmd_fetch() {
+    [[ -d "$UNGOOGLED/.git" ]] || die "run forge bootstrap first"
+    log "fetching Chromium $(chromium_version) (shallow clone with PGO profile)"
+    "$PYTHON" "$UNGOOGLED/retrieve_and_unpack_resource.py" -g arm64
+    touch "$(stamp "fetched-$(chromium_version)")"
+}
+
+# Each step stamps itself: pruning, patching and substitution cannot run twice on one tree.
+prepare_step() {
+    local name="$1"; shift
+    local done_stamp
+    done_stamp="$(stamp "prepare-$name-$(chromium_version)")"
+    if [[ -f "$done_stamp" ]]; then
+        log "$name: done"
+        return
+    fi
+    log "$name"
+    "$@"
+    touch "$done_stamp"
+}
+
+step_gn() { (cd "$SRC" && "$PYTHON" tools/gn/bootstrap/bootstrap.py -o out/gn --skip-generate-buildfiles); }
+step_bindgen() { (cd "$SRC" && "$PYTHON" tools/rust/build_bindgen.py --skip-test); }
+
+cmd_prepare() {
+    local version
+    version=$(chromium_version)
+    [[ -f "$(stamp "fetched-$version")" ]] || die "run forge fetch first"
+    prepare_step prune "$PYTHON" "$MAIN_REPO/utils/prune_binaries.py" "$SRC" "$MAIN_REPO/pruning.list"
+    prepare_step patches "$PYTHON" "$MAIN_REPO/utils/patches.py" apply "$SRC" \
+        "$MAIN_REPO/patches" "$UNGOOGLED/patches"
+    prepare_step domains "$PYTHON" "$MAIN_REPO/utils/domain_substitution.py" apply \
+        -r "$MAIN_REPO/domain_regex.list" -f "$MAIN_REPO/domain_substitution.list" "$SRC"
+    prepare_step toolchains "$PYTHON" "$UNGOOGLED/retrieve_and_unpack_resource.py" -p arm64
+    mkdir -p "$OUT"
+    prepare_step gn step_gn
+    prepare_step bindgen step_bindgen
+    touch "$(stamp "prepared-$version")"
+}
+
+cmd_gen() {
+    [[ -f "$(stamp "prepared-$(chromium_version)")" ]] || die "run forge prepare first"
+    mkdir -p "$OUT/sdk/forge"
+    # GN takes SDK inputs only from inside the build directory, as Chromium's own
+    # sdk/xcode_links symlink does for Xcode's SDK.
+    local sdk
+    sdk=$(mac_sdk) || die "no macOS SDK matching Chromium's mac_sdk_official_version"
+    ln -sfn "$sdk" "$OUT/sdk/forge/$(basename "$sdk")"
+    {
+        echo "# Generated by forge: ungoogled flags.gn + flags.macos.gn + Engines/Chromium/args.gn"
+        cat "$MAIN_REPO/flags.gn" "$UNGOOGLED/flags.macos.gn"
+        cat "$REFRAX_ARGS"
+        echo "mac_sdk_path = \"//out/Release/sdk/forge/$(basename "$sdk")\""
+    } >"$OUT/args.gn"
+    (cd "$SRC" && out/gn gen out/Release --fail-on-unused-args)
+}
+
+cmd_build() {
+    [[ -f "$OUT/build.ninja" ]] || die "run forge gen first"
+    local started ended
+    started=$(date +%s)
+    log "ninja -C out/Release ${TARGETS[*]} on $(sysctl -n hw.ncpu) cores"
+    ninja -C "$OUT" "${TARGETS[@]}"
+    ended=$(date +%s)
+    printf '%s\t%s\t%s\t%ss\n' "$(date -u +%FT%TZ)" "$(hostname -s)" "$(chromium_version)" \
+        "$((ended - started))" >>"$LOGS/build-times.tsv"
+    log "built in $(((ended - started) / 60)) min: $OUT/Chromium.app"
+}
+
+cmd_status() {
+    printf 'FORGE      %s\n' "$FORGE"
+    printf 'ungoogled  %s\n' "$(git -C "$UNGOOGLED" describe --tags 2>/dev/null || echo 'not bootstrapped')"
+    printf 'stamps     %s\n' "$(cd "$SRC" 2>/dev/null && ls -d .forge-* 2>/dev/null | tr '\n' ' ')"
+    printf 'free       %s GB\n' "$(df -g "$FORGE" | awk 'NR==2 {print $4}')"
+    [[ -f "$LOGS/build-times.tsv" ]] && { echo 'builds'; tail -5 "$LOGS/build-times.tsv"; }
+    return 0
+}
+
+main() {
+    local command="${1:-}"
+    [[ -n "$command" ]] || die "usage: forge env|doctor|bootstrap|fetch|prepare|gen|build|status"
+    shift
+    case "$command" in
+        env) cmd_env ;;
+        doctor) cmd_doctor ;;
+        status) cmd_status ;;
+        bootstrap|fetch|prepare|gen|build)
+            eval "$(cmd_env)"
+            cmd_doctor >/dev/null || { cmd_doctor; die "doctor failed"; }
+            mkdir -p "$LOGS"
+            acquire_lock
+            local logfile
+            logfile="$LOGS/$(date +%Y%m%d-%H%M%S)-$command.log"
+            log "log: $logfile"
+            "cmd_$command" "$@" 2>&1 | tee "$logfile"
+            ;;
+        *) die "unknown command: $command" ;;
+    esac
+}
+
+main "$@"

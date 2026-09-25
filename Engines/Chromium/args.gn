@@ -1,0 +1,6 @@
+# Refrax's GN args, appended after ungoogled's flags.gn and flags.macos.gn (later values win).
+# mac_deployment_target stays at Chromium's default: at 15.0 or later, WebRTC's CGDisplayStream
+# screen capturer fails to compile. macOS 26 is enforced by LSMinimumSystemVersion at packaging.
+target_cpu = "arm64"
+symbol_level = 1
+enable_dsyms = true
