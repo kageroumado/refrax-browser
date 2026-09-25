@@ -1,0 +1,50 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+assert(is_mac)
+
+# The engine host: Chromium's browser process (//chrome, no Chrome UI) serving Refrax's engine
+# contract to the client over Mojo. Linked into the host app through chrome_dll
+# (patches/chrome-host-content-browser-client.patch); inert unless launched with
+# --refrax-bootstrap.
+source_set("host") {
+  sources = [
+    "contract_json.cc",
+    "contract_json.h",
+    "engine_connection.h",
+    "engine_connection.mm",
+    "engine_host_impl.mm",
+    "engine_host_impl.h",
+    "host_content_browser_client.cc",
+    "host_content_browser_client.h",
+    "host_page.h",
+    "host_page.mm",
+    "refrax_browser_main_extra_parts.mm",
+    "refrax_browser_main_extra_parts.h",
+    "switches.cc",
+    "switches.h",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui",
+    "//components/keep_alive_registry",
+    "//components/remote_cocoa/browser",
+    "//components/remote_cocoa/common:mojo",
+    "//content/public/browser",
+    "//content/public/common",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/platform",
+    "//mojo/public/cpp/system",
+    "//net",
+    "//refrax/common/mojom",
+    "//third_party/blink/public/common",
+    "//ui/base",
+    "//url",
+  ]
+  frameworks = [ "AppKit.framework" ]
+
+  # The client ships in the same engine bundle and must match this build's Mojo interfaces, so
+  # building the host (the chrome target) builds it too.
+  data_deps = [ "//refrax/client:RefraxChromium" ]
+}

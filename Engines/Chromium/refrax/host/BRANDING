@@ -1,0 +1,10 @@
+COMPANY_FULLNAME=Refrax
+COMPANY_SHORTNAME=Refrax
+PRODUCT_FULLNAME=Refrax Chromium Host
+PRODUCT_SHORTNAME=Refrax Chromium Host
+PRODUCT_INSTALLER_FULLNAME=Refrax Chromium Host
+PRODUCT_INSTALLER_SHORTNAME=Refrax Chromium Host
+COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors and Refrax. All rights reserved.
+MAC_BUNDLE_ID=website.refrax.engine.chromium.host
+MAC_CREATOR_CODE=Rfxh
+MAC_TEAM_ID=52K336H235

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>RefraxChromium</string>
+	<key>CFBundleIdentifier</key>
+	<string>website.refrax.engine.chromium</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Refrax Chromium</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@CHROMIUM_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@BUNDLE_VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>NSPrincipalClass</key>
+	<string>RFXChromiumEngine</string>
+	<key>RFXEngineContractVersion</key>
+	<string>1.0</string>
+	<key>RFXEngineDisplayName</key>
+	<string>Chromium</string>
+	<key>RFXEngineVersion</key>
+	<string>Chromium @CHROMIUM_VERSION@</string>
+	<key>RFXEngineVendor</key>
+	<string>Refrax (ungoogled-chromium)</string>
+	<key>RFXEngineOutOfProcess</key>
+	<true/>
+	<key>RFXEngineCapabilities</key>
+	<array>
+		<string>javaScriptEvaluation</string>
+		<string>zoom</string>
+		<string>rendererControl</string>
+	</array>
+</dict>
+</plist>

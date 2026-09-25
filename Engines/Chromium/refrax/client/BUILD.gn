@@ -1,0 +1,44 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+assert(is_mac)
+import("//base/allocator/partition_allocator/partition_alloc.gni")
+
+# The client: the executable of "Refrax Chromium.engine", loaded into Refrax's process. It must
+# be built where PartitionAlloc is not the malloc (see Docs/plans/chromium-host.md, Allocator):
+# out/Dev, or out/ReleaseClient for shipping.
+assert(!use_allocator_shim,
+       "The Refrax client loads into Refrax's process; build it with use_allocator_shim=false.")
+
+loadable_module("RefraxChromium") {
+  output_name = "RefraxChromium"
+  output_extension = ""
+  output_prefix_override = true
+  sources = [
+    "chromium_engine.mm",
+    "chromium_page.h",
+    "chromium_page.mm",
+    "client_runtime.h",
+    "client_runtime.mm",
+    "host_launcher.h",
+    "host_launcher.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/remote_cocoa/app_shim",
+    "//content/public/browser",
+    "//content/public/common",
+    "//mojo/core/embedder",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/platform",
+    "//mojo/public/cpp/system",
+    "//refrax/common",
+    "//refrax/common/mojom",
+    "//ui/accelerated_widget_mac",
+    "//ui/display",
+    "//ui/gfx",
+  ]
+  frameworks = [
+    "AppKit.framework",
+    "Security.framework",
+  ]
+}

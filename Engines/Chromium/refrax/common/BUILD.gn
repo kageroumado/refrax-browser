@@ -1,0 +1,5 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+source_set("common") {
+  sources = [ "bootstrap.h" ]
+}

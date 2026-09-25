@@ -1,0 +1,11 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojom") {
+  sources = [ "engine.mojom" ]
+  public_deps = [
+    "//components/remote_cocoa/common:mojo",
+    "//ui/gfx/geometry/mojom",
+  ]
+}

@@ -4,3 +4,6 @@
 target_cpu = "arm64"
 symbol_level = 1
 enable_dsyms = true
+# The chrome target builds "Refrax Chromium Host.app" (website.refrax.engine.chromium.host),
+# with its framework and helpers renamed to match.
+branding_file_path = "//refrax/host/BRANDING"

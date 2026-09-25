@@ -1,0 +1,260 @@
+--- a/base/message_loop/message_pump_apple.h
++++ b/base/message_loop/message_pump_apple.h
+@@ -79,14 +79,13 @@
+                                  TimeTicks run_time,
+                                  TimeTicks latest_time) override;
+ 
+-#if BUILDFLAG(IS_IOS)
+-  // Some iOS message pumps do not support calling |Run()| to spin the main
+-  // message loop directly.  Instead, call |Attach()| to set up a delegate, then
+-  // |Detach()| before destroying the message pump.  These methods do nothing if
+-  // the message pump supports calling |Run()| and |Quit()|.
++  // Some message pumps do not support calling |Run()| to spin the main
++  // message loop directly: iOS's, and MessagePumpNSApplication when an embedder
++  // already runs -[NSApplication run].  Instead, call |Attach()| to set up a
++  // delegate, then |Detach()| before destroying the message pump.  These methods
++  // do nothing if the message pump supports calling |Run()| and |Quit()|.
+   virtual void Attach(Delegate* delegate);
+   virtual void Detach();
+-#endif  // BUILDFLAG(IS_IOS)
+ 
+  protected:
+   // Needs access to CreateAutoreleasePool.
+@@ -120,10 +119,8 @@
+   int run_nesting_level() const { return run_nesting_level_; }
+   bool keep_running() const { return keep_running_; }
+ 
+-#if BUILDFLAG(IS_IOS)
+   void OnAttach();
+   void OnDetach();
+-#endif
+ 
+   // Sets this pump's delegate.  Signals the appropriate sources if
+   // |delegateless_work_| is true.  |delegate| can be NULL.
+@@ -388,9 +385,18 @@
+   void DoRun(Delegate* delegate) override;
+   bool DoQuit() override;
+ 
++  // For embedders whose -[NSApplication run] is already running: connects the
++  // delegate to the main run loop without calling Run().  Nested RunLoops still
++  // work; they spin their own event loop (see DoRun).
++  void Attach(Delegate* delegate) override;
++  void Detach() override;
++
+  private:
+   friend class ScopedPumpMessagesInPrivateModes;
+ 
++  // The outermost RunLoop while attached.
++  std::optional<RunLoop> attached_run_loop_;
++
+   void EnterExitRunLoop(CFRunLoopActivity activity) override;
+ 
+   // True if DoRun is managing its own run loop as opposed to letting
+--- a/base/message_loop/message_pump_apple.mm
++++ b/base/message_loop/message_pump_apple.mm
+@@ -64,7 +64,6 @@
+ MessagePumpNSApplication* g_app_pump;
+ #endif  // !BUILDFLAG(IS_IOS)
+ 
+-#if BUILDFLAG(IS_IOS)
+ constexpr int kDefaultInitialNestingLevel = 1;
+ // Tracks the initial loop nesting level for the current thread's message pump.
+ // It is used to synchronize the pump's internal nesting state with the host app's
+@@ -79,7 +78,6 @@
+ // TODO(crbug.com/516847270): Pass this via OnAttach() if we can avoid
+ // subclass specific parameter pollution on MessagePumpCFRunLoopBase.
+ thread_local std::optional<int> g_initial_nesting_level;
+-#endif  // BUILDFLAG(IS_IOS)
+ 
+ }  // namespace
+ 
+@@ -243,11 +241,9 @@
+                                            latest_time);
+ }
+ 
+-#if BUILDFLAG(IS_IOS)
+ void MessagePumpCFRunLoopBase::Attach(Delegate* delegate) {}
+ 
+ void MessagePumpCFRunLoopBase::Detach() {}
+-#endif  // BUILDFLAG(IS_IOS)
+ 
+ // Must be called on the run loop thread.
+ MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase(int initial_mode_mask) {
+@@ -352,7 +348,6 @@
+                       std::memory_order_relaxed);
+ }
+ 
+-#if BUILDFLAG(IS_IOS)
+ void MessagePumpCFRunLoopBase::OnAttach() {
+   CHECK_EQ(nesting_level_, 0);
+ 
+@@ -403,7 +398,6 @@
+   //   displaying a long press context menu (CRWContextMenuController).
+   CHECK_GE(nesting_level_, 0);
+ }
+-#endif  // BUILDFLAG(IS_IOS)
+ 
+ void MessagePumpCFRunLoopBase::SetDelegate(Delegate* delegate) {
+   delegate_ = delegate;
+@@ -923,6 +917,27 @@
+   running_own_loop_ = last_running_own_loop;
+ }
+ 
++void MessagePumpNSApplication::Attach(Delegate* delegate) {
++  DCHECK(!attached_run_loop_);
++  DCHECK(NSApp.running);
++  attached_run_loop_.emplace();
++  CHECK(attached_run_loop_->BeforeRun());
++  SetDelegate(delegate);
++  OnAttach();
++}
++
++void MessagePumpNSApplication::Detach() {
++  // SequenceManager detaches every UI pump it is destroyed with, including the
++  // ones that ran through Run() and were never attached.
++  if (!attached_run_loop_) {
++    return;
++  }
++  attached_run_loop_->AfterRun();
++  SetDelegate(nullptr);
++  attached_run_loop_.reset();
++  OnDetach();
++}
++
+ bool MessagePumpNSApplication::DoQuit() {
+   // If the app is displaying a modal window in a native run loop, we can only
+   // quit our run loop after the window is closed. Otherwise the [NSApplication
+--- a/base/run_loop.h
++++ b/base/run_loop.h
+@@ -35,6 +35,8 @@
+ 
+ #if BUILDFLAG(IS_IOS)
+ class MessagePumpUIApplication;
++#else
++class MessagePumpNSApplication;
+ #endif
+ 
+ class SingleThreadTaskRunner;
+@@ -274,6 +276,10 @@
+   // iOS doesn't support the blocking RunLoop::Run, so it calls
+   // BeforeRun directly.
+   friend class MessagePumpUIApplication;
++#elif BUILDFLAG(IS_MAC)
++  // Attached to an embedder's running -[NSApplication run], which it cannot
++  // block in, so it calls BeforeRun directly as iOS does.
++  friend class MessagePumpNSApplication;
+ #endif
+ 
+   // Support for //base/test/scoped_run_loop_timeout.h.
+--- a/base/task/sequence_manager/thread_controller.h
++++ b/base/task/sequence_manager/thread_controller.h
+@@ -133,14 +133,14 @@
+   // Returns true if the current run loop should quit when idle.
+   virtual bool ShouldQuitRunLoopWhenIdle() = 0;
+ 
+-#if BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_ANDROID)
+   // On iOS, the main message loop cannot be Run().  Instead call
+   // AttachToMessagePump(), which connects this ThreadController to the
+   // UI thread's CFRunLoop and allows PostTask() to work.
+   virtual void AttachToMessagePump() = 0;
+ #endif
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+   // Detaches this ThreadController from the message pump, allowing the
+   // controller to be shut down cleanly.
+   virtual void DetachFromMessagePump() = 0;
+--- a/base/task/sequence_manager/thread_controller_with_message_pump_impl.h
++++ b/base/task/sequence_manager/thread_controller_with_message_pump_impl.h
+@@ -72,10 +72,10 @@
+   void SetTaskExecutionAllowedInNativeNestedLoop(bool allowed) override;
+   bool IsTaskExecutionAllowed() const override;
+   MessagePump* GetBoundMessagePump() const override;
+-#if BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_ANDROID)
+   void AttachToMessagePump() override;
+ #endif
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+   void DetachFromMessagePump() override;
+ #endif
+   bool ShouldQuitRunLoopWhenIdle() override;
+--- a/base/task/sequence_manager/thread_controller_with_message_pump_impl.cc
++++ b/base/task/sequence_manager/thread_controller_with_message_pump_impl.cc
+@@ -28,7 +28,7 @@
+ #include "base/trace_event/trace_event.h"
+ #include "build/build_config.h"
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+ #include "base/message_loop/message_pump_apple.h"
+ #elif BUILDFLAG(IS_ANDROID)
+ #include "base/message_loop/message_pump_android.h"
+@@ -739,7 +739,7 @@
+   return pump_.get();
+ }
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+ void ThreadControllerWithMessagePumpImpl::AttachToMessagePump() {
+   static_cast<MessagePumpCFRunLoopBase*>(pump_.get())->Attach(this);
+ }
+--- a/base/task/sequence_manager/sequence_manager_impl.h
++++ b/base/task/sequence_manager/sequence_manager_impl.h
+@@ -167,7 +167,7 @@
+   void SetAddQueueTimeToTasks(bool enable);
+   void SetTaskExecutionAllowedInNativeNestedLoop(bool allowed);
+   bool IsTaskExecutionAllowedInNativeNestedLoop() const;
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+   void AttachToMessagePump();
+ #endif
+   bool IsIdleForTesting() override;
+--- a/base/task/sequence_manager/sequence_manager_impl.cc
++++ b/base/task/sequence_manager/sequence_manager_impl.cc
+@@ -186,7 +186,7 @@
+     ScopedBestEffortExecutionFence::RemoveSequenceManager(this);
+   }
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+   if (settings_.message_loop_type == MessagePumpType::UI &&
+       associated_thread_->IsBound()) {
+     controller_->DetachFromMessagePump();
+@@ -1011,7 +1011,7 @@
+   return controller_->IsTaskExecutionAllowed();
+ }
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+ void SequenceManagerImpl::AttachToMessagePump() {
+   return controller_->AttachToMessagePump();
+ }
+--- a/base/task/current_thread.h
++++ b/base/task/current_thread.h
+@@ -259,7 +259,7 @@
+                            MessagePumpForUI::FdWatcher* delegate);
+ #endif
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+   // Forwards to SequenceManager::Attach().
+   // TODO(crbug.com/40568517): Plumb the actual SequenceManager* to
+   // callers and remove ability to access this method from
+--- a/base/task/current_thread.cc
++++ b/base/task/current_thread.cc
+@@ -167,11 +167,11 @@
+ }
+ #endif
+ 
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_APPLE)
+ void CurrentUIThread::Attach() {
+   current_->AttachToMessagePump();
+ }
+-#endif  // BUILDFLAG(IS_IOS)
++#endif  // BUILDFLAG(IS_APPLE)
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ void CurrentUIThread::Abort() {
