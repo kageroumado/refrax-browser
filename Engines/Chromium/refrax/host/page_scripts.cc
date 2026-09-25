@@ -17,6 +17,7 @@
 #include "components/js_injection/browser/web_message_host_factory.h"
 #include "components/js_injection/browser/web_message_reply_proxy.h"
 #include "components/js_injection/common/interfaces.mojom.h"
+#include "refrax/host/contract_json.h"
 #include "refrax/host/world_registry.h"
 #include "url/gurl.h"
 
@@ -121,7 +122,7 @@ class ChannelHost : public js_injection::WebMessageHost {
       delivery.Set("frameURL", origin.spec());
     }
     delivery.Set("isMainFrame", is_main_frame_);
-    sender_.Run(base::WriteJson(delivery).value_or("{}"),
+    sender_.Run(contract::Serialize(delivery),
                 base::BindOnce(&ChannelHost::Reply, weak_factory_.GetWeakPtr(), *id));
   }
 
@@ -132,7 +133,7 @@ class ChannelHost : public js_injection::WebMessageHost {
     message.Set("id", id);
     message.Set("reply", value ? std::move(*value) : base::Value());
     proxy_->PostWebMessage(
-        blink::WebMessagePayload(base::UTF8ToUTF16(base::WriteJson(message).value_or("{}"))));
+        blink::WebMessagePayload(base::UTF8ToUTF16(contract::Serialize(message))));
   }
 
   const base::DictValue world_;

@@ -14,6 +14,7 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "content/public/browser/render_frame_host.h"
+#include "refrax/host/download_delegate.h"
 #include "refrax/host/engine_connection.h"
 #include "refrax/host/engine_host_impl.h"
 #include "refrax/host/switches.h"
@@ -39,6 +40,11 @@ RefraxBrowserMainExtraParts::~RefraxBrowserMainExtraParts() = default;
 
 void RefraxBrowserMainExtraParts::PreEarlyInitialization() {
   HideFromDock();
+}
+
+void RefraxBrowserMainExtraParts::PreProfileInit() {
+  // Before any profile creates its download delegate.
+  DownloadDelegate::Install();
 }
 
 void RefraxBrowserMainExtraParts::PostBrowserStart() {

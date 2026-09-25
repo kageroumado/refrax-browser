@@ -20,6 +20,10 @@
 
 class ScopedProfileKeepAlive;
 
+namespace content {
+class WebContents;
+}
+
 namespace refrax {
 
 class HostPage;
@@ -44,6 +48,9 @@ class EngineHostImpl : public mojom::EngineHost {
 
   // The latest `scripts` policy; pages created later start with it.
   const base::ListValue& scripts() const { return scripts_; }
+
+  // The page showing `web_contents`, or nullptr.
+  HostPage* PageFor(content::WebContents* web_contents) const;
 
   // Called by a page when the client closes it or the page closes itself.
   void DestroyPage(HostPage* page);

@@ -26,6 +26,7 @@
 #include "refrax/host/contract_json.h"
 #include "refrax/host/engine_host_impl.h"
 #include "refrax/host/page_dialogs.h"
+#include "refrax/host/page_downloads.h"
 #include "refrax/host/permission_prompt.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "components/permissions/permission_request_manager.h"
@@ -141,10 +142,26 @@ HostPage::HostPage(EngineHostImpl* engine,
   scripts_->Apply(engine_->scripts());
   dialogs_ = std::make_unique<PageDialogs>(base::BindRepeating(
       &HostPage::SendRequest, weak_factory_.GetWeakPtr()));
+  downloads_ = std::make_unique<PageDownloads>(
+      base::BindRepeating(&HostPage::SendRequest, weak_factory_.GetWeakPtr()),
+      base::BindRepeating(
+          [](base::WeakPtr<HostPage> page, std::string_view name, base::DictValue fields) {
+            if (page) {
+              page->Emit(name, std::move(fields));
+            }
+          },
+          weak_factory_.GetWeakPtr()));
   // Permission questions go to Refrax instead of Chrome's bubbles.
   permissions::PermissionRequestManager::FromWebContents(web_contents_.get())
       ->set_view_factory(PermissionPrompt::Factory(
           base::BindRepeating(&HostPage::SendRequest, weak_factory_.GetWeakPtr())));
+}
+
+void HostPage::AskForDownload(
+    download::DownloadItem* download,
+    const base::FilePath& suggested_path,
+    DownloadTargetDeterminerDelegate::ConfirmationCallback callback) {
+  downloads_->Ask(download, suggested_path, std::move(callback));
 }
 
 void HostPage::ApplyScripts(const base::ListValue& scripts) {
@@ -152,6 +169,7 @@ void HostPage::ApplyScripts(const base::ListValue& scripts) {
 }
 
 HostPage::~HostPage() {
+  downloads_.reset();
   dialogs_.reset();
   scripts_.reset();
   Observe(nullptr);
@@ -290,12 +308,16 @@ void HostPage::PerformCommand(const std::string& command) {
     if (attached_) {
       hostable_view()->ViewsHostableMakeFirstResponder();
     }
+  } else if (name == "cancelDownload") {
+    if (const std::string* id = fields.FindString("id")) {
+      downloads_->Cancel(*id);
+    }
   } else if (name == "terminateRenderer") {
     renderer_termination_requested_ = true;
     web_contents_->GetPrimaryMainFrame()->GetProcess()->Shutdown(
         content::RESULT_CODE_KILLED);
   }
-  // find, stopFinding, devTools, setMediaSuspended and cancelDownload are not declared in
+  // find, stopFinding, devTools and setMediaSuspended are not declared in
   // the engine's capabilities yet, so Refrax does not send them.
 }
 
@@ -331,7 +353,7 @@ void HostPage::EvaluateScript(const std::string& request,
               return;
             }
             std::move(callback).Run(
-                result ? base::WriteJson(*result).value_or("null") : "null",
+                result ? contract::Serialize(*result) : "null",
                 std::nullopt);
           },
           std::move(frame_scripts), std::move(callback)));

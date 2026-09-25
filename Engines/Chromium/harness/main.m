@@ -3,10 +3,11 @@
 // engine-harness: drives an engine bundle through RFXEngine.h the way Refrax does, without
 // Refrax. Loads the bundle, starts it, opens one page in a window, prints every event, request
 // and script message as a JSON line on stdout, and answers requests the way a user would
-// (openURL: handled; permissions: deny; dialogs: confirm with "harness"; downloads: cancel).
+// (openURL: handled; permissions: deny; dialogs: confirm with "harness"; downloads: saved to
+// <storage>/Downloads/<suggested name>).
 //
 //   engine-harness <path/to/X.engine> <url> [--storage DIR] [--policy FILE] [--eval JS]
-//                  [--world NAME] [--seconds N]
+//                  [--world NAME] [--gesture] [--seconds N]
 //
 // --policy sends each PolicyUpdate in FILE (a JSON array) before the page opens; --world makes
 // --eval run in that isolated world. Script messages are answered with their own body.
@@ -36,6 +37,7 @@ static void Note(NSString* message) {
 @property(nonatomic) NSURL* storage;
 @property(nonatomic) NSString* script;
 @property(nonatomic) NSString* world;
+@property(nonatomic) BOOL gesture;
 @property(nonatomic) NSString* policyPath;
 @property(nonatomic) NSTimeInterval seconds;
 @property(nonatomic) id<RFXEngineHost> engine;
@@ -146,7 +148,7 @@ static void Note(NSString* message) {
   NSDictionary* request = @{
     @"source" : self.script,
     @"world" : self.world ? @{@"isolated" : @{@"name" : self.world}} : @{@"page" : @{}},
-    @"userGesture" : @NO,
+    @"userGesture" : @(self.gesture),
   };
   [self.page evaluateScript:[NSJSONSerialization dataWithJSONObject:request options:0 error:nil]
                  completion:^(NSData* result, NSError* error) {
@@ -184,6 +186,14 @@ static void Note(NSString* message) {
     answer = @{@"deny" : @{}};
   } else if ([kind isEqualToString:@"javaScriptDialog"]) {
     answer = @{@"confirm" : @{@"text" : @"harness"}};
+  } else if ([kind isEqualToString:@"download"]) {
+    NSURL* folder = [self.storage URLByAppendingPathComponent:@"Downloads" isDirectory:YES];
+    [NSFileManager.defaultManager createDirectoryAtURL:folder
+                           withIntermediateDirectories:YES
+                                            attributes:nil
+                                                 error:nil];
+    NSString* name = parsed[kind][@"suggestedFilename"] ?: @"download";
+    answer = @{@"saveTo" : @{@"url" : [folder URLByAppendingPathComponent:name].absoluteString}};
   }
   reply([NSJSONSerialization dataWithJSONObject:answer options:0 error:nil]);
 }
@@ -217,7 +227,12 @@ int main(int argc, const char* argv[]) {
     harness.storage = [NSURL fileURLWithPath:[NSTemporaryDirectory()
                                                  stringByAppendingPathComponent:@"engine-harness"]
                                  isDirectory:YES];
+    harness.gesture = [arguments containsObject:@"--gesture"];
     for (NSUInteger i = 3; i + 1 < arguments.count; i += 2) {
+      if ([arguments[i] isEqualToString:@"--gesture"]) {
+        i -= 1;
+        continue;
+      }
       if ([arguments[i] isEqualToString:@"--storage"]) {
         harness.storage = [NSURL fileURLWithPath:arguments[i + 1] isDirectory:YES];
       } else if ([arguments[i] isEqualToString:@"--eval"]) {

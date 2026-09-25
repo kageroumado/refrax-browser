@@ -15,8 +15,11 @@
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_metrics.h"
+#include "chrome/browser/download/download_confirmation_result.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/shell_dialogs/selected_file_info.h"
 #include "refrax/host/contract_json.h"
+#include "refrax/host/download_delegate.h"
 #include "refrax/host/host_page.h"
 
 namespace refrax {
@@ -48,9 +51,23 @@ EngineHostImpl::EngineHostImpl(mojo::PendingReceiver<mojom::EngineHost> receiver
                                base::OnceClosure on_disconnect)
     : receiver_(this, std::move(receiver)) {
   receiver_.set_disconnect_handler(std::move(on_disconnect));
+  DownloadDelegate::SetAsker(base::BindRepeating(
+      [](base::WeakPtr<EngineHostImpl> engine, content::WebContents* web_contents,
+         download::DownloadItem* download, const base::FilePath& suggested_path,
+         DownloadTargetDeterminerDelegate::ConfirmationCallback callback) {
+        HostPage* page = engine ? engine->PageFor(web_contents) : nullptr;
+        if (!page) {
+          std::move(callback).Run(DownloadConfirmationResult::CANCELED,
+                                  ui::SelectedFileInfo());
+          return;
+        }
+        page->AskForDownload(download, suggested_path, std::move(callback));
+      },
+      weak_factory_.GetWeakPtr()));
 }
 
 EngineHostImpl::~EngineHostImpl() {
+  DownloadDelegate::SetAsker({});
   // Pages detach their views through `application_`, so they go first.
   pages_.clear();
 }
@@ -112,6 +129,15 @@ void EngineHostImpl::CreatePageInProfile(
   if (initial_url.is_valid()) {
     pages_.back()->Load(initial_url);
   }
+}
+
+HostPage* EngineHostImpl::PageFor(content::WebContents* web_contents) const {
+  for (const auto& page : pages_) {
+    if (page->web_contents() == web_contents) {
+      return page.get();
+    }
+  }
+  return nullptr;
 }
 
 void EngineHostImpl::DestroyPage(HostPage* page) {

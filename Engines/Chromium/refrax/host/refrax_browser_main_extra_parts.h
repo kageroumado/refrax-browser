@@ -27,6 +27,7 @@ class RefraxBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
 
   // ChromeBrowserMainExtraParts:
   void PreEarlyInitialization() override;
+  void PreProfileInit() override;
   void PostBrowserStart() override;
   void PostMainMessageLoopRun() override;
 

@@ -10,6 +10,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
+#include "chrome/browser/download/download_target_determiner_delegate.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
@@ -24,6 +25,7 @@ namespace refrax {
 
 class EngineHostImpl;
 class PageDialogs;
+class PageDownloads;
 class PageScripts;
 
 // One Refrax page: a WebContents with Chrome's tab helpers, whose views live in the client's
@@ -47,6 +49,13 @@ class HostPage : public mojom::Page,
   uint64_t container_ns_view_id() const { return container_ns_view_id_; }
 
   void Load(const GURL& url);
+
+  // Asks Refrax where one of this page's downloads goes.
+  void AskForDownload(download::DownloadItem* download,
+                      const base::FilePath& suggested_path,
+                      DownloadTargetDeterminerDelegate::ConfirmationCallback callback);
+
+  content::WebContents* web_contents() const { return web_contents_.get(); }
 
   // Replaces the page's Refrax scripts (the contract's `scripts` policy).
   void ApplyScripts(const base::ListValue& scripts);
@@ -127,6 +136,7 @@ class HostPage : public mojom::Page,
   mojo::AssociatedRemote<mojom::PageClient> client_;
   std::unique_ptr<PageScripts> scripts_;
   std::unique_ptr<PageDialogs> dialogs_;
+  std::unique_ptr<PageDownloads> downloads_;
 
   bool attached_ = false;
   gfx::Size size_;

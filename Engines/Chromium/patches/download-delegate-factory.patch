@@ -1,0 +1,84 @@
+--- a/chrome/browser/download/download_core_service.h
++++ b/chrome/browser/download/download_core_service.h
+@@ -7,11 +7,14 @@
+ 
+ #include <memory>
+ 
++#include "base/functional/callback.h"
++
+ #include "chrome/browser/download/download_history.h"
+ #include "components/keyed_service/core/keyed_service.h"
+ #include "extensions/buildflags/buildflags.h"
+ 
+ class ChromeDownloadManagerDelegate;
++class Profile;
+ class DownloadUIController;
+ 
+ namespace content {
+@@ -26,6 +29,15 @@
+ // DownloadCoreServiceImpl for implementation.
+ class DownloadCoreService : public KeyedService {
+  public:
++  // Makes the download delegate each profile creates, for an embedder that decides where
++  // downloads go (Refrax's engine host asks Refrax). The delegate then gets all of a
++  // profile's download setup, which SetDownloadManagerDelegateForTesting skips. Set before any
++  // profile loads.
++  using DelegateFactory = base::RepeatingCallback<
++      std::unique_ptr<ChromeDownloadManagerDelegate>(Profile* profile)>;
++  static void SetDelegateFactory(DelegateFactory factory);
++  static const DelegateFactory& GetDelegateFactory();
++
+   // This enum represents when `CancelDownloads` is called.
+   enum class CancelDownloadsTrigger {
+     kShutdown = 0,
+--- a/chrome/browser/download/download_core_service.cc
++++ b/chrome/browser/download/download_core_service.cc
+@@ -4,11 +4,31 @@
+ 
+ #include "chrome/browser/download/download_core_service.h"
+ 
++#include "base/no_destructor.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/download/download_core_service_factory.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/profiles/profile_manager.h"
+ 
++namespace {
++
++DownloadCoreService::DelegateFactory& DelegateFactoryStorage() {
++  static base::NoDestructor<DownloadCoreService::DelegateFactory> factory;
++  return *factory;
++}
++
++}  // namespace
++
++// static
++void DownloadCoreService::SetDelegateFactory(DelegateFactory factory) {
++  DelegateFactoryStorage() = std::move(factory);
++}
++
++// static
++const DownloadCoreService::DelegateFactory& DownloadCoreService::GetDelegateFactory() {
++  return DelegateFactoryStorage();
++}
++
+ DownloadCoreService::DownloadCoreService() = default;
+ 
+ DownloadCoreService::~DownloadCoreService() = default;
+--- a/chrome/browser/download/download_core_service_impl.cc
++++ b/chrome/browser/download/download_core_service_impl.cc
+@@ -56,9 +56,12 @@
+ 
+   // In case the delegate has already been set by
+   // SetDownloadManagerDelegateForTesting.
+-  if (!manager_delegate_.get())
++  if (!manager_delegate_.get()) {
++    const DelegateFactory& factory = GetDelegateFactory();
+     manager_delegate_ =
+-        std::make_unique<ChromeDownloadManagerDelegate>(profile_);
++        factory ? factory.Run(profile_)
++                : std::make_unique<ChromeDownloadManagerDelegate>(profile_);
++  }
+ 
+   manager_delegate_->SetDownloadManager(manager);
+ 

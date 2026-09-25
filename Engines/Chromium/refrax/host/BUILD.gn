@@ -10,6 +10,8 @@ source_set("host") {
   sources = [
     "contract_json.cc",
     "contract_json.h",
+    "download_delegate.cc",
+    "download_delegate.h",
     "engine_connection.h",
     "engine_connection.mm",
     "engine_host_impl.mm",
@@ -20,6 +22,8 @@ source_set("host") {
     "host_page.mm",
     "page_dialogs.cc",
     "page_dialogs.h",
+    "page_downloads.cc",
+    "page_downloads.h",
     "page_scripts.cc",
     "page_scripts.h",
     "permission_prompt.cc",
@@ -38,7 +42,9 @@ source_set("host") {
     "//chrome/browser/ui",
     "//components/js_injection/browser",
     "//components/js_injection/common:common_mojom",
+    "//components/download/public/common:public",
     "//components/keep_alive_registry",
+    "//components/prefs",
     "//components/permissions",
     "//components/remote_cocoa/browser",
     "//components/remote_cocoa/common:mojo",
@@ -51,6 +57,7 @@ source_set("host") {
     "//refrax/common/mojom",
     "//third_party/blink/public/common",
     "//ui/base",
+    "//ui/shell_dialogs",
     "//url",
   ]
   frameworks = [ "AppKit.framework" ]

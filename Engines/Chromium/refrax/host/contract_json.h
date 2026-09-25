@@ -16,6 +16,11 @@ class GURL;
 // naming the case, whose value holds its fields.
 namespace refrax::contract {
 
+// `value` as contract JSON: integral numbers without a decimal point (base::Value keeps large
+// integers such as byte counts as doubles; the contract's integers are integers).
+std::string Serialize(const base::Value& value);
+std::string Serialize(const base::DictValue& value);
+
 // {"<name>": fields} serialized.
 std::string Message(std::string_view name, base::DictValue fields = {});
 

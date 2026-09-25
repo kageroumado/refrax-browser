@@ -8,10 +8,22 @@
 
 namespace refrax::contract {
 
+std::string Serialize(const base::Value& value) {
+  return base::WriteJsonWithOptions(value,
+                                    base::JSONWriter::OPTIONS_OMIT_DOUBLE_TYPE_PRESERVATION)
+      .value_or("null");
+}
+
+std::string Serialize(const base::DictValue& value) {
+  return base::WriteJsonWithOptions(value,
+                                    base::JSONWriter::OPTIONS_OMIT_DOUBLE_TYPE_PRESERVATION)
+      .value_or("{}");
+}
+
 std::string Message(std::string_view name, base::DictValue fields) {
   base::DictValue message;
   message.Set(name, std::move(fields));
-  return base::WriteJson(message).value_or("{}");
+  return Serialize(message);
 }
 
 std::optional<std::pair<std::string, base::DictValue>> ParseMessage(
