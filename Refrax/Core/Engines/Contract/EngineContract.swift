@@ -41,7 +41,7 @@ nonisolated struct EngineID: RawRepresentable, Codable, Hashable, Sendable, Cust
     }
 
     init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
+        self.rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -63,11 +63,11 @@ nonisolated struct EnginePageID: RawRepresentable, Codable, Hashable, Sendable {
     }
 
     init() {
-        rawValue = UUID()
+        self.rawValue = UUID()
     }
 
     init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(UUID.self)
+        self.rawValue = try decoder.singleValueContainer().decode(UUID.self)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -117,7 +117,9 @@ nonisolated extension EngineCapabilities {
     init(names: [String]) {
         let known = Dictionary(uniqueKeysWithValues: Self.namesByCapability)
         self = names.reduce(into: []) { result, name in
-            if let capability = known[name] { result.insert(capability) }
+            if let capability = known[name] {
+                result.insert(capability)
+            }
         }
     }
 }
@@ -181,6 +183,8 @@ nonisolated enum EngineError: LocalizedError, Equatable {
     case unsupported(EngineCapabilities)
     case scriptFailed(String)
     case malformedMessage(String)
+    /// The page belongs to a WebKit extension and renders only in WebKit.
+    case webKitOnlyPage
 
     var errorDescription: String? {
         switch self {
@@ -202,6 +206,8 @@ nonisolated enum EngineError: LocalizedError, Equatable {
             message
         case let .malformedMessage(detail):
             "The engine sent a malformed message: \(detail)"
+        case .webKitOnlyPage:
+            "Extension pages render only in WebKit."
         }
     }
 }

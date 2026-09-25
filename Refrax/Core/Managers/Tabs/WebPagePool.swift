@@ -102,6 +102,12 @@ final class WebPagePool {
     /// pool changes without triggering re-renders on every dictionary access.
     private(set) var pagesVersion: Int = 0
 
+    /// How many times each tab page's page was replaced while the tab stayed open.
+    ///
+    /// ``page(for:)`` reads its entry, so a view that got a page from it shows the
+    /// replacement: a tab crossing into or out of an extension's pages gets a new web view.
+    private var pageReplacements: [TabPage.ID: Int] = [:]
+
     /// Read-only access to active pages.
     ///
     /// Does not trigger observation - use `pagesVersion` if you need reactive updates.
@@ -249,6 +255,9 @@ final class WebPagePool {
             return nil
         }
 
+        // Registers observation of replacements for callers in view bodies.
+        _ = pageReplacements[tabPage.id]
+
         // Return existing page
         if let page = activePages[tabPage.id] {
             return page
@@ -267,14 +276,74 @@ final class WebPagePool {
         }
 
         let configuration = configuration(for: tabPage)
-        let (page, navigationDecider) = buildPage(for: tabPage, configuration: configuration)
+        let (page, navigationDecider) = if let extensionContext = extensionManager?.extensionContext(for: tabPage.url) {
+            buildExtensionPage(for: tabPage, configuration: configuration, context: extensionContext)
+        } else {
+            buildPage(for: tabPage, configuration: configuration)
+        }
 
         _activePages[tabPage.id] = page
         navigationDeciders[tabPage.id] = navigationDecider
         pagesVersion += 1
 
-        restoreEngine(for: page)
+        // Extension pages render only in WebKit, whichever engine the tab remembers.
+        if page.extensionBaseURL == nil {
+            restoreEngine(for: page)
+        }
         return page
+    }
+
+    /// Builds a page for one of an extension's own pages, from the configuration WebKit
+    /// requires for it: the owning context's, bound to that context's controller.
+    ///
+    /// A context always has a web view configuration once loaded into a controller, which
+    /// ``ExtensionManager/extensionContext(for:)`` guarantees; the ordinary configuration is
+    /// the fallback should WebKit ever return none.
+    private func buildExtensionPage(
+        for tabPage: TabPage,
+        configuration: WebPage.Configuration,
+        context: WKWebExtensionContext,
+    ) -> (WebPage, BrowserNavigationDecider) {
+        guard let webViewConfiguration = context.webViewConfiguration else {
+            Logger.warning("Extension context has no web view configuration for \(tabPage.url.absoluteString)", category: Logger.extensions)
+            return buildPage(for: tabPage, configuration: configuration)
+        }
+        var configuration = configuration
+        configuration.webExtensionController = context.webExtensionController
+        return buildPage(
+            for: tabPage,
+            configuration: configuration,
+            webViewConfiguration: webViewConfiguration,
+            extensionBaseURL: context.baseURL,
+        )
+    }
+
+    /// Replaces `page` with a new page for `url` when `url` needs a web view bound to a
+    /// different extension, or to none.
+    ///
+    /// The replacement happens on the next main-queue turn, after the caller has unwound
+    /// from `page`'s load or navigation callback. The tab keeps its identity and history
+    /// records; the old web view's back-forward list does not carry over.
+    ///
+    /// - Parameters:
+    ///   - page: The page about to load `url`.
+    ///   - url: The URL to load.
+    /// - Returns: `true` when `page` is being replaced and must not load `url` itself.
+    func replaceIfExtensionBoundaryCrossed(_ page: WebPage, toLoad url: URL) -> Bool {
+        let targetBaseURL = extensionManager?.extensionContext(for: url)?.baseURL
+        guard !ExtensionPageRouting.canNavigate(from: page.extensionBaseURL, to: targetBaseURL) else {
+            return false
+        }
+        let tabPage = page.tabPage
+        Logger.info("Moving tab page \(tabPage.id) to a new web view for \(url.absoluteString)", category: Logger.extensions)
+        DispatchQueue.main.async { [weak self, weak page] in
+            guard let self, let page, _activePages[tabPage.id] === page else { return }
+            tabPage.url = url
+            removePage(for: tabPage)
+            pageReplacements[tabPage.id, default: 0] += 1
+            self.page(for: tabPage)
+        }
+        return true
     }
 
     /// Moves a page whose tab remembers another engine onto it before WebKit loads anything.
@@ -328,6 +397,26 @@ final class WebPagePool {
             return nil
         }
 
+        // WebKit clones the opener's configuration, which is bound to the opener's extension,
+        // if any. A popup that leaves the extension opens as an ordinary tab instead; web
+        // content cannot open an extension's pages.
+        if !url.isBlank {
+            let targetBaseURL = extensionManager?.extensionContext(for: url)?.baseURL
+            if !ExtensionPageRouting.canNavigate(from: opener.extensionBaseURL, to: targetBaseURL) {
+                if opener.extensionBaseURL != nil, targetBaseURL == nil {
+                    tabManager.createTab(
+                        url: url,
+                        in: targetSpace,
+                        groupID: relationship == .linked ? openerTab?.groupID : nil,
+                        makeActive: true,
+                        loadImmediately: true,
+                        insertionStrategy: .afterActive,
+                    )
+                }
+                return nil
+            }
+        }
+
         let newTab = tabManager.createPopupTab(
             in: targetSpace,
             openerTabPageID: opener.tabPage.id,
@@ -337,14 +426,18 @@ final class WebPagePool {
         )
 
         let newTabPage = newTab.activePage
-        let configurationForPopup = self.configuration(for: newTabPage)
+        var configurationForPopup = self.configuration(for: newTabPage)
+        if opener.extensionBaseURL != nil {
+            configurationForPopup.webExtensionController = opener.configuration.webExtensionController
+        }
 
         // Ensure popup uses the correct data store based on space settings.
         // This is critical for proper isolation in private/separate-store spaces.
         // WebKit provides a data store in the configuration, but we may need to
         // override it if the popup's space uses a different data store.
+        // An extension's pages keep the data store of the extension's controller.
         let expectedDataStore = configurationForPopup.websiteDataStore
-        if configuration.websiteDataStore !== expectedDataStore {
+        if opener.extensionBaseURL == nil, configuration.websiteDataStore !== expectedDataStore {
             Logger.info(
                 "Overriding popup data store for space isolation",
                 category: Logger.navigation,
@@ -356,6 +449,8 @@ final class WebPagePool {
             for: newTabPage,
             configuration: configurationForPopup,
             webViewConfiguration: configuration,
+            extensionBaseURL: opener.extensionBaseURL,
+            loadsTabURL: false,
         )
 
         page.openerPageID = opener.tabPage.id
@@ -994,6 +1089,8 @@ final class WebPagePool {
         for tabPage: TabPage,
         configuration: WebPage.Configuration,
         webViewConfiguration: WKWebViewConfiguration? = nil,
+        extensionBaseURL: URL? = nil,
+        loadsTabURL: Bool = true,
     ) -> (WebPage, BrowserNavigationDecider) {
         let tab = tabPage.tab
 
@@ -1031,6 +1128,8 @@ final class WebPagePool {
             tabPage: tabPage,
             configuration: configuration,
             webViewConfiguration: webViewConfiguration,
+            extensionBaseURL: extensionBaseURL,
+            loadsTabURL: loadsTabURL,
             expectedFrame: expectedFrame,
             dependencies: dependencies,
         )
