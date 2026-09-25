@@ -43,6 +43,7 @@ source_set("host") {
     "//components/js_injection/browser",
     "//components/js_injection/common:common_mojom",
     "//components/download/public/common:public",
+    "//components/input",
     "//components/keep_alive_registry",
     "//components/prefs",
     "//components/permissions",
@@ -58,6 +59,7 @@ source_set("host") {
     "//refrax/common/mojom",
     "//third_party/blink/public/common",
     "//ui/base",
+    "//ui/events",
     "//ui/shell_dialogs",
     "//url",
   ]

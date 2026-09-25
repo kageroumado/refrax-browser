@@ -273,6 +273,9 @@ cmd_package() {
     bundle_version="$(cut -d. -f3,4 <<<"$version").$revision"
     sed -e "s/@CHROMIUM_VERSION@/$version/g" -e "s/@BUNDLE_VERSION@/$bundle_version/g" \
         "$REFRAX_SOURCES/client/Info.plist" >"$engine/Contents/Info.plist"
+    # The engine's icon (Refrax shows it where a page renders with this engine) is the host's.
+    mkdir -p "$engine/Contents/Resources"
+    cp "$host/Contents/Resources/app.icns" "$engine/Contents/Resources/engine.icns"
     plutil -insert RFXEngineBuild -string "$name" "$engine/Contents/Info.plist"
 
     # Nothing LaunchServices would route to the host; its state lives where the client points

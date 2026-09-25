@@ -356,6 +356,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             appUpdateManager: appDelegate.appUpdateManager,
             guidedTourManager: GuidedTourManager(),
+            engineRegistry: appDelegate.engineRegistry,
         )
 
         setupSplitViewController(window: window)

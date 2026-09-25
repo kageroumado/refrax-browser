@@ -108,6 +108,8 @@ class HostPage : public mojom::Page,
       bool user_gesture,
       bool* was_blocked) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
+  bool HandleKeyboardEvent(content::WebContents* source,
+                           const input::NativeWebKeyboardEvent& event) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
   void RequestMediaAccessPermission(content::WebContents* web_contents,

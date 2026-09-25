@@ -24,7 +24,9 @@
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/result_codes.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "net/base/net_errors.h"
+#include "ui/events/cocoa/cocoa_event_utils.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/engine_host_impl.h"
 #include "refrax/host/page_dialogs.h"
@@ -587,6 +589,17 @@ bool HostPage::CheckMediaAccessPermission(content::RenderFrameHost* render_frame
                                           blink::mojom::MediaStreamType type) {
   return MediaCaptureDevicesDispatcher::GetInstance()->CheckMediaAccessPermission(
       render_frame_host, security_origin, type, /*extension=*/nullptr);
+}
+
+bool HostPage::HandleKeyboardEvent(content::WebContents* source,
+                                   const input::NativeWebKeyboardEvent& event) {
+  // The page didn't want it; Refrax's menus get it next, as AppKit would have offered it.
+  if (event.skip_if_unhandled || !event.os_event ||
+      event.os_event.Get().type != NSEventTypeKeyDown) {
+    return false;
+  }
+  client_->RedispatchKeyEvent(ui::EventToData(event.os_event.Get()));
+  return true;
 }
 
 void HostPage::UpdateTargetURL(content::WebContents* source, const GURL& url) {

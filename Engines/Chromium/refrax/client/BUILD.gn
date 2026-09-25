@@ -36,6 +36,7 @@ loadable_module("RefraxChromium") {
     "//skia",
     "//ui/accelerated_widget_mac",
     "//ui/display",
+    "//ui/events",
     "//ui/gfx",
   ]
   frameworks = [

@@ -13,6 +13,7 @@
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/utils/mac/SkCGUtils.h"
+#include "ui/events/cocoa/cocoa_event_utils.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -57,6 +58,15 @@ class PageClientImpl : public refrax::mojom::PageClient {
                             std::move(*reply).Run(ToString(answer));
                           }
                         }];
+  }
+
+  void RedispatchKeyEvent(const std::vector<uint8_t>& native_event_data) override {
+    NSEvent* event = ui::EventFromData(native_event_data);
+    if (event.type == NSEventTypeKeyDown) {
+      // Only the menus: offering it to the window's views would hand it straight back to the
+      // page's RenderWidgetHostViewCocoa, which claims every key equivalent while focused.
+      [NSApp.mainMenu performKeyEquivalent:event];
+    }
   }
 
   void OnScriptMessage(const std::string& message,

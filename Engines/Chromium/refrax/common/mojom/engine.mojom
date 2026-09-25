@@ -65,6 +65,11 @@ interface PageClient {
 
   // The contract's ScriptMessage, answered once with a ScriptReply.
   OnScriptMessage(string message) => (string reply);
+
+  // A key-down the page didn't handle (ui::EventToData of its NSEvent): the client offers it
+  // to Refrax's menus, which is how ⌘-shortcuts reach Refrax and the Edit menu while the page
+  // has focus. Between client and host only; not part of the contract.
+  RedispatchKeyEvent(array<uint8> native_event_data);
 };
 
 // Runs the contract's evaluateScript in one frame, in any of Refrax's worlds. Implemented in

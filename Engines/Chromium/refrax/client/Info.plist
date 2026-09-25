@@ -6,6 +6,8 @@
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>RefraxChromium</string>
+	<key>CFBundleIconFile</key>
+	<string>engine</string>
 	<key>CFBundleIdentifier</key>
 	<string>website.refrax.engine.chromium</string>
 	<key>CFBundleInfoDictionaryVersion</key>

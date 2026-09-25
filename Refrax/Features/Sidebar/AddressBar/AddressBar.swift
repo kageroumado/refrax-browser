@@ -13,6 +13,7 @@ struct AddressBar: View {
     @Environment(SiteSettingsManager.self) private var siteSettingsManager: SiteSettingsManager
     @Environment(ScreenshotCoordinator.self) private var screenshotCoordinator: ScreenshotCoordinator
     @Environment(RecordingCoordinator.self) private var recordingCoordinator: RecordingCoordinator
+    @Environment(EngineRegistry.self) private var engineRegistry: EngineRegistry
     @Environment(DownloadManager.self) private var downloadManager: DownloadManager
     @Environment(WebPagePool.self) private var pagePool: WebPagePool
     @Environment(\.addressBarContext) private var addressBarContext: AddressBarContext?
@@ -258,11 +259,27 @@ struct AddressBar: View {
     private var urlDisplay: some View {
         let isEmpty = displayDomain.isEmpty
 
-        return Text(isEmpty ? "Ask, search, or go..." : displayDomain)
-            .font(.system(size: Constants.Typography.bodyMediumSize))
-            .foregroundStyle(isEmpty ? Color.secondary : urlTextColor)
-            .lineLimit(1)
-            .truncationMode(isEmpty ? .tail : .head)
+        return HStack(spacing: 0) {
+            engineBadge
+            Text(isEmpty ? "Ask, search, or go..." : displayDomain)
+                .font(.system(size: Constants.Typography.bodyMediumSize))
+                .foregroundStyle(isEmpty ? Color.secondary : urlTextColor)
+                .lineLimit(1)
+                .truncationMode(isEmpty ? .tail : .head)
+        }
+    }
+
+    /// The engine rendering the page, when it isn't system WebKit.
+    @ViewBuilder
+    private var engineBadge: some View {
+        if let engineID = webPage?.activeEngineID, engineID != .systemWebKit,
+           let icon = engineRegistry.icon(for: engineID) {
+            let descriptor = engineRegistry.descriptor(for: engineID)
+            AddressBarEngineBadge(
+                icon: icon,
+                engineName: descriptor.map { "\($0.displayName) (\($0.engineVersion))" } ?? engineID.rawValue,
+            )
+        }
     }
 
     /// URL display with blur effect when hover buttons overlay in compact mode.
@@ -278,13 +295,16 @@ struct AddressBar: View {
             urlTextColor
         }
 
-        return Text(isEmpty ? "Ask, search, or go..." : displayDomain)
-            .font(.system(size: Constants.Typography.bodyMediumSize))
-            .foregroundStyle(foregroundColor)
-            .lineLimit(1)
-            .truncationMode(isEmpty ? .tail : .head)
-            .blur(radius: shouldBlur ? 2 : 0)
-            .animation(.easeInOut(duration: 0.15), value: shouldBlur)
+        return HStack(spacing: 0) {
+            engineBadge
+            Text(isEmpty ? "Ask, search, or go..." : displayDomain)
+                .font(.system(size: Constants.Typography.bodyMediumSize))
+                .foregroundStyle(foregroundColor)
+                .lineLimit(1)
+                .truncationMode(isEmpty ? .tail : .head)
+        }
+        .blur(radius: shouldBlur ? 2 : 0)
+        .animation(.easeInOut(duration: 0.15), value: shouldBlur)
     }
 
     // MARK: - Loading Indicator

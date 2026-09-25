@@ -59,6 +59,7 @@ struct RefraxEnvironment {
     let customSearchEngineManager: CustomSearchEngineManager
     let appUpdateManager: AppUpdateManager
     let guidedTourManager: GuidedTourManager
+    let engineRegistry: EngineRegistry
 }
 
 /// A view modifier that injects all Refrax environment dependencies.
@@ -127,6 +128,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.customSearchEngineManager)
             .environment(environment.appUpdateManager)
             .environment(environment.guidedTourManager)
+            .environment(environment.engineRegistry)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)
     }

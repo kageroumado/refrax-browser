@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Observation
 
 /// Installed engines and their running hosts.
@@ -34,6 +34,7 @@ final class EngineRegistry {
     /// The latest policy per category, replayed to each engine as it starts.
     @ObservationIgnored private var policy: [PolicyUpdate.Category: PolicyUpdate] = [:]
     @ObservationIgnored private var hosts: [EngineID: ExternalEngineHost] = [:]
+    @ObservationIgnored private var icons: [EngineID: NSImage] = [:]
 
     let enginesDirectory: URL
     let dataDirectory: URL
@@ -109,6 +110,19 @@ final class EngineRegistry {
     /// Where an installed engine's bundle lives.
     func bundleURL(for id: EngineID) -> URL? {
         bundles[id]?.url
+    }
+
+    /// An installed engine's icon (its bundle's `CFBundleIconFile`), read without loading the
+    /// engine's code; nil for system WebKit and for engines without one.
+    func icon(for id: EngineID) -> NSImage? {
+        if let cached = icons[id] { return cached }
+        guard let url = bundles[id]?.url,
+              let bundle = Bundle(url: url),
+              let name = bundle.infoDictionary?["CFBundleIconFile"] as? String,
+              let image = bundle.image(forResource: name)
+        else { return nil }
+        icons[id] = image
+        return image
     }
 
     /// Moves an installed engine to the Trash, and with `removingData`, everything it stored.

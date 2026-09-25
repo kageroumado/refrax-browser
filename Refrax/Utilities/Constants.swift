@@ -310,6 +310,7 @@ enum Constants {
         static let buttonHeight = 28.0
         static let buttonWidth = 20.0
         static let buttonFontSize = 12.0
+        static let engineBadgeSize = 14.0
         static let zoomLevels = [50, 75, 85, 100, 115, 125, 150, 175, 200, 250, 300]
     }
 

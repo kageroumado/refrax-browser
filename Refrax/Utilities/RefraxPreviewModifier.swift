@@ -292,6 +292,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),
             guidedTourManager: GuidedTourManager(),
+            engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
         )
     }
 
