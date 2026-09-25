@@ -23,6 +23,7 @@ class Profile;
 namespace refrax {
 
 class EngineHostImpl;
+class PageDialogs;
 class PageScripts;
 
 // One Refrax page: a WebContents with Chrome's tab helpers, whose views live in the client's
@@ -97,10 +98,21 @@ class HostPage : public mojom::Page,
       bool user_gesture,
       bool* was_blocked) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
+  content::JavaScriptDialogManager* GetJavaScriptDialogManager(
+      content::WebContents* source) override;
+  void RequestMediaAccessPermission(content::WebContents* web_contents,
+                                    const content::MediaStreamRequest& request,
+                                    content::MediaResponseCallback callback) override;
+  bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
+                                  const url::Origin& security_origin,
+                                  blink::mojom::MediaStreamType type) override;
 
  private:
   void Emit(std::string_view name, base::DictValue fields = {});
   void EmitBackForward();
+  // Sends a contract request to Refrax; `answer` runs with its PageRequestAnswer.
+  void SendRequest(std::string request,
+                   base::OnceCallback<void(const std::string&)> answer);
   void RequestOpenURL(const GURL& url,
                       WindowOpenDisposition disposition,
                       bool user_gesture);
@@ -114,6 +126,7 @@ class HostPage : public mojom::Page,
   mojo::AssociatedReceiver<mojom::Page> receiver_;
   mojo::AssociatedRemote<mojom::PageClient> client_;
   std::unique_ptr<PageScripts> scripts_;
+  std::unique_ptr<PageDialogs> dialogs_;
 
   bool attached_ = false;
   gfx::Size size_;

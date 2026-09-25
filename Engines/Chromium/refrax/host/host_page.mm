@@ -25,6 +25,10 @@
 #include "net/base/net_errors.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/engine_host_impl.h"
+#include "refrax/host/page_dialogs.h"
+#include "refrax/host/permission_prompt.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "components/permissions/permission_request_manager.h"
 #include "refrax/host/page_scripts.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
@@ -135,6 +139,12 @@ HostPage::HostPage(EngineHostImpl* engine,
           },
           weak_factory_.GetWeakPtr()));
   scripts_->Apply(engine_->scripts());
+  dialogs_ = std::make_unique<PageDialogs>(base::BindRepeating(
+      &HostPage::SendRequest, weak_factory_.GetWeakPtr()));
+  // Permission questions go to Refrax instead of Chrome's bubbles.
+  permissions::PermissionRequestManager::FromWebContents(web_contents_.get())
+      ->set_view_factory(PermissionPrompt::Factory(
+          base::BindRepeating(&HostPage::SendRequest, weak_factory_.GetWeakPtr())));
 }
 
 void HostPage::ApplyScripts(const base::ListValue& scripts) {
@@ -142,6 +152,7 @@ void HostPage::ApplyScripts(const base::ListValue& scripts) {
 }
 
 HostPage::~HostPage() {
+  dialogs_.reset();
   scripts_.reset();
   Observe(nullptr);
   web_contents_->SetDelegate(nullptr);
@@ -177,6 +188,11 @@ void HostPage::EmitBackForward() {
   Emit("backForwardChanged", base::DictValue()
                                  .Set("canGoBack", controller.CanGoBack())
                                  .Set("canGoForward", controller.CanGoForward()));
+}
+
+void HostPage::SendRequest(std::string request,
+                           base::OnceCallback<void(const std::string&)> answer) {
+  client_->OnRequest(request, std::move(answer));
 }
 
 void HostPage::RequestOpenURL(const GURL& url,
@@ -503,6 +519,27 @@ content::WebContents* HostPage::AddNewContents(
   // kept, so `new_contents` is dropped.
   RequestOpenURL(target_url, disposition, user_gesture);
   return nullptr;
+}
+
+content::JavaScriptDialogManager* HostPage::GetJavaScriptDialogManager(
+    content::WebContents* source) {
+  return dialogs_.get();
+}
+
+void HostPage::RequestMediaAccessPermission(content::WebContents* web_contents,
+                                            const content::MediaStreamRequest& request,
+                                            content::MediaResponseCallback callback) {
+  // Chrome's media dispatcher asks through the page's PermissionRequestManager, which
+  // Refrax's PermissionPrompt answers.
+  MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
+      web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+bool HostPage::CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
+                                          const url::Origin& security_origin,
+                                          blink::mojom::MediaStreamType type) {
+  return MediaCaptureDevicesDispatcher::GetInstance()->CheckMediaAccessPermission(
+      render_frame_host, security_origin, type, /*extension=*/nullptr);
 }
 
 void HostPage::UpdateTargetURL(content::WebContents* source, const GURL& url) {

@@ -3,7 +3,7 @@
 // engine-harness: drives an engine bundle through RFXEngine.h the way Refrax does, without
 // Refrax. Loads the bundle, starts it, opens one page in a window, prints every event, request
 // and script message as a JSON line on stdout, and answers requests the way a user would
-// (openURL: handled; permissions: deny; dialogs: cancel; downloads: cancel).
+// (openURL: handled; permissions: deny; dialogs: confirm with "harness"; downloads: cancel).
 //
 //   engine-harness <path/to/X.engine> <url> [--storage DIR] [--policy FILE] [--eval JS]
 //                  [--world NAME] [--seconds N]
@@ -177,13 +177,15 @@ static void Note(NSString* message) {
   Emit(@"request", request);
   NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:request options:0 error:nil];
   NSString* kind = parsed.allKeys.firstObject;
-  NSString* answer = @"cancel";
+  NSDictionary* answer = @{@"cancel" : @{}};
   if ([kind isEqualToString:@"openURL"]) {
-    answer = @"handled";
+    answer = @{@"handled" : @{}};
   } else if ([kind isEqualToString:@"permission"]) {
-    answer = @"deny";
+    answer = @{@"deny" : @{}};
+  } else if ([kind isEqualToString:@"javaScriptDialog"]) {
+    answer = @{@"confirm" : @{@"text" : @"harness"}};
   }
-  reply([NSJSONSerialization dataWithJSONObject:@{answer : @{}} options:0 error:nil]);
+  reply([NSJSONSerialization dataWithJSONObject:answer options:0 error:nil]);
 }
 
 - (void)enginePage:(id<RFXEnginePage>)page

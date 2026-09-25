@@ -46,3 +46,10 @@ per-frame agents the engine host drives, both inert without it:
   Refrax's worlds, awaiting promises and activating the frame only when asked. Content's
   browser-side script APIs reach only content's own world ids (`ISOLATED_WORLD_ID_MAX`) and
   never await promises.
+
+## `permissions-view-factory.patch`
+
+`components/permissions/permission_request_manager.h`: a public `set_view_factory`, beside the
+existing `set_view_factory_for_testing`, so the engine host can give each page a prompt that
+sends permission questions to Refrax (`//refrax/host/permission_prompt.cc`) instead of Chrome's
+bubbles, which need a Browser window.

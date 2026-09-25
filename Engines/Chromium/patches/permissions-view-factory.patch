@@ -1,0 +1,15 @@
+--- a/components/permissions/permission_request_manager.h
++++ b/components/permissions/permission_request_manager.h
+@@ -253,6 +253,12 @@
+   const std::vector<std::unique_ptr<PermissionUiSelector>>&
+   get_permission_ui_selectors_for_testing() {
+     return permission_ui_selectors_;
++  }
++
++  // Replaces this tab's prompt UI, for an embedder that asks permission questions its own way
++  // (Refrax's engine host sends them to Refrax).
++  void set_view_factory(PermissionPrompt::Factory view_factory) {
++    view_factory_ = std::move(view_factory);
+   }
+ 
+   void set_view_factory_for_testing(PermissionPrompt::Factory view_factory) {
