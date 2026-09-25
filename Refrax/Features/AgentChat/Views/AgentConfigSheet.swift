@@ -79,15 +79,64 @@ struct AgentConfigSheet: View {
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
             }
 
             switch settings.agentProviderKind {
+            case .claudeCode: claudeCodeSettings
+            case .codex: codexSettings
             case .claudeAPI: claudeSettings
             case .openAI: openAISettings
             case .openRouter: openRouterSettings
             case .custom: customSettings
             }
+        }
+    }
+
+    // MARK: - Local CLIs
+
+    private var claudeCodeSettings: some View {
+        @Bindable var s = settings
+        return cliSettings(
+            runtime: .claudeCode,
+            model: $s.agentClaudeCodeModel,
+            placeholder: "Default (e.g., fable, opus, sonnet)",
+        )
+    }
+
+    private var codexSettings: some View {
+        @Bindable var s = settings
+        return cliSettings(
+            runtime: .codex,
+            model: $s.agentCodexModel,
+            placeholder: "Default (e.g., gpt-5-codex)",
+        )
+    }
+
+    private func cliSettings(
+        runtime: CLIAgentRuntime,
+        model: Binding<String>,
+        placeholder: String,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CLIAgentStatusView(runtime: runtime)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Model")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(placeholder, text: model)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                    .autocorrectionDisabled(true)
+                Text("Leave empty to use the model \(runtime.displayName) is configured with.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Text("\(runtime.displayName) reads the current page and acts on it through refrax-ctl. Each conversation runs in its own folder under Refrax's Application Support.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 

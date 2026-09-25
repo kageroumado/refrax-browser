@@ -148,6 +148,7 @@ struct SidebarHintsView: View {
             shortcutEntry("⌘F", "Find in Page")
             shortcutEntry("⌘⌃T", "Split View")
             shortcutEntry("⌘⌃S", "Reference Pane")
+            shortcutEntry("⌘⌃A", "Agent Chat")
             shortcutEntry("⌘⌥I", "Web Inspector")
         }
     }

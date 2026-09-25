@@ -937,8 +937,15 @@ final class WindowState {
         isInspectorCollapsed.toggle()
     }
 
-    /// Toggle agent chat in the reference pane
+    /// Toggles agent chat in the reference pane.
+    ///
+    /// With chat active but the pane hidden, reveals the pane instead of
+    /// leaving chat, so the shortcut always brings chat into view first.
     func toggleAgentChat() {
+        if isAgentChatActive, isInspectorCollapsed {
+            isInspectorCollapsed = false
+            return
+        }
         isAgentChatActive.toggle()
         // Ensure inspector is visible when activating chat
         if isAgentChatActive, isInspectorCollapsed {

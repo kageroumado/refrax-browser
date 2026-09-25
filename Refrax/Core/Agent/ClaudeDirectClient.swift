@@ -83,8 +83,8 @@ actor ClaudeDirectClient: AgentChatClientProtocol {
 
     // MARK: - API Constants
 
-    private static let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
-    private static let apiVersion = "2023-06-01"
+    nonisolated static let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
+    nonisolated static let apiVersion = "2023-06-01"
 
     // MARK: - Initialization
 
@@ -269,115 +269,25 @@ actor ClaudeDirectClient: AgentChatClientProtocol {
                 return
             }
 
-            // Build request
-            var request = URLRequest(url: Self.apiURL)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(Self.apiVersion, forHTTPHeaderField: "anthropic-version")
-
-            // Auth headers + prompt caching beta
-            switch credential {
-            case let .apiKey(key):
-                request.setValue(key, forHTTPHeaderField: "x-api-key")
-                request.setValue("prompt-caching-2024-07-31", forHTTPHeaderField: "anthropic-beta")
-            }
-
-            // Build request body
-            var body: [String: Any] = [
-                "model": model,
-                "max_tokens": maxTokens,
-                "stream": true,
-            ]
-
-            // System prompt (structured for prompt caching)
+            var systemPrompt: ClaudeSystemPrompt.Content?
             if let builder = systemPromptBuilder {
-                let promptContent = await builder()
-                var systemBlocks: [[String: Any]] = [
-                    [
-                        "type": "text",
-                        "text": promptContent.staticPart,
-                        "cache_control": ["type": "ephemeral"],
-                    ],
-                ]
-                if let dynamic = promptContent.dynamicPart {
-                    systemBlocks.append(["type": "text", "text": dynamic])
-                }
-                body["system"] = systemBlocks
+                systemPrompt = await builder()
             }
 
-            // Tool definitions (with cache_control on the last tool)
-            if let tools = toolDefinitions, !tools.isEmpty {
-                var toolDicts = tools.map(\.apiRepresentation)
-                // Add code execution tool for programmatic tool calling
-                toolDicts.append(["type": "code_execution_20250825", "name": "code_execution"])
-                toolDicts[toolDicts.count - 1]["cache_control"] = ["type": "ephemeral"]
-                body["tools"] = toolDicts
-            }
-
-            // Messages
-            body["messages"] = conversationHistory.map { msg -> [String: Any] in
-                [
-                    "role": msg.role,
-                    "content": msg.content.map { block -> [String: Any] in
-                        switch block {
-                        case let .text(text):
-                            return ["type": "text", "text": text]
-                        case let .image(mediaType, data):
-                            return [
-                                "type": "image",
-                                "source": [
-                                    "type": "base64",
-                                    "media_type": mediaType,
-                                    "data": data,
-                                ],
-                            ]
-                        case let .toolUse(id, name, input):
-                            return [
-                                "type": "tool_use",
-                                "id": id,
-                                "name": name,
-                                "input": input.mapValues(\.swiftValue),
-                            ]
-                        case let .toolResult(toolUseId, content, isError):
-                            var result: [String: Any] = [
-                                "type": "tool_result",
-                                "tool_use_id": toolUseId,
-                            ]
-                            // Emit array content for mixed text+image, string shorthand for text-only
-                            let hasImage = content.contains { $0.isImage }
-                            if hasImage {
-                                result["content"] = content.map { item -> [String: Any] in
-                                    switch item {
-                                    case let .text(text):
-                                        return ["type": "text", "text": text]
-                                    case let .image(mediaType, data):
-                                        return [
-                                            "type": "image",
-                                            "source": [
-                                                "type": "base64",
-                                                "media_type": mediaType,
-                                                "data": data,
-                                            ],
-                                        ]
-                                    }
-                                }
-                            } else {
-                                // Text-only: use string shorthand
-                                let text = content.compactMap(\.textValue).joined()
-                                result["content"] = text
-                            }
-                            if isError { result["is_error"] = true }
-                            return result
-                        }
-                    },
-                ]
-            }
-
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            let request: URLRequest
+            do {
+                request = try Self.makeRequest(
+                    model: model,
+                    maxTokens: maxTokens,
+                    credential: credential,
+                    systemPrompt: systemPrompt,
+                    tools: toolDefinitions ?? [],
+                    messages: conversationHistory,
+                )
+            } catch {
                 emitError(runId: runId, message: "Failed to encode request")
                 return
             }
-            request.httpBody = jsonData
 
             // Execute streaming request
             let streamResult = await executeStreamingRequest(request: request, runId: runId)
@@ -458,6 +368,116 @@ actor ClaudeDirectClient: AgentChatClientProtocol {
 
         // Exceeded max iterations
         emitError(runId: runId, message: "Tool loop exceeded \(maxToolIterations) iterations")
+    }
+
+    // MARK: - Request Building
+
+    /// Builds a streaming Messages API request.
+    ///
+    /// The static system prompt and the last tool definition carry
+    /// `cache_control` markers for prompt caching.
+    nonisolated static func makeRequest(
+        model: String,
+        maxTokens: Int,
+        credential: ClaudeCredential,
+        systemPrompt: ClaudeSystemPrompt.Content?,
+        tools: [AgentToolDefinition],
+        messages: [AnthropicMessage],
+        url: URL = apiURL,
+    ) throws -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
+        switch credential {
+        case let .apiKey(key):
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "max_tokens": maxTokens,
+            "stream": true,
+        ]
+
+        if let systemPrompt {
+            var systemBlocks: [[String: Any]] = [
+                [
+                    "type": "text",
+                    "text": systemPrompt.staticPart,
+                    "cache_control": ["type": "ephemeral"],
+                ],
+            ]
+            if let dynamic = systemPrompt.dynamicPart {
+                systemBlocks.append(["type": "text", "text": dynamic])
+            }
+            body["system"] = systemBlocks
+        }
+
+        if !tools.isEmpty {
+            var toolDicts = tools.map(\.apiRepresentation)
+            toolDicts[toolDicts.count - 1]["cache_control"] = ["type": "ephemeral"]
+            body["tools"] = toolDicts
+        }
+
+        body["messages"] = messages.map(messageJSON)
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    private nonisolated static func messageJSON(_ message: AnthropicMessage) -> [String: Any] {
+        [
+            "role": message.role,
+            "content": message.content.map(contentBlockJSON),
+        ]
+    }
+
+    private nonisolated static func contentBlockJSON(_ block: AnthropicContentBlock) -> [String: Any] {
+        switch block {
+        case let .text(text):
+            return ["type": "text", "text": text]
+        case let .image(mediaType, data):
+            return imageJSON(mediaType: mediaType, data: data)
+        case let .toolUse(id, name, input):
+            return [
+                "type": "tool_use",
+                "id": id,
+                "name": name,
+                "input": input.mapValues(\.swiftValue),
+            ]
+        case let .toolResult(toolUseId, content, isError):
+            var result: [String: Any] = [
+                "type": "tool_result",
+                "tool_use_id": toolUseId,
+            ]
+            // Array content for mixed text and images, string shorthand for text only.
+            if content.contains(where: \.isImage) {
+                result["content"] = content.map { item -> [String: Any] in
+                    switch item {
+                    case let .text(text):
+                        ["type": "text", "text": text]
+                    case let .image(mediaType, data):
+                        imageJSON(mediaType: mediaType, data: data)
+                    }
+                }
+            } else {
+                result["content"] = content.compactMap(\.textValue).joined()
+            }
+            if isError { result["is_error"] = true }
+            return result
+        }
+    }
+
+    private nonisolated static func imageJSON(mediaType: String, data: String) -> [String: Any] {
+        [
+            "type": "image",
+            "source": [
+                "type": "base64",
+                "media_type": mediaType,
+                "data": data,
+            ],
+        ]
     }
 
     // MARK: - SSE Stream Processing

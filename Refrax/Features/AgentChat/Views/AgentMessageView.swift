@@ -361,13 +361,28 @@ private struct ToolIndicatorsView: View {
         let hasError = result?.isError ?? false
 
         HStack(spacing: 4) {
-            Image(systemName: hasError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 9))
-                .foregroundStyle(hasError ? .red : .green)
+            if result == nil {
+                Image(systemName: "circle.dotted")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: hasError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(hasError ? .red : .green)
+            }
 
             Text(toolUse.displayName)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+
+            if let detail = toolUse.detail {
+                Text(detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(detail)
+            }
 
             if hasError, let errorContent = result?.content {
                 Text("— \(errorContent.prefix(60))")

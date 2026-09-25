@@ -262,7 +262,7 @@ struct ReferencePaneContentView: View {
                 .accessibilityLabel("Add reference tab via Command Lens")
             }
 
-            Text("Tip: ⌘⌃S to toggle chat")
+            Text("Tip: ⌘⌃A to toggle chat")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

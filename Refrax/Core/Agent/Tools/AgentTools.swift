@@ -591,7 +591,6 @@ enum AgentTools {
             ],
             "required": ["program"],
         ],
-        allowedCallers: ["code_execution_20250825"],
     )
 
     // MARK: - User Styles

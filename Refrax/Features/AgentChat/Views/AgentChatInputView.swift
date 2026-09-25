@@ -197,9 +197,10 @@ private extension AgentChatInputView {
 
         inputText = ""
 
-        let context = willIncludeContext
-            ? BrowserContextProvider.extractContext(from: windowState)
-            : nil
+        // A selection on the page is context worth sending even without a trigger phrase.
+        let pageContext = await BrowserContextProvider.extractContextWithSelection(from: windowState)
+        let wantsContext = BrowserContextProvider.shouldIncludeContext(for: text)
+        let context = wantsContext || pageContext?.selectedText != nil ? pageContext : nil
 
         await chatManager.sendMessage(text, context: context)
     }

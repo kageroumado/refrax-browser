@@ -11,17 +11,11 @@ import SwiftUI
 struct AgentChatView: View {
     @Environment(AgentChatManager.self) private var chatManager
     @Environment(BrowserSettings.self) private var settings
+    @Environment(WindowState.self) private var windowState
     @State private var showAgentConfig = false
 
     private var needsCredentialSetup: Bool {
-        switch settings.agentProviderKind {
-        case .claudeAPI, .openAI, .openRouter:
-            !AgentCredentialStore.hasAPIKey(for: settings.agentProviderKind)
-        case .custom:
-            // Custom endpoints can legitimately be unauthenticated (local servers);
-            // setup is "complete" as soon as a base URL + model are configured.
-            settings.agentCustomBaseURL.isEmpty || settings.agentCustomModel.isEmpty
-        }
+        !chatManager.isProviderConfigured
     }
 
     var body: some View {
@@ -63,7 +57,7 @@ struct AgentChatView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
+        .task(id: settings.agentProviderKind) {
             guard !needsCredentialSetup else { return }
             await chatManager.connect()
         }
@@ -90,8 +84,17 @@ struct AgentChatView: View {
                 Text(error.message)
             }
         }
-        .sheet(isPresented: $showAgentConfig) {
+        .sheet(isPresented: $showAgentConfig, onDismiss: reconnect) {
             AgentConfigSheet()
+        }
+    }
+
+    /// Connects with the settings the configuration sheet left behind;
+    /// the manager rebuilds its client when they changed.
+    private func reconnect() {
+        guard !needsCredentialSetup else { return }
+        Task(name: "Reconnect agent after settings") {
+            await chatManager.connect()
         }
     }
 
@@ -133,6 +136,21 @@ struct AgentChatView: View {
             .accessibilityIdentifier("agent-chat-header")
 
             Spacer()
+        }
+        .overlay(alignment: .topLeading) {
+            Button {
+                windowState.toggleAgentChat()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Close Agent Chat (⌘⌃A)")
+            .accessibilityLabel("Close agent chat")
+            .accessibilityIdentifier("agent-chat-close")
+            .padding(.leading, 8)
+            .padding(.top, 6)
         }
         .overlay(alignment: .topTrailing) {
             if !chatManager.messages.isEmpty {
@@ -225,7 +243,7 @@ struct AgentChatView: View {
             }
 
             // Keyboard hint
-            Text("Tip: ⌘⌃S to toggle chat")
+            Text("Tip: ⌘⌃A to toggle chat")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 8)

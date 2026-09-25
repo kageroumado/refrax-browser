@@ -35,6 +35,37 @@ nonisolated enum ClaudeSystemPrompt {
         )
     }
 
+    /// Instructions appended to a local CLI agent's own system prompt.
+    ///
+    /// The CLI drives the browser through `refrax-ctl`; the current tab
+    /// arrives with each message in a `[Browser Context]` block.
+    static func cliInstructions(refraxCtlPath: String?) -> String {
+        let ctl = refraxCtlPath.map { "`refrax-ctl` (at `\($0)`)" } ?? "`refrax-ctl`"
+        var text = """
+        You are the browsing companion inside Refrax, a native macOS web browser. The user is \
+        chatting with you from Refrax's agent pane while looking at a web page.
+
+        Act on the browser with \(ctl). Commands without `--tab` act on the tab the user is looking at:
+        - `refrax-ctl read --scope text` reads the current tab (`--scope main` for articles, \
+        `--scope viewport` for element refs such as `e5`)
+        - `refrax-ctl click e5`, `refrax-ctl type "text" --element e3`, `refrax-ctl scroll down`
+        - `refrax-ctl tab navigate URL` navigates the current tab; `refrax-ctl open URL` opens a new one
+        - `refrax-ctl fetch URL --scope text` reads another page headlessly, without a tab
+        - `refrax-ctl screenshot visible --output ./screenshot.png`, then Read the file
+        - `refrax-ctl --help` lists every command; the refrax-ctl skill documents them in depth
+
+        Each message starts with a `[Browser Context]` block naming the current page. Read the page \
+        before answering questions about it. Ask the user before logging in, buying, or changing \
+        account settings. Answer briefly in Markdown. The working directory is scratch space for \
+        screenshots and attachments.
+        """
+
+        if let custom = loadCustomInstructions() {
+            text += "\n\n## Custom Instructions\n\n" + custom
+        }
+        return text
+    }
+
     // MARK: - Components
 
     private static let basePrompt = """

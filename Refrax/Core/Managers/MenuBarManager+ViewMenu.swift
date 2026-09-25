@@ -29,6 +29,17 @@ extension MenuBarManager {
         inspectorItem.target = self
         viewMenu.addItem(inspectorItem)
 
+        // Agent chat in the Reference Pane
+        let agentChatItem = NSMenuItem(
+            title: "Toggle Agent Chat",
+            action: #selector(toggleAgentChat(_:)),
+            keyEquivalent: "a",
+        )
+        agentChatItem.keyEquivalentModifierMask = [.command, .control]
+        agentChatItem.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        agentChatItem.target = self
+        viewMenu.addItem(agentChatItem)
+
         // Sidebar Mode submenu
         let sidebarModeItem = NSMenuItem(title: "Sidebar Mode", action: nil, keyEquivalent: "")
         sidebarModeItem.image = NSImage(systemSymbolName: "sidebar.squares.left", accessibilityDescription: nil)
@@ -247,6 +258,11 @@ extension MenuBarManager {
     @objc
     func toggleInspector(_: Any?) {
         activeWindowController?.toggleInspector()
+    }
+
+    @objc
+    func toggleAgentChat(_: Any?) {
+        activeWindowController?.windowState.toggleAgentChat()
     }
 
     @objc

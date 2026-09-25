@@ -18,20 +18,17 @@ struct AgentToolDefinition: @unchecked Sendable {
     private let apiRepresentationJSON: Data
 
     @MainActor
-    init(name: String, description: String, inputSchema: [String: Any], allowedCallers: [String]? = nil) {
+    init(name: String, description: String, inputSchema: [String: Any]) {
         self.name = name
         self.description = description
         self.inputSchemaJSON = (try? JSONSerialization.data(withJSONObject: inputSchema)) ?? Data()
 
         // Pre-encode the full API representation to avoid MainActor access later
-        var apiDict: [String: Any] = [
+        let apiDict: [String: Any] = [
             "name": name,
             "description": description,
             "input_schema": inputSchema,
         ]
-        if let allowedCallers {
-            apiDict["allowed_callers"] = allowedCallers
-        }
         self.apiRepresentationJSON = (try? JSONSerialization.data(withJSONObject: apiDict)) ?? Data()
     }
 
