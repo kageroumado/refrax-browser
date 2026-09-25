@@ -116,6 +116,8 @@ since 1970, optional fields may be omitted or `null`.
 | `zoomChanged` | `factor` | 1.0 = 100% |
 | `mediaChanged` | `media`: `isPlayingAudio`, `isAudioMuted`, `camera`, `microphone`, `screen` (`none`\|`active`\|`muted`) | |
 | `fullscreenChanged` | `state`: `none` \| `entering` \| `active` \| `exiting` | Element fullscreen |
+| `notificationShown` | `notification`: `{ "id", "origin", "title", "body", "tag?", "iconURL?", "isSilent" }` | The page called `new Notification()` for an origin Refrax allowed. Engines declaring `notifications` only |
+| `notificationClosed` | `id` | The page closed a notification it showed |
 | `rendererHealthChanged` | `health`: `{"running":{}}` \| `{"unresponsive":{"since":<date>}}` \| `{"terminated":{"reason":…}}` \| `{"suspended":{}}` | Reasons: `crashed`, `sharedProcessCrashed`, `exceededMemoryLimit`, `exceededCPULimit`, `requestedByBrowser`, `unknown` |
 
 `failure` = `{ "kind", "url?", "isProvisional", "engineCode", "description" }` where `kind` is one
@@ -139,6 +141,7 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 | `setVisibility` | `visibility`: `visible` \| `hidden` (throttle when hidden) |
 | `devTools` | `command`: `{"show":{}}` \| `{"hide":{}}` \| `{"showConsole":{}}` \| `{"toggleElementSelection":{}}` |
 | `terminateRenderer` | — (watchdog; answer with `rendererHealthChanged` → `requestedByBrowser`) |
+| `notificationClicked`, `notificationClosed` | `id` — the user clicked or dismissed the notification; fire its `click` / `close` event |
 
 ### 4.3 Requests (engine → Refrax, answered once)
 
@@ -209,7 +212,11 @@ pages and never fetch, update, or persist these artifacts themselves.
 Declared in Info.plist; the browser hides or disables features an engine doesn't declare.
 `javaScriptEvaluation`, `findInPage`, `zoom`, `snapshots`, `devTools`, `downloads`,
 `contentBlocking`, `userScripts`, `webExtensions`, `pictureInPicture`, `mediaCapture`,
-`readerMode`, `agentPerception`, `autoFill`, `processInfo`, `rendererControl`.
+`readerMode`, `agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
+
+`notifications`: Refrax answers `permission` requests of kind `notifications` from its per-origin
+store and delivers `notificationShown` through Notification Center. Engines without it get `deny`,
+so pages never believe they can notify when nothing would appear.
 
 ## 6. Security requirements
 

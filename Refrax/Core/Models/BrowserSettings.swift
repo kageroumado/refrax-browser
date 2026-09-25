@@ -295,6 +295,10 @@ final class BrowserSettings {
     /// Safari enables it for all browsing by default.
     var enableFingerprintingProtection: Bool = true
 
+    /// Whether websites may ask to send notifications. When off, requests are denied
+    /// without asking; sites already allowed keep notifying.
+    var allowWebsiteNotificationRequests: Bool = true
+
     // MARK: - Privacy: History
 
     /// Whether automatic history cleanup is enabled.
@@ -1223,6 +1227,7 @@ final class BrowserSettings {
         defaultVideoSpeed = 1.0
         hideSignInPrompts = true
         enableFingerprintingProtection = true
+        allowWebsiteNotificationRequests = true
         webpageDarkMode = .off
         pageFilter = .none
         preserveMediaInFilter = true

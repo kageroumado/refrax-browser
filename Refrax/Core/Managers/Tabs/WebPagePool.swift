@@ -159,6 +159,7 @@ final class WebPagePool {
 
     init(state: BrowserState) {
         self.state = state
+        state.webNotifications.pagePool = self
         state.scriptChannels.pageResolver = { [weak self] webView in
             self?.activePages.values.first { $0.owns(webView) }
         }
@@ -1133,6 +1134,7 @@ final class WebPagePool {
             expectedFrame: expectedFrame,
             dependencies: dependencies,
         )
+        state.webNotifications.attach(to: page.backingWebView)
 
         // Install link preview manager for Shift+Click support
         if state.settings.shiftClickLinkPreviewEnabled {
@@ -1158,6 +1160,8 @@ final class WebPagePool {
                 spaceProvider: state.space(for:),
                 spaceDataStoreManager: spaceDataStoreManager,
             )
+            // Before the web view exists: its web process reads notification permissions at launch.
+            state.webNotifications.adopt(config.websiteDataStore)
             // Extensions run with the same isolation as the data store: a private space
             // gets only private-mode extensions, a separate space its own extension storage.
             if let extensionManager {

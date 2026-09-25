@@ -100,6 +100,8 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
     static let autoFill = EngineCapabilities(rawValue: 1 << 13)
     static let processInfo = EngineCapabilities(rawValue: 1 << 14)
     static let rendererControl = EngineCapabilities(rawValue: 1 << 15)
+    /// The engine reports notifications with `notificationShown` and handles the click and close commands.
+    static let notifications = EngineCapabilities(rawValue: 1 << 16)
 
     /// Names used in an engine bundle's `RFXEngineCapabilities` Info.plist array.
     static let namesByCapability: [(String, EngineCapabilities)] = [
@@ -108,7 +110,7 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
         ("contentBlocking", .contentBlocking), ("userScripts", .userScripts), ("webExtensions", .webExtensions),
         ("pictureInPicture", .pictureInPicture), ("mediaCapture", .mediaCapture), ("readerMode", .readerMode),
         ("agentPerception", .agentPerception), ("autoFill", .autoFill), ("processInfo", .processInfo),
-        ("rendererControl", .rendererControl),
+        ("rendererControl", .rendererControl), ("notifications", .notifications),
     ]
 }
 

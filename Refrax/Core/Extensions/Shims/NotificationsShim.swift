@@ -27,21 +27,8 @@ final class NotificationsShim: ExtensionShim, @unchecked Sendable {
     /// Maps notification IDs to extension IDs for routing callbacks.
     private var notificationExtensions: [String: String] = [:]
 
-    /// The notification center.
+    /// The notification center. ``SystemNotificationRouter`` is its delegate.
     private let center = UNUserNotificationCenter.current()
-
-    /// Delegate for handling notification interactions.
-    private var delegate: NotificationDelegate?
-
-    // MARK: - Initialization
-
-    init() {
-        // Set up delegate for notification interactions
-        let delegate = NotificationDelegate(shim: self)
-        self.delegate = delegate
-        // Note: The delegate should be set on UNUserNotificationCenter only once globally.
-        // This is typically done at app launch in AppDelegate.
-    }
 
     // MARK: - ExtensionShim Protocol
 
@@ -247,35 +234,5 @@ final class NotificationsShim: ExtensionShim, @unchecked Sendable {
         for id in ids {
             notificationExtensions.removeValue(forKey: id)
         }
-    }
-}
-
-// MARK: - Notification Delegate
-
-/// Delegate for handling notification interactions.
-private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
-    weak var shim: NotificationsShim?
-
-    init(shim: NotificationsShim) {
-        self.shim = shim
-    }
-
-    func userNotificationCenter(
-        _: UNUserNotificationCenter,
-        didReceive _: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void,
-    ) {
-        // Handle notification clicks here
-        // Could dispatch events to extensions via shim
-        completionHandler()
-    }
-
-    func userNotificationCenter(
-        _: UNUserNotificationCenter,
-        willPresent _: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
-    ) {
-        // Show notifications even when app is in foreground
-        completionHandler([.banner, .sound])
     }
 }

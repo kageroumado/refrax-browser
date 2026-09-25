@@ -93,6 +93,12 @@ private struct PagePromptCard: View {
             titled(origin.isEmpty ? "This page says" : "\(origin) says", message: message)
         case let .leavePage(origin):
             titled("Leave this page?", message: "Changes you made on \(displayOrigin(origin)) may not be saved.")
+        case let .permission(.notifications, origin):
+            iconHeader(
+                symbol: PermissionKind.notifications.symbolName,
+                title: "“\(displayOrigin(origin))” would like to send you notifications",
+                detail: "You can change this later in Settings > Notifications.",
+            )
         case let .permission(kind, origin):
             iconHeader(
                 symbol: kind.symbolName,
@@ -163,6 +169,15 @@ private struct PagePromptCard: View {
                 Spacer()
                 cancelButton("Stay")
                 primaryButton("Leave")
+            }
+        case .permission(.notifications, _):
+            HStack {
+                Spacer()
+                button("Don’t Allow", answer: .declineAndRemember, fullWidth: false)
+                    .buttonStyle(.glass)
+                button("Allow", answer: .acceptAndRemember, fullWidth: false)
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
             }
         case let .permission(kind, _):
             VStack(spacing: 8) {

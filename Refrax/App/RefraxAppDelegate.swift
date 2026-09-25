@@ -184,6 +184,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ),
     )
 
+    /// The app's `UNUserNotificationCenter` delegate, routing responses to web notifications and reminders.
+    lazy var notificationRouter = SystemNotificationRouter(
+        webNotifications: browserState.webNotifications,
+        pageReminders: pageReminderManager,
+        openURL: { [weak windowManager] url in windowManager?.openURL(url) },
+    )
+
     /// Dedicated History window controller.
     lazy var historyWindowController = HistoryWindowController(
         historyManager: historyManager,
@@ -590,6 +597,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Window content loading and heavy maintenance are deferred to Phase 3
     /// via ``startDeferredMaintenance()`` to allow the first frame to render.
+    /// Installs the notification delegate before launch finishes, so the click on a
+    /// notification that launched Refrax is delivered.
+    func applicationWillFinishLaunching(_: Notification) {
+        notificationRouter.install()
+    }
+
     func applicationDidFinishLaunching(_: Notification) {
         CrashMonitor.markLaunched()
         logStorageMode()

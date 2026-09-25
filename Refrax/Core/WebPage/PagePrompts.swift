@@ -34,6 +34,8 @@ enum PageAnswer: Hashable {
     case acceptAndRemember
     /// Cancel, Stay, or Don't Allow. Also the answer to a question nobody got to see.
     case decline
+    /// Don't Allow, remembered for the site.
+    case declineAndRemember
 }
 
 /// The questions one page is waiting on, answered one at a time in the page's own pane.

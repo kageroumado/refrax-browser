@@ -132,6 +132,10 @@
 #import "WKProcessPoolPrivate.h"
 #import "WKProcessPoolBridge.h"
 
+// Web notifications: providers, permissions, service worker delivery
+#import "WKNotificationPrivate.h"
+#import "RFXWebNotificationProvider.h"
+
 // MARK: - WKWebViewConfiguration (WKPrivate)
 
 /// Private extensions to WKWebViewConfiguration for page color sampling.
