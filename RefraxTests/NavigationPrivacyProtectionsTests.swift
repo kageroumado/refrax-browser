@@ -50,14 +50,16 @@ struct NavigationPrivacyProtectionsTests {
 
     @Test("Both protections are on by default")
     func defaultsOn() throws {
-        let (_, settings) = try makeSettings()
+        let (container, settings) = try makeSettings()
+        defer { withExtendedLifetime(container) {} }
         let url = URL(string: "https://example.com/?utm_source=x")
         #expect(settings.navigationPrivacyProtections(for: url) == .all)
     }
 
     @Test("Each setting turns its protection off")
     func settingsGateProtections() throws {
-        let (_, settings) = try makeSettings()
+        let (container, settings) = try makeSettings()
+        defer { withExtendedLifetime(container) {} }
         let url = URL(string: "https://example.com/")
 
         settings.enableFingerprintingProtection = false
@@ -74,7 +76,8 @@ struct NavigationPrivacyProtectionsTests {
 
     @Test("Link protection exceptions skip link decoration filtering")
     func exceptionsSkipLinkFiltering() throws {
-        let (_, settings) = try makeSettings()
+        let (container, settings) = try makeSettings()
+        defer { withExtendedLifetime(container) {} }
         settings.privacyProtection.linkProtectionExceptions = ["example.com"]
 
         #expect(settings.navigationPrivacyProtections(for: URL(string: "https://shop.example.com/")) == .fingerprinting)
