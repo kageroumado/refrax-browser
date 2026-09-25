@@ -119,8 +119,27 @@ void EngineHostImpl::DestroyPage(HostPage* page) {
 }
 
 void EngineHostImpl::ApplyPolicy(const std::string& update) {
-  // Content blocking, scripts, extensions and site settings arrive in milestone 4.
-  VLOG(1) << "Policy update ignored: " << update.substr(0, 64);
+  auto message = contract::ParseMessage(update);
+  if (!message) {
+    receiver_.ReportBadMessage("ApplyPolicy: malformed update");
+    return;
+  }
+  auto& [category, fields] = *message;
+  if (category == "scripts") {
+    const base::ListValue* scripts = fields.FindList("scripts");
+    if (!scripts) {
+      receiver_.ReportBadMessage("ApplyPolicy: scripts without a list");
+      return;
+    }
+    scripts_ = scripts->Clone();
+    for (const auto& page : pages_) {
+      page->ApplyScripts(scripts_);
+    }
+    return;
+  }
+  // Content blocking, extensions and site settings are not declared in the engine's
+  // capabilities yet, so Refrax does not send them.
+  VLOG(1) << "Policy category not handled: " << category;
 }
 
 void EngineHostImpl::RemoveProfile(const std::string& profile,

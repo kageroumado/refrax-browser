@@ -3,6 +3,7 @@
 module refrax.mojom;
 
 import "components/remote_cocoa/common/application.mojom";
+import "mojo/public/mojom/base/values.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 
 // Refrax's engine contract (Engines/CONTRACT.md) between the client loaded into Refrax and the
@@ -59,4 +60,15 @@ interface PageClient {
 
   // The contract's ScriptMessage, answered once with a ScriptReply.
   OnScriptMessage(string message) => (string reply);
+};
+
+// Runs the contract's evaluateScript in one frame, in any of Refrax's worlds. Implemented in
+// the renderer by //refrax/renderer; content's browser-side script APIs cap world ids at
+// content's own and never await promises.
+interface FrameScripts {
+  // `world_id` 0 is the page's world. The result is the script's completion value (a promise
+  // is awaited; undefined is null) as JSON-compatible data, or `error` when it threw, its
+  // promise rejected, or its value can't be represented as JSON.
+  Evaluate(string source, int32 world_id, bool user_gesture)
+      => (mojo_base.mojom.Value? result, string? error);
 };

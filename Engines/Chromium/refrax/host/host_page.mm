@@ -19,11 +19,13 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/result_codes.h"
 #include "net/base/net_errors.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/engine_host_impl.h"
+#include "refrax/host/page_scripts.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 #include "ui/base/page_transition_types.h"
@@ -121,9 +123,26 @@ HostPage::HostPage(EngineHostImpl* engine,
   Observe(web_contents_.get());
   receiver_.set_disconnect_handler(
       base::BindOnce(&HostPage::Close, base::Unretained(this)));
+  scripts_ = std::make_unique<PageScripts>(
+      web_contents_.get(), &engine_->worlds(),
+      base::BindRepeating(
+          [](base::WeakPtr<HostPage> page, std::string message,
+             base::OnceCallback<void(const std::string&)> reply) {
+            if (!page) {
+              return;
+            }
+            page->client_->OnScriptMessage(message, std::move(reply));
+          },
+          weak_factory_.GetWeakPtr()));
+  scripts_->Apply(engine_->scripts());
+}
+
+void HostPage::ApplyScripts(const base::ListValue& scripts) {
+  scripts_->Apply(scripts);
 }
 
 HostPage::~HostPage() {
+  scripts_.reset();
   Observe(nullptr);
   web_contents_->SetDelegate(nullptr);
   if (attached_) {
@@ -275,19 +294,31 @@ void HostPage::EvaluateScript(const std::string& request,
     receiver_.ReportBadMessage("EvaluateScript: malformed request");
     return;
   }
-  if (!world->contains("page")) {
-    std::move(callback).Run(std::nullopt,
-                            "Isolated worlds are not available in this engine yet.");
+  std::optional<int32_t> world_id = engine_->worlds().WorldID(*world);
+  if (!world_id) {
+    receiver_.ReportBadMessage("EvaluateScript: unknown world");
     return;
   }
-  web_contents_->GetPrimaryMainFrame()->ExecuteJavaScript(
-      base::UTF8ToUTF16(*source),
+  // The renderer runs it (//refrax/renderer/frame_scripts.cc): content's browser-side script
+  // APIs only reach content's own worlds and never await promises.
+  mojo::AssociatedRemote<mojom::FrameScripts> frame_scripts;
+  web_contents_->GetPrimaryMainFrame()->GetRemoteAssociatedInterfaces()->GetInterface(
+      &frame_scripts);
+  mojom::FrameScripts* evaluator = frame_scripts.get();
+  evaluator->Evaluate(
+      *source, *world_id, fields->FindBool("userGesture").value_or(false),
       base::BindOnce(
-          [](EvaluateScriptCallback callback, base::Value result) {
-            std::move(callback).Run(base::WriteJson(result).value_or("null"),
-                                    std::nullopt);
+          [](mojo::AssociatedRemote<mojom::FrameScripts>, EvaluateScriptCallback callback,
+             std::optional<base::Value> result, const std::optional<std::string>& error) {
+            if (error) {
+              std::move(callback).Run(std::nullopt, *error);
+              return;
+            }
+            std::move(callback).Run(
+                result ? base::WriteJson(*result).value_or("null") : "null",
+                std::nullopt);
           },
-          std::move(callback)));
+          std::move(frame_scripts), std::move(callback)));
 }
 
 void HostPage::Close() {

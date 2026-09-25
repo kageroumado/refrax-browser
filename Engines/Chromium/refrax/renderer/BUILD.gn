@@ -1,0 +1,19 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+# Refrax's renderer-side agents, attached to each frame by Chrome's renderer client
+# (patches/chrome-renderer-js-injection.patch).
+source_set("renderer") {
+  sources = [
+    "frame_scripts.cc",
+    "frame_scripts.h",
+  ]
+  deps = [
+    "//base",
+    "//content/public/common",
+    "//content/public/renderer",
+    "//mojo/public/cpp/bindings",
+    "//refrax/common/mojom",
+    "//third_party/blink/public:blink",
+    "//v8",
+  ]
+}

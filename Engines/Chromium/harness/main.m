@@ -5,7 +5,11 @@
 // and script message as a JSON line on stdout, and answers requests the way a user would
 // (openURL: handled; permissions: deny; dialogs: cancel; downloads: cancel).
 //
-//   engine-harness <path/to/X.engine> <url> [--storage DIR] [--eval JS] [--seconds N]
+//   engine-harness <path/to/X.engine> <url> [--storage DIR] [--policy FILE] [--eval JS]
+//                  [--world NAME] [--seconds N]
+//
+// --policy sends each PolicyUpdate in FILE (a JSON array) before the page opens; --world makes
+// --eval run in that isolated world. Script messages are answered with their own body.
 //
 // Exits 0 after --seconds (default 20), 1 if the engine fails to start.
 
@@ -31,6 +35,8 @@ static void Note(NSString* message) {
 @property(nonatomic) NSString* url;
 @property(nonatomic) NSURL* storage;
 @property(nonatomic) NSString* script;
+@property(nonatomic) NSString* world;
+@property(nonatomic) NSString* policyPath;
 @property(nonatomic) NSTimeInterval seconds;
 @property(nonatomic) id<RFXEngineHost> engine;
 @property(nonatomic) id<RFXEnginePage> page;
@@ -73,6 +79,7 @@ static void Note(NSString* message) {
                              }
                              Note([NSString stringWithFormat:@"started in %.2fs",
                                                              -started.timeIntervalSinceNow]);
+                             [self applyPolicy];
                              [self openPage];
                            }];
   [NSTimer scheduledTimerWithTimeInterval:self.seconds
@@ -83,6 +90,20 @@ static void Note(NSString* message) {
                                       Note(@"done");
                                       exit(0);
                                     }];
+}
+
+- (void)applyPolicy {
+  if (!self.policyPath) {
+    return;
+  }
+  NSArray* updates = [NSJSONSerialization
+      JSONObjectWithData:[NSData dataWithContentsOfFile:self.policyPath]
+                 options:0
+                   error:nil];
+  for (id update in updates) {
+    [self.engine applyPolicy:[NSJSONSerialization dataWithJSONObject:update options:0 error:nil]];
+  }
+  Note([NSString stringWithFormat:@"applied %lu policy updates", (unsigned long)[updates count]]);
 }
 
 - (void)openPage {
@@ -124,7 +145,7 @@ static void Note(NSString* message) {
 - (void)evaluate {
   NSDictionary* request = @{
     @"source" : self.script,
-    @"world" : @{@"page" : @{}},
+    @"world" : self.world ? @{@"isolated" : @{@"name" : self.world}} : @{@"page" : @{}},
     @"userGesture" : @NO,
   };
   [self.page evaluateScript:[NSJSONSerialization dataWithJSONObject:request options:0 error:nil]
@@ -169,7 +190,11 @@ static void Note(NSString* message) {
     didReceiveScriptMessage:(NSData*)message
                       reply:(void (^)(NSData*))reply {
   Emit(@"scriptMessage", message);
-  reply([@"{\"value\":{\"value\":null}}" dataUsingEncoding:NSUTF8StringEncoding]);
+  NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:message options:0 error:nil];
+  id body = parsed[@"body"] ?: NSNull.null;
+  reply([NSJSONSerialization dataWithJSONObject:@{@"value" : @{@"value" : body}}
+                                        options:NSJSONWritingFragmentsAllowed
+                                          error:nil]);
 }
 
 @end
@@ -195,6 +220,10 @@ int main(int argc, const char* argv[]) {
         harness.storage = [NSURL fileURLWithPath:arguments[i + 1] isDirectory:YES];
       } else if ([arguments[i] isEqualToString:@"--eval"]) {
         harness.script = arguments[i + 1];
+      } else if ([arguments[i] isEqualToString:@"--world"]) {
+        harness.world = arguments[i + 1];
+      } else if ([arguments[i] isEqualToString:@"--policy"]) {
+        harness.policyPath = arguments[i + 1];
       } else if ([arguments[i] isEqualToString:@"--seconds"]) {
         harness.seconds = arguments[i + 1].doubleValue;
       }

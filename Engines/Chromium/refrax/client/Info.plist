@@ -35,6 +35,7 @@
 	<key>RFXEngineCapabilities</key>
 	<array>
 		<string>javaScriptEvaluation</string>
+		<string>userScripts</string>
 		<string>zoom</string>
 		<string>rendererControl</string>
 	</array>

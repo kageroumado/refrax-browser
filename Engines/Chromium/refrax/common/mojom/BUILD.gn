@@ -6,6 +6,7 @@ mojom("mojom") {
   sources = [ "engine.mojom" ]
   public_deps = [
     "//components/remote_cocoa/common:mojo",
+    "//mojo/public/mojom/base",
     "//ui/gfx/geometry/mojom",
   ]
 }

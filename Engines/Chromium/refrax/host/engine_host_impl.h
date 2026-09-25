@@ -16,6 +16,7 @@
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "refrax/common/mojom/engine.mojom.h"
+#include "refrax/host/world_registry.h"
 
 class ScopedProfileKeepAlive;
 
@@ -37,6 +38,12 @@ class EngineHostImpl : public mojom::EngineHost {
   remote_cocoa::mojom::Application* application() const {
     return application_.get();
   }
+
+  // Script worlds, shared by every page so a named world is one world everywhere.
+  WorldRegistry& worlds() { return worlds_; }
+
+  // The latest `scripts` policy; pages created later start with it.
+  const base::ListValue& scripts() const { return scripts_; }
 
   // Called by a page when the client closes it or the page closes itself.
   void DestroyPage(HostPage* page);
@@ -72,6 +79,8 @@ class EngineHostImpl : public mojom::EngineHost {
   mojo::Receiver<mojom::EngineHost> receiver_;
   mojo::AssociatedRemote<remote_cocoa::mojom::Application> application_;
   std::vector<std::unique_ptr<HostPage>> pages_;
+  WorldRegistry worlds_;
+  base::ListValue scripts_;
 
   // Isolated spaces, kept loaded while the client runs.
   std::map<std::string, std::unique_ptr<ScopedProfileKeepAlive>> isolated_spaces_;

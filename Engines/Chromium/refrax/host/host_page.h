@@ -23,6 +23,7 @@ class Profile;
 namespace refrax {
 
 class EngineHostImpl;
+class PageScripts;
 
 // One Refrax page: a WebContents with Chrome's tab helpers, whose views live in the client's
 // container NSView (remote_cocoa, via ViewsHostableAttach). Translates the WebContents'
@@ -45,6 +46,9 @@ class HostPage : public mojom::Page,
   uint64_t container_ns_view_id() const { return container_ns_view_id_; }
 
   void Load(const GURL& url);
+
+  // Replaces the page's Refrax scripts (the contract's `scripts` policy).
+  void ApplyScripts(const base::ListValue& scripts);
 
   // mojom::Page:
   void AttachView() override;
@@ -109,6 +113,7 @@ class HostPage : public mojom::Page,
   std::unique_ptr<content::WebContents> web_contents_;
   mojo::AssociatedReceiver<mojom::Page> receiver_;
   mojo::AssociatedRemote<mojom::PageClient> client_;
+  std::unique_ptr<PageScripts> scripts_;
 
   bool attached_ = false;
   gfx::Size size_;

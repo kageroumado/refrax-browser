@@ -32,3 +32,17 @@ encryption key lives in its own keychain item, "Refrax Chromium Safe Storage". E
 non-Google Chromium shares "Chromium Safe Storage", whose access list belongs to whichever
 Chromium created it; the host would block on a keychain prompt it has no UI to show, which
 stalls every HTTP load and the host's shutdown.
+
+## `chrome-renderer-refrax-agents.patch`
+
+`chrome/renderer/chrome_content_renderer_client.cc` and `chrome/renderer/BUILD.gn`: attach two
+per-frame agents the engine host drives, both inert without it:
+
+- `js_injection::JsCommunication` (WebView's script-injection renderer half), with its
+  document-start and document-end scripts run before extensions' (which may destroy the
+  frame). The host installs the contract's `scripts` policy and message channels through it
+  (`//refrax/host/page_scripts.cc`).
+- `refrax::FrameScripts` (`//refrax/renderer`), which runs `evaluateScript` in any of
+  Refrax's worlds, awaiting promises and activating the frame only when asked. Content's
+  browser-side script APIs reach only content's own world ids (`ISOLATED_WORLD_ID_MAX`) and
+  never await promises.

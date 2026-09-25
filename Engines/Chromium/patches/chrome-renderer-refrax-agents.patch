@@ -1,0 +1,58 @@
+--- a/chrome/renderer/chrome_content_renderer_client.cc
++++ b/chrome/renderer/chrome_content_renderer_client.cc
+@@ -75,6 +75,8 @@
+ #include "chrome/renderer/worker_content_settings_client.h"
+ #include "chrome/services/speech/buildflags/buildflags.h"
+ #include "components/autofill/content/renderer/autofill_agent.h"
++#include "components/js_injection/renderer/js_communication.h"
++#include "refrax/renderer/frame_scripts.h"
+ #include "components/autofill/content/renderer/password_autofill_agent.h"
+ #include "components/autofill/content/renderer/password_generation_agent.h"
+ #include "components/autofill/core/common/autofill_features.h"
+@@ -621,6 +623,12 @@
+   service_manager::BinderRegistry* registry = render_frame_observer->registry();
+ 
+   new prerender::NoStatePrefetchRenderFrameObserver(render_frame);
++
++  // Refrax: the engine contract's scripts, message channels and script evaluation, driven
++  // per frame by the engine host (//refrax/host); inert without it. Both delete themselves
++  // with the frame.
++  new js_injection::JsCommunication(render_frame);
++  refrax::FrameScripts::Create(render_frame);
+ 
+   auto content_settings_delegate =
+       std::make_unique<ChromeContentSettingsAgentDelegate>(render_frame);
+@@ -1411,6 +1419,11 @@
+ 
+ void ChromeContentRendererClient::RunScriptsAtDocumentStart(
+     content::RenderFrame* render_frame) {
++  // Refrax's scripts run first: extension scripts below may destroy the frame.
++  if (auto* js_communication = js_injection::JsCommunication::Get(render_frame)) {
++    js_communication->RunScripts(
++        js_injection::mojom::DocumentInjectionTime::kDocumentStart);
++  }
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+   extensions::ExtensionsRendererClient::Get()->RunScriptsAtDocumentStart(
+       render_frame);
+@@ -1420,6 +1433,10 @@
+ 
+ void ChromeContentRendererClient::RunScriptsAtDocumentEnd(
+     content::RenderFrame* render_frame) {
++  if (auto* js_communication = js_injection::JsCommunication::Get(render_frame)) {
++    js_communication->RunScripts(
++        js_injection::mojom::DocumentInjectionTime::kDocumentEnd);
++  }
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+   extensions::ExtensionsRendererClient::Get()->RunScriptsAtDocumentEnd(
+       render_frame);
+--- a/chrome/renderer/BUILD.gn
++++ b/chrome/renderer/BUILD.gn
+@@ -132,6 +132,8 @@
+     "//components/commerce/content/renderer",
+     "//components/content_capture/common",
+     "//components/content_capture/renderer",
++    "//components/js_injection/renderer",
++    "//refrax/renderer",
+     "//components/content_settings/common:mojom",
+     "//components/content_settings/renderer",
+     "//components/continuous_search/renderer",
