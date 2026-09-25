@@ -20,6 +20,7 @@
 #include "v8/include/v8-function.h"
 #include "v8/include/v8-function-callback.h"
 #include "v8/include/v8-isolate.h"
+#include "v8/include/v8-message.h"
 #include "v8/include/v8-primitive.h"
 #include "v8/include/v8-promise.h"
 
@@ -30,6 +31,17 @@ namespace {
 std::string Describe(v8::Isolate* isolate, v8::Local<v8::Value> value) {
   v8::String::Utf8Value text(isolate, value);
   return *text ? std::string(*text, text.length()) : "The script threw.";
+}
+
+// The message of the exception blink reports while an evaluation runs. Blink catches a
+// synchronous exception itself and hands it to the isolate's message listeners (then the
+// console); this listener is attached only for the length of one evaluation.
+thread_local std::optional<std::string>* g_reported_exception = nullptr;
+
+void CaptureReportedException(v8::Local<v8::Message> message, v8::Local<v8::Value>) {
+  if (g_reported_exception && !*g_reported_exception) {
+    *g_reported_exception = Describe(v8::Isolate::GetCurrent(), message->Get());
+  }
 }
 
 // Completes an evaluation with `value`: JSON-compatible data, with undefined as null.
@@ -89,21 +101,26 @@ void FrameScripts::Evaluate(const std::string& source,
         blink::mojom::UserActivationNotificationType::kInteraction);
   }
   const blink::WebScriptSource script{blink::WebString::FromUtf8(source)};
+  std::optional<std::string> reported_exception;
+  g_reported_exception = &reported_exception;
+  isolate->AddMessageListener(&CaptureReportedException);
   v8::TryCatch try_catch(isolate);
   v8::Local<v8::Value> value =
       world_id == content::ISOLATED_WORLD_ID_GLOBAL
           ? frame->ExecuteScriptAndReturnValue(script)
           : frame->ExecuteScriptInIsolatedWorldAndReturnValue(
                 world_id, script, blink::BackForwardCacheAware::kAllow);
+  isolate->RemoveMessageListeners(&CaptureReportedException);
+  g_reported_exception = nullptr;
   if (try_catch.HasCaught()) {
     std::move(callback).Run(std::nullopt, Describe(isolate, try_catch.Exception()));
     return;
   }
-  // Blink catches a synchronous exception itself, reports it to the page's console and
-  // returns no value; a script that completes with undefined returns undefined.
+  // A script that threw returns no value (one that completes with undefined returns
+  // undefined); its message is what blink reported.
   if (value.IsEmpty()) {
     std::move(callback).Run(std::nullopt,
-                            "The script threw an exception (reported in the page's console).");
+                            reported_exception.value_or("The script threw an exception."));
     return;
   }
   if (!value->IsPromise()) {
