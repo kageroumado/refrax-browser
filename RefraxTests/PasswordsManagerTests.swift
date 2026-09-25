@@ -434,3 +434,38 @@ struct PasswordsManagerThirdPartyTests {
 // - Test entitlements for Keychain access
 // - Cleanup of test entries after each test
 // - Potential sandbox environment
+
+// MARK: - PasswordsManager Keychain Lookup Tests
+
+/// Writes to the app's real keychain group under `.invalid` domains and deletes
+/// what it wrote; the items are device-only and never sync.
+@Suite("PasswordsManager Keychain Lookup", .tags(.passwordsManager), .serialized)
+@MainActor
+struct PasswordsManagerKeychainLookupTests {
+    @Test("Each site's lookup returns that site's password")
+    func lookupReturnsEachSitesOwnPassword() throws {
+        let manager = PasswordsManager()
+        let run = UUID().uuidString.prefix(8).lowercased()
+        let credentials = (1 ... 3).map { index in
+            PasswordsManager.StoredCredential(
+                domain: "refrax-test-\(run)-\(index).invalid",
+                username: "user\(index)",
+                password: "password-\(index)-\(run)",
+            )
+        }
+        defer {
+            for credential in credentials {
+                try? manager.deleteCredential(credential)
+            }
+        }
+
+        for credential in credentials {
+            try manager.saveCredential(credential)
+        }
+
+        for credential in credentials {
+            let found = manager.findCredential(domain: credential.domain, username: credential.username)
+            #expect(found?.password == credential.password)
+        }
+    }
+}

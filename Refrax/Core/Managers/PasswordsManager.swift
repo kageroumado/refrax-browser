@@ -642,10 +642,10 @@ private extension PasswordsManager {
     /// Apple's Security framework prohibits combining `kSecReturnData` with `kSecMatchLimitAll`
     /// for password items because retrieving each password may require additional authentication.
     /// This method works around this by:
-    /// 1. Querying for persistent references (not data) with `kSecMatchLimitAll`
-    /// 2. For each matching reference, querying individually with `kSecReturnData`
+    /// 1. Querying for attributes (not data) with `kSecMatchLimitAll`
+    /// 2. For each match, fetching its password by server and account
     func findInternetPasswords(for domain: String) throws -> [StoredCredential] {
-        // Step 1: Query for persistent references only (kSecReturnData + kSecMatchLimitAll is prohibited)
+        // Step 1: Query attributes only (kSecReturnData + kSecMatchLimitAll is prohibited)
         let refsQuery: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
             kSecUseDataProtectionKeychain as String: true,
@@ -653,7 +653,6 @@ private extension PasswordsManager {
             kSecAttrServer as String: domain,
             kSecAttrLabel as String: serviceName,
             kSecMatchLimit as String: kSecMatchLimitAll,
-            kSecReturnPersistentRef as String: true,
             kSecReturnAttributes as String: true,
         ]
 
@@ -674,32 +673,14 @@ private extension PasswordsManager {
             throw PasswordError.invalidData
         }
 
-        // Step 2: For each item, query individually to get the password data
+        // Step 2: Fetch each password by its server and account. `kSecMatchItemList` with a
+        // persistent reference is a file-keychain filter that the data protection keychain
+        // ignores, which turns the query into "any Refrax password" and returns one password
+        // for every site.
         var credentials: [StoredCredential] = []
         for itemDict in foundItems {
-            guard let persistentRef = itemDict[kSecValuePersistentRef as String] as? Data,
-                  let username = itemDict[kSecAttrAccount as String] as? String
-            else {
-                continue
-            }
-
-            // Query for this specific item's data using the persistent reference
-            let dataQuery: [String: Any] = [
-                kSecClass as String: kSecClassInternetPassword,
-                kSecUseDataProtectionKeychain as String: true,
-                kSecAttrAccessGroup as String: Self.accessGroup,
-                kSecMatchItemList as String: [persistentRef],
-
-                kSecMatchLimit as String: kSecMatchLimitOne,
-                kSecReturnData as String: true,
-            ]
-
-            var dataItem: CFTypeRef?
-            let dataStatus = SecItemCopyMatching(dataQuery as CFDictionary, &dataItem)
-
-            guard dataStatus == errSecSuccess,
-                  let passwordData = dataItem as? Data,
-                  let password = String(data: passwordData, encoding: .utf8)
+            guard let username = itemDict[kSecAttrAccount as String] as? String,
+                  let password = try? fetchPassword(for: StoredCredential(domain: domain, username: username, password: ""))
             else {
                 continue
             }
