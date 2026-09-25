@@ -4,6 +4,7 @@ module refrax.mojom;
 
 import "components/remote_cocoa/common/application.mojom";
 import "mojo/public/mojom/base/values.mojom";
+import "skia/public/mojom/bitmap.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 
 // Refrax's engine contract (Engines/CONTRACT.md) between the client loaded into Refrax and the
@@ -47,6 +48,10 @@ interface Page {
 
   // The contract's ScriptRequest; completes with a ScriptValue or an error message.
   EvaluateScript(string request) => (string? result, string? error);
+
+  // The page's current pixels in `rect` (view points; empty for the whole view), at the
+  // display's resolution. Null when the page has nothing rendered to copy.
+  Snapshot(gfx.mojom.Rect rect) => (skia.mojom.BitmapN32? image);
 
   Close();
 };

@@ -11,6 +11,11 @@
 #include "components/remote_cocoa/app_shim/ns_view_ids.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/utils/mac/SkCGUtils.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/size.h"
 
 @class RFXChromiumPage;
@@ -189,12 +194,31 @@ class PageClientImpl : public refrax::mojom::PageClient {
 
 - (void)snapshotRect:(NSRect)rect
           completion:(void (^)(CGImageRef _Nullable, NSError* _Nullable))completion {
-  // The engine doesn't declare the snapshots capability yet.
-  completion(nullptr, [NSError errorWithDomain:@"RFXChromiumEngine"
-                                          code:3
-                                      userInfo:@{
-                                        NSLocalizedDescriptionKey : @"Snapshots are not available."
-                                      }]);
+  if (_closed) {
+    completion(nullptr, [NSError errorWithDomain:@"RFXChromiumEngine"
+                                            code:1
+                                        userInfo:@{NSLocalizedDescriptionKey : @"The page is closed."}]);
+    return;
+  }
+  const gfx::Rect area = NSIsEmptyRect(rect) ? gfx::Rect() : gfx::ToEnclosingRect(gfx::RectF(rect));
+  _page->Snapshot(
+      area, base::BindOnce(
+                [](void (^completion)(CGImageRef, NSError*), const SkBitmap& bitmap) {
+                  CGImageRef image = bitmap.isNull() ? nullptr : SkCreateCGImageRef(bitmap);
+                  if (!image) {
+                    completion(nullptr,
+                               [NSError errorWithDomain:@"RFXChromiumEngine"
+                                                   code:3
+                                               userInfo:@{
+                                                 NSLocalizedDescriptionKey :
+                                                     @"The page has nothing rendered to capture."
+                                               }]);
+                    return;
+                  }
+                  completion(image, nil);
+                  CGImageRelease(image);
+                },
+                completion));
 }
 
 - (void)close {

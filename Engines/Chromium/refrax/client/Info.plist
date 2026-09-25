@@ -38,6 +38,7 @@
 		<string>userScripts</string>
 		<string>zoom</string>
 		<string>rendererControl</string>
+		<string>snapshots</string>
 	</array>
 </dict>
 </plist>

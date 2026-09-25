@@ -48,6 +48,7 @@ source_set("host") {
     "//components/permissions",
     "//components/remote_cocoa/browser",
     "//components/remote_cocoa/common:mojo",
+    "//components/viz/common",
     "//content/public/browser",
     "//content/public/common",
     "//mojo/public/cpp/bindings",

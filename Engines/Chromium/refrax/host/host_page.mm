@@ -13,12 +13,14 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tab_helpers.h"
 #include "components/remote_cocoa/browser/ns_view_ids.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/result_codes.h"
@@ -40,6 +42,9 @@
 namespace refrax {
 
 namespace {
+
+// How long a snapshot may wait for the compositor.
+constexpr base::TimeDelta kSnapshotTimeout = base::Seconds(5);
 
 // The contract's NavigationFailure kind for a net error.
 std::string_view FailureKind(int error) {
@@ -357,6 +362,26 @@ void HostPage::EvaluateScript(const std::string& request,
                 std::nullopt);
           },
           std::move(frame_scripts), std::move(callback)));
+}
+
+void HostPage::Snapshot(const gfx::Rect& rect, SnapshotCallback callback) {
+  content::RenderWidgetHostView* view = web_contents_->GetRenderWidgetHostView();
+  if (!view || !view->IsSurfaceAvailableForCopy()) {
+    std::move(callback).Run(SkBitmap());
+    return;
+  }
+  view->CopyFromSurface(
+      rect, gfx::Size(), kSnapshotTimeout,
+      base::BindOnce(
+          [](SnapshotCallback callback, const content::CopyFromSurfaceResult& result) {
+            if (!result.has_value() || result->bitmap.drawsNothing()) {
+              // An empty bitmap is the mojom's null.
+              std::move(callback).Run(SkBitmap());
+              return;
+            }
+            std::move(callback).Run(result->bitmap);
+          },
+          std::move(callback)));
 }
 
 void HostPage::Close() {

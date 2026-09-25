@@ -7,14 +7,18 @@
 // <storage>/Downloads/<suggested name>).
 //
 //   engine-harness <path/to/X.engine> <url> [--storage DIR] [--policy FILE] [--eval JS]
-//                  [--world NAME] [--gesture] [--seconds N]
+//                  [--world NAME] [--gesture] [--command JSON] [--snapshot FILE] [--seconds N]
 //
 // --policy sends each PolicyUpdate in FILE (a JSON array) before the page opens; --world makes
-// --eval run in that isolated world. Script messages are answered with their own body.
+// --eval run in that isolated world, --gesture gives it a user activation; --command sends a
+// PageCommand and --snapshot writes the page's snapshot as a PNG, both halfway through.
+// Script messages are answered with their own body.
 //
 // Exits 0 after --seconds (default 20), 1 if the engine fails to start.
 
 #import <AppKit/AppKit.h>
+#import <ImageIO/ImageIO.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import "RFXEngine.h"
 
@@ -38,6 +42,8 @@ static void Note(NSString* message) {
 @property(nonatomic) NSString* script;
 @property(nonatomic) NSString* world;
 @property(nonatomic) BOOL gesture;
+@property(nonatomic) NSString* command;
+@property(nonatomic) NSString* snapshotPath;
 @property(nonatomic) NSString* policyPath;
 @property(nonatomic) NSTimeInterval seconds;
 @property(nonatomic) id<RFXEngineHost> engine;
@@ -135,13 +141,21 @@ static void Note(NSString* message) {
   [self.window.contentView addSubview:view];
   [self.window makeKeyAndOrderFront:nil];
 
-  if (self.script) {
-    [NSTimer scheduledTimerWithTimeInterval:self.seconds / 2
-                                    repeats:NO
-                                      block:^(NSTimer* timer) {
+  [NSTimer scheduledTimerWithTimeInterval:self.seconds / 2
+                                  repeats:NO
+                                    block:^(NSTimer* timer) {
+                                      if (self.command) {
+                                        [self.page performCommand:[self.command
+                                                                      dataUsingEncoding:NSUTF8StringEncoding]];
+                                        Note([@"sent " stringByAppendingString:self.command]);
+                                      }
+                                      if (self.script) {
                                         [self evaluate];
-                                      }];
-  }
+                                      }
+                                      if (self.snapshotPath) {
+                                        [self snapshot];
+                                      }
+                                    }];
 }
 
 - (void)evaluate {
@@ -159,6 +173,24 @@ static void Note(NSString* message) {
                          stringByAppendingString:error.localizedDescription]);
                    }
                  }];
+}
+
+- (void)snapshot {
+  [self.page snapshotRect:NSZeroRect
+               completion:^(CGImageRef image, NSError* error) {
+                 if (!image) {
+                   Note([@"snapshot failed: " stringByAppendingString:error.localizedDescription]);
+                   return;
+                 }
+                 NSURL* url = [NSURL fileURLWithPath:self.snapshotPath];
+                 CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
+                     (__bridge CFURLRef)url, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+                 CGImageDestinationAddImage(destination, image, NULL);
+                 CGImageDestinationFinalize(destination);
+                 CFRelease(destination);
+                 Note([NSString stringWithFormat:@"snapshot %zux%zu written", CGImageGetWidth(image),
+                                                 CGImageGetHeight(image)]);
+               }];
 }
 
 // MARK: RFXEngineHostDelegate
@@ -241,6 +273,10 @@ int main(int argc, const char* argv[]) {
         harness.world = arguments[i + 1];
       } else if ([arguments[i] isEqualToString:@"--policy"]) {
         harness.policyPath = arguments[i + 1];
+      } else if ([arguments[i] isEqualToString:@"--command"]) {
+        harness.command = arguments[i + 1];
+      } else if ([arguments[i] isEqualToString:@"--snapshot"]) {
+        harness.snapshotPath = arguments[i + 1];
       } else if ([arguments[i] isEqualToString:@"--seconds"]) {
         harness.seconds = arguments[i + 1].doubleValue;
       }

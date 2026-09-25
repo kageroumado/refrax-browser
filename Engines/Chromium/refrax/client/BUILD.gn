@@ -33,6 +33,7 @@ loadable_module("RefraxChromium") {
     "//mojo/public/cpp/system",
     "//refrax/common",
     "//refrax/common/mojom",
+    "//skia",
     "//ui/accelerated_widget_mac",
     "//ui/display",
     "//ui/gfx",

@@ -411,7 +411,8 @@ cmd_harness() {
     [[ -d "$engine" ]] || die "no engine at $engine"
     mkdir -p "$FORGE/bin"
     clang -fobjc-arc -O1 -Wall -I "$REPO_ROOT/Engines/SDK" "$REPO_ROOT/Engines/Chromium/harness/main.m" \
-        -framework AppKit -o "$FORGE/bin/engine-harness"
+        -framework AppKit -framework ImageIO -framework UniformTypeIdentifiers \
+        -o "$FORGE/bin/engine-harness"
     "$FORGE/bin/engine-harness" "$engine" "$url" \
         --storage "$(artifact_dir "$name" harness)/harness-storage" "$@"
 }
