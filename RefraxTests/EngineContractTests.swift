@@ -156,6 +156,36 @@ struct EngineWireTests {
         #expect(object?["id"] is String)
     }
 
+    @Test("Encodes policy with the field names the Chromium host reads")
+    func encodesPolicy() throws {
+        // Engines/Chromium/refrax/host reads these by name; a renamed field silently turns
+        // the feature off in Chromium pages.
+        let blocking = PolicyUpdate.contentBlocking(policy: ContentBlockingPolicy(
+            isEnabled: false,
+            lists: [.init(id: "easylist", contents: "||ads.test^")],
+            allowlistedHosts: ["a.test"],
+        ))
+        let blockingObject = try JSONSerialization.jsonObject(with: EngineWire.encode(blocking)) as? [String: Any]
+        let policy = (blockingObject?["contentBlocking"] as? [String: Any])?["policy"] as? [String: Any]
+        #expect(policy?["isEnabled"] as? Bool == false)
+        #expect((policy?["lists"] as? [[String: Any]])?.first?["contents"] as? String == "||ads.test^")
+        #expect(policy?["allowlistedHosts"] as? [String] == ["a.test"])
+
+        let script = InjectedScript(
+            id: "refrax.test", source: "1", injectionTime: .documentEnd, world: .isolated(name: "w"),
+            mainFrameOnly: true, matches: ["*://a.test/*"], excludes: ["*://a.test/x*"], channels: ["c"],
+        )
+        let scriptsObject = try JSONSerialization.jsonObject(with: EngineWire.encode(PolicyUpdate.scripts(scripts: [script]))) as? [String: Any]
+        let encoded = ((scriptsObject?["scripts"] as? [String: Any])?["scripts"] as? [[String: Any]])?.first
+        #expect(encoded?["source"] as? String == "1")
+        #expect(encoded?["injectionTime"] as? String == "documentEnd")
+        #expect(((encoded?["world"] as? [String: Any])?["isolated"] as? [String: Any])?["name"] as? String == "w")
+        #expect(encoded?["mainFrameOnly"] as? Bool == true)
+        #expect(encoded?["matches"] as? [String] == ["*://a.test/*"])
+        #expect(encoded?["excludes"] as? [String] == ["*://a.test/x*"])
+        #expect(encoded?["channels"] as? [String] == ["c"])
+    }
+
     @Test("Script values round-trip as plain JSON")
     func scriptValues() throws {
         let value = ScriptValue.object(["a": .array([.number(1), .bool(true), .null, .string("x")])])
@@ -341,6 +371,31 @@ struct EngineRegistryTests {
         #expect(registry.resolve("example") == EngineID(rawValue: "test.engine.example"))
         #expect(registry.resolve("WEBKIT") == .systemWebKit)
         #expect(registry.resolve("gecko") == nil)
+    }
+
+    @Test("An engine's icon comes from its bundle's CFBundleIconFile")
+    func icon() throws {
+        let id = EngineID(rawValue: "test.engine.example")
+        let plain = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: plain, resultingItemURL: nil) }
+        #expect(EngineRegistry(applicationSupport: plain).icon(for: id) == nil)
+
+        // A second bundle: Foundation caches a Bundle's Info.plist per path.
+        let iconic = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: iconic, resultingItemURL: nil) }
+        let contents = iconic.appending(path: "Engines/test.engine.example/Example.engine/Contents")
+        let infoURL = contents.appending(path: "Info.plist")
+        var info = try PropertyListSerialization.propertyList(from: Data(contentsOf: infoURL), format: nil) as? [String: Any] ?? [:]
+        info["CFBundleIconFile"] = "engine"
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: infoURL)
+        let resources = contents.appending(path: "Resources")
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        let pixel = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+        try pixel.write(to: resources.appending(path: "engine.png"))
+
+        let registry = EngineRegistry(applicationSupport: iconic)
+        #expect(registry.icon(for: id) != nil)
+        #expect(registry.icon(for: .systemWebKit) == nil)
     }
 
     @Test("Uninstalling removes the engine; system WebKit can't be removed")

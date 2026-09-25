@@ -86,7 +86,9 @@ The engine keeps all persistent state inside `storageDirectory` and nowhere else
 
 `profile` partitions storage per Refrax space: `{"shared":{}}`, `{"isolated":{"id":"<uuid>"}}`
 (persistent, separate cookies and storage), or `{"ephemeral":{"id":"<uuid>"}}` (in memory,
-discarded with the space). `removeProfile` deletes everything stored for one.
+discarded with the space). `removeProfile` deletes everything stored for one and completes when
+the data is gone; Refrax also uses it to clear a space it keeps, so pages made in that profile
+afterwards work as in a new one.
 
 ## 4. Messages
 
@@ -154,7 +156,10 @@ site's settings or asks the user, and shows `javaScriptDialog` in the page's own
 with `origin`; a question stays with its page, so a background page's dialog waits until the page
 is shown. A permission Refrax has no `kind` for is denied by the engine. Dialog text over 2,000
 characters is truncated by the engine (strings are capped, §6). A committed navigation dismisses
-pending questions, answering them `cancel` / `deny`.
+pending questions, answering them `cancel` / `deny`; the engine answers a page's pending dialogs
+`cancel` itself when Refrax starts a navigation (`load`, `goBack`, `goForward`, `reload`), since a
+dialog holds its renderer until answered. An answer to a question that is no longer pending is
+ignored.
 
 Refrax never lets an engine choose where files land: the answer to `download` is the destination.
 Until an answer arrives the engine waits; if the page closes first, the engine cancels.
@@ -168,7 +173,11 @@ a download still running when its page closes is reported failed.
 
 `evaluateScript` takes `{ "source", "world": {"page":{}} | {"isolated":{"name":…}}, "userGesture" }`
 and completes with the result as a plain JSON value (`42`, `"x"`, `{"a":[true,null]}`). Scripts
-must not be given a synthetic user gesture unless `userGesture` is true.
+must not be given a synthetic user gesture unless `userGesture` is true. `undefined` is `null`;
+integral numbers carry no fraction; a promise settles before the call completes; a thrown value
+fails the call with its message (a syntax error's message names `SyntaxError`). Every call
+completes exactly once, with an error if the page closes or its engine dies first. Injected
+scripts' `matches` and `excludes` are WebExtensions match patterns (empty `matches`: every page).
 
 Scripts Refrax injects (policy `scripts`, §4.5) post messages with the WebKit call shape, in the
 world they run in:
@@ -227,8 +236,16 @@ Refrax enforces these on its side; engines must not rely on them being absent.
   one field at a time after the user chooses them.
 - Out-of-process engines keep their renderer sandbox enabled.
 
-## 7. Reference implementations
+## 7. Conformance
+
+`Engines/Conformance` checks an engine bundle against this contract by driving it through
+`RFXEngine.h` against fixtures it serves on loopback: `forge conformance <name>` for the
+Chromium engine, or build it with `swiftc` and run `engine-conformance <X.engine>` for any
+other. The input tests need the runner to be the active app, which macOS grants when it is
+launched from the frontmost app; otherwise they are skipped.
+
+## 8. Reference implementations
 
 - **System WebKit**: built into Refrax (in-process).
 - **Chromium (CEF)**: `Engines/Chromium/` — in-process interim engine, `Scripts/build-chromium-engine.sh`.
-- **Chromium (out-of-process host)**: planned. It runs Chromium's browser process as its own app and shows pages through remote layers; this contract does not change.
+- **Chromium (out-of-process host)**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.
