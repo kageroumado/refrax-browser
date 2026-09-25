@@ -178,11 +178,14 @@ extension AgentMessage {
         let id: String
         let name: String
         let displayName: String
+        /// One-line summary of the call's input, such as the shell command a CLI agent ran.
+        let detail: String?
 
-        init(id: String, name: String) {
+        init(id: String, name: String, detail: String? = nil) {
             self.id = id
             self.name = name
             self.displayName = Self.humanReadableName(name)
+            self.detail = detail
         }
 
         private static func humanReadableName(_ name: String) -> String {
@@ -196,6 +199,12 @@ extension AgentMessage {
             case "form_input": "Fill form"
             case "tabs_list": "List tabs"
             case "execute_javascript": "Run JavaScript"
+            case "Bash", "shell": "Shell"
+            case "Read": "Read file"
+            case "WebFetch": "Fetch page"
+            case "WebSearch", "web_search": "Web search"
+            case "Skill": "Load skill"
+            case "file_change": "Edit files"
             default: name.replacingOccurrences(of: "_", with: " ").capitalized
             }
         }
@@ -391,7 +400,7 @@ extension AgentMessage {
                     }
                 case "tool_use":
                     if let id = block.id, let name = block.name {
-                        newToolBlocks.append(.toolUse(ToolUseBlock(id: id, name: name)))
+                        newToolBlocks.append(.toolUse(ToolUseBlock(id: id, name: name, detail: block.text)))
                     }
                 case "tool_result":
                     if let toolUseId = block.toolUseId {

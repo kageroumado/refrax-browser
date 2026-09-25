@@ -547,7 +547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tiered setup pattern: Fire-and-forget tasks at appropriate priorities.
         // This allows the first frame to render without waiting for any setup.
 
-        // Configure Claude Direct tool system (fast — just 3 actor hops)
+        // Configure the agent tool system (fast — a few actor hops)
         Task {
             await self.agentChatManager.configureToolSystem(
                 controlServer: self.controlServer,
@@ -942,6 +942,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// - Marks a clean shutdown for crash detection
     /// - Gracefully stops the control server and the aria2 daemon
     func applicationWillTerminate(_: Notification) {
+        CLIProcessRegistry.terminateAll()
+
         // Quitting skips per-window close notifications, so capture the active
         // window's geometry here for new windows created after the next launch
         if let controller = windowManager.activeWindowController,

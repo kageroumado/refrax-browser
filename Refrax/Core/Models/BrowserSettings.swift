@@ -559,6 +559,16 @@ final class BrowserSettings {
     /// Maximum output tokens for OpenAI-compatible providers.
     var agentOpenAIMaxTokens: Int = 4_096
 
+    /// Model passed to `claude --model` when ``agentProviderKind`` is `.claudeCode`.
+    ///
+    /// Empty means the CLI's own default model.
+    var agentClaudeCodeModel: String = ""
+
+    /// Model passed to `codex exec --model` when ``agentProviderKind`` is `.codex`.
+    ///
+    /// Empty means the CLI's own default model.
+    var agentCodexModel: String = ""
+
     /// Display name for the agent in chat header.
     var agentDisplayName: String
 
@@ -834,6 +844,8 @@ final class BrowserSettings {
         self.agentCustomBaseURL = "http://localhost:11434/v1"
         self.agentCustomRequiresAuth = false
         self.agentOpenAIMaxTokens = 4_096
+        self.agentClaudeCodeModel = ""
+        self.agentCodexModel = ""
         self.agentDisplayName = "Agent"
         self.agentAvatarData = nil
         self.preferredMailHandlerRaw = MailHandler.system.rawValue
@@ -1239,6 +1251,8 @@ final class BrowserSettings {
         agentCustomBaseURL = "http://localhost:11434/v1"
         agentCustomRequiresAuth = false
         agentOpenAIMaxTokens = 4_096
+        agentClaudeCodeModel = ""
+        agentCodexModel = ""
         agentDisplayName = "Agent"
         agentAvatarData = nil
         feedbackName = ""

@@ -167,6 +167,8 @@ extension BrowserSettings: Syncable {
         record["agentCustomBaseURL"] = agentCustomBaseURL as NSString
         record["agentCustomRequiresAuth"] = agentCustomRequiresAuth as NSNumber
         record["agentOpenAIMaxTokens"] = agentOpenAIMaxTokens as NSNumber
+        record["agentClaudeCodeModel"] = agentClaudeCodeModel as NSString
+        record["agentCodexModel"] = agentCodexModel as NSString
         record["agentDisplayName"] = agentDisplayName as NSString
         record["agentAvatarData"] = agentAvatarData as NSData?
 
@@ -401,8 +403,9 @@ extension BrowserSettings: Syncable {
         settings.agentAutoIncludeContext = (record["agentAutoIncludeContext"] as? Bool) ?? true
         settings.agentProviderKind = (record["agentProviderKindRaw"] as? String)
             .flatMap(AgentProviderKind.init(rawValue:)) ?? .claudeAPI
-        settings.agentClaudeModel = record["agentClaudeModel"] as? String
-            ?? ClaudeModel.sonnet.rawValue
+        settings.agentClaudeModel = ClaudeModel.migrated(
+            record["agentClaudeModel"] as? String ?? ClaudeModel.sonnet.rawValue,
+        )
         settings.agentClaudeMaxTokens = (record["agentClaudeMaxTokens"] as? Int) ?? 8_192
         settings.agentOpenAIModel = record["agentOpenAIModel"] as? String ?? "gpt-5"
         settings.agentOpenRouterModel = record["agentOpenRouterModel"] as? String
@@ -412,6 +415,8 @@ extension BrowserSettings: Syncable {
             ?? "http://localhost:11434/v1"
         settings.agentCustomRequiresAuth = (record["agentCustomRequiresAuth"] as? Bool) ?? false
         settings.agentOpenAIMaxTokens = (record["agentOpenAIMaxTokens"] as? Int) ?? 4_096
+        settings.agentClaudeCodeModel = record["agentClaudeCodeModel"] as? String ?? ""
+        settings.agentCodexModel = record["agentCodexModel"] as? String ?? ""
         settings.agentDisplayName = record["agentDisplayName"] as? String ?? "Agent"
         settings.agentAvatarData = record["agentAvatarData"] as? Data
 

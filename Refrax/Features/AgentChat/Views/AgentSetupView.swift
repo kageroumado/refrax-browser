@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Inline onboarding view shown when no agent credentials are configured.
+/// Inline onboarding view shown when the chosen agent provider cannot answer yet.
 ///
-/// Presents a compact API key entry for the currently selected provider,
-/// plus a link to open the full configuration sheet for switching
-/// providers or adjusting advanced options.
+/// Presents a compact API key entry for API providers, or the install status
+/// of the CLI for Claude Code and Codex, plus a link to open the full
+/// configuration sheet for switching providers or adjusting advanced options.
 struct AgentSetupView: View {
     let onCredentialConfigured: () -> Void
 
@@ -46,7 +46,7 @@ struct AgentSetupView: View {
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .onChange(of: settings.agentProviderKind) {
                     syncInputsFromProvider()
                 }
@@ -65,7 +65,9 @@ struct AgentSetupView: View {
                 .disabled(!canConnect)
                 .accessibilityIdentifier("agent-setup-connect")
 
-                Text("API keys are stored in your macOS Keychain.")
+                Text(activeProvider.cliRuntime == nil
+                    ? "API keys are stored in your macOS Keychain."
+                    : "Runs on your Mac and drives Refrax through refrax-ctl.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -78,7 +80,7 @@ struct AgentSetupView: View {
             .foregroundStyle(.tertiary)
             .buttonStyle(.plain)
 
-            Text("Tip: ⌘⌃S to toggle chat")
+            Text("Tip: ⌘⌃A to toggle chat")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -96,6 +98,10 @@ struct AgentSetupView: View {
     @ViewBuilder
     private var credentialFields: some View {
         switch activeProvider {
+        case .claudeCode, .codex:
+            if let runtime = activeProvider.cliRuntime {
+                CLIAgentStatusView(runtime: runtime)
+            }
         case .claudeAPI:
             labeledField(
                 title: "Anthropic API Key",
@@ -145,6 +151,8 @@ struct AgentSetupView: View {
 
     private var canConnect: Bool {
         switch activeProvider {
+        case .claudeCode, .codex:
+            true
         case .claudeAPI, .openAI, .openRouter:
             !apiKeyInput.isEmpty
         case .custom:
@@ -161,6 +169,7 @@ struct AgentSetupView: View {
     }
 
     private func commit() {
+        guard activeProvider.cliRuntime == nil else { return }
         if !apiKeyInput.isEmpty {
             AgentCredentialStore.storeAPIKey(apiKeyInput, for: activeProvider)
         }

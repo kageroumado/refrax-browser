@@ -21,9 +21,6 @@ nonisolated enum OpenAIToolAdapter {
 
     /// Converts Refrax's Anthropic-shaped tool definitions into OpenAI
     /// `{type: "function", function: ...}` dictionaries.
-    ///
-    /// Drops Anthropic-only extensions like `allowed_callers` — OpenAI
-    /// rejects unknown top-level keys on the function object.
     static func toolsJSON(from definitions: [AgentToolDefinition]) -> [[String: Any]] {
         definitions.map { definition in
             let anthropic = definition.apiRepresentation

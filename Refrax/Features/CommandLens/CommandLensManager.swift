@@ -786,9 +786,9 @@ final class CommandLensManager {
         let query = AIIntentDetector.extractQuery(inputText)
         guard !query.isEmpty else { return }
 
-        guard ClaudeCredentialStore.hasCredential else {
+        guard agentChatManager.isProviderConfigured else {
             isAIMode = true
-            aiError = "Set up Claude API key in Settings"
+            aiError = "Set up the agent in the Reference Pane's Agent Chat"
             return
         }
 
@@ -814,7 +814,7 @@ final class CommandLensManager {
 
             // Build browser context
             let context = BrowserContextProvider.shouldIncludeContext(for: query)
-                ? BrowserContextProvider.extractContext(from: windowState)
+                ? await BrowserContextProvider.extractContextWithSelection(from: windowState)
                 : nil
 
             // Send through the agent chat pipeline

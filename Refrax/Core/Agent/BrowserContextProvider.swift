@@ -37,8 +37,37 @@ nonisolated enum BrowserContextProvider {
         return BrowserContext(
             url: url,
             title: title,
-            selectedText: nil, // Selected text requires async JS evaluation
+            selectedText: nil,
             spaceName: spaceName,
+        )
+    }
+
+    /// Longest selection passed to the agent, in characters.
+    private static let maxSelectionLength = 4_000
+
+    /// Extracts browser context including the active page's text selection.
+    ///
+    /// Reads `window.getSelection()` without a synthesized user gesture, so
+    /// the page keeps any transient activation it holds.
+    ///
+    /// - Parameter windowState: The current window state.
+    /// - Returns: Browser context if available.
+    @MainActor
+    static func extractContextWithSelection(from windowState: WindowState) async -> BrowserContext? {
+        guard let context = extractContext(from: windowState) else { return nil }
+        guard let page = windowState.activeWebPage,
+              let raw = try? await page.evaluateJavaScriptWithoutUserGesture("window.getSelection().toString()") as? String
+        else { return context }
+
+        let selection = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selection.isEmpty else { return context }
+        return BrowserContext(
+            url: context.url,
+            title: context.title,
+            selectedText: selection.count > maxSelectionLength
+                ? String(selection.prefix(maxSelectionLength)) + "…"
+                : selection,
+            spaceName: context.spaceName,
         )
     }
 

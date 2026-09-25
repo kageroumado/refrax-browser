@@ -166,7 +166,7 @@ final class AgentModelLoader {
 
 /// Liquid Glass-styled model picker surfaced by the agent settings sheet.
 ///
-/// Behaviour varies by provider:
+/// Behavior varies by provider:
 /// - **OpenAI**: shows ``AgentOpenAIModels/curated`` + a text field for
 ///   custom slugs.
 /// - **OpenRouter**: fetches `/models`, filters to tool-capable entries,
@@ -187,6 +187,10 @@ struct AgentModelPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             switch provider {
+            case .claudeCode, .codex:
+                TextField("Model identifier", text: $selection)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
             case .claudeAPI:
                 claudePicker
             case .openAI:
@@ -220,12 +224,34 @@ struct AgentModelPicker: View {
     // MARK: Claude
 
     private var claudePicker: some View {
-        Picker("Model", selection: $selection) {
-            ForEach(ClaudeModel.allCases, id: \.rawValue) { model in
-                Text(model.displayName).tag(model.rawValue)
+        let knownIDs = ClaudeModel.allCases.map(\.rawValue)
+        return VStack(alignment: .leading, spacing: 6) {
+            Picker("Model", selection: Binding(
+                get: { knownIDs.contains(selection) ? selection : customSentinel },
+                set: { newValue in
+                    if newValue == customSentinel {
+                        showCustomField = true
+                    } else {
+                        showCustomField = false
+                        selection = newValue
+                    }
+                },
+            )) {
+                ForEach(ClaudeModel.allCases, id: \.rawValue) { model in
+                    Text(model.displayName).tag(model.rawValue)
+                }
+                Divider()
+                Text("Custom model ID…").tag(customSentinel)
+            }
+            .labelsHidden()
+
+            if showCustomField || !knownIDs.contains(selection) {
+                TextField("e.g., claude-opus-5-5", text: $selection)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+                    .autocorrectionDisabled(true)
             }
         }
-        .labelsHidden()
     }
 
     // MARK: OpenAI (curated)

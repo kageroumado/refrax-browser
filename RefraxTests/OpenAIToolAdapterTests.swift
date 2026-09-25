@@ -47,26 +47,6 @@ struct OpenAIToolAdapterToolDefinitionTests {
         #expect((parameters["required"] as? [String])?.first == "url")
     }
 
-    @Test("Drops Anthropic-only allowedCallers field")
-    func dropsAllowedCallers() throws {
-        let tool = AgentToolDefinition(
-            name: "execute_program",
-            description: "Run a program.",
-            inputSchema: ["type": "object", "properties": [String: Any]()],
-            allowedCallers: ["code_execution_20250825"],
-        )
-
-        let wire = OpenAIToolAdapter.toolsJSON(from: [tool])
-        let entry = try #require(wire.first)
-        let function = try #require(entry["function"] as? [String: Any])
-
-        // The allowed_callers field is Anthropic-specific — must not appear
-        // inside or outside the function object.
-        #expect(function["allowed_callers"] == nil)
-        #expect(function["allowedCallers"] == nil)
-        #expect(entry["allowed_callers"] == nil)
-    }
-
     @Test("Default parameters for tools with no schema")
     func defaultParameters() throws {
         // Construct a definition whose `apiRepresentation` might be missing input_schema.

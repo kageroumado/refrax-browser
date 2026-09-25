@@ -194,8 +194,13 @@ final class AgentChatManager {
 
     // MARK: - Non-Observable State
 
+    /// The client for the current provider settings; rebuilt by
+    /// ``reconcileClient()`` when ``clientConfiguration`` goes stale.
     @ObservationIgnored
-    private let client: any AgentChatClientProtocol
+    private var client: any AgentChatClientProtocol
+
+    @ObservationIgnored
+    private var clientConfiguration: AgentClientConfiguration
 
     @ObservationIgnored
     private let settings: BrowserSettings
@@ -224,6 +229,10 @@ final class AgentChatManager {
     @ObservationIgnored
     private var toolBridge: AgentToolBridge?
 
+    /// Supplies the active tab's context for system prompts and CLI messages.
+    @ObservationIgnored
+    private var browserContextProvider: (@MainActor @Sendable () -> BrowserContext?)?
+
     /// Thought stream store for emitting agent activity thoughts.
     @ObservationIgnored
     var thoughtStreamStore: ThoughtStreamStore?
@@ -235,8 +244,23 @@ final class AgentChatManager {
         self.settings = settings
         self.sessionKey = sessionKey ?? settings.agentSessionKey
         self.client = client
+        self.clientConfiguration = AgentClientFactory.configuration(settings: settings)
 
-        setupEventHandlers()
+        Task(name: "Install agent event handlers") { [weak self] in
+            await self?.installEventHandlers(on: client)
+        }
+    }
+
+    /// Whether the chosen provider can answer: it has an API key, a custom
+    /// endpoint, or an installed CLI.
+    var isProviderConfigured: Bool {
+        AgentClientFactory.isProviderConfigured(settings: settings)
+    }
+
+    /// Whether the active provider is a local CLI that drives the browser
+    /// through `refrax-ctl`.
+    private var usesLocalCLI: Bool {
+        clientConfiguration.provider.cliRuntime != nil
     }
 
     /// Configures tool definitions, system prompt, and executor for the active client.
@@ -244,7 +268,9 @@ final class AgentChatManager {
     /// Must be called after the `RefraxControlServer` is created. Works for any
     /// client conforming to ``AgentChatClientProtocol`` — ``ClaudeDirectClient``
     /// stores the definitions natively, ``OpenAICompatibleClient`` translates
-    /// them via ``OpenAIToolAdapter``, and ``MockAgentChatClient`` no-ops.
+    /// them via ``OpenAIToolAdapter``, and ``LocalCLIAgentClient`` ignores them
+    /// because its CLI acts through `refrax-ctl`. Rebuilt clients receive the
+    /// same configuration.
     func configureToolSystem(
         controlServer: RefraxControlServer,
         windowManager: WindowManager,
@@ -260,39 +286,71 @@ final class AgentChatManager {
         )
         bridge.thoughtStreamStore = thoughtStreamStore
         toolBridge = bridge
+        browserContextProvider = browserContext
+
+        await installToolSystem(on: client)
+    }
+
+    private func installToolSystem(on client: any AgentChatClientProtocol) async {
+        guard let toolBridge, let browserContextProvider else { return }
 
         await client.setToolDefinitions(AgentTools.definitions)
 
         await client.setSystemPromptBuilder { @MainActor in
-            ClaudeSystemPrompt.build(context: browserContext())
+            ClaudeSystemPrompt.build(context: browserContextProvider())
         }
 
         await client.setToolExecutor { @MainActor name, input in
-            await bridge.execute(toolName: name, input: input)
+            await toolBridge.execute(toolName: name, input: input)
         }
     }
 
-    private func setupEventHandlers() {
-        Task {
-            await client.setChatEventHandler { [weak self] payload in
-                // Callback comes from actor (background), use DispatchQueue for MainActor hop
-                DispatchQueue.main.async {
-                    self?.handleChatEvent(payload)
-                }
-            }
-
-            await client.setConnectionStateHandler { [weak self] state in
-                DispatchQueue.main.async {
-                    self?.handleConnectionStateChange(state)
-                }
+    /// Routes a client's callbacks to this manager, dropping any that arrive
+    /// after the client has been replaced.
+    private func installEventHandlers(on client: any AgentChatClientProtocol) async {
+        let clientID = ObjectIdentifier(client)
+        await client.setChatEventHandler { [weak self] payload in
+            // Callback comes from actor (background), use DispatchQueue for MainActor hop
+            DispatchQueue.main.async {
+                guard let self, ObjectIdentifier(self.client) == clientID else { return }
+                self.handleChatEvent(payload)
             }
         }
+
+        await client.setConnectionStateHandler { [weak self] state in
+            DispatchQueue.main.async {
+                guard let self, ObjectIdentifier(self.client) == clientID else { return }
+                self.handleConnectionStateChange(state)
+            }
+        }
+    }
+
+    /// Replaces the client when the provider, model, endpoint, or credential
+    /// changed since it was built. The old client is disconnected, which
+    /// stops any CLI process it was running.
+    private func reconcileClient() async {
+        let configuration = AgentClientFactory.configuration(settings: settings)
+        guard configuration != clientConfiguration, !isStreaming else { return }
+
+        let previous = client
+        let replacement = AgentClientFactory.makeClient(settings: settings)
+        client = replacement
+        clientConfiguration = configuration
+        connectionState = .disconnected
+        hasLoadedHistory = false
+        messages.removeAll()
+        Logger.info("Agent client rebuilt for \(configuration.provider.displayName)", category: Logger.agent)
+
+        await previous.disconnect()
+        await installEventHandlers(on: replacement)
+        await installToolSystem(on: replacement)
     }
 
     // MARK: - Connection Management
 
     /// Connects to the agent gateway.
     func connect() async {
+        await reconcileClient()
         guard connectionState == .disconnected else { return }
 
         connectionState = .connecting
@@ -334,8 +392,14 @@ final class AgentChatManager {
         // Clear stale errors from previous interactions
         error = nil
 
+        await reconcileClient()
+        if connectionState == .disconnected {
+            await connect()
+        }
         guard connectionState.isConnected else {
-            error = ChatError(message: "Not connected to gateway", isRecoverable: true)
+            if error == nil {
+                error = ChatError(message: "The agent is not connected", isRecoverable: true)
+            }
             return
         }
 
@@ -347,7 +411,9 @@ final class AgentChatManager {
         messages.append(userMessage)
         pendingAttachments.removeAll()
 
-        let finalText = buildMessage(text, includingContext: context)
+        // A CLI agent learns which tab is current only from the message.
+        let effectiveContext = context ?? (usesLocalCLI ? browserContextProvider?() : nil)
+        let finalText = buildMessage(text, includingContext: effectiveContext)
         await performSend(userMessage: userMessage, messageText: finalText)
     }
 
@@ -537,7 +603,6 @@ final class AgentChatManager {
                 messageText: messageText,
                 attachments: protocolAttachments.isEmpty ? nil : protocolAttachments,
             )
-            streamingMessage = AgentMessage.streamingAssistant(runId: currentRunId!)
         } catch {
             Logger.error("Failed to send message: \(error.localizedDescription)", category: Logger.agent)
             isStreaming = false
@@ -941,6 +1006,7 @@ nonisolated struct BrowserContext: Sendable {
 extension AgentChatManager {
     /// Creates a chat manager using the factory to create the appropriate client.
     convenience init(settings: BrowserSettings) {
+        AgentClientFactory.applyLaunchDefaults(settings: settings)
         let client = AgentClientFactory.makeClient(settings: settings)
         self.init(settings: settings, client: client)
     }

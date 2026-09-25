@@ -17,6 +17,9 @@ import Security
 /// | `.openRouter` | `website.refrax.browser.openrouter-credentials` | `openrouter-api-key` |
 /// | `.custom` | `website.refrax.browser.custom-credentials` | `custom-api-key` |
 ///
+/// `.claudeCode` and `.codex` sign in through their own CLI, so their
+/// coordinates exist only to keep the mapping total and hold nothing.
+///
 /// The Claude service name is preserved from earlier releases; see
 /// ``deleteLegacyOAuthCredentials()`` for one-time cleanup of removed
 /// OAuth accounts.
@@ -26,6 +29,8 @@ nonisolated enum AgentCredentialStore {
     /// Returns the Keychain `kSecAttrService` for a provider.
     static func service(for provider: AgentProviderKind) -> String {
         switch provider {
+        case .claudeCode: "website.refrax.browser.claude-code-credentials"
+        case .codex: "website.refrax.browser.codex-credentials"
         case .claudeAPI: "website.refrax.browser.claude-credentials"
         case .openAI: "website.refrax.browser.openai-credentials"
         case .openRouter: "website.refrax.browser.openrouter-credentials"
@@ -36,6 +41,8 @@ nonisolated enum AgentCredentialStore {
     /// Returns the Keychain `kSecAttrAccount` for a provider.
     static func account(for provider: AgentProviderKind) -> String {
         switch provider {
+        case .claudeCode: "claude-code-api-key"
+        case .codex: "codex-api-key"
         case .claudeAPI: "anthropic-api-key"
         case .openAI: "openai-api-key"
         case .openRouter: "openrouter-api-key"
