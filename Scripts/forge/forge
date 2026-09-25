@@ -443,8 +443,12 @@ main() {
             ;;
         bootstrap|fetch|prepare|gen|build|package|sign|notarize|install)
             eval "$(cmd_env)"
-            # Only a source checkout or a build needs the full working space.
-            [[ "$command" == package ]] && MIN_FREE_GB="${FORGE_MIN_FREE_GB:-20}"
+            # A new checkout needs the full working space; rebuilding an existing build
+            # directory replaces files in place, and packaging copies about 1 GB.
+            case "$command" in
+                gen | build) MIN_FREE_GB="${FORGE_MIN_FREE_GB:-60}" ;;
+                package) MIN_FREE_GB="${FORGE_MIN_FREE_GB:-20}" ;;
+            esac
             if [[ "$command" != sign && "$command" != notarize && "$command" != install ]]; then
                 cmd_doctor >/dev/null || { cmd_doctor; die "doctor failed"; }
             fi

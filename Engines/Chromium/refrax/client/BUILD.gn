@@ -35,6 +35,7 @@ loadable_module("RefraxChromium") {
     "//refrax/common/mojom",
     "//skia",
     "//ui/accelerated_widget_mac",
+    "//ui/base",
     "//ui/display",
     "//ui/events",
     "//ui/gfx",

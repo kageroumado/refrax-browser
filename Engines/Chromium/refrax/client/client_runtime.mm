@@ -21,6 +21,7 @@
 #include "mojo/core/embedder/embedder.h"
 #include "mojo/core/embedder/scoped_ipc_support.h"
 #include "ui/accelerated_widget_mac/window_resize_helper_mac.h"
+#include "ui/base/resource/resource_scale_factor.h"
 #include "ui/display/screen.h"
 
 namespace refrax {
@@ -91,6 +92,10 @@ struct Runtime {
     // (patches/base-mac-attach-pump.patch) instead of running a loop of our own.
     main_executor.emplace(base::MessagePumpType::UI, /*is_main_thread=*/true);
     base::CurrentUIThread::Get()->Attach();
+
+    // The display scales Chromium's images are prepared for (drag images, cursors). Chromium
+    // sets them while loading its resource bundle, which the client doesn't load.
+    ui::SetSupportedResourceScaleFactors({ui::k100Percent, ui::k200Percent});
 
     ui::WindowResizeHelperMac::Get()->Init(
         base::SingleThreadTaskRunner::GetCurrentDefault());

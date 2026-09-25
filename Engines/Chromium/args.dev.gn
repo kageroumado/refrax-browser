@@ -5,6 +5,9 @@ is_component_build = false
 use_thin_lto = false
 chrome_pgo_phase = 0
 dcheck_always_on = true
+# A failed DCHECK logs with its stack instead of killing the process: upstream assertions in
+# blink fire under normal browsing, and the client runs inside Refrax.
+dcheck_is_configurable = true
 symbol_level = 1
 enable_dsyms = false
 
