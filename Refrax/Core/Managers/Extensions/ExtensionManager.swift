@@ -741,7 +741,7 @@ final class ExtensionManager {
         }
 
         // Build download URL
-        let downloadURLString: String = switch store {
+        let downloadURLString = switch store {
         case .chrome:
             "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3D\(extensionID)%26uc"
         case .firefox:
@@ -760,12 +760,11 @@ final class ExtensionManager {
         let (tempURL, response) = try await URLSession.shared.download(from: downloadURL)
 
         // Determine file extension from response or store type
-        let fileExtension: String
-        if let httpResponse = response as? HTTPURLResponse,
-           let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") {
-            fileExtension = contentType.contains("xpi") ? "xpi" : "crx"
+        let fileExtension: String = if let httpResponse = response as? HTTPURLResponse,
+                                       let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") {
+            contentType.contains("xpi") ? "xpi" : "crx"
         } else {
-            fileExtension = store == .chrome ? "crx" : "xpi"
+            store == .chrome ? "crx" : "xpi"
         }
 
         let archiveURL = FileManager.default.temporaryDirectory
@@ -1384,6 +1383,25 @@ final class ExtensionManager {
     /// - Returns: The loaded context, or nil if not loaded.
     func context(for extension_: InstalledExtension) -> WKWebExtensionContext? {
         loadedContexts[extension_.uniqueIdentifier]
+    }
+
+    /// The loaded extension context that owns `url`, searched across the default controller
+    /// and every space controller.
+    ///
+    /// Each context gets its own base URL when it is created, so the same extension loaded
+    /// into several controllers still resolves to exactly one context per URL.
+    ///
+    /// - Parameter url: A URL a tab is about to show.
+    /// - Returns: The owning context, or `nil` when `url` is no loaded extension's page.
+    func extensionContext(for url: URL) -> WKWebExtensionContext? {
+        guard ExtensionPageRouting.isExtensionURL(url) else { return nil }
+        let controllers = [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
+        for controller in controllers {
+            if let context = controller.extensionContext(for: url) {
+                return context
+            }
+        }
+        return nil
     }
 
     // MARK: - Per-Site Disable List
@@ -2055,6 +2073,12 @@ enum ExtensionError: Error, LocalizedError {
     /// Failed to download extension from web store.
     case downloadFailed(String)
 
+    /// A private window was requested and no private space exists.
+    case noPrivateSpace
+
+    /// The extension declares no options page.
+    case noOptionsPage
+
     var errorDescription: String? {
         switch self {
         case let .manifestErrors(errors):
@@ -2075,6 +2099,10 @@ enum ExtensionError: Error, LocalizedError {
             "This extension is already installed"
         case let .downloadFailed(reason):
             "Failed to download extension: \(reason)"
+        case .noPrivateSpace:
+            "No private space is open"
+        case .noOptionsPage:
+            "Extension has no options page"
         }
     }
 }

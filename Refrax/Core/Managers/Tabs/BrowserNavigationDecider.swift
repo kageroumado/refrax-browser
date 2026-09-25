@@ -298,6 +298,15 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         // Evaluate through handler chain
         let policy = await actionChain.evaluate(action)
 
+        switch policy {
+        case .allow, .next:
+            if leavesExtension(action) {
+                return .cancel
+            }
+        default:
+            break
+        }
+
         // Convert our policy to WebKit policy
         return await handleActionPolicy(policy, for: action, preferences: &preferences)
     }
@@ -480,6 +489,21 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             "SSL bypass queued for \(url.host ?? "unknown")",
             category: Logger.navigation,
         )
+    }
+
+    // MARK: - Extension Pages
+
+    /// Whether `action` takes one of an extension's pages to a URL outside that extension.
+    ///
+    /// Such a navigation needs a web view bound to no extension, so the pool replaces the page
+    /// and this navigation is cancelled. Navigations from a page into an extension stay with
+    /// WebKit, which refuses them: an extension's pages open only through Refrax itself
+    /// (the address bar, the extension APIs, the options page).
+    private func leavesExtension(_ action: WebPage.NavigationAction) -> Bool {
+        guard action.isMainFrame, let url = action.url,
+              let page = tabManager.state.webPage(for: tabPage.id),
+              page.extensionBaseURL != nil else { return false }
+        return tabManager.pagePool.replaceIfExtensionBoundaryCrossed(page, toLoad: url)
     }
 
     // MARK: - Policy Conversion

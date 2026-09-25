@@ -266,6 +266,13 @@ final class WebPage: Identifiable {
     @ObservationIgnored
     private let providedWebViewConfiguration: WKWebViewConfiguration?
 
+    /// The base URL of the extension whose pages this web view shows, or `nil` for a web view
+    /// that shows ordinary pages.
+    ///
+    /// Fixed for the page's lifetime: WebKit binds a web view to one extension when it is
+    /// created, so a tab crossing that boundary gets a new page (see ``ExtensionPageRouting``).
+    let extensionBaseURL: URL?
+
     // MARK: - Backing Web View
 
     /// The underlying `WebPageWebView` instance.
@@ -353,7 +360,9 @@ final class WebPage: Identifiable {
 
     /// Whether the webpage loaded all resources through secure connections.
     var hasOnlySecureContent: Bool {
-        if enginePage != nil { return state.security == .secure }
+        if enginePage != nil {
+            return state.security == .secure
+        }
         return backingProperty(\.hasOnlySecureContent, backedBy: \.hasOnlySecureContent)
     }
 
@@ -469,7 +478,9 @@ final class WebPage: Identifiable {
                 break
             }
             // Check for cancellation
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             // Brief sleep to avoid busy-waiting
             try? await Task.sleep(for: .milliseconds(300))
         }
@@ -714,7 +725,6 @@ final class WebPage: Identifiable {
     /// When set, the view layer shows a crash error page instead of web content.
     /// Cleared when the user manually triggers a reload via ``startNewNavigation()``.
     var crashError: CrashError?
-
 
     // MARK: - Security State
 
@@ -1147,16 +1157,24 @@ final class WebPage: Identifiable {
     /// - Parameters:
     ///   - tabPage: The persisted tab page model to manage.
     ///   - configuration: WebKit configuration for the page. Pass `nil` for defaults.
-    ///   - webViewConfiguration: A preconfigured WKWebViewConfiguration supplied by WebKit for popups.
+    ///   - webViewConfiguration: A preconfigured WKWebViewConfiguration: supplied by WebKit for
+    ///     popups, or an extension context's configuration for an extension page.
+    ///   - extensionBaseURL: The base URL of the extension `webViewConfiguration` belongs to,
+    ///     for an extension page.
+    ///   - loadsTabURL: Whether the page loads `tabPage.url` itself; `false` for popups, whose
+    ///     content WebKit loads.
     ///   - dependencies: All external manager and service dependencies.
     init(
         tabPage: TabPage,
         configuration: Configuration?,
         webViewConfiguration: WKWebViewConfiguration? = nil,
+        extensionBaseURL: URL? = nil,
+        loadsTabURL: Bool = true,
         expectedFrame: CGRect = CGRect(x: 0, y: 0, width: 1_024, height: 768),
         dependencies: Dependencies,
     ) {
         self.tabPage = tabPage
+        self.extensionBaseURL = extensionBaseURL
         self.historyManager = dependencies.historyManager
         self.autoFillManager = dependencies.autoFillManager
         self.faviconCache = dependencies.faviconCache
@@ -1241,7 +1259,7 @@ final class WebPage: Identifiable {
         self.processStateObserver = ProcessStateObserver(wkWebView: backingWebView)
 
         state.reset(to: WebKitPageObserver.snapshot(of: backingWebView))
-        webKitObserver = WebKitPageObserver(webView: backingWebView) { [weak self] event in
+        self.webKitObserver = WebKitPageObserver(webView: backingWebView) { [weak self] event in
             self?.receiveWebKitEvent(event)
         }
 
@@ -1286,7 +1304,7 @@ final class WebPage: Identifiable {
 
         // For popups, WebKit handles the navigation - we just return the webView
         // and WebKit will load the content. Calling load() ourselves would interfere.
-        if webViewConfiguration == nil {
+        if loadsTabURL {
             // Check if we should restore scroll position after initial load
             self.shouldRestoreScrollPosition = tabPage.scrollPositionY != nil
             // Mark that we need to perform the initial load.
@@ -1369,7 +1387,6 @@ final class WebPage: Identifiable {
     ) -> Value {
         backingProperty(keyPath, backedBy: backingKeyPath) { $0 }
     }
-
 }
 
 // MARK: - KVO Observation Storage

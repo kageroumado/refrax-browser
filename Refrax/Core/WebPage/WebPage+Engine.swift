@@ -14,14 +14,19 @@ extension WebPage {
     /// The tab, its history entries, and the chrome stay put; only the content
     /// view and the source of page state change. WebKit's view is kept, paused,
     /// while another engine renders the page, so switching back reuses it.
+    ///
+    /// - Throws: ``EngineError/webKitOnlyPage`` for an extension page, which only WebKit can render.
     func switchEngine(to id: EngineID, registry: EngineRegistry) async throws {
         guard id != activeEngineID else { return }
+        guard extensionBaseURL == nil else { throw EngineError.webKitOnlyPage }
         let currentURL = url ?? tabPage.url
 
         if id == .systemWebKit {
             let zoom = enginePage == nil ? nil : state.zoom
             tearDownEnginePage()
-            if let zoom { backingWebView.pageZoom = zoom }
+            if let zoom {
+                backingWebView.pageZoom = zoom
+            }
             state.reset(to: WebKitPageObserver.snapshot(of: backingWebView))
             load(currentURL)
         } else {

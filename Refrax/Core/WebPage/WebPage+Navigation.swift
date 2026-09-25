@@ -218,12 +218,15 @@ extension WebPage {
     /// Loads content from the specified URL.
     @discardableResult
     func load(_ url: URL) -> some AsyncSequence<NavigationEvent, any Error> {
+        if movesToAnotherWebView(for: url) {
+            return Self.detachedNavigationSequence()
+        }
         let generation = startNewNavigation()
         updateAutoFillURL(url)
 
         if let enginePage {
             enginePage.perform(.load(request: URLRequestSpec(url: url)))
-            return Self.engineNavigationSequence()
+            return Self.detachedNavigationSequence()
         }
 
         // WKWebView requires loadFileURL for local file:// URLs (security restriction)
@@ -278,9 +281,13 @@ extension WebPage {
             }
         }
 
+        if movesToAnotherWebView(for: url) {
+            return Self.detachedNavigationSequence()
+        }
+
         if let enginePage {
             enginePage.perform(.load(request: URLRequestSpec(url: url)))
-            return Self.engineNavigationSequence()
+            return Self.detachedNavigationSequence()
         }
 
         if url.isFileURL {
@@ -304,7 +311,7 @@ extension WebPage {
             updateAutoFillURL(url)
             if let enginePage {
                 enginePage.perform(.load(request: URLRequestSpec(url: url, headers: request.allHTTPHeaderFields ?? [:])))
-                return Self.engineNavigationSequence()
+                return Self.detachedNavigationSequence()
             }
         }
 
@@ -469,7 +476,7 @@ extension WebPage {
 
         if let enginePage {
             enginePage.perform(.reload(fromOrigin: fromOrigin))
-            return Self.engineNavigationSequence()
+            return Self.detachedNavigationSequence()
         }
 
         loadTask = Task { [weak self] in
@@ -1034,12 +1041,19 @@ extension WebPage {
         return stream
     }
 
-    /// The sequence returned for navigations a plug-in engine performs.
+    /// The sequence returned for navigations this page's web view does not perform: those a
+    /// plug-in engine performs, and those handed to a new page.
     ///
-    /// Engine navigations report through the engine page's event stream rather
-    /// than WebKit's `WKNavigation` events, so there is nothing to stream here.
-    private static func engineNavigationSequence() -> AsyncThrowingStream<NavigationEvent, any Error> {
+    /// Engine navigations report through the engine page's event stream and a replacement
+    /// page reports through its own web view, so there is nothing to stream here.
+    private static func detachedNavigationSequence() -> AsyncThrowingStream<NavigationEvent, any Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+
+    /// Whether `url` belongs in a web view bound to a different extension than this one; if so,
+    /// the pool replaces this page with one built for `url`, and this page must not load it.
+    func movesToAnotherWebView(for url: URL) -> Bool {
+        backingNavigationDelegate.pagePool?.replaceIfExtensionBoundaryCrossed(self, toLoad: url) ?? false
     }
 
     private func toNavigationSequence(
@@ -1133,11 +1147,15 @@ extension WebPage {
         else { return }
 
         // Skip if dismissed this session
-        if windowState.dismissedSearchEngineDomains.contains(detected.domain) { return }
+        if windowState.dismissedSearchEngineDomains.contains(detected.domain) {
+            return
+        }
 
         // Skip if the user opted out for this domain
         let searchEngineManager = NSApplication.shared.typedDelegate.customSearchEngineManager
-        if searchEngineManager.isDetectionIgnored(forDomain: detected.domain) { return }
+        if searchEngineManager.isDetectionIgnored(forDomain: detected.domain) {
+            return
+        }
 
         windowState.pendingSearchEngineDetection = detected
     }
