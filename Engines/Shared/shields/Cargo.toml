@@ -1,0 +1,36 @@
+[package]
+name = "shields"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+description = "Refrax Shields: a C ABI over adblock-rust, shared by Refrax.app and the Chromium engine host."
+
+[lib]
+name = "shields"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# Pinned exactly: the serialized engine (DAT) is only guaranteed to load in the adblock version
+# that wrote it, so the version is part of every cache key (shields_engine_format()).
+# `single-thread` stays off so Engine is Send + Sync: Swift shares one handle across actors and
+# the host matches on a thread pool.
+adblock = { version = "=0.13.3", default-features = false, features = ["full-regex-handling"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["app"]
+# Refrax.app is the only process that parses filter lists. It validates cosmetic selectors,
+# exports WebKit content rules, and resolves eTLD+1 with adblock's bundled public suffix list.
+# The Chromium host builds with no features: it deserializes the app's DAT, matches, and
+# resolves eTLD+1 through Chromium's registry (shields_set_domain_resolver).
+app = ["embedded-domain-resolver", "content-blocking", "css-validation"]
+embedded-domain-resolver = ["adblock/embedded-domain-resolver"]
+content-blocking = ["adblock/content-blocking"]
+css-validation = ["adblock/css-validation"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+debug = "line-tables-only"
