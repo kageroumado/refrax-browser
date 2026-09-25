@@ -288,6 +288,13 @@ final class BrowserSettings {
     /// browser recommendation banners, and notification permission dialogs.
     var hideSignInPrompts: Bool
 
+    /// Whether WebKit's Advanced Fingerprinting Protection is on.
+    ///
+    /// Safari's protection, applied per main-frame navigation: canvas, WebGL, and
+    /// Web Audio readback carry per-site noise, and screen metrics are quantized.
+    /// Safari enables it for all browsing by default.
+    var enableFingerprintingProtection: Bool = true
+
     // MARK: - Privacy: History
 
     /// Whether automatic history cleanup is enabled.
@@ -1203,6 +1210,7 @@ final class BrowserSettings {
         forceNativeVideoControls = false
         defaultVideoSpeed = 1.0
         hideSignInPrompts = true
+        enableFingerprintingProtection = true
         webpageDarkMode = .off
         pageFilter = .none
         preserveMediaInFilter = true

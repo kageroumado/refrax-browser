@@ -88,6 +88,7 @@ extension BrowserSettings: Syncable {
         record["enableGPCTelemetry"] = enableGPCTelemetry as NSNumber
         record["enableAutoConsent"] = enableAutoConsent as NSNumber
         record["hideSignInPrompts"] = hideSignInPrompts as NSNumber
+        record["enableFingerprintingProtection"] = enableFingerprintingProtection as NSNumber
 
         // MARK: - Privacy: History
 
@@ -326,6 +327,7 @@ extension BrowserSettings: Syncable {
         settings.enableGPCTelemetry = (record["enableGPCTelemetry"] as? Bool) ?? false
         settings.enableAutoConsent = (record["enableAutoConsent"] as? Bool) ?? false
         settings.hideSignInPrompts = (record["hideSignInPrompts"] as? Bool) ?? true
+        settings.enableFingerprintingProtection = (record["enableFingerprintingProtection"] as? Bool) ?? true
 
         // MARK: - Privacy: History
 

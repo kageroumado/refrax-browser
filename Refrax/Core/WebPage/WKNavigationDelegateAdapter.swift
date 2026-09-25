@@ -501,6 +501,7 @@ extension WebPage.NavigationPreferences {
         self.allowsContentJavaScript = preferences.allowsContentJavaScript
         self.preferredHTTPSNavigationPolicy = UpgradeToHTTPSPolicy(preferences.preferredHTTPSNavigationPolicy)
         self.isLockdownModeEnabled = preferences.isLockdownModeEnabled
+        self.privacyProtections = preferences.privacyProtections
     }
 }
 
@@ -512,6 +513,7 @@ extension WKWebpagePreferences {
         self.allowsContentJavaScript = preferences.allowsContentJavaScript
         self.preferredHTTPSNavigationPolicy = preferences.preferredHTTPSNavigationPolicy.wkPolicy
         self.isLockdownModeEnabled = preferences.isLockdownModeEnabled
+        self.privacyProtections = preferences.privacyProtections
     }
 }
 

@@ -327,17 +327,90 @@ extension WebPage {
         /// Whether lockdown mode is enabled.
         var isLockdownModeEnabled: Bool = false
 
+        /// Safari's advanced privacy protections applied to the navigation.
+        var privacyProtections: PrivacyProtections = []
+
         /// Creates default navigation preferences.
         init() {}
 
         /// Creates a `WKWebpagePreferences` from this configuration.
         func makeWKWebpagePreferences() -> WKWebpagePreferences {
-            let prefs = WKWebpagePreferences()
-            prefs.preferredContentMode = preferredContentMode.wkContentMode
-            prefs.allowsContentJavaScript = allowsContentJavaScript
-            prefs.preferredHTTPSNavigationPolicy = preferredHTTPSNavigationPolicy.wkPolicy
-            prefs.isLockdownModeEnabled = isLockdownModeEnabled
-            return prefs
+            WKWebpagePreferences(self)
+        }
+    }
+}
+
+// MARK: - Privacy Protections
+
+extension WebPage.NavigationPreferences {
+    /// Safari's per-navigation privacy protections, carried by WebKit's
+    /// `_networkConnectionIntegrityPolicy` SPI.
+    nonisolated struct PrivacyProtections: OptionSet, Hashable, Sendable {
+        let rawValue: UInt
+
+        /// Advanced Fingerprinting Protection.
+        ///
+        /// WebKit injects per-site noise into canvas, WebGL, and Web Audio readback
+        /// and reports quantized screen metrics.
+        static let fingerprinting = PrivacyProtections(rawValue: 1 << 0)
+
+        /// Link decoration filtering.
+        ///
+        /// WebKit strips known click-ID query parameters from navigations started in
+        /// the page and from copied or pasted links. The parameter list comes from
+        /// the system WebPrivacy service.
+        static let linkDecorationFiltering = PrivacyProtections(rawValue: 1 << 1)
+
+        /// Every protection WebKit owns that this type models.
+        static let all: PrivacyProtections = [.fingerprinting, .linkDecorationFiltering]
+
+        /// The WebKit policy flags for these protections.
+        var integrityPolicy: _WKWebsiteNetworkConnectionIntegrityPolicy {
+            var policy: _WKWebsiteNetworkConnectionIntegrityPolicy = []
+            if contains(.fingerprinting) { policy.insert(.enhancedTelemetry) }
+            if contains(.linkDecorationFiltering) { policy.insert(.sanitizeLookalikeCharacters) }
+            return policy
+        }
+
+        /// The protections among WebKit policy flags.
+        init(_ policy: _WKWebsiteNetworkConnectionIntegrityPolicy) {
+            var protections: PrivacyProtections = []
+            if policy.contains(.enhancedTelemetry) { protections.insert(.fingerprinting) }
+            if policy.contains(.sanitizeLookalikeCharacters) { protections.insert(.linkDecorationFiltering) }
+            self = protections
+        }
+
+        init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+    }
+}
+
+// MARK: - Integrity Policy SPI
+
+extension WKWebpagePreferences {
+    /// Whether this WebKit exposes `_networkConnectionIntegrityPolicy`.
+    ///
+    /// The SPI has shipped since macOS 13.3; the check keeps a WebKit that drops
+    /// it from raising an unrecognized-selector exception.
+    static let supportsIntegrityPolicy = WKWebpagePreferences.instancesRespond(
+        to: #selector(setter: WKWebpagePreferences._networkConnectionIntegrityPolicy),
+    )
+
+    /// The Refrax-modeled protections in the navigation's integrity policy.
+    ///
+    /// Writing keeps every other policy flag as it is.
+    var privacyProtections: WebPage.NavigationPreferences.PrivacyProtections {
+        get {
+            guard Self.supportsIntegrityPolicy else { return [] }
+            return .init(_networkConnectionIntegrityPolicy)
+        }
+        set {
+            guard Self.supportsIntegrityPolicy else { return }
+            let modeled = WebPage.NavigationPreferences.PrivacyProtections.all.integrityPolicy
+            _networkConnectionIntegrityPolicy = _networkConnectionIntegrityPolicy
+                .subtracting(modeled)
+                .union(newValue.integrityPolicy)
         }
     }
 }

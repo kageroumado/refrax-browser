@@ -42,6 +42,10 @@ final class PrivacyProtectionSettings {
     ///
     /// Parameters like `utm_source`, `fbclid`, `gclid` are stripped.
     /// See ``LinkProtection/trackingParameters`` for the full list.
+    ///
+    /// Also turns on WebKit's link decoration filtering for main-frame
+    /// navigations, which strips the system WebPrivacy parameter list from
+    /// navigations the page starts and from copied or pasted links.
     var removeTrackingParameters: Bool = true
 
     /// Expand shortened URLs to their final destination.

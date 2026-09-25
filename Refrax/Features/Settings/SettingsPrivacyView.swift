@@ -72,6 +72,10 @@ struct PrivacySettingsView: View {
                 Toggle("Hide sign-in prompts", isOn: $settings.hideSignInPrompts)
                     .help("Hides 'Sign in with Google' and browser recommendation banners")
                     .highlightable(id: "privacy.hideSignInPrompts", highlightedItemId: highlightedItemId)
+
+                Toggle("Fingerprinting protection", isOn: $settings.enableFingerprintingProtection)
+                    .help("Adds per-site noise to canvas, WebGL, and audio readback and reports approximate screen size, as Safari does")
+                    .highlightable(id: "privacy.fingerprinting", highlightedItemId: highlightedItemId)
             }
 
             Section {
@@ -165,7 +169,7 @@ struct PrivacySettingsView: View {
                         get: { privacySettings.removeTrackingParameters },
                         set: { privacySettings.removeTrackingParameters = $0 },
                     ))
-                    .help("Removes utm_source, fbclid, gclid, and other tracking parameters from URLs")
+                    .help("Removes utm_source, fbclid, gclid, and other tracking parameters from URLs, including links the page opens and links you copy or paste")
                     .highlightable(id: "privacy.trackingParameters", highlightedItemId: highlightedItemId)
 
                     Toggle("Convert AMP links", isOn: Binding(

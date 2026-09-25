@@ -51,6 +51,7 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     case enableGPCTelemetry
     case enableAutoConsent
     case hideSignInPrompts
+    case enableFingerprintingProtection
     case automaticHistoryCleanup
     case contentProtectionBypassEnabled
     case disableBeforeUnloadAlerts
@@ -417,6 +418,16 @@ extension BrowserSettingKey {
                 highlightID: "privacy.hideSignInPrompts",
                 valueKind: .toggle,
             )
+        case .enableFingerprintingProtection:
+            SettingMetadata(
+                displayName: "Fingerprinting Protection",
+                description: "Add noise to canvas, WebGL, and audio fingerprints",
+                keywords: ["fingerprint", "fingerprinting", "canvas", "webgl", "tracking", "afp", "noise"],
+                icon: "touchid",
+                category: .privacy,
+                highlightID: "privacy.fingerprinting",
+                valueKind: .toggle,
+            )
         case .automaticHistoryCleanup:
             SettingMetadata(
                 displayName: "Auto-Delete Old History",
@@ -586,6 +597,7 @@ extension BrowserSettingKey {
         case .enableGPCTelemetry: .bool(settings.enableGPCTelemetry)
         case .enableAutoConsent: .bool(settings.enableAutoConsent)
         case .hideSignInPrompts: .bool(settings.hideSignInPrompts)
+        case .enableFingerprintingProtection: .bool(settings.enableFingerprintingProtection)
         case .automaticHistoryCleanup: .bool(settings.automaticHistoryCleanup)
         case .contentProtectionBypassEnabled: .bool(settings.contentProtectionBypassEnabled)
         case .disableBeforeUnloadAlerts: .bool(settings.disableBeforeUnloadAlerts)
@@ -691,6 +703,8 @@ extension BrowserSettingKey {
             if case let .bool(v) = value { settings.enableAutoConsent = v }
         case .hideSignInPrompts:
             if case let .bool(v) = value { settings.hideSignInPrompts = v }
+        case .enableFingerprintingProtection:
+            if case let .bool(v) = value { settings.enableFingerprintingProtection = v }
         case .automaticHistoryCleanup:
             if case let .bool(v) = value { settings.automaticHistoryCleanup = v }
         case .contentProtectionBypassEnabled:

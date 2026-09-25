@@ -1,3 +1,4 @@
+import Algorithms
 import Foundation
 
 /// Converts parsed filter rules to WebKit content rule list JSON format.
@@ -13,18 +14,27 @@ import Foundation
 /// ## WebKit Limitations
 ///
 /// WebKit content rules have strict limitations:
-/// - Maximum 50,000 rules per compiled list
+/// - At most 150,000 rules per compiled list (`maxRuleCount` in WebCore's
+///   `ContentExtensionParser.cpp`); larger rule sets are split across several lists
 /// - Limited regex: no `|` alternation, no `{n,m}`, no lookahead/lookbehind
 /// - Only ASCII characters in patterns
 /// - Cannot have both `if-domain` AND `unless-domain` in same trigger
-/// - No response/header modification
+/// - `ignore-previous-rules` only overrides rules earlier in the same list
 ///
-/// Rules that can't be represented are silently skipped.
+/// Rules that can't be represented are silently skipped. The compiler emits
+/// `block`, `css-display-none`, and `ignore-previous-rules` actions; WebKit's
+/// `redirect` and `modify-headers` actions additionally need the list enabled per
+/// navigation through `WKWebpagePreferences._activeContentRuleListActionPatterns`.
 nonisolated struct WebKitRuleCompiler: Sendable {
     // MARK: - Constants
 
     /// Maximum number of rules per WebKit content rule list.
-    static let maxRulesPerList = 50_000
+    ///
+    /// Matches WebKit's `maxRuleCount`: a list whose top-level array holds more
+    /// rules fails to compile with `JSONTooManyRules`. Every attached list is a
+    /// separate bytecode set WebKit consults per request, and an exception only
+    /// reaches rules in its own list, so full chunks are both faster and more exact.
+    static let maxRulesPerList = 150_000
 
     /// Default resource types for blocking rules that don't specify types.
     /// Excludes `document` to prevent blocking main frame navigations.
@@ -36,15 +46,7 @@ nonisolated struct WebKitRuleCompiler: Sendable {
 
     /// Compiles parsed rules to WebKit content rule JSON.
     func compile(_ parseResult: FilterParser.ParseResult) -> String {
-        var webkitRules: [[String: Any]] = []
-
-        for rule in parseResult.networkRules {
-            let compiled = compileNetworkRule(rule)
-            webkitRules.append(contentsOf: compiled)
-        }
-
-        let cosmeticWebKitRules = compileCosmeticRules(parseResult.cosmeticRules)
-        webkitRules.append(contentsOf: cosmeticWebKitRules)
+        let webkitRules = compileRules(parseResult)
 
         do {
             let data = try JSONSerialization.data(withJSONObject: webkitRules, options: [])
@@ -55,46 +57,33 @@ nonisolated struct WebKitRuleCompiler: Sendable {
         }
     }
 
-    /// Compiles rules in chunks to respect the 50K rule limit.
-    func compileInChunks(_ parseResult: FilterParser.ParseResult) -> [String] {
-        var chunks: [String] = []
-        var currentChunk: [[String: Any]] = []
+    /// Compiles rules into JSON chunks that each fit in one WebKit content rule list.
+    ///
+    /// Chunks fill in filter-list order, network rules before cosmetic rules, so
+    /// only the last chunk is partial.
+    ///
+    /// - Parameters:
+    ///   - parseResult: The parsed filter list.
+    ///   - maxRulesPerChunk: The largest number of WebKit rules in one chunk.
+    /// - Returns: One JSON array per chunk; empty when no rule compiled.
+    func compileInChunks(
+        _ parseResult: FilterParser.ParseResult,
+        maxRulesPerChunk: Int = Self.maxRulesPerList,
+    ) -> [String] {
+        precondition(maxRulesPerChunk > 0, "maxRulesPerChunk must be positive")
+        return compileRules(parseResult)
+            .chunks(ofCount: maxRulesPerChunk)
+            .compactMap { serializeChunk(Array($0)) }
+    }
 
-        // Network rules
+    /// Compiles every network rule, then every cosmetic rule, into WebKit rule objects.
+    private func compileRules(_ parseResult: FilterParser.ParseResult) -> [[String: Any]] {
+        var webkitRules: [[String: Any]] = []
         for rule in parseResult.networkRules {
-            let compiled = compileNetworkRule(rule)
-            for webkitRule in compiled {
-                currentChunk.append(webkitRule)
-
-                if currentChunk.count >= Self.maxRulesPerList {
-                    if let json = serializeChunk(currentChunk) {
-                        chunks.append(json)
-                    }
-                    currentChunk = []
-                }
-            }
+            webkitRules.append(contentsOf: compileNetworkRule(rule))
         }
-
-        // Cosmetic rules (grouped by domain combination for efficiency)
-        let cosmeticWebKitRules = compileCosmeticRules(parseResult.cosmeticRules)
-        for webkitRule in cosmeticWebKitRules {
-            currentChunk.append(webkitRule)
-
-            if currentChunk.count >= Self.maxRulesPerList {
-                if let json = serializeChunk(currentChunk) {
-                    chunks.append(json)
-                }
-                currentChunk = []
-            }
-        }
-
-        if !currentChunk.isEmpty {
-            if let json = serializeChunk(currentChunk) {
-                chunks.append(json)
-            }
-        }
-
-        return chunks
+        webkitRules.append(contentsOf: compileCosmeticRules(parseResult.cosmeticRules))
+        return webkitRules
     }
 
     // MARK: - Rule Compilation

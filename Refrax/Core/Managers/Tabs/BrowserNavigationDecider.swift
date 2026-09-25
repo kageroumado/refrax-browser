@@ -284,6 +284,8 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
                 let allowJavaScript = siteSettingsCoordinator.allowsJavaScript(for: url)
                 preferences.allowsContentJavaScript = allowJavaScript
             }
+
+            preferences.privacyProtections = settings.navigationPrivacyProtections(for: action.url)
         }
 
         // Intercept magnet: links for BitTorrent handling
@@ -1065,6 +1067,32 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             persistence: .forSession,
         )
         return (.useCredential, credential)
+    }
+}
+
+// MARK: - Privacy Protections
+
+extension BrowserSettings {
+    /// The WebKit privacy protections for a main-frame navigation to `url`.
+    ///
+    /// Fingerprinting protection follows ``enableFingerprintingProtection``. Link
+    /// decoration filtering follows the tracking-parameter toggle of link
+    /// protection and skips hosts on its exception list, so one switch governs
+    /// both Refrax's own parameter stripping and WebKit's.
+    func navigationPrivacyProtections(for url: URL?) -> WebPage.NavigationPreferences.PrivacyProtections {
+        var protections: WebPage.NavigationPreferences.PrivacyProtections = []
+
+        if enableFingerprintingProtection {
+            protections.insert(.fingerprinting)
+        }
+
+        let linkProtection = privacyProtection
+        let isExempt = url?.host().map { linkProtection.isExempt(domain: $0) } ?? false
+        if linkProtection.enableLinkProtection, linkProtection.removeTrackingParameters, !isExempt {
+            protections.insert(.linkDecorationFiltering)
+        }
+
+        return protections
     }
 }
 
