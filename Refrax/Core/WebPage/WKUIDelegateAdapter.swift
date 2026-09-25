@@ -319,6 +319,48 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
         }
     }
 
+    // MARK: - Notifications
+
+    /// `Notification.requestPermission()`: the origin's stored decision, or the user's answer.
+    @objc(_webView:requestNotificationPermissionForSecurityOrigin:decisionHandler:)
+    func _webView(
+        _: WKWebView,
+        requestNotificationPermissionForSecurityOrigin securityOrigin: WKSecurityOrigin,
+        decisionHandler: @escaping (Bool) -> Void,
+    ) {
+        guard let owner, let origin = WebOrigin(securityOrigin) else {
+            decisionHandler(false)
+            return
+        }
+        Task.immediate(name: "Notification permission") {
+            decisionHandler(await owner.requestNotificationPermission(for: origin))
+        }
+    }
+
+    /// `navigator.permissions.query()`. Answers `notifications` from the stored decision; every
+    /// other permission reports `prompt`, WebKit's answer without this method.
+    @objc(_webView:queryPermission:forOrigin:completionHandler:)
+    func _webView(
+        _: WKWebView,
+        queryPermission name: String,
+        forOrigin securityOrigin: WKSecurityOrigin,
+        completionHandler: @escaping (WKPermissionDecision) -> Void,
+    ) {
+        guard name == "notifications", let owner, let manager = owner.webNotifications,
+              let origin = WebOrigin(securityOrigin)
+        else {
+            completionHandler(.prompt)
+            return
+        }
+        completionHandler(manager.permissionDecision(for: origin, isPrivate: owner.isInPrivateSpace))
+    }
+
+    /// `client.focus()` from a service worker, usually in its `notificationclick` handler.
+    @objc(_focusWebViewFromServiceWorker:)
+    func _focusWebViewFromServiceWorker(_: WKWebView) -> Bool {
+        owner?.focusFromServiceWorker() ?? false
+    }
+
     // MARK: - Context Menu Support
 
     /// Handles context menu requests from the web view.

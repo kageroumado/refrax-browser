@@ -201,6 +201,12 @@ extension WebPage {
         case let .fullscreenChanged(state):
             followEngineFullscreen(state)
 
+        case let .notificationShown(notification):
+            webNotifications?.show(notification, from: self)
+
+        case let .notificationClosed(id):
+            webNotifications?.withdrawEngineNotification(id, from: self)
+
         default:
             break
         }
@@ -297,6 +303,9 @@ extension WebPage {
             engineDownloads[id] = adopted.id
             return .saveTo(url: adopted.destination)
 
+        case let .permission(.notifications, origin):
+            return await requestEngineNotificationPermission(for: origin) ? .allow : .deny
+
         case let .permission(kind, origin):
             return await decidePermission(kind, host: origin.host() ?? "") ? .allow : .deny
 
@@ -311,7 +320,7 @@ extension WebPage {
             return switch await prompts.ask(question) {
             case .accept, .acceptAndRemember: .confirm(text: nil)
             case let .text(text): .confirm(text: text)
-            case .decline: .cancel
+            case .decline, .declineAndRemember: .cancel
             }
         }
     }

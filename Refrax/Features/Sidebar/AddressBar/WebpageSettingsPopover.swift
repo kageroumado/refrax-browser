@@ -12,8 +12,11 @@ import SwiftUI
 /// automatically when changed.
 struct WebpageSettingsPopover: View {
     let domain: String
+    /// The page's origin, for its notification permission; nil hides that row.
+    var origin: WebOrigin?
 
     @Environment(SiteSettingsManager.self) private var siteSettingsManager
+    @Environment(BrowserState.self) private var browserState
     @Environment(ExtensionManager.self) private var extensionManager
 
     // MARK: - State
@@ -32,6 +35,7 @@ struct WebpageSettingsPopover: View {
     @State private var screenSharingAccess: PermissionPolicy = .ask
     @State private var locationAccess: PermissionPolicy = .ask
     @State private var deviceSensorAccess: PermissionPolicy = .ask
+    @State private var notificationsAccess: PermissionPolicy = .ask
     @State private var websiteColoringPolicy: WebsiteColoringPolicy = .useDefault
 
     /// Whether we've loaded settings (prevents saving during initial load)
@@ -167,6 +171,18 @@ struct WebpageSettingsPopover: View {
                     .labelsHidden()
                     .fixedSize()
                 }
+
+                if origin != nil {
+                    SettingsRow(label: "Notifications:") {
+                        Picker("", selection: $notificationsAccess) {
+                            ForEach(PermissionPolicy.allCases, id: \.self) { policy in
+                                Text(policy.displayName).tag(policy)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
             }
 
             // Extensions section - only show if there are enabled extensions
@@ -194,6 +210,7 @@ struct WebpageSettingsPopover: View {
         .onChange(of: screenSharingAccess) { saveSettings() }
         .onChange(of: locationAccess) { saveSettings() }
         .onChange(of: deviceSensorAccess) { saveSettings() }
+        .onChange(of: notificationsAccess) { saveNotificationsAccess() }
         .onChange(of: websiteColoringPolicy) { saveSettings() }
     }
 
@@ -264,6 +281,14 @@ struct WebpageSettingsPopover: View {
     private func loadSettings() {
         guard !isLoaded else { return }
 
+        if let origin {
+            notificationsAccess = switch browserState.webNotifications.store.state(for: origin) {
+            case .granted?: .allow
+            case .denied?: .deny
+            case nil: .ask
+            }
+        }
+
         if let settings = siteSettingsManager.settings(for: domain) {
             useReaderWhenAvailable = settings.useReaderWhenAvailable
             enableContentBlockers = settings.enableContentBlockers
@@ -283,6 +308,17 @@ struct WebpageSettingsPopover: View {
         }
 
         isLoaded = true
+    }
+
+    /// Notification permissions are per origin, kept by ``WebNotificationManager``; Ask forgets the decision.
+    private func saveNotificationsAccess() {
+        guard isLoaded, let origin else { return }
+        let notifications = browserState.webNotifications
+        switch notificationsAccess {
+        case .allow: notifications.setState(.granted, for: origin)
+        case .deny: notifications.setState(.denied, for: origin)
+        case .ask: notifications.remove([origin])
+        }
     }
 
     private func saveSettings() {

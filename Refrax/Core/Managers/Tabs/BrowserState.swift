@@ -249,6 +249,10 @@ final class BrowserState {
     @ObservationIgnored
     let domainTimeTracker: DomainTimeTracker
 
+    /// Web notifications: per-origin permissions, delivery, and clicks.
+    @ObservationIgnored
+    let webNotifications: WebNotificationManager
+
     // MARK: - Configuration
     
     /// WebPage configuration for creating new sessions.
@@ -421,6 +425,7 @@ final class BrowserState {
         self.pipCoordinator = PiPCoordinator(settings: settings)
         self.handoffManager = HandoffManager()
         self.domainTimeTracker = DomainTimeTracker()
+        self.webNotifications = WebNotificationManager(modelContext: modelContext, settings: settings)
 
         let deviceSensorAuthorization = WebPage.DeviceSensorAuthorization(
             decisionHandler: PermissionDecisionResolver.makeDeviceSensorDecisionHandler(
@@ -444,6 +449,7 @@ final class BrowserState {
         settingsApplier.apply(to: &config)
         self.webPageConfiguration = config
         self.scriptChannels = ScriptChannelRouter(userContentController: config.userContentController)
+        webNotifications.adopt(.default())
 
         // Start observing settings changes
         startSettingsObservation()

@@ -42,6 +42,24 @@ nonisolated enum PageEvent: Codable, Hashable, Sendable {
     /// The download's file is complete at the destination Refrax chose.
     case downloadFinished(id: String)
     case downloadFailed(id: String, reason: String)
+    /// The page showed a notification (`new Notification()`). Sent only by engines declaring
+    /// ``EngineCapabilities/notifications``, and only for origins Refrax allowed.
+    case notificationShown(notification: EngineNotification)
+    /// The page closed a notification it showed.
+    case notificationClosed(id: String)
+}
+
+/// A notification an engine page showed, for Refrax to put in Notification Center.
+nonisolated struct EngineNotification: Codable, Hashable, Sendable {
+    /// The engine's ID for it, echoed in ``PageCommand/notificationClicked(id:)`` and ``PageCommand/notificationClosed(id:)``.
+    let id: String
+    let origin: URL
+    let title: String
+    let body: String
+    /// A tagged notification replaces the origin's previous one with the same tag.
+    let tag: String?
+    let iconURL: URL?
+    let isSilent: Bool
 }
 
 /// Why a main-frame navigation failed, in engine-neutral terms.
@@ -167,6 +185,10 @@ nonisolated enum PageCommand: Codable, Hashable, Sendable {
     case terminateRenderer
     /// Stops a download the engine is writing; it reports `downloadFailed`.
     case cancelDownload(id: String)
+    /// The user clicked the notification; the engine fires its `click` event.
+    case notificationClicked(id: String)
+    /// The user dismissed the notification; the engine fires its `close` event.
+    case notificationClosed(id: String)
 }
 
 nonisolated struct URLRequestSpec: Codable, Hashable, Sendable {

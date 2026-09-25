@@ -154,6 +154,7 @@ extension WebPage {
             // every PiP entry point (_togglePictureInPicture, the WebKit context-menu
             // item, _canTogglePictureInPicture) silently no-ops.
             config.preferences._allowsPictureInPictureMediaPlayback = true
+            enableNotifications(on: config.preferences)
 
             // WebKit feature flags (via _WKFeature private API)
             enableFeatures(on: config.preferences)
@@ -221,6 +222,7 @@ extension WebPage {
             config.preferences.isTextInteractionEnabled = true
             config.preferences.isElementFullscreenEnabled = true
             config.preferences._allowsPictureInPictureMediaPlayback = true
+            enableNotifications(on: config.preferences)
 
             // WebKit feature flags (via _WKFeature private API)
             enableFeatures(on: config.preferences)
@@ -234,6 +236,14 @@ extension WebPage {
             // Both properties must be set for sampling to work.
             config._sampledPageTopColorMaxDifference = 30.0
             config._sampledPageTopColorMinHeight = 5.0
+        }
+
+        /// Exposes the `Notification` API and service worker `showNotification`. Whether a site
+        /// may use them is decided per origin by ``WebNotificationManager``, and
+        /// `Notification.permission` reports that decision.
+        private func enableNotifications(on preferences: WKPreferences) {
+            preferences._notificationsEnabled = true
+            preferences._notificationEventEnabled = true
         }
 
         /// Enables WebKit features using the `_WKFeature` private API.

@@ -8,6 +8,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case tabs
     case favorites
     case privacy
+    case notifications
     case search
     case extensions
     case engines
@@ -28,6 +29,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: "Tabs"
         case .favorites: "Favorites"
         case .privacy: "Privacy"
+        case .notifications: "Notifications"
         case .search: "Search"
         case .extensions: "Extensions"
         case .engines: "Engines"
@@ -47,6 +49,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .tabs: "square.stack.fill"
         case .favorites: "star.fill"
         case .privacy: "hand.raised.fill"
+        case .notifications: "bell.badge.fill"
         case .search: "magnifyingglass"
         case .extensions: "puzzlepiece.extension.fill"
         case .engines: "shippingbox.fill"
@@ -73,6 +76,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
             "App shortcuts in the favorites grid."
         case .privacy:
             "Tracking protection, history, cookies, and site settings."
+        case .notifications:
+            "Websites that can send you notifications."
         case .search:
             "Search engine and search shortcuts."
         case .extensions:
@@ -157,6 +162,11 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(id: "privacy.clearHistory", title: "Clear all history", keywords: ["history", "clear", "delete", "remove", "all"]),
                 SearchableSettingItem(id: "privacy.clearDomainHistory", title: "Clear history for site", keywords: ["history", "clear", "delete", "domain", "site"]),
                 SearchableSettingItem(id: "privacy.cookieInspector", title: "Cookie inspector", keywords: ["cookie", "inspect", "view", "manage", "delete"]),
+            ]
+        case .notifications:
+            [
+                SearchableSettingItem(id: "notifications.system", title: "macOS notification permission", keywords: ["notifications", "macos", "system", "allow", "banner"]),
+                SearchableSettingItem(id: "notifications.sites", title: "Website notifications", keywords: ["notifications", "websites", "sites", "allowed", "denied", "remove", "permission"]),
             ]
         case .favorites:
             [
@@ -336,6 +346,8 @@ struct SettingsContentView: View {
                 FavoritesSettingsView(highlightedItemId: highlightedItemId)
             case .privacy:
                 PrivacySettingsView(highlightedItemId: highlightedItemId)
+            case .notifications:
+                NotificationsSettingsView(highlightedItemId: highlightedItemId)
             case .search:
                 SearchSettingsView(highlightedItemId: highlightedItemId)
             case .extensions:

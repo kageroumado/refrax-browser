@@ -60,6 +60,7 @@ enum SchemaV1: VersionedSchema {
             FocusModeMapping.self,
             ExternalURLSettings.self,
             ExternalURLRule.self,
+            WebNotificationPermission.self,
         ]
     }
 }

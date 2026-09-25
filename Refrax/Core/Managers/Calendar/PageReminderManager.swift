@@ -170,7 +170,7 @@ final class PageReminderManager {
     private static let notificationPrefix = "com.refrax.pagereminder."
 
     /// User info key for the page URL.
-    static let urlUserInfoKey = "pageURL"
+    nonisolated static let urlUserInfoKey = "pageURL"
 
     // MARK: - Initialization
 
@@ -349,78 +349,75 @@ final class PageReminderManager {
 
     // MARK: - Notification Handling
 
-    /// Registers notification categories for page reminder actions.
-    func registerNotificationCategories() {
-        let openAction = UNNotificationAction(
-            identifier: "OPEN_PAGE",
-            title: "Open Page",
-            options: [.foreground],
-        )
-
-        let dismissAction = UNNotificationAction(
-            identifier: "DISMISS",
-            title: "Dismiss",
-            options: [],
-        )
-
-        let snoozeAction = UNNotificationAction(
-            identifier: "SNOOZE_15",
-            title: "Snooze 15 min",
-            options: [],
-        )
-
-        let category = UNNotificationCategory(
+    /// The category page reminders use: Open Page, Snooze, and Dismiss.
+    /// ``SystemNotificationRouter`` registers it with every other feature's categories.
+    nonisolated static var notificationCategory: UNNotificationCategory {
+        UNNotificationCategory(
             identifier: "PAGE_REMINDER",
-            actions: [openAction, snoozeAction, dismissAction],
+            actions: [
+                UNNotificationAction(identifier: ReminderResponse.Action.open.rawValue, title: "Open Page", options: [.foreground]),
+                UNNotificationAction(identifier: ReminderResponse.Action.snooze.rawValue, title: "Snooze 15 min", options: []),
+                UNNotificationAction(identifier: ReminderResponse.Action.dismiss.rawValue, title: "Dismiss", options: []),
+            ],
             intentIdentifiers: [],
             options: [],
         )
-
-        notificationCenter.setNotificationCategories([category])
     }
 
-    /// Handles a notification response (called from app delegate).
-    ///
-    /// - Parameters:
-    ///   - response: The notification response.
-    ///   - openURL: Callback to open a URL.
-    func handleNotificationResponse(
-        _ response: UNNotificationResponse,
-        openURL: (URL) -> Void,
-    ) {
-        let userInfo = response.notification.request.content.userInfo
-
-        guard let urlString = userInfo[Self.urlUserInfoKey] as? String,
-              let url = URL(string: urlString)
-        else {
-            return
+    /// The user's response to a delivered page reminder.
+    nonisolated struct ReminderResponse: Sendable {
+        nonisolated enum Action: String, Sendable {
+            case open = "OPEN_PAGE"
+            case snooze = "SNOOZE_15"
+            case dismiss = "DISMISS"
         }
 
-        switch response.actionIdentifier {
-        case "OPEN_PAGE", UNNotificationDefaultActionIdentifier:
-            openURL(url)
+        let action: Action
+        let url: URL
+        let title: String
 
-        case "SNOOZE_15":
-            // Reschedule for 15 minutes from now
-            Task { @MainActor in
-                let reminder = PageReminder(
-                    pageURL: url,
-                    pageTitle: response.notification.request.content.body,
-                    reminderDate: Date().addingTimeInterval(15 * 60),
-                    useSystemReminder: false,
-                )
+        /// Reads a response; nil for notifications that aren't page reminders.
+        init?(action identifier: String, userInfo: [AnyHashable: Any], body: String) {
+            guard let urlString = userInfo[PageReminderManager.urlUserInfoKey] as? String,
+                  let url = URL(string: urlString)
+            else { return nil }
+            self.action = identifier == UNNotificationDefaultActionIdentifier ? .open : Action(rawValue: identifier) ?? .dismiss
+            self.url = url
+            self.title = body
+        }
+    }
+
+    /// Opens, snoozes, or dismisses a delivered reminder.
+    ///
+    /// - Parameters:
+    ///   - response: What the user chose.
+    ///   - openURL: Opens a URL in a tab.
+    func handle(_ response: ReminderResponse, openURL: (URL) -> Void) {
+        switch response.action {
+        case .open:
+            openURL(response.url)
+        case .snooze:
+            let reminder = PageReminder(
+                pageURL: response.url,
+                pageTitle: response.title,
+                reminderDate: Date().addingTimeInterval(Self.snoozeInterval),
+                useSystemReminder: false,
+            )
+            Task(name: "Snooze page reminder") {
                 try? await scheduleReminder(reminder)
             }
-
-        case "DISMISS", _:
+        case .dismiss:
             break
         }
 
-        // Refresh list after handling (notification was delivered, no longer pending)
-        Task {
+        // The delivered reminder is no longer pending.
+        Task(name: "Refresh page reminders") {
             await refreshPendingItems()
         }
     }
+
+    /// How far a snooze pushes a reminder.
+    private static let snoozeInterval: TimeInterval = 15 * 60
 
     // MARK: - Pending Reminders
 

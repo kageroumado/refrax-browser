@@ -116,6 +116,10 @@ nonisolated enum PageReducer {
         case .downloadProgressed, .downloadFinished, .downloadFailed:
             // Downloads outlive the page's state; `DownloadManager` tracks them.
             break
+
+        case .notificationShown, .notificationClosed:
+            // Notifications outlive the page's state; `WebNotificationManager` tracks them.
+            break
         }
     }
 }

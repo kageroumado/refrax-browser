@@ -52,6 +52,7 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     case enableAutoConsent
     case hideSignInPrompts
     case enableFingerprintingProtection
+    case allowWebsiteNotificationRequests
     case automaticHistoryCleanup
     case contentProtectionBypassEnabled
     case disableBeforeUnloadAlerts
@@ -428,6 +429,16 @@ extension BrowserSettingKey {
                 highlightID: "privacy.fingerprinting",
                 valueKind: .toggle,
             )
+        case .allowWebsiteNotificationRequests:
+            SettingMetadata(
+                displayName: "Allow Websites to Ask for Notifications",
+                description: "Let websites ask to send notifications",
+                keywords: ["notifications", "notification", "alerts", "push", "permission", "ask", "websites"],
+                icon: "bell.badge.fill",
+                category: .notifications,
+                highlightID: "notifications.allowRequests",
+                valueKind: .toggle,
+            )
         case .automaticHistoryCleanup:
             SettingMetadata(
                 displayName: "Auto-Delete Old History",
@@ -598,6 +609,7 @@ extension BrowserSettingKey {
         case .enableAutoConsent: .bool(settings.enableAutoConsent)
         case .hideSignInPrompts: .bool(settings.hideSignInPrompts)
         case .enableFingerprintingProtection: .bool(settings.enableFingerprintingProtection)
+        case .allowWebsiteNotificationRequests: .bool(settings.allowWebsiteNotificationRequests)
         case .automaticHistoryCleanup: .bool(settings.automaticHistoryCleanup)
         case .contentProtectionBypassEnabled: .bool(settings.contentProtectionBypassEnabled)
         case .disableBeforeUnloadAlerts: .bool(settings.disableBeforeUnloadAlerts)
@@ -705,6 +717,8 @@ extension BrowserSettingKey {
             if case let .bool(v) = value { settings.hideSignInPrompts = v }
         case .enableFingerprintingProtection:
             if case let .bool(v) = value { settings.enableFingerprintingProtection = v }
+        case .allowWebsiteNotificationRequests:
+            if case let .bool(v) = value { settings.allowWebsiteNotificationRequests = v }
         case .automaticHistoryCleanup:
             if case let .bool(v) = value { settings.automaticHistoryCleanup = v }
         case .contentProtectionBypassEnabled:

@@ -97,6 +97,18 @@ nonisolated enum EngineWire {
             return .downloadFinished(id: capped(id))
         case let .downloadFailed(id, reason):
             return .downloadFailed(id: capped(id), reason: capped(reason))
+        case let .notificationShown(notification):
+            return try .notificationShown(notification: EngineNotification(
+                id: capped(notification.id),
+                origin: checked(notification.origin),
+                title: capped(notification.title),
+                body: capped(notification.body),
+                tag: notification.tag.map(capped),
+                iconURL: notification.iconURL.map(checked),
+                isSilent: notification.isSilent,
+            ))
+        case let .notificationClosed(id):
+            return .notificationClosed(id: capped(id))
         case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             return event

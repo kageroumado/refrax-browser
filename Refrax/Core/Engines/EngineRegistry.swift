@@ -19,7 +19,7 @@ final class EngineRegistry {
         capabilities: [
             .javaScriptEvaluation, .findInPage, .zoom, .snapshots, .devTools, .downloads, .contentBlocking,
             .userScripts, .webExtensions, .pictureInPicture, .mediaCapture, .readerMode, .agentPerception,
-            .autoFill, .processInfo, .rendererControl,
+            .autoFill, .processInfo, .rendererControl, .notifications,
         ],
         isOutOfProcess: false,
     )

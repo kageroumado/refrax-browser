@@ -427,7 +427,7 @@ struct AddressBar: View {
                     }
                     .if(showsWebpageSettings) { view in
                         view.popover(isPresented: $showsWebpageSettings, arrowEdge: .bottom) {
-                            WebpageSettingsPopover(domain: displayDomain)
+                            WebpageSettingsPopover(domain: displayDomain, origin: url.flatMap(WebOrigin.init(url:)))
                         }
                     }
                     .sheet(isPresented: $showsSiteCookies) {

@@ -21,6 +21,9 @@ struct PagePermissions {
             case .acceptAndRemember:
                 remember(kind, allowed: true, host: host)
                 return true
+            case .declineAndRemember:
+                remember(kind, allowed: false, host: host)
+                return false
             case .decline:
                 return false
             }
@@ -45,7 +48,7 @@ struct PagePermissions {
             // The system's screen picker is the consent; the setting can only forbid it.
             return settings?.screenSharingPermission == .deny ? .deny : .allow
         case .notifications:
-            // Refrax doesn't deliver web notifications.
+            // Notifications are per origin and decided by WebNotificationManager.
             return .deny
         case .clipboardRead:
             return .ask
