@@ -312,6 +312,7 @@ class Blocker : public CefResourceRequestHandler {
 - (void)handleDevToolsEvent:(NSString*)method params:(NSData*)params;
 - (void)installScripts:(NSArray<NSDictionary*>*)scripts;
 - (void)handleBeforeClose;
+- (void)tearDownBrowserView;
 /// The main frame's last committed URL.
 @property(nonatomic, readonly, nullable) NSString* lastCommittedURL;
 - (void)handleCommitWithURL:(NSString*)url isBackForward:(BOOL)isBackForward;
@@ -449,6 +450,14 @@ class Client : public CefClient,
                      bool*) override {
     // Refrax owns every window and tab, so popups become requests.
     RequestOpen(target_url, target_disposition, user_gesture);
+    return true;
+  }
+
+  // The browser's view lives inside a Refrax window. Returning false (CEF's default) sends
+  // performClose: to that window's top-level owner, closing the whole Refrax window when a
+  // page switches engines or closes; returning true lets the page remove its own view.
+  bool DoClose(CefRefPtr<CefBrowser>) override {
+    [owner_ tearDownBrowserView];
     return true;
   }
 
@@ -915,6 +924,10 @@ class App : public CefApp, public CefBrowserProcessHandler {
     completion(nil, MakeError(3, @"The page closed before the DevTools call finished."));
   }
   [_pendingDevToolsCalls removeAllObjects];
+}
+
+- (void)tearDownBrowserView {
+  [_container.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
 }
 
 - (void)handleBeforeClose {
