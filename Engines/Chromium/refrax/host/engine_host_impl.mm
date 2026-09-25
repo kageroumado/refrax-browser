@@ -18,6 +18,7 @@
 #include "chrome/browser/download/download_confirmation_result.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/shell_dialogs/selected_file_info.h"
+#include "refrax/host/content_blocking.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/download_delegate.h"
 #include "refrax/host/host_page.h"
@@ -163,8 +164,17 @@ void EngineHostImpl::ApplyPolicy(const std::string& update) {
     }
     return;
   }
-  // Content blocking, extensions and site settings are not declared in the engine's
-  // capabilities yet, so Refrax does not send them.
+  if (category == "contentBlocking") {
+    const base::DictValue* policy = fields.FindDict("policy");
+    if (!policy) {
+      receiver_.ReportBadMessage("ApplyPolicy: contentBlocking without a policy");
+      return;
+    }
+    ContentBlocking::Get().Apply(*policy);
+    return;
+  }
+  // Extensions and site settings are not declared in the engine's capabilities yet, so
+  // Refrax does not send them.
   VLOG(1) << "Policy category not handled: " << category;
 }
 
