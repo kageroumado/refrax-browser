@@ -2,7 +2,9 @@
 # forge — builds the Chromium engine. Plan: Docs/plans/engine-forge.md.
 #
 #   eval "$(Scripts/forge/forge env)"
-#   forge doctor | bootstrap | fetch | prepare | gen | build | status
+#   forge doctor | bootstrap | fetch | prepare | gen | build | status   (build host)
+#   forge package <name>                                          (build host)
+#   forge sign <name> | notarize <name>                           (host with the Developer ID)
 #
 # FORGE is the workspace (default: the Ugreen SSD on the Mac Studio). A host with the forge
 # elsewhere exports FORGE before running, e.g. FORGE=~/Forge/chromium on the MacBook.
@@ -197,6 +199,109 @@ cmd_build() {
     log "built in $(((ended - started) / 60)) min: $OUT/Chromium.app"
 }
 
+# Everything one release produced lives in artifacts/<name>/.
+artifact_dir() {
+    [[ -n "${1:-}" ]] || die "usage: forge $2 <artifact name>, e.g. 152.0.7977.82-r1"
+    echo "$FORGE/artifacts/$1"
+}
+
+MINIMUM_SYSTEM_VERSION="26.0"
+TEAM_ID="52K336H235"
+NOTARY_PROFILE="${FORGE_NOTARY_PROFILE:-kagerou-notary}"
+ENTITLEMENTS="$REPO_ROOT/Engines/Chromium/entitlements"
+
+# Copies the build into artifacts/<name>/, stamps the macOS 26 floor into every bundle and
+# asserts every Mach-O is arm64 only. Runs on the build host.
+cmd_package() {
+    local dir app
+    dir=$(artifact_dir "${1:-}" package)
+    app="$dir/Chromium.app"
+    [[ -d "$OUT/Chromium.app" ]] || die "no build at $OUT/Chromium.app"
+    mkdir -p "$dir/dSYMs"
+    rsync -a --delete "$OUT/Chromium.app/" "$app/"
+    rsync -a "$OUT"/*.dSYM "$dir/dSYMs/"
+    cp "$OUT/args.gn" "$dir/args.gn"
+    find "$app" -name Info.plist -path '*/Contents/Info.plist' -print0 |
+        xargs -0 -I{} plutil -replace LSMinimumSystemVersion -string "$MINIMUM_SYSTEM_VERSION" {}
+    local file archs bad=0
+    while IFS= read -r -d '' file; do
+        archs=$(lipo -archs "$file" 2>/dev/null) || continue
+        [[ "$archs" == arm64 ]] || { log "not arm64-only ($archs): $file"; bad=1; }
+    done < <(find "$app" -type f -print0)
+    ((bad == 0)) || die "non-arm64 Mach-O in $app"
+    log "packaged $app ($(du -sh "$app" | cut -f1)), dSYMs $(du -sh "$dir/dSYMs" | cut -f1)"
+}
+
+# The certificate's SHA-1: the common name carries non-ASCII characters awk would mangle.
+signing_identity() {
+    security find-identity -v -p codesigning |
+        grep "Developer ID Application: .*($TEAM_ID)" | awk '{print $2; exit}'
+}
+
+# Inside-out Developer ID signing with the hardened runtime, following
+# ungoogled-chromium-macos's sign_and_package_app.sh. Bundles keep their bundle id as
+# their signing identifier.
+cmd_sign() {
+    local dir app identity framework helpers
+    dir=$(artifact_dir "${1:-}" sign)
+    app="$dir/Chromium.app"
+    [[ -d "$app" ]] || die "run forge package $1 first"
+    identity=$(signing_identity)
+    [[ -n "$identity" ]] || die "no Developer ID Application identity for team $TEAM_ID"
+    framework="$app/Contents/Frameworks/Chromium Framework.framework"
+    helpers="$framework/Helpers"
+    sign() { codesign --sign "$identity" --force --timestamp "$@"; }
+
+    xattr -cr "$app"
+    local tool
+    for tool in chrome_crashpad_handler app_mode_loader web_app_shortcut_copier; do
+        sign --identifier "$tool" --options restrict,library,runtime,kill "$helpers/$tool"
+    done
+    sign --options restrict,library,runtime,kill "$helpers/Chromium Helper.app"
+    sign --options restrict,library,runtime,kill "$helpers/Chromium Helper (Alerts).app"
+    sign --options restrict,kill,runtime \
+        --entitlements "$ENTITLEMENTS/helper-renderer-entitlements.plist" \
+        "$helpers/Chromium Helper (Renderer).app"
+    sign --options restrict,kill,runtime \
+        --entitlements "$ENTITLEMENTS/helper-gpu-entitlements.plist" \
+        "$helpers/Chromium Helper (GPU).app"
+    local dylib
+    for dylib in "$framework/Libraries"/*.dylib; do
+        sign --identifier "$(basename "$dylib" .dylib)" "$dylib"
+    done
+    sign "$framework"
+    sign --options restrict,library,runtime,kill \
+        --entitlements "$ENTITLEMENTS/app-entitlements.plist" "$app"
+
+    codesign --verify --deep --strict "$app"
+    touch "$dir/.signed"
+    log "signed with $identity"
+}
+
+cmd_notarize() {
+    local dir app zip
+    dir=$(artifact_dir "${1:-}" notarize)
+    app="$dir/Chromium.app"
+    [[ -f "$dir/.signed" ]] || die "run forge sign $1 first"
+    zip="$dir/notarize.zip"
+    ditto -c -k --keepParent "$app" "$zip"
+    xcrun notarytool submit "$zip" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 30m \
+        --output-format json | tee "$dir/notary.json"
+    local status
+    status=$(plutil -extract status raw -o - "$dir/notary.json" 2>/dev/null || true)
+    if [[ "$status" != Accepted ]]; then
+        local id
+        id=$(plutil -extract id raw -o - "$dir/notary.json" 2>/dev/null || true)
+        [[ -n "$id" ]] && xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" "$dir/notary-log.json"
+        die "notarization $status; log in $dir/notary-log.json"
+    fi
+    xcrun stapler staple "$app"
+    xcrun stapler validate "$app"
+    spctl --assess --type execute -vv "$app"
+    trash "$zip"
+    touch "$dir/.notarized"
+}
+
 cmd_status() {
     printf 'FORGE      %s\n' "$FORGE"
     printf 'ungoogled  %s\n' "$(git -C "$UNGOOGLED" describe --tags 2>/dev/null || echo 'not bootstrapped')"
@@ -208,15 +313,17 @@ cmd_status() {
 
 main() {
     local command="${1:-}"
-    [[ -n "$command" ]] || die "usage: forge env|doctor|bootstrap|fetch|prepare|gen|build|status"
+    [[ -n "$command" ]] || die "usage: forge env|doctor|bootstrap|fetch|prepare|gen|build|package|sign|notarize|status"
     shift
     case "$command" in
         env) cmd_env ;;
         doctor) cmd_doctor ;;
         status) cmd_status ;;
-        bootstrap|fetch|prepare|gen|build)
+        bootstrap|fetch|prepare|gen|build|package|sign|notarize)
             eval "$(cmd_env)"
-            cmd_doctor >/dev/null || { cmd_doctor; die "doctor failed"; }
+            if [[ "$command" != sign && "$command" != notarize ]]; then
+                cmd_doctor >/dev/null || { cmd_doctor; die "doctor failed"; }
+            fi
             mkdir -p "$LOGS"
             acquire_lock
             local logfile
