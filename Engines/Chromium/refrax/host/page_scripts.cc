@@ -5,11 +5,14 @@
 #include <map>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/js_injection/browser/js_communication_host.h"
 #include "components/js_injection/browser/web_message.h"
@@ -18,6 +21,7 @@
 #include "components/js_injection/browser/web_message_reply_proxy.h"
 #include "components/js_injection/common/interfaces.mojom.h"
 #include "refrax/host/contract_json.h"
+#include "refrax/host/url_matching.h"
 #include "refrax/host/world_registry.h"
 #include "url/gurl.h"
 
@@ -33,6 +37,19 @@ constexpr char16_t kChannelObjectName[] = u"__refraxChannels";
 const std::vector<std::string>& AllOrigins() {
   static const base::NoDestructor<std::vector<std::string>> all({"*"});
   return *all;
+}
+
+// The strings in `list`; nullptr and non-string entries contribute nothing.
+std::vector<std::string> Strings(const base::ListValue* list) {
+  std::vector<std::string> strings;
+  if (list) {
+    for (const base::Value& value : *list) {
+      if (value.is_string()) {
+        strings.push_back(value.GetString());
+      }
+    }
+  }
+  return strings;
 }
 
 // Gives a world's scripts WebKit's call shape: window.webkit.messageHandlers.<channel>
@@ -238,9 +255,19 @@ void PageScripts::Apply(const base::ListValue& scripts) {
     if (!source || !world_id) {
       continue;
     }
-    std::string code = *source;
+    std::vector<std::string> conditions;
     if (script->FindBool("mainFrameOnly").value_or(false)) {
-      code = "if (window.top === window) {\n" + code + "\n}";
+      conditions.push_back("window.top === window");
+    }
+    std::vector<std::string> matches = Strings(script->FindList("matches"));
+    std::vector<std::string> excludes = Strings(script->FindList("excludes"));
+    if (!matches.empty() || !excludes.empty()) {
+      conditions.push_back(url_matching::ScriptGuard(matches, excludes));
+    }
+    std::string code = *source;
+    if (!conditions.empty()) {
+      code = base::StrCat(
+          {"if (", base::JoinString(conditions, " && "), ") {\n", code, "\n}"});
     }
     const std::string* time = script->FindString("injectionTime");
     auto injection_time =

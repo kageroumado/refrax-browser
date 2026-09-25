@@ -23,6 +23,7 @@
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "refrax/host/content_blocking_compiler.h"
+#include "refrax/host/url_matching.h"
 #include "url/gurl.h"
 
 namespace refrax {
@@ -150,17 +151,7 @@ bool ContentBlocking::IsActiveFor(const GURL& url) const {
   if (!received_policy_ || !enabled_ || !url.SchemeIsHTTPOrHTTPS()) {
     return false;
   }
-  // An allowlisted host covers its subdomains, as a filter list's `domain=` does.
-  std::string host = base::ToLowerASCII(url.host());
-  for (std::string_view candidate = host; !candidate.empty();) {
-    if (allowlisted_hosts_.contains(std::string(candidate))) {
-      return false;
-    }
-    size_t dot = candidate.find('.');
-    candidate = dot == std::string_view::npos ? std::string_view()
-                                              : candidate.substr(dot + 1);
-  }
-  return true;
+  return !url_matching::IsAllowlistedHost(allowlisted_hosts_, url.host());
 }
 
 }  // namespace refrax

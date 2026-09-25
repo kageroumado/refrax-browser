@@ -67,7 +67,7 @@ class HostPage : public mojom::Page,
   void EvaluateScript(const std::string& request,
                       EvaluateScriptCallback callback) override;
   void Snapshot(const gfx::Rect& rect, SnapshotCallback callback) override;
-  void Close() override;
+  void Close(CloseCallback callback) override;
 
   // ui::ViewsHostableView::Host:
   ui::Layer* GetUiLayer() const override;

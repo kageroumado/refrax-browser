@@ -133,8 +133,9 @@ HostPage::HostPage(EngineHostImpl* engine,
   TabHelpers::AttachTabHelpers(web_contents_.get());
   web_contents_->SetDelegate(this);
   Observe(web_contents_.get());
+  // The client is gone: nobody waits for a reply.
   receiver_.set_disconnect_handler(
-      base::BindOnce(&HostPage::Close, base::Unretained(this)));
+      base::BindOnce(&HostPage::Close, base::Unretained(this), base::DoNothing()));
   scripts_ = std::make_unique<PageScripts>(
       web_contents_.get(), &engine_->worlds(),
       base::BindRepeating(
@@ -258,6 +259,13 @@ void HostPage::PerformCommand(const std::string& command) {
   }
   auto& [name, fields] = *message;
   content::NavigationController& controller = web_contents_->GetController();
+
+  // A dialog holds its renderer inside alert()/confirm() until answered, and a navigation that
+  // commits in that renderer waits on it forever. Navigating dismisses the page's questions
+  // (CONTRACT.md §4.3), so they are answered `cancel` first.
+  if (name == "load" || name == "goBack" || name == "goForward" || name == "reload") {
+    dialogs_->CancelDialogs(web_contents_.get(), /*reset_state=*/false);
+  }
 
   if (name == "load") {
     const base::DictValue* request = fields.FindDict("request");
@@ -386,9 +394,10 @@ void HostPage::Snapshot(const gfx::Rect& rect, SnapshotCallback callback) {
           std::move(callback)));
 }
 
-void HostPage::Close() {
-  // Deletes this.
-  engine_->DestroyPage(this);
+void HostPage::Close(CloseCallback callback) {
+  // Answered while the receiver still exists; the teardown's own messages follow the reply.
+  std::move(callback).Run();
+  engine_->DestroyPage(this);  // Deletes this.
 }
 
 // MARK: ui::ViewsHostableView::Host

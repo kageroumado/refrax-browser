@@ -11,6 +11,7 @@
 #include "components/remote_cocoa/app_shim/ns_view_ids.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/utils/mac/SkCGUtils.h"
 #include "ui/events/cocoa/cocoa_event_utils.h"
@@ -29,6 +30,22 @@ NSData* ToData(const std::string& string) {
 
 std::string ToString(NSData* data) {
   return std::string(static_cast<const char*>(data.bytes), data.length);
+}
+
+// What a closed page keeps until the host confirms the close.
+struct ClosingPage {
+  mojo::AssociatedRemote<refrax::mojom::Page> page;
+  std::unique_ptr<remote_cocoa::ScopedNSViewIdMapping> view_id_mapping;
+  NSView* __strong container;
+};
+
+// A call's reply that will never come: the page closed or its host exited first.
+NSError* PageGoneError() {
+  return [NSError errorWithDomain:@"RFXChromiumEngine"
+                             code:4
+                         userInfo:@{
+                           NSLocalizedDescriptionKey : @"The page closed before it answered."
+                         }];
 }
 
 // Delivers the host's page callbacks to the page's delegate, on the main thread where Mojo
@@ -183,23 +200,29 @@ class PageClientImpl : public refrax::mojom::PageClient {
                                     userInfo:@{NSLocalizedDescriptionKey : @"The page is closed."}]);
     return;
   }
+  // Pending replies die with the page's remote when the page closes or the host exits;
+  // Refrax awaits every completion, so a dropped one still completes, with an error.
   _page->EvaluateScript(
       ToString(request),
-      base::BindOnce(
-          [](void (^completion)(NSData*, NSError*), const std::optional<std::string>& result,
-             const std::optional<std::string>& error) {
-            if (result) {
-              completion(ToData(*result), nil);
-            } else {
-              completion(nil, [NSError errorWithDomain:@"RFXChromiumEngine"
-                                                  code:2
-                                              userInfo:@{
-                                                NSLocalizedDescriptionKey :
-                                                    base::SysUTF8ToNSString(error.value_or(""))
-                                              }]);
-            }
-          },
-          completion));
+      mojo::WrapCallbackWithDropHandler(
+          base::BindOnce(
+              [](void (^completion)(NSData*, NSError*), const std::optional<std::string>& result,
+                 const std::optional<std::string>& error) {
+                if (result) {
+                  completion(ToData(*result), nil);
+                } else {
+                  completion(nil, [NSError errorWithDomain:@"RFXChromiumEngine"
+                                                      code:2
+                                                  userInfo:@{
+                                                    NSLocalizedDescriptionKey :
+                                                        base::SysUTF8ToNSString(error.value_or(""))
+                                                  }]);
+                }
+              },
+              completion),
+          base::BindOnce(
+              [](void (^completion)(NSData*, NSError*)) { completion(nil, PageGoneError()); },
+              completion)));
 }
 
 - (void)snapshotRect:(NSRect)rect
@@ -212,7 +235,7 @@ class PageClientImpl : public refrax::mojom::PageClient {
   }
   const gfx::Rect area = NSIsEmptyRect(rect) ? gfx::Rect() : gfx::ToEnclosingRect(gfx::RectF(rect));
   _page->Snapshot(
-      area, base::BindOnce(
+      area, mojo::WrapCallbackWithDropHandler(base::BindOnce(
                 [](void (^completion)(CGImageRef, NSError*), const SkBitmap& bitmap) {
                   CGImageRef image = bitmap.isNull() ? nullptr : SkCreateCGImageRef(bitmap);
                   if (!image) {
@@ -228,7 +251,12 @@ class PageClientImpl : public refrax::mojom::PageClient {
                   completion(image, nil);
                   CGImageRelease(image);
                 },
-                completion));
+                completion),
+                base::BindOnce(
+                    [](void (^completion)(CGImageRef, NSError*)) {
+                      completion(nullptr, PageGoneError());
+                    },
+                    completion)));
 }
 
 - (void)close {
@@ -237,11 +265,22 @@ class PageClientImpl : public refrax::mojom::PageClient {
   }
   _closed = YES;
   _delegate = nil;
-  _page->Close();
-  _page.reset();
   _client.reset();
-  _viewIDMapping.reset();
   [_container removeFromSuperview];
+  if (!_page.is_bound()) {
+    _viewIDMapping.reset();
+    return;
+  }
+  // The host may still attach this page's views to the container, found by its id, until it
+  // has closed the page; an id it can't find is a CHECK in this process. Its reply to Close
+  // comes after every such message, so the id stays registered, and the connection open,
+  // until then.
+  auto closing = std::make_unique<ClosingPage>();
+  closing->page = std::move(_page);
+  closing->view_id_mapping = std::move(_viewIDMapping);
+  closing->container = _container;
+  refrax::mojom::Page* page = closing->page.get();
+  page->Close(base::BindOnce([](std::unique_ptr<ClosingPage>) {}, std::move(closing)));
 }
 
 - (void)hostDidTerminate {

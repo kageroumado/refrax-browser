@@ -53,7 +53,9 @@ interface Page {
   // display's resolution. Null when the page has nothing rendered to copy.
   Snapshot(gfx.mojom.Rect rect) => (skia.mojom.BitmapN32? image);
 
-  Close();
+  // Tears the page down. The reply is sent before the page's views are: the views' own
+  // messages share this pipe, so every one that names the page's container arrives first.
+  Close() => ();
 };
 
 interface PageClient {

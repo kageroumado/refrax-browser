@@ -10,6 +10,7 @@
 #include "base/process/process.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -69,6 +70,17 @@ void RefraxBrowserMainExtraParts::PostBrowserStart() {
       mojo::PendingReceiver<mojom::EngineHost>(connection_->TakePipe()),
       base::BindOnce(&RefraxBrowserMainExtraParts::OnClientDisconnected,
                      base::Unretained(this)));
+
+  // Chrome counts startup as complete once a visible page it tracks has loaded, and until then
+  // holds back every best-effort task, including indexing content-blocking rules. The host's
+  // pages never count, so it would wait for the 3-minute failsafe; serving Refrax is its
+  // startup. Posted: Chrome's startup observer registers after this, and one that registers
+  // after completion gets no reference and crashes on the first page.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce([] {
+        AfterStartupTaskUtils::SetBrowserStartupIsCompleteForTesting(
+            StartupIsCompleteReason::kNoVisiblePageFound);
+      }));
 }
 
 void RefraxBrowserMainExtraParts::PostMainMessageLoopRun() {
