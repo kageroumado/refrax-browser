@@ -39,6 +39,29 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
         }
     }
 
+    /// Starts the engine from inside a nested run loop, as Refrax does when a menu action opens
+    /// the first page of an engine: an engine must not assume which loop its start runs in.
+    func startFromNestedLoop(storage: URL) async throws {
+        let configuration: [String: Any] = [
+            "storageDirectory": storage.absoluteString,
+            "logFile": storage.appending(path: "engine.log").absoluteString,
+            "languages": ["en-US"],
+        ]
+        let data = JSON.data(configuration)
+        let outcome = StartOutcome()
+        let trackingMode = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), trackingMode.rawValue) {
+            MainActor.assumeIsolated {
+                self.host.start(withConfiguration: data) { error in
+                    MainActor.assumeIsolated { outcome.result = error.map { .failure($0) } ?? .success(()) }
+                }
+            }
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+        spinNestedLoop(trackingMode, seconds: 0.5)
+        try await eventually("engine start", timeout: 60) { outcome.result }.get()
+    }
+
     func apply(_ update: [String: Any]) {
         host.applyPolicy(JSON.data(update))
     }
@@ -77,6 +100,16 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
     func engineHostDidTerminate(withReason reason: String) {
         terminationReason = reason
     }
+}
+
+/// Runs a nested loop in `mode`, as AppKit does while a menu tracks.
+private func spinNestedLoop(_ mode: CFRunLoopMode, seconds: Double) {
+    _ = CFRunLoopRunInMode(mode, seconds, false)
+}
+
+@MainActor
+private final class StartOutcome {
+    var result: Result<Void, Error>?
 }
 
 /// One page: records everything the engine reports and answers its questions.

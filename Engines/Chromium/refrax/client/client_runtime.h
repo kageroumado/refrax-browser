@@ -13,8 +13,14 @@ namespace refrax {
 // first time an engine starts, and never torn down: Chromium's globals outlive any one engine.
 class ClientRuntime {
  public:
-  // Starts the runtime on first use. Main thread only.
+  // Starts the runtime on first use. Main thread only, and only where CanStart() is true.
   static void EnsureStarted();
+
+  // Whether EnsureStarted may run here: the runtime is running, or this is Refrax's main
+  // event loop. Starting attaches Chromium's main-thread message pump to that loop, counting
+  // exactly one run loop level as already entered; started from a menu's or a modal's nested
+  // loop, the pump counts one level too few and aborts the process when that loop exits.
+  static bool CanStart();
 
   static scoped_refptr<base::SingleThreadTaskRunner> io_task_runner();
 };

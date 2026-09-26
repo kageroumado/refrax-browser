@@ -166,6 +166,24 @@ enum InputTests {
             try expectEqual(MenuProbe.shared.fired, 0, "⌘J menu action count after the page handled it")
         },
 
+        ConformanceTest(name: "input.soft-navigations-keep-the-engine-alive") { context in
+            // A click that routes within the page and paints new content: what single-page apps
+            // (and Speedometer) do constantly. Chrome's per-tab observers once crashed the host
+            // on it.
+            let page = try await context.page("/html/spa")
+            try await focus(page, context)
+            let button = try await center(of: "go", in: page)
+            for _ in 0..<5 {
+                mouse(.leftMouseDown, at: button, in: page)
+                mouse(.leftMouseUp, at: button, in: page)
+                try await pause(0.4)
+            }
+            try await pause(2)
+            try expect(context.engine.terminationReason == nil, "the engine died: \(context.engine.terminationReason ?? "")")
+            let routes = try await page.evaluate("window.routes") as? Int
+            try expectEqual(routes, 5, "clicks the page handled")
+        },
+
         ConformanceTest(name: "input.select-all") { context in
             let page = try await context.page("/html/input")
             try await focus(page, context)

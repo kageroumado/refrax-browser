@@ -51,6 +51,7 @@ enum Fixtures {
         </script>
         """,
 
+        "spa": spa,
         "download": "<!doctype html><title>download</title><a id=link href=\"/download/payload.bin?bytes=100000\">get</a>",
 
         // Text to select, an image and a link to drag, a field to type into. A keydown listener
@@ -73,6 +74,23 @@ enum Fixtures {
         </script>
         """,
     ]
+
+    /// A single-page app: clicking the button routes to a new URL with pushState and paints new
+    /// content, which Chromium counts as a soft navigation.
+    static let spa = """
+    <!doctype html><title>spa</title>
+    <style>button{font-size:24px;margin:40px;width:300px;height:80px}</style>
+    <button id=go>next view</button><main id=view><h1>home</h1></main>
+    <script>
+    window.routes = 0;
+    document.getElementById('go').addEventListener('click', () => {
+      routes++;
+      history.pushState({}, '', '/html/spa?view=' + routes);
+      const view = document.getElementById('view');
+      view.innerHTML = '<h1>view ' + routes + '</h1>' + '<p>content</p>'.repeat(40);
+    });
+    </script>
+    """
 
     /// A 1×1 PNG.
     private static let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")!

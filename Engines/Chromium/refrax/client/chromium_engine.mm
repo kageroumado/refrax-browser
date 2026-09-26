@@ -51,6 +51,10 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
       "--no-first-run",
       "--no-default-browser-check",
       "--no-error-dialogs",
+      // Chrome features that assume every page sits in a Chrome tab strip and crash the host
+      // on the engine's pages (tabs::TabInterface::GetFromContents): Reading Mode's
+      // soft-navigation observer. Refrax has its own reader.
+      "--disable-features=ImmersiveReadAnything",
   };
   if (NSString* log = configuration[@"logFile"]; [log isKindOfClass:NSString.class]) {
     arguments.push_back("--enable-logging");
@@ -93,6 +97,16 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
   if (![parsed isKindOfClass:NSDictionary.class] ||
       ![parsed[@"storageDirectory"] isKindOfClass:NSString.class]) {
     completion(EngineError(1, @"The engine configuration is malformed."));
+    return;
+  }
+  if (!refrax::ClientRuntime::CanStart()) {
+    // Asked from a nested loop, such as a menu action's: start once Refrax's main event loop
+    // runs again (see ClientRuntime::CanStart).
+    // Retains the engine: its start always completes.
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopDefaultMode, ^{
+      [self startWithConfiguration:configuration completion:completion];
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
     return;
   }
   refrax::ClientRuntime::EnsureStarted();

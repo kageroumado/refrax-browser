@@ -106,8 +106,8 @@ struct Runner {
             try await server.start()
             let engine = try TestEngine(bundle: bundle)
             let started = Date()
-            try await engine.start(storage: storage)
-            report("started in \(String(format: "%.2f", -started.timeIntervalSinceNow)) s; fixtures on port \(server.port)")
+            try await engine.startFromNestedLoop(storage: storage)
+            report("started from a nested run loop in \(String(format: "%.2f", -started.timeIntervalSinceNow)) s; fixtures on port \(server.port)")
             context = Context(bundle: bundle, server: server, storage: storage, engine: engine)
         } catch {
             report("FAIL could not start: \(error)")
