@@ -463,18 +463,22 @@ PLIST
     local identity
     identity=$(signing_identity)
     codesign --force --sign "${identity:--}" "$app" >/dev/null
-    local storage log status tail_pid
+    # The results stream to the terminal; the engine's own logging (its processes inherit the
+    # runner's stderr) goes to a file.
+    local storage log engine_log status tail_pid
     storage=$(mktemp -d -t engine-conformance)
     log="$storage.log"
+    engine_log="$storage.engine.log"
     status="$storage.status"
     : >"$log"
     tail -f "$log" &
     tail_pid=$!
-    open -W -n -a "$app" --stdout "$log" --stderr "$log" \
+    open -W -n -a "$app" --stdout "$log" --stderr "$engine_log" \
         --args "$engine" --storage "$storage" --status "$status" "$@"
     sleep 1
     kill "$tail_pid" 2>/dev/null
-    [[ -f "$status" ]] || die "the runner exited without a result (see $log)"
+    echo "engine log: $engine_log"
+    [[ -f "$status" ]] || die "the runner exited without a result (see $engine_log)"
     return "$(cat "$status")"
 }
 
