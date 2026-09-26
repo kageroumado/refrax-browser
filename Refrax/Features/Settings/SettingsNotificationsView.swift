@@ -97,27 +97,29 @@ struct NotificationsSettingsView: View {
 
     private var websitesSection: some View {
         Section {
-            if manager.permissions.isEmpty {
-                ContentUnavailableView {
-                    Label("No Websites", systemImage: "bell.slash")
-                } description: {
-                    Text("Websites that ask to send you notifications appear here.")
-                }
-            } else {
-                websiteList
-                HStack {
-                    Button("Remove") { remove(selection) }
-                        .disabled(selection.isEmpty)
-                    Spacer()
-                    Button("Remove All…") { confirmsRemoveAll = true }
+            Group {
+                if manager.permissions.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Websites", systemImage: "bell.slash")
+                    } description: {
+                        Text("Websites that ask to send you notifications appear here.")
+                    }
+                } else {
+                    websiteList
+                    HStack {
+                        Button("Remove") { remove(selection) }
+                            .disabled(selection.isEmpty)
+                        Spacer()
+                        Button("Remove All…") { confirmsRemoveAll = true }
+                    }
                 }
             }
+            .highlightable(id: "notifications.sites", highlightedItemId: highlightedItemId)
         } header: {
             Text("Websites")
         } footer: {
             Text("A removed website asks again the next time it wants to send notifications. Private spaces never allow notifications.")
         }
-        .highlightable(id: "notifications.sites", highlightedItemId: highlightedItemId)
     }
 
     private var websiteList: some View {

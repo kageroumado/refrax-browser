@@ -110,7 +110,7 @@ final class WebNotificationManager {
         }
         guard settings.allowWebsiteNotificationRequests else { return false }
 
-        switch await prompts.ask(.permission(kind: .notifications, origin: origin.displayName)) {
+        switch await prompts.ask(.permission(kind: .notifications, origin: origin.siteName)) {
         case .accept, .acceptAndRemember, .text:
             setState(.granted, for: origin)
             Task(name: "macOS notification authorization") {

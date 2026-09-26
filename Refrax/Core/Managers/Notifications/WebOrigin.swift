@@ -63,14 +63,19 @@ nonisolated struct WebOrigin: Hashable, Sendable, Comparable, CustomStringConver
         scheme == "file" ? nil : URL(string: string)
     }
 
-    /// What the UI shows: the host, its port when not the default, and the scheme only for
-    /// plain HTTP.
+    /// What lists of origins show: the host, its port when not the default, and the scheme
+    /// only for plain HTTP, so `http://` and `https://` rows for one host stay distinct.
     var displayName: String {
+        scheme == "http" && !host.isEmpty ? "http://\(siteName)" : siteName
+    }
+
+    /// The site as Safari names it in prompts and notifications: the host and its port when
+    /// not the default (`example.com`, `localhost:8765`).
+    var siteName: String {
         if scheme == "file" {
             return "Local Files"
         }
-        let hostAndPort = port.map { "\(host):\($0)" } ?? host
-        return scheme == "http" ? "http://\(hostAndPort)" : hostAndPort
+        return port.map { "\(host):\($0)" } ?? host
     }
 
     var description: String {

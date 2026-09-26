@@ -175,8 +175,17 @@ nonisolated enum CLIAgentLocator {
     /// Seconds to wait for the login shell before giving up.
     private static let loginShellTimeout: Duration = .seconds(5)
 
+    /// The account's home directory from the user database. `NSHomeDirectory()` follows
+    /// `CFFIXED_USER_HOME`, which can point somewhere the CLIs were never installed.
+    static let userHomeDirectory: String = {
+        guard let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir else {
+            return NSHomeDirectory()
+        }
+        return String(cString: directory)
+    }()
+
     /// Install locations probed in order.
-    static func candidatePaths(for runtime: CLIAgentRuntime, home: String = NSHomeDirectory()) -> [String] {
+    static func candidatePaths(for runtime: CLIAgentRuntime, home: String = userHomeDirectory) -> [String] {
         var directories = [
             "\(home)/.local/bin",
             "/opt/homebrew/bin",

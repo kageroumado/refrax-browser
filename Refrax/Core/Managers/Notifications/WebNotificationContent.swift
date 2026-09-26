@@ -137,7 +137,7 @@ nonisolated enum WebNotificationContentBuilder {
     static func content(for notification: IncomingWebNotification, userInfo: WebNotificationUserInfo) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = notification.title
-        content.subtitle = notification.origin.displayName
+        content.subtitle = notification.origin.siteName
         content.body = notification.body
         content.threadIdentifier = notification.origin.string
         content.categoryIdentifier = categoryIdentifier

@@ -33,6 +33,14 @@ struct WebOriginTests {
         #expect(WebOrigin(string: "file:///tmp/a.html")?.displayName == "Local Files")
     }
 
+    @Test("Site names show the host and the port when not default, never the scheme")
+    func siteNames() {
+        #expect(WebOrigin(string: "https://mail.example.com")?.siteName == "mail.example.com")
+        #expect(WebOrigin(string: "http://localhost:8765")?.siteName == "localhost:8765")
+        #expect(WebOrigin(string: "http://example.com:80")?.siteName == "example.com")
+        #expect(WebOrigin(string: "file:///tmp/a.html")?.siteName == "Local Files")
+    }
+
     @Test("Origins sort by host, then scheme, then port")
     func ordering() throws {
         let origins = try ["https://b.com", "https://a.com:8443", "http://a.com", "https://a.com"]
@@ -276,6 +284,9 @@ struct WebNotificationContentTests {
 
         let quiet = try notification(silent: true)
         #expect(WebNotificationContentBuilder.content(for: quiet, userInfo: userInfo).sound == nil)
+
+        let local = try notification(origin: "http://localhost:8765")
+        #expect(WebNotificationContentBuilder.content(for: local, userInfo: userInfo).subtitle == "localhost:8765")
     }
 
     @Test("User info round-trips through a property list")
