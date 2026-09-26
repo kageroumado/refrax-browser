@@ -42,6 +42,11 @@ struct BackdropBlurView: NSViewRepresentable, Equatable {
 final class BackdropBlurNSView: NSView {
     private let groupName = UUID().uuidString
     private var blurFilter: CAFilter?
+    private var activityObserver: WindowActivityObserver?
+
+    /// Sampling runs only while the window is the active app's key window, like the
+    /// system's own materials; see ``WindowActivityObserver``.
+    private var isWindowActive = true
 
     var blurRadius: CGFloat = 10 {
         didSet {
@@ -59,6 +64,13 @@ final class BackdropBlurNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if activityObserver == nil {
+            activityObserver = WindowActivityObserver { [unowned self] isActive in
+                isWindowActive = isActive
+                configureBackdropLayer()
+            }
+        }
+        activityObserver?.observe(window)
         if window != nil {
             configureBackdropLayer()
         }
@@ -70,6 +82,12 @@ final class BackdropBlurNSView: NSView {
 
     private func configureBackdropLayer() {
         guard let layer = layer as? CABackdropLayer else { return }
+
+        layer.isHidden = !isWindowActive
+        guard isWindowActive else {
+            layer.filters = nil
+            return
+        }
 
         layer.windowServerAware = true
         layer.groupName = groupName

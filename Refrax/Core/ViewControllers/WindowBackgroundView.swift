@@ -24,8 +24,17 @@ import AppKit
 /// shadow is recomputed from the pixels, and WindowServer re-renders the window's
 /// entire layer tree on every display frame, for any window's change, whether the
 /// window is key or not. On a 5K display that costs every other app roughly as much
-/// GPU as the rest of the compositing. `followsWindowActiveState` also freezes the
-/// sample while the window is inactive, the way system windows lose vibrancy.
+/// GPU as the rest of the compositing.
+///
+/// ## Inactive windows
+///
+/// System materials stop sampling the moment their window is no longer the active
+/// app's key window, so an inactive window costs WindowServer nothing per frame. The
+/// backdrop layer and the chameleon layer here are custom and would keep sampling, so
+/// ``WindowActivityObserver`` drops them while the window is inactive and the fill
+/// shows flat, the way inactive system windows lose vibrancy. Dropping means releasing
+/// the objects: WindowServer keeps sampling for a backdrop layer that is merely hidden
+/// or removed from its superlayer.
 ///
 /// The effect view's own material is cleared because its fill is fixed at 84% with no
 /// API to control it, and adding a compositing filter inside it breaks its material
@@ -33,12 +42,13 @@ import AppKit
 /// above are ours.
 final class WindowBackgroundView: NSView {
     private let backdropView = NSVisualEffectView()
-    private let backdropLayer = CABackdropLayer()
+    private var backdropLayer: CABackdropLayer?
     private let overlayView = NSView()
     private let fillLayer = CALayer()
     private let toneLayer = CALayer()
-    private let chameleonLayer = CAChameleonLayer()
+    private var chameleonLayer: CAChameleonLayer?
     private let tintLayer = CALayer()
+    private var activityObserver: WindowActivityObserver?
 
     private enum Constants {
         static let fillWhite: CGFloat = 0.965
@@ -59,12 +69,68 @@ final class WindowBackgroundView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if activityObserver == nil {
+            activityObserver = WindowActivityObserver { [unowned self] isActive in
+                setSampling(isActive)
+            }
+        }
+        activityObserver?.observe(window)
+    }
+
+    /// Creates the sampling layers while the window is active and releases them otherwise.
+    private func setSampling(_ isActive: Bool) {
+        guard isActive != (backdropLayer != nil) else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        backdropLayer?.removeFromSuperlayer()
+        chameleonLayer?.removeFromSuperlayer()
+        backdropLayer = nil
+        chameleonLayer = nil
+
+        guard isActive else { return }
+        let backdrop = makeBackdropLayer()
+        let chameleon = makeChameleonLayer()
+        backdropView.layer?.addSublayer(backdrop)
+        overlayView.layer?.insertSublayer(chameleon, above: toneLayer)
+        backdropLayer = backdrop
+        chameleonLayer = chameleon
+    }
+
+    private func makeBackdropLayer() -> CABackdropLayer {
+        let layer = CABackdropLayer()
+        layer.name = "refrax.window.backdrop"
+        layer.frame = bounds
+        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        layer.windowServerAware = true
+        let blur = CAFilter(name: "gaussianBlur")
+        blur?.setValue(Constants.blurRadius, forKey: "inputRadius")
+        blur?.setValue(true, forKey: "inputNormalizeEdges")
+        let saturate = CAFilter(name: "colorSaturate")
+        saturate?.setValue(Constants.saturation, forKey: "inputAmount")
+        layer.filters = [CAFilter(name: "sdrNormalize"), blur, saturate].compactMap(\.self)
+        return layer
+    }
+
+    private func makeChameleonLayer() -> CAChameleonLayer {
+        let layer = CAChameleonLayer()
+        layer.name = "refrax.window.chameleon"
+        layer.frame = bounds
+        layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        layer.opacity = Constants.chameleonOpacity
+        return layer
+    }
+
     // MARK: - Layer Setup
 
     private func setupLayers() {
         wantsLayer = true
 
-        // 1. Backdrop — samples behind-window content
+        // 1. Backdrop — samples behind-window content; the layer is created by `setSampling`
         backdropView.frame = bounds
         backdropView.autoresizingMask = [.width, .height]
         backdropView.blendingMode = .behindWindow
@@ -73,17 +139,6 @@ final class WindowBackgroundView: NSView {
         backdropView._setClear(true)
         backdropView.wantsLayer = true
         addSubview(backdropView)
-
-        backdropLayer.frame = bounds
-        backdropLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-        backdropLayer.windowServerAware = true
-        let blur = CAFilter(name: "gaussianBlur")
-        blur?.setValue(Constants.blurRadius, forKey: "inputRadius")
-        blur?.setValue(true, forKey: "inputNormalizeEdges")
-        let saturate = CAFilter(name: "colorSaturate")
-        saturate?.setValue(Constants.saturation, forKey: "inputAmount")
-        backdropLayer.filters = [CAFilter(name: "sdrNormalize"), blur, saturate].compactMap(\.self)
-        backdropView.layer?.addSublayer(backdropLayer)
 
         overlayView.frame = bounds
         overlayView.autoresizingMask = [.width, .height]
@@ -94,25 +149,24 @@ final class WindowBackgroundView: NSView {
         let autoresize: CAAutoresizingMask = [.layerWidthSizable, .layerHeightSizable]
 
         // 2. Fill — semi-opaque overlay (controls glass transparency)
+        fillLayer.name = "refrax.window.fill"
         fillLayer.frame = bounds
         fillLayer.autoresizingMask = autoresize
         fillLayer.backgroundColor = NSColor(white: Constants.fillWhite, alpha: Constants.defaultFillOpacity).cgColor
         rootLayer.addSublayer(fillLayer)
 
         // 3. Tone — darkening blend for depth
+        toneLayer.name = "refrax.window.tone"
         toneLayer.frame = bounds
         toneLayer.autoresizingMask = autoresize
         toneLayer.backgroundColor = NSColor(white: Constants.toneWhite, alpha: 1.0).cgColor
         toneLayer.compositingFilter = CAFilter(name: "darkenBlendMode")
         rootLayer.addSublayer(toneLayer)
 
-        // 4. Chameleon — adaptive content-matching tint
-        chameleonLayer.frame = bounds
-        chameleonLayer.autoresizingMask = autoresize
-        chameleonLayer.opacity = Constants.chameleonOpacity
-        rootLayer.addSublayer(chameleonLayer)
+        // 4. Chameleon — adaptive content-matching tint; created by `setSampling`
 
         // 5. Tint — user color + blend mode
+        tintLayer.name = "refrax.window.tint"
         tintLayer.frame = bounds
         tintLayer.autoresizingMask = autoresize
         rootLayer.addSublayer(tintLayer)

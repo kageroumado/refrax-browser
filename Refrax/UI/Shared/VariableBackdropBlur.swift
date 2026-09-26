@@ -282,6 +282,12 @@ final class VariableBackdropBlurNSView: NSView {
     /// a brief delay when the view moves to a window.
     private var isWindowStable = false
 
+    private var activityObserver: WindowActivityObserver?
+
+    /// Sampling runs only while the window is the active app's key window, like the
+    /// system's own materials; see ``WindowActivityObserver``.
+    private var isWindowActive = true
+
     /// Delay before enabling filters after window appearance.
     /// This gives the window server time to composite the window content.
     private static let windowStabilizationDelay: TimeInterval = 1
@@ -310,6 +316,13 @@ final class VariableBackdropBlurNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if activityObserver == nil {
+            activityObserver = WindowActivityObserver { [unowned self] isActive in
+                isWindowActive = isActive
+                configureBackdropLayer()
+            }
+        }
+        activityObserver?.observe(window)
         if window != nil {
             setupFilter()
             // Don't configure backdrop layer until we have valid bounds.
@@ -370,6 +383,12 @@ final class VariableBackdropBlurNSView: NSView {
 
     private func configureBackdropLayer() {
         guard let layer = layer as? CABackdropLayer else { return }
+
+        layer.isHidden = !isWindowActive
+        guard isWindowActive else {
+            layer.filters = nil
+            return
+        }
 
         layer.windowServerAware = false
         layer.groupName = groupName
