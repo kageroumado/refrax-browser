@@ -88,6 +88,10 @@ final class WebNotificationManager {
         observeAskSetting()
     }
 
+    isolated deinit {
+        askSettingObservation?.cancel()
+    }
+
     // MARK: - Asking
 
     /// Answers a page's request to show notifications: the stored decision, or the user's
@@ -186,12 +190,17 @@ final class WebNotificationManager {
     }
 
     /// Republishes the engine policy when the ask setting changes.
+    ///
+    /// The settings model is read only while it still has a context: the observation can
+    /// re-evaluate after its store is torn down, and reading a detached model traps.
     private func observeAskSetting() {
-        let settings = settings
-        let changes = Observations { settings.allowWebsiteNotificationRequests }
+        let changes = Observations { [weak settings] () -> Bool? in
+            guard let settings, settings.modelContext != nil else { return nil }
+            return settings.allowWebsiteNotificationRequests
+        }
         askSettingObservation = Task(name: "Notification ask setting") { [weak self] in
-            for await _ in changes {
-                guard let self else { break }
+            for await value in changes {
+                guard let self, value != nil else { break }
                 publishEnginePolicy()
             }
         }
