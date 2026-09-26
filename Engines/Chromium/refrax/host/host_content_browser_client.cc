@@ -4,6 +4,7 @@
 
 #include "base/command_line.h"
 #include "chrome/browser/chrome_browser_main.h"
+#include "refrax/host/content_blocking.h"
 #include "refrax/host/refrax_browser_main_extra_parts.h"
 #include "refrax/host/switches.h"
 
@@ -22,6 +23,14 @@ HostContentBrowserClient::CreateBrowserMainParts(bool is_integration_test) {
         ->AddParts(std::make_unique<RefraxBrowserMainExtraParts>());
   }
   return parts;
+}
+
+void HostContentBrowserClient::CreateThrottlesForNavigation(
+    content::NavigationThrottleRegistry& registry) {
+  // First, so the filter's page activation is known before Chrome's subresource filter
+  // throttles act on it.
+  ContentBlocking::Get().MaybeAddThrottle(registry);
+  ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
 }
 
 }  // namespace refrax

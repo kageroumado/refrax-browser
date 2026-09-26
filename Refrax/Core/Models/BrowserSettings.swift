@@ -102,6 +102,13 @@ final class BrowserSettings {
     /// Use ``defaultSidebarMode`` computed property for type-safe access.
     var defaultSidebarModeRaw: String
 
+    // MARK: - Rendering Engine
+
+    /// The engine pages render with unless their tab was moved to another one, as an
+    /// ``EngineID`` raw value; empty for system WebKit. Not synced: engines are installed per
+    /// Mac. Use ``defaultEngineID`` for type-safe access.
+    var defaultEngineIDRaw: String = ""
+
     // MARK: - Appearance: Page
 
     /// Global dark mode preference for web pages.
@@ -942,6 +949,16 @@ final class BrowserSettings {
         }
     }
 
+    /// The engine pages render with unless their tab was moved to another one.
+    var defaultEngineID: EngineID {
+        get {
+            defaultEngineIDRaw.isEmpty ? .systemWebKit : EngineID(rawValue: defaultEngineIDRaw)
+        }
+        set {
+            defaultEngineIDRaw = newValue == .systemWebKit ? "" : newValue.rawValue
+        }
+    }
+
     /// The preferred handler for mailto: links.
     var preferredMailHandler: MailHandler {
         get {
@@ -1192,6 +1209,7 @@ final class BrowserSettings {
         websiteColorUseSolidBlend = true
         spaceSwipeGestureEnabled = true
         defaultSidebarMode = .compact
+        defaultEngineID = .systemWebKit
         blockThirdPartyCookies = true
         doNotTrack = true
         enableGlobalPrivacyControl = true

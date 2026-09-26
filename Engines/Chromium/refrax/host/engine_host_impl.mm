@@ -8,16 +8,18 @@
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_reader.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/uuid.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/profiles/delete_profile_helper.h"
+#include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/download/download_confirmation_result.h"
+#include "content/public/browser/browsing_data_remover.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/shell_dialogs/selected_file_info.h"
+#include "refrax/host/content_blocking.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/download_delegate.h"
 #include "refrax/host/host_page.h"
@@ -44,6 +46,38 @@ base::FilePath IsolatedProfilePath(const std::string& space_id) {
   return g_browser_process->profile_manager()->user_data_dir().AppendASCII(
       "space-" + space_id);
 }
+
+// Deletes everything `profile` stored, then runs its callback and deletes itself.
+class ProfileWipe : public content::BrowsingDataRemover::Observer {
+ public:
+  static void Start(Profile* profile, base::OnceClosure done) {
+    content::BrowsingDataRemover* remover = profile->GetBrowsingDataRemover();
+    auto* wipe = new ProfileWipe(remover, std::move(done));
+    // The remover notifies only observers in its list.
+    remover->AddObserver(wipe);
+    remover->RemoveAndReply(base::Time(), base::Time::Max(),
+                            chrome_browsing_data_remover::ALL_DATA_TYPES,
+                            chrome_browsing_data_remover::ALL_ORIGIN_TYPES, wipe);
+  }
+
+  // content::BrowsingDataRemover::Observer:
+  void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
+    if (failed_data_types) {
+      LOG(ERROR) << "Removing a profile's data left types " << failed_data_types;
+    }
+    remover_->RemoveObserver(this);
+    std::move(done_).Run();
+    delete this;
+  }
+
+ private:
+  ProfileWipe(content::BrowsingDataRemover* remover, base::OnceClosure done)
+      : remover_(remover), done_(std::move(done)) {}
+  ~ProfileWipe() override = default;
+
+  raw_ptr<content::BrowsingDataRemover> remover_;
+  base::OnceClosure done_;
+};
 
 }  // namespace
 
@@ -163,8 +197,17 @@ void EngineHostImpl::ApplyPolicy(const std::string& update) {
     }
     return;
   }
-  // Content blocking, extensions and site settings are not declared in the engine's
-  // capabilities yet, so Refrax does not send them.
+  if (category == "contentBlocking") {
+    const base::DictValue* policy = fields.FindDict("policy");
+    if (!policy) {
+      receiver_.ReportBadMessage("ApplyPolicy: contentBlocking without a policy");
+      return;
+    }
+    ContentBlocking::Get().Apply(*policy);
+    return;
+  }
+  // Extensions and site settings are not declared in the engine's capabilities yet, so
+  // Refrax does not send them.
   VLOG(1) << "Policy category not handled: " << category;
 }
 
@@ -177,8 +220,8 @@ void EngineHostImpl::RemoveProfile(const std::string& profile,
   }
   auto& [kind, fields] = *message;
   std::optional<std::string> space_id = SpaceID(fields);
-  if (kind == "ephemeral" && space_id) {
-    auto it = ephemeral_spaces_.find(*space_id);
+  if (kind == "ephemeral") {
+    auto it = space_id ? ephemeral_spaces_.find(*space_id) : ephemeral_spaces_.end();
     if (it != ephemeral_spaces_.end()) {
       Profile* base_profile = ProfileManager::GetLastUsedProfile();
       if (base_profile && base_profile->HasOffTheRecordProfile(it->second)) {
@@ -188,15 +231,23 @@ void EngineHostImpl::RemoveProfile(const std::string& profile,
       }
       ephemeral_spaces_.erase(it);
     }
-  } else if (kind == "isolated" && space_id) {
-    isolated_spaces_.erase(*space_id);
-    g_browser_process->profile_manager()
-        ->GetDeleteProfileHelper()
-        .MaybeScheduleProfileForDeletion(
-            IsolatedProfilePath(*space_id), base::DoNothing(),
-            ProfileMetrics::DELETE_PROFILE_SETTINGS);
+    std::move(callback).Run();
+    return;
   }
-  std::move(callback).Run();
+  // A persistent profile is emptied and kept: a space whose data was cleared goes on opening
+  // pages in it. Never Chrome's profile deletion here: it marks the directory dead for the
+  // host's lifetime, and the space's next page never loads.
+  base::DictValue spec;
+  spec.Set(kind, fields.Clone());
+  ResolveProfile(spec, base::BindOnce(
+                           [](RemoveProfileCallback callback, Profile* profile) {
+                             if (!profile) {
+                               std::move(callback).Run();
+                               return;
+                             }
+                             ProfileWipe::Start(profile, std::move(callback));
+                           },
+                           std::move(callback)));
 }
 
 void EngineHostImpl::ResolveProfile(const base::DictValue& spec,

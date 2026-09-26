@@ -2,14 +2,39 @@
 
 assert(is_mac)
 
+import("//testing/test.gni")
+
+# The host's logic that needs no browser: contract JSON, filter-list compiling, URL matching.
+# Its own target so refrax_unittests links it without //chrome.
+source_set("support") {
+  sources = [
+    "content_blocking_compiler.cc",
+    "content_blocking_compiler.h",
+    "contract_json.cc",
+    "contract_json.h",
+    "url_matching.cc",
+    "url_matching.h",
+  ]
+  deps = [
+    "//base",
+    "//components/subresource_filter/core/common",
+    "//components/subresource_filter/tools/rule_parser",
+    "//components/subresource_filter/tools/ruleset_converter:support",
+    "//components/url_pattern_index/proto:url_pattern_index",
+    "//crypto",
+    "//third_party/protobuf:protobuf_lite",
+    "//url",
+  ]
+}
+
 # The engine host: Chromium's browser process (//chrome, no Chrome UI) serving Refrax's engine
 # contract to the client over Mojo. Linked into the host app through chrome_dll
 # (patches/chrome-host-content-browser-client.patch); inert unless launched with
 # --refrax-bootstrap.
 source_set("host") {
   sources = [
-    "contract_json.cc",
-    "contract_json.h",
+    "content_blocking.cc",
+    "content_blocking.h",
     "download_delegate.cc",
     "download_delegate.h",
     "engine_connection.h",
@@ -36,6 +61,7 @@ source_set("host") {
     "world_registry.h",
   ]
   deps = [
+    ":support",
     "//base",
     "//chrome/browser",
     "//chrome/browser/profiles:profile",
@@ -49,6 +75,11 @@ source_set("host") {
     "//components/permissions",
     "//components/remote_cocoa/browser",
     "//components/remote_cocoa/common:mojo",
+    "//components/subresource_filter/content/browser",
+    "//components/subresource_filter/core/browser",
+    "//components/subresource_filter/core/common",
+    "//components/subresource_filter/core/mojom",
+    "//components/url_pattern_index/proto:url_pattern_index",
     "//components/viz/common",
     "//content/public/browser",
     "//content/public/common",
@@ -68,4 +99,23 @@ source_set("host") {
   # The client ships in the same engine bundle and must match this build's Mojo interfaces, so
   # building the host (the chrome target) builds it too.
   data_deps = [ "//refrax/client:RefraxChromium" ]
+}
+
+test("refrax_unittests") {
+  sources = [
+    "content_blocking_compiler_unittest.cc",
+    "contract_json_unittest.cc",
+    "url_matching_unittest.cc",
+  ]
+  deps = [
+    ":support",
+    "//base",
+    "//base/test:run_all_unittests",
+    "//base/test:test_support",
+    "//components/subresource_filter/core/common",
+    "//components/url_pattern_index/proto:url_pattern_index",
+    "//testing/gtest",
+    "//third_party/protobuf:protobuf_lite",
+    "//url",
+  ]
 }

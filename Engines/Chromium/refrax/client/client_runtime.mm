@@ -5,6 +5,7 @@
 #import <AppKit/AppKit.h>
 #include <objc/runtime.h>
 
+#include "base/apple/scoped_cftyperef.h"
 #include "base/at_exit.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
@@ -128,12 +129,28 @@ Runtime& GetRuntime() {
   return *runtime;
 }
 
+// Whether the runtime is running; set once, never cleared.
+bool g_started = false;
+
 }  // namespace
 
 // static
 void ClientRuntime::EnsureStarted() {
   CHECK([NSThread isMainThread]);
+  CHECK(CanStart());
   GetRuntime();
+  g_started = true;
+}
+
+// static
+bool ClientRuntime::CanStart() {
+  if (g_started) {
+    return true;
+  }
+  // -[NSApplication run] waits for events in the default mode; menus, modals and drags run
+  // nested loops in modes of their own, and event handling runs outside any loop (no mode).
+  base::apple::ScopedCFTypeRef<CFRunLoopMode> mode(CFRunLoopCopyCurrentMode(CFRunLoopGetMain()));
+  return mode && CFEqual(mode.get(), kCFRunLoopDefaultMode);
 }
 
 // static

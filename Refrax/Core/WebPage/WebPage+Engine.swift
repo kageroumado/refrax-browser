@@ -48,8 +48,20 @@ extension WebPage {
             observe(page)
             page.perform(.setZoom(factor: backingWebView.pageZoom))
         }
-        tabPage.engineID = id == .systemWebKit ? nil : id.rawValue
+        tabPage.engineID = id.rawValue
         Logger.info("Page \(tabPage.id) now renders with \(id): \(currentURL.absoluteString)", category: Logger.engines)
+    }
+
+    /// Moves the page to `descriptor`'s engine, telling the user when it can't start.
+    func reload(in descriptor: EngineDescriptor, registry: EngineRegistry) {
+        Task {
+            do {
+                try await switchEngine(to: descriptor.id, registry: registry)
+            } catch {
+                Logger.error("Switching to \(descriptor.displayName) failed: \(error)", category: Logger.engines)
+                NSAlert(error: error).runModal()
+            }
+        }
     }
 
     /// Closes the engine page, if any. Called when the page ends or returns to WebKit.

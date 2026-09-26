@@ -347,13 +347,14 @@ final class WebPagePool {
         return true
     }
 
-    /// Moves a page whose tab remembers another engine onto it before WebKit loads anything.
+    /// Moves a page onto its engine before WebKit loads anything: the one its tab was moved
+    /// to, else the default engine.
     ///
     /// When that engine is no longer installed, or fails to start, the page loads in WebKit.
     private func restoreEngine(for page: WebPage) {
-        guard let rawID = page.tabPage.engineID, let engineRegistry else { return }
-        let id = EngineID(rawValue: rawID)
-        guard id != .systemWebKit, engineRegistry.descriptor(for: id) != nil else { return }
+        guard let engineRegistry else { return }
+        let id = Self.startingEngine(pinned: page.tabPage.engineID, default: state.settings.defaultEngineID, registry: engineRegistry)
+        guard id != .systemWebKit else { return }
         page.initialLoadPending = false
         Task { [weak page] in
             guard let page else { return }
@@ -364,6 +365,13 @@ final class WebPagePool {
                 page.load(page.tabPage.url)
             }
         }
+    }
+
+    /// The engine a page starts in: the one its tab was moved to, else the default; system
+    /// WebKit when that engine isn't installed.
+    static func startingEngine(pinned: String?, default defaultEngine: EngineID, registry: EngineRegistry) -> EngineID {
+        let id = pinned.map(EngineID.init(rawValue:)) ?? defaultEngine
+        return registry.descriptor(for: id) == nil ? .systemWebKit : id
     }
 
     /// Creates a popup page using the provided WebKit configuration.

@@ -5,7 +5,9 @@
 #   forge doctor | bootstrap | fetch | prepare | status                  (build host)
 #   forge gen [release|dev] | build [release|dev] [targets…]        (build host)
 #   forge package <release|dev> <name>                            (build host)
+#   forge test [release|dev] [gtest filter]                          (build host)
 #   forge sign <name> | notarize <name> | install <name> [debug]  (the Mac Refrax runs on)
+#   forge harness <name> <url> [args] | conformance <name> [tests…]  (the Mac Refrax runs on)
 #
 # FORGE is the workspace (default: the Ugreen SSD on the Mac Studio). A host with the forge
 # elsewhere exports FORGE before running, e.g. FORGE=~/Forge/chromium on the MacBook.
@@ -235,6 +237,16 @@ cmd_build() {
     log "built out/$name ${targets[*]} in $(((ended - started) / 60)) min"
 }
 
+# Builds and runs //refrax's unit tests: the host logic that needs no browser.
+#   forge test [release|dev] [gtest filter]
+cmd_test() {
+    local config="${1:-dev}" name
+    name=$(out_name "$config")
+    shift || true
+    cmd_build "$config" refrax_unittests
+    "$SRC/out/$name/refrax_unittests" --gtest_filter="${1:-*}"
+}
+
 # Everything one engine build produced lives in artifacts/<name>/.
 artifact_dir() {
     [[ -n "${1:-}" ]] || die "usage: forge $2 <name>, e.g. 152.0.7977.82-r1"
@@ -420,6 +432,56 @@ cmd_harness() {
         --storage "$(artifact_dir "$name" harness)/harness-storage" "$@"
 }
 
+# Checks a packaged engine against the engine contract (Engines/Conformance). The runner is
+# launched as an app through LaunchServices, which makes it the active app: the input tests
+# need its window to be key, and macOS refuses activation to a process started from a shell.
+#   forge conformance <name> [test-name-substring …]
+cmd_conformance() {
+    local name="${1:-}" engine
+    shift || true
+    engine=$(engine_path "$name" conformance)
+    [[ -d "$engine" ]] || die "no engine at $engine"
+    local app="$FORGE/bin/Engine Conformance.app"
+    mkdir -p "$app/Contents/MacOS"
+    swiftc -swift-version 6 -O -import-objc-header "$REPO_ROOT/Engines/Conformance/Bridging.h" \
+        "$REPO_ROOT"/Engines/Conformance/Sources/*.swift -o "$app/Contents/MacOS/engine-conformance"
+    cat >"$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>engine-conformance</string>
+    <key>CFBundleIdentifier</key><string>website.refrax.engine-conformance</string>
+    <key>CFBundleName</key><string>Engine Conformance</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+</dict>
+</plist>
+PLIST
+    # A real identity: macOS keys privacy grants (removable-volume access to the engine on the
+    # SSD) to the signature, so an ad-hoc one asks again after every rebuild.
+    local identity
+    identity=$(signing_identity)
+    codesign --force --sign "${identity:--}" "$app" >/dev/null
+    # The results stream to the terminal; the engine's own logging (its processes inherit the
+    # runner's stderr) goes to a file.
+    local storage log engine_log status tail_pid
+    storage=$(mktemp -d -t engine-conformance)
+    log="$storage.log"
+    engine_log="$storage.engine.log"
+    status="$storage.status"
+    : >"$log"
+    tail -f "$log" &
+    tail_pid=$!
+    open -W -n -a "$app" --stdout "$log" --stderr "$engine_log" \
+        --args "$engine" --storage "$storage" --status "$status" "$@"
+    sleep 1
+    kill "$tail_pid" 2>/dev/null
+    echo "engine log: $engine_log"
+    [[ -f "$status" ]] || die "the runner exited without a result (see $engine_log)"
+    return "$(cat "$status")"
+}
+
 cmd_status() {
     printf 'FORGE      %s\n' "$FORGE"
     printf 'ungoogled  %s\n' "$(git -C "$UNGOOGLED" describe --tags 2>/dev/null || echo 'not bootstrapped')"
@@ -431,7 +493,7 @@ cmd_status() {
 
 main() {
     local command="${1:-}"
-    [[ -n "$command" ]] || die "usage: forge env|doctor|bootstrap|fetch|prepare|gen|build|package|sign|notarize|install|harness|status"
+    [[ -n "$command" ]] || die "usage: forge env|doctor|conformance|bootstrap|fetch|prepare|gen|build|test|package|sign|notarize|install|harness|status"
     shift
     case "$command" in
         env) cmd_env ;;
@@ -441,12 +503,16 @@ main() {
             eval "$(cmd_env)"
             cmd_harness "$@"
             ;;
-        bootstrap|fetch|prepare|gen|build|package|sign|notarize|install)
+        conformance)
+            eval "$(cmd_env)"
+            cmd_conformance "$@"
+            ;;
+        bootstrap|fetch|prepare|gen|build|test|package|sign|notarize|install)
             eval "$(cmd_env)"
             # A new checkout needs the full working space; rebuilding an existing build
             # directory replaces files in place, and packaging copies about 1 GB.
             case "$command" in
-                gen | build) MIN_FREE_GB="${FORGE_MIN_FREE_GB:-60}" ;;
+                gen | build | test) MIN_FREE_GB="${FORGE_MIN_FREE_GB:-60}" ;;
                 package) MIN_FREE_GB="${FORGE_MIN_FREE_GB:-20}" ;;
             esac
             if [[ "$command" != sign && "$command" != notarize && "$command" != install ]]; then

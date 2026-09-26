@@ -21,6 +21,8 @@ class HostContentBrowserClient : public ChromeContentBrowserClient {
   // content::ContentBrowserClient:
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
       bool is_integration_test) override;
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override;
 };
 
 }  // namespace refrax
