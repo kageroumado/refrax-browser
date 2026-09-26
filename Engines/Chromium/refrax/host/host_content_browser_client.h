@@ -23,6 +23,9 @@ class HostContentBrowserClient : public ChromeContentBrowserClient {
       bool is_integration_test) override;
   void CreateThrottlesForNavigation(
       content::NavigationThrottleRegistry& registry) override;
+  void OpenURL(content::SiteInstance* site_instance,
+               const content::OpenURLParams& params,
+               base::OnceCallback<void(content::WebContents*)> callback) override;
 };
 
 }  // namespace refrax

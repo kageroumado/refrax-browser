@@ -153,6 +153,8 @@ extension WebNotificationManager {
             provider(forManagerKey: managerKey)?.didClick(identifier)
         case let .engine(pageID, identifier):
             pagePool?.existingPage(for: pageID)?.enginePage?.perform(.notificationClicked(id: identifier))
+        case let .engineHost(engineID, identifier):
+            pagePool?.engineRegistry?.perform(.notificationClicked(id: identifier), on: engineID)
         }
     }
 
@@ -162,14 +164,19 @@ extension WebNotificationManager {
             provider(forManagerKey: managerKey)?.didClose([NSNumber(value: identifier)])
         case let .engine(pageID, identifier):
             pagePool?.existingPage(for: pageID)?.enginePage?.perform(.notificationClosed(id: identifier))
+        case let .engineHost(engineID, identifier):
+            pagePool?.engineRegistry?.perform(.notificationClosed(id: identifier), on: engineID)
         }
     }
 
     /// Fires the service worker's `notificationclick`. The worker decides what to show, through
     /// `clients.openWindow` or `client.focus()`; Refrax opens the site itself only when no worker
-    /// handled the click.
+    /// handled the click. An engine's worker can't open windows, so Refrax always shows the site.
     private func clickPersistent(_ userInfo: WebNotificationUserInfo, source: IncomingWebNotification.Source?) {
-        if let data = userInfo.persistentRepresentation,
+        if case .engineHost? = source, let source {
+            sendClick(to: source)
+            showSite(for: userInfo, openingIfNeeded: true)
+        } else if let data = userInfo.persistentRepresentation,
            let representation = Self.decodePersistentRepresentation(data),
            let dataStore = dataStore(withID: userInfo.dataStoreID) {
             // WebKit completes on the main thread, with the network process's reply.
@@ -316,5 +323,46 @@ extension WebNotificationManager {
     /// An engine page closed a notification it showed.
     func withdrawEngineNotification(_ id: String, from page: WebPage) {
         withdraw([.engine(pageID: page.tabPage.id, identifier: id)])
+    }
+
+    /// An engine event about a notification outside any page.
+    func handle(_ event: EngineEvent, from engineID: EngineID) {
+        switch event {
+        case let .notificationShown(profile, notification):
+            show(notification, profile: profile, from: engineID)
+        case let .notificationClosed(id):
+            withdraw([.engineHost(engineID: engineID, identifier: id)])
+        }
+    }
+
+    /// A notification an engine showed outside any page, such as a service worker's.
+    private func show(_ notification: EngineNotification, profile: EngineProfileSpec, from engineID: EngineID) {
+        guard let origin = WebOrigin(url: notification.origin) else { return }
+        let dataStoreID: UUID?
+        switch profile {
+        case .shared:
+            dataStoreID = nil
+        case let .isolated(id):
+            dataStoreID = id
+        case .ephemeral:
+            // Private spaces never get notifications.
+            return
+        }
+        let incoming = IncomingWebNotification(
+            source: .engineHost(engineID: engineID, identifier: notification.id),
+            origin: origin,
+            title: notification.title,
+            body: notification.body,
+            tag: notification.tag.flatMap { $0.isEmpty ? nil : $0 },
+            iconURL: notification.iconURL,
+            isSilent: notification.isSilent,
+            isPersistent: true,
+            tabPageID: nil,
+            tabID: nil,
+            spaceID: nil,
+            dataStoreID: dataStoreID,
+            persistentRepresentation: nil,
+        )
+        deliver(incoming) {}
     }
 }

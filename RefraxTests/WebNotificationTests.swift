@@ -192,6 +192,30 @@ struct WebNotificationRequestTests {
         #expect(await manager.requestPermission(for: site, isPrivate: false, prompts: prompts) == false)
         #expect(prompts.current == nil)
     }
+
+    @Test("Engines get every decision and every removal")
+    func enginePolicy() async throws {
+        let (container, manager, _) = try makeManager()
+        defer { withExtendedLifetime(container) {} }
+        let prompts = PagePrompts()
+        let chat = try #require(WebOrigin(string: "https://chat.example.com"))
+        let news = try #require(WebOrigin(string: "http://news.example.com:8080"))
+        var published: [NotificationPolicy] = []
+        manager.onEnginePolicyChange = { published.append($0) }
+        #expect(published.last == NotificationPolicy())
+
+        let allowed = Task { await manager.requestPermission(for: chat, isPrivate: false, prompts: prompts) }
+        await Task.yield()
+        prompts.answer(.accept)
+        #expect(await allowed.value)
+        #expect(published.last?.granted == ["https://chat.example.com"])
+
+        manager.setState(.denied, for: news)
+        #expect(published.last == NotificationPolicy(granted: ["https://chat.example.com"], denied: ["http://news.example.com:8080"]))
+
+        manager.removeAll()
+        #expect(published.last == NotificationPolicy())
+    }
 }
 
 // MARK: - Content

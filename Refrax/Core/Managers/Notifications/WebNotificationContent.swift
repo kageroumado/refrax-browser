@@ -11,6 +11,8 @@ nonisolated struct IncomingWebNotification: Hashable, Sendable {
         case webKit(managerKey: UInt, identifier: UInt64)
         /// A notification from an engine page, by the engine's own ID.
         case engine(pageID: UUID, identifier: String)
+        /// A notification an engine reported outside any page (a service worker's), by the engine's own ID.
+        case engineHost(engineID: EngineID, identifier: String)
     }
 
     let source: Source

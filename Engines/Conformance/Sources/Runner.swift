@@ -48,6 +48,11 @@ final class Context {
         apply("scripts", ["scripts": scripts])
     }
 
+    /// The contract's `notifications` policy.
+    func notifications(granted: [String] = [], denied: [String] = [], asksByDefault: Bool = true) {
+        apply("notifications", ["policy": ["granted": granted, "denied": denied, "asksByDefault": asksByDefault]])
+    }
+
     func note(_ line: String) {
         notes.append(line)
     }
@@ -80,6 +85,9 @@ final class Context {
             // Off, but with the same lists: the next test that turns blocking on doesn't wait
             // for its lists to be compiled and indexed again.
             contentBlocking(enabled: false, lists: blockingLists)
+        }
+        if touchedPolicy.contains("notifications") {
+            notifications()
         }
         touchedPolicy.removeAll()
         notes.removeAll()

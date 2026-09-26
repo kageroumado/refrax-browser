@@ -9,6 +9,8 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
     let capabilities: Set<String>
     private(set) var terminationReason: String?
     private(set) var pages: [TestPage] = []
+    /// Events the engine reported outside any page, in order.
+    private(set) var events: [TestPage.Message] = []
 
     /// A new instance of the bundle's principal class. The bundle's code loads once per process;
     /// later instances reuse it, as Refrax does after an engine dies.
@@ -66,6 +68,22 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
         host.applyPolicy(JSON.data(update))
     }
 
+    /// Sends an EngineCommand, which engines implement optionally.
+    func command(_ name: String, _ fields: [String: Any] = [:]) throws {
+        guard host.responds(to: #selector(RFXEngineHost.performCommand(_:))) else {
+            throw Failure("the engine takes no engine commands (performCommand:)")
+        }
+        host.performCommand?(JSON.data([name: fields]))
+    }
+
+    /// The first engine event named `name` that satisfies `matching`.
+    @discardableResult
+    func waitForEvent(_ name: String, timeout: TimeInterval = 10, matching: ([String: Any]) -> Bool = { _ in true }) async throws -> [String: Any] {
+        try await eventually("engine event \(name)", timeout: timeout) {
+            events.first { $0.name == name && matching($0.fields) }?.fields
+        }
+    }
+
     func require(_ capability: String) throws {
         if !capabilities.contains(capability) {
             throw Skip("engine does not declare \(capability)")
@@ -99,6 +117,12 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
 
     func engineHostDidTerminate(withReason reason: String) {
         terminationReason = reason
+    }
+
+    func engineHost(_ host: any RFXEngineHost, didEmitEvent event: Data) {
+        if let message = JSON.message(event) {
+            events.append(TestPage.Message(name: message.name, fields: message.fields))
+        }
     }
 }
 

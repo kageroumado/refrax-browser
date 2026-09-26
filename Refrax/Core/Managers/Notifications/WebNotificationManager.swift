@@ -56,6 +56,12 @@ final class WebNotificationManager {
     /// Tabs, windows, and data stores for routing clicks. Set after the pool is created.
     @ObservationIgnored weak var pagePool: WebPagePool?
 
+    /// Receives ``enginePolicy`` whenever a decision or the ask setting changes, so engines
+    /// answer permission from Refrax's store alone.
+    @ObservationIgnored var onEnginePolicyChange: ((NotificationPolicy) -> Void)? {
+        didSet { publishEnginePolicy() }
+    }
+
     // MARK: WebKit Plumbing
 
     /// Page notification providers, one per process pool, keyed by manager.
@@ -63,6 +69,7 @@ final class WebNotificationManager {
     @ObservationIgnored var serviceWorkerProvider: RFXWebNotificationProvider?
     @ObservationIgnored let providerDelegate = WebNotificationProviderDelegate()
     @ObservationIgnored let dataStoreDelegate = WebNotificationDataStoreDelegate()
+    @ObservationIgnored private var askSettingObservation: Task<Void, Never>?
 
     // MARK: Deliveries
 
@@ -78,6 +85,7 @@ final class WebNotificationManager {
         self.permissions = store.records
         providerDelegate.manager = self
         dataStoreDelegate.manager = self
+        observeAskSetting()
     }
 
     // MARK: - Asking
@@ -135,6 +143,7 @@ final class WebNotificationManager {
         store.setState(state, for: origin)
         permissions = store.records
         forEachProvider { $0.updatePermission(state == .granted, for: origin.string) }
+        publishEnginePolicy()
         Logger.info("Notifications \(state.rawValue) for \(origin)", category: Logger.notifications)
     }
 
@@ -146,6 +155,7 @@ final class WebNotificationManager {
         permissions = store.records
         let strings = origins.map(\.string)
         forEachProvider { $0.removePermissions(for: strings) }
+        publishEnginePolicy()
     }
 
     /// Forgets every origin.
@@ -156,6 +166,35 @@ final class WebNotificationManager {
     /// Origin string → granted, as WebKit takes permissions.
     var permissionMap: [String: NSNumber] {
         store.permissionMap.mapValues { NSNumber(value: $0) }
+    }
+
+    /// Every decision, in the form engines take it.
+    var enginePolicy: NotificationPolicy {
+        var policy = NotificationPolicy(asksByDefault: settings.allowWebsiteNotificationRequests)
+        for (origin, granted) in store.permissionMap.sorted(by: { $0.key < $1.key }) {
+            if granted {
+                policy.granted.append(origin)
+            } else {
+                policy.denied.append(origin)
+            }
+        }
+        return policy
+    }
+
+    private func publishEnginePolicy() {
+        onEnginePolicyChange?(enginePolicy)
+    }
+
+    /// Republishes the engine policy when the ask setting changes.
+    private func observeAskSetting() {
+        let settings = settings
+        let changes = Observations { settings.allowWebsiteNotificationRequests }
+        askSettingObservation = Task(name: "Notification ask setting") { [weak self] in
+            for await _ in changes {
+                guard let self else { break }
+                publishEnginePolicy()
+            }
+        }
     }
 
     private func forEachProvider(_ body: (RFXWebNotificationProvider) -> Void) {

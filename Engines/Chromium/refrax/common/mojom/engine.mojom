@@ -17,9 +17,10 @@ import "ui/gfx/geometry/mojom/geometry.mojom";
 // Implemented by the host; the client's primary remote. Closing it quits the host.
 interface EngineHost {
   // The first call. `configuration` is the contract's EngineConfiguration; `application` is
-  // where the host builds each page's NSViews.
+  // where the host builds each page's NSViews; `client` receives events outside any page.
   Start(string configuration,
-        pending_associated_remote<remote_cocoa.mojom.Application> application)
+        pending_associated_remote<remote_cocoa.mojom.Application> application,
+        pending_associated_remote<EngineClient> client)
       => (string? error);
 
   // `spec` is the contract's EnginePageSpec. Replies with the id the client registers its
@@ -34,6 +35,15 @@ interface EngineHost {
 
   // The contract's EngineProfileSpec; deletes everything stored for it.
   RemoveProfile(string profile) => ();
+
+  // The contract's EngineCommand.
+  PerformCommand(string command);
+};
+
+// Implemented by the client.
+interface EngineClient {
+  // The contract's EngineEvent.
+  OnEvent(string event);
 };
 
 interface Page {

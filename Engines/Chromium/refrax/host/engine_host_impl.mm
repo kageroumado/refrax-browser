@@ -17,6 +17,7 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/download/download_confirmation_result.h"
 #include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/shell_dialogs/selected_file_info.h"
 #include "refrax/host/content_blocking.h"
@@ -101,6 +102,7 @@ EngineHostImpl::EngineHostImpl(mojo::PendingReceiver<mojom::EngineHost> receiver
 }
 
 EngineHostImpl::~EngineHostImpl() {
+  Notifications::Get().SetDelegate(nullptr);
   DownloadDelegate::SetAsker({});
   // Pages detach their views through `application_`, so they go first.
   pages_.clear();
@@ -109,6 +111,7 @@ EngineHostImpl::~EngineHostImpl() {
 void EngineHostImpl::Start(
     const std::string& configuration,
     mojo::PendingAssociatedRemote<remote_cocoa::mojom::Application> application,
+    mojo::PendingAssociatedRemote<mojom::EngineClient> client,
     StartCallback callback) {
   if (application_.is_bound()) {
     std::move(callback).Run("The engine is already started.");
@@ -117,6 +120,8 @@ void EngineHostImpl::Start(
   // The configuration's storage directory is this process's --user-data-dir, chosen by the
   // client at launch; its languages are the profiles' accept-languages (applied per profile).
   application_.Bind(std::move(application));
+  client_.Bind(std::move(client));
+  Notifications::Get().SetDelegate(this);
   std::move(callback).Run(std::nullopt);
 }
 
@@ -206,6 +211,15 @@ void EngineHostImpl::ApplyPolicy(const std::string& update) {
     ContentBlocking::Get().Apply(*policy);
     return;
   }
+  if (category == "notifications") {
+    const base::DictValue* policy = fields.FindDict("policy");
+    if (!policy) {
+      receiver_.ReportBadMessage("ApplyPolicy: notifications without a policy");
+      return;
+    }
+    Notifications::Get().ApplyPolicy(*policy);
+    return;
+  }
   // Extensions and site settings are not declared in the engine's capabilities yet, so
   // Refrax does not send them.
   VLOG(1) << "Policy category not handled: " << category;
@@ -248,6 +262,60 @@ void EngineHostImpl::RemoveProfile(const std::string& profile,
                              ProfileWipe::Start(profile, std::move(callback));
                            },
                            std::move(callback)));
+}
+
+void EngineHostImpl::PerformCommand(const std::string& command) {
+  auto message = contract::ParseMessage(command);
+  if (!message) {
+    receiver_.ReportBadMessage("PerformCommand: malformed command");
+    return;
+  }
+  auto& [name, fields] = *message;
+  const std::string* id = fields.FindString("id");
+  if (name == "notificationClicked" && id) {
+    Notifications::Get().Click(*id);
+  } else if (name == "notificationClosed" && id) {
+    Notifications::Get().Dismiss(*id);
+  }
+}
+
+HostPage* EngineHostImpl::PageShowing(Profile* profile, const GURL& document_url) {
+  HostPage* frame_match = nullptr;
+  for (const auto& page : pages_) {
+    content::WebContents* contents = page->web_contents();
+    if (contents->GetBrowserContext() != profile) {
+      continue;
+    }
+    if (contents->GetPrimaryMainFrame()->GetLastCommittedURL() == document_url) {
+      return page.get();
+    }
+    if (!frame_match) {
+      contents->ForEachRenderFrameHost([&](content::RenderFrameHost* frame) {
+        if (frame->GetLastCommittedURL() == document_url) {
+          frame_match = page.get();
+        }
+      });
+    }
+  }
+  return frame_match;
+}
+
+std::optional<base::DictValue> EngineHostImpl::ProfileSpec(Profile* profile) {
+  if (profile == ProfileManager::GetLastUsedProfile()) {
+    return base::DictValue().Set("shared", base::DictValue());
+  }
+  for (const auto& [space_id, keep_alive] : isolated_spaces_) {
+    if (profile->GetPath() == IsolatedProfilePath(space_id)) {
+      return base::DictValue().Set("isolated", base::DictValue().Set("id", space_id));
+    }
+  }
+  return std::nullopt;
+}
+
+void EngineHostImpl::EmitEngineEvent(std::string event) {
+  if (client_.is_bound()) {
+    client_->OnEvent(event);
+  }
 }
 
 void EngineHostImpl::ResolveProfile(const base::DictValue& spec,

@@ -11,6 +11,7 @@ nonisolated enum PolicyUpdate: Codable, Hashable, Sendable {
     case scripts(scripts: [InjectedScript])
     case extensions(extensions: [ExtensionPackage])
     case siteSettings(rules: [SiteSettingsRule])
+    case notifications(policy: NotificationPolicy)
 }
 
 nonisolated extension PolicyUpdate {
@@ -20,6 +21,7 @@ nonisolated extension PolicyUpdate {
         case scripts
         case extensions
         case siteSettings
+        case notifications
     }
 
     var category: Category {
@@ -28,6 +30,7 @@ nonisolated extension PolicyUpdate {
         case .scripts: .scripts
         case .extensions: .extensions
         case .siteSettings: .siteSettings
+        case .notifications: .notifications
         }
     }
 }
@@ -92,6 +95,16 @@ nonisolated struct SiteSettingsRule: Codable, Hashable, Sendable {
     var contentBlockingEnabled: Bool?
 }
 
+/// Every notification decision Refrax holds. Engines answer notification permission from it
+/// alone and store no decision of their own.
+nonisolated struct NotificationPolicy: Codable, Hashable, Sendable {
+    /// Serialized origins (`scheme://host[:port]`).
+    var granted: [String] = []
+    var denied: [String] = []
+    /// Whether an origin in neither list may ask; otherwise it is denied.
+    var asksByDefault = true
+}
+
 // MARK: - Script Messages
 
 /// A message a Refrax-injected script posted on a named channel.
@@ -122,6 +135,22 @@ nonisolated struct ScriptMessageDelivery: Sendable {
 }
 
 // MARK: - Host
+
+/// Something that happened in an engine outside any page (`Engines/CONTRACT.md` §4.6).
+nonisolated enum EngineEvent: Codable, Hashable, Sendable {
+    /// A service worker showed a notification, or a page did and the engine can't name the page.
+    case notificationShown(profile: EngineProfileSpec, notification: EngineNotification)
+    /// The worker or page closed a notification it showed.
+    case notificationClosed(id: String)
+}
+
+/// A command for an engine that concerns no one page.
+nonisolated enum EngineCommand: Codable, Hashable, Sendable {
+    /// The user clicked the notification; the engine fires its `notificationclick` or `click` event.
+    case notificationClicked(id: String)
+    /// The user dismissed the notification; the engine fires its `notificationclose` or `close` event.
+    case notificationClosed(id: String)
+}
 
 nonisolated enum HostEvent: Hashable, Sendable {
     /// The engine process exited or stopped answering; every page it hosted is gone.
@@ -158,6 +187,8 @@ protocol EngineHost: AnyObject {
     func makePage(_ spec: EnginePageSpec) throws -> any EnginePage
 
     func apply(_ update: PolicyUpdate)
+
+    func perform(_ command: EngineCommand)
 
     /// Deletes everything the engine stored for a profile (space deleted, data cleared).
     func removeProfile(_ profile: EngineProfileSpec) async

@@ -60,6 +60,11 @@ class HostPage : public mojom::Page,
   // Replaces the page's Refrax scripts (the contract's `scripts` policy).
   void ApplyScripts(const base::ListValue& scripts);
 
+  // Sends the contract's PageEvent `name`.
+  void Emit(std::string_view name, base::DictValue fields = {});
+
+  base::WeakPtr<HostPage> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
+
   // mojom::Page:
   void AttachView() override;
   void SetSize(const gfx::Size& size) override;
@@ -123,7 +128,6 @@ class HostPage : public mojom::Page,
   // Puts the page's zoom at zoom_factor_, in its own isolated level.
   void ApplyZoom();
 
-  void Emit(std::string_view name, base::DictValue fields = {});
   void EmitBackForward();
   // Sends a contract request to Refrax; `answer` runs with its PageRequestAnswer.
   void SendRequest(std::string request,

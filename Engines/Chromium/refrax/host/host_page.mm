@@ -29,6 +29,7 @@
 #include "ui/events/cocoa/cocoa_event_utils.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/engine_host_impl.h"
+#include "refrax/host/notifications.h"
 #include "refrax/host/page_dialogs.h"
 #include "refrax/host/page_downloads.h"
 #include "refrax/host/permission_prompt.h"
@@ -327,6 +328,11 @@ void HostPage::PerformCommand(const std::string& command) {
   } else if (name == "cancelDownload") {
     if (const std::string* id = fields.FindString("id")) {
       downloads_->Cancel(*id);
+    }
+  } else if (name == "notificationClicked" || name == "notificationClosed") {
+    if (const std::string* id = fields.FindString("id")) {
+      name == "notificationClicked" ? Notifications::Get().Click(*id)
+                                    : Notifications::Get().Dismiss(*id);
     }
   } else if (name == "terminateRenderer") {
     renderer_termination_requested_ = true;

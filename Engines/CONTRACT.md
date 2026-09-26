@@ -118,7 +118,7 @@ since 1970, optional fields may be omitted or `null`.
 | `zoomChanged` | `factor` | 1.0 = 100% |
 | `mediaChanged` | `media`: `isPlayingAudio`, `isAudioMuted`, `camera`, `microphone`, `screen` (`none`\|`active`\|`muted`) | |
 | `fullscreenChanged` | `state`: `none` \| `entering` \| `active` \| `exiting` | Element fullscreen |
-| `notificationShown` | `notification`: `{ "id", "origin", "title", "body", "tag?", "iconURL?", "isSilent" }` | The page called `new Notification()` for an origin Refrax allowed. Engines declaring `notifications` only |
+| `notificationShown` | `notification`: `{ "id", "origin", "title", "body", "tag?", "iconURL?", "isSilent" }` | The page called `new Notification()` for an origin Refrax allowed. Engines declaring `notifications` only; service worker notifications are engine events (§4.6) |
 | `notificationClosed` | `id` | The page closed a notification it showed |
 | `rendererHealthChanged` | `health`: `{"running":{}}` \| `{"unresponsive":{"since":<date>}}` \| `{"terminated":{"reason":…}}` \| `{"suspended":{}}` | Reasons: `crashed`, `sharedProcessCrashed`, `exceededMemoryLimit`, `exceededCPULimit`, `requestedByBrowser`, `unknown` |
 
@@ -213,9 +213,34 @@ message as untrusted.)
 | `scripts` | `scripts`: `[{ "id", "source", "injectionTime": documentStart\|documentEnd, "world", "mainFrameOnly", "matches", "excludes", "channels" }]` — replaces the previous set |
 | `extensions` | `extensions`: `[{ "id", "directory", "grantedPermissions", "grantedHostPatterns", "isEnabled" }]` — unpacked, read-only |
 | `siteSettings` | `rules`: `[{ "host", "javaScriptEnabled?", "zoom?", "userAgent?", "contentBlockingEnabled?" }]` |
+| `notifications` | `policy`: `{ "granted": [origin], "denied": [origin], "asksByDefault" }` — every notification decision Refrax holds |
 
 Each update replaces that category's previous state. Engines apply policy to existing and future
 pages and never fetch, update, or persist these artifacts themselves.
+
+`notifications` is the only source of notification permission in the engine: `Notification.permission`
+and permission queries read it (`granted`, `denied`, or for other origins `default` when
+`asksByDefault`, else `denied`), a changed policy reaches open pages at once, and an origin in
+neither list asks with a `permission` request. Engines never store a notification decision of
+their own, including the answer to that request: Refrax sends the updated policy before it
+answers. Origins are serialized as `scheme://host[:port]`.
+
+### 4.6 Engine events and commands
+
+What happens outside any page travels between the engine and Refrax directly
+(`engineHost:didEmitEvent:` and `performCommand:` in `RFXEngine.h`), in the same JSON shape.
+
+| Event (engine → Refrax) | Fields | When |
+|---|---|---|
+| `notificationShown` | `profile` (the page spec's profile), `notification` (as in §4.1) | A service worker showed a notification, or a page did and the engine can't name the page |
+| `notificationClosed` | `id` | The worker or page closed it |
+
+| Command (Refrax → engine) | Fields |
+|---|---|
+| `notificationClicked`, `notificationClosed` | `id` — the user clicked or dismissed the notification; fire its `notificationclick` / `notificationclose` (or `click` / `close`) event |
+
+Notification ids are unique across the engine's profiles, so an id alone names the notification in
+either direction.
 
 ## 5. Capabilities
 
@@ -225,8 +250,9 @@ Declared in Info.plist; the browser hides or disables features an engine doesn't
 `readerMode`, `agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
 
 `notifications`: Refrax answers `permission` requests of kind `notifications` from its per-origin
-store and delivers `notificationShown` through Notification Center. Engines without it get `deny`,
-so pages never believe they can notify when nothing would appear.
+store, pushes the `notifications` policy, and delivers `notificationShown` (page or engine event)
+through Notification Center. Engines without it get `deny`, so pages never believe they can notify
+when nothing would appear.
 
 ## 6. Security requirements
 

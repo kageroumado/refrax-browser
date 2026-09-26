@@ -14,7 +14,7 @@ import AppKit
 
 @MainActor
 final class Conformance: NSObject, NSApplicationDelegate {
-    static let tests: [ConformanceTest] = EvaluationTests.all + ScriptTests.all + RequestTests.all
+    static let tests: [ConformanceTest] = EvaluationTests.all + ScriptTests.all + RequestTests.all + NotificationTests.all
         + NavigationTests.all + BlockingTests.all + StabilityTests.all + InputTests.all
         + HostTests.all
 

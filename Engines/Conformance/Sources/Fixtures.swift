@@ -10,6 +10,7 @@ enum Fixtures {
     }
 
     static let pages: [String: String] = [
+        "notify": notify,
         "basic": "<!doctype html><title>basic</title><p id=p>basic page</p>",
         "other": "<!doctype html><title>other</title><p>other page</p>",
         "excluded": "<!doctype html><title>excluded</title>",
@@ -92,6 +93,39 @@ enum Fixtures {
     </script>
     """
 
+    /// Shows notifications from the page and from a service worker, and logs every event
+    /// either reports in window.events.
+    static let notify = """
+    <!doctype html><title>notify</title>
+    <script>
+    window.events = [];
+    window.show = (title, options) => {
+      const n = new Notification(title, options);
+      for (const type of ['show', 'click', 'close', 'error'])
+        n.addEventListener(type, () => events.push(type + ':' + title));
+      window.last = n;
+      return true;
+    };
+    navigator.serviceWorker.onmessage = e => events.push(e.data);
+    window.worker = navigator.serviceWorker.register('/asset/worker.js').then(reg => new Promise(done => {
+      if (reg.active) return done(reg);
+      const installing = reg.installing || reg.waiting;
+      installing.addEventListener('statechange', () => { if (installing.state === 'activated') done(reg); });
+    }));
+    </script>
+    """
+
+    /// Tells every window of its origin about the notification events it receives.
+    static let worker = """
+    self.addEventListener('install', () => self.skipWaiting());
+    async function tell(text) {
+      for (const client of await clients.matchAll({includeUncontrolled: true, type: 'window'}))
+        client.postMessage(text);
+    }
+    self.addEventListener('notificationclick', e => e.waitUntil(tell('notificationclick:' + e.notification.title)));
+    self.addEventListener('notificationclose', e => e.waitUntil(tell('notificationclose:' + e.notification.title)));
+    """
+
     /// A 1×1 PNG.
     private static let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")!
 
@@ -101,6 +135,7 @@ enum Fixtures {
         "pic.png": Asset(type: "image/png", body: png),
         "blocked.js": Asset(type: "text/javascript", body: Data("window.__blockedRan = true;".utf8)),
         "xhr.json": Asset(type: "application/json", body: Data("{\"ok\":true}".utf8)),
+        "worker.js": Asset(type: "text/javascript", body: Data(worker.utf8)),
     ]
 
     /// Rules for the blocking page: an image, a first-party script (through uBlock's `1p`

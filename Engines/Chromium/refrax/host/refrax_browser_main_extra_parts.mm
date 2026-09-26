@@ -18,6 +18,7 @@
 #include "refrax/host/download_delegate.h"
 #include "refrax/host/engine_connection.h"
 #include "refrax/host/engine_host_impl.h"
+#include "refrax/host/notifications.h"
 #include "refrax/host/switches.h"
 
 namespace refrax {
@@ -44,8 +45,9 @@ void RefraxBrowserMainExtraParts::PreEarlyInitialization() {
 }
 
 void RefraxBrowserMainExtraParts::PreProfileInit() {
-  // Before any profile creates its download delegate.
+  // Before any profile creates its download delegate or notification service.
   DownloadDelegate::Install();
+  Notifications::Get().Install();
 }
 
 void RefraxBrowserMainExtraParts::PostBrowserStart() {

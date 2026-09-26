@@ -184,6 +184,38 @@ struct EngineWireTests {
         #expect(encoded?["matches"] as? [String] == ["*://a.test/*"])
         #expect(encoded?["excludes"] as? [String] == ["*://a.test/x*"])
         #expect(encoded?["channels"] as? [String] == ["c"])
+
+        let notifications = PolicyUpdate.notifications(policy: NotificationPolicy(
+            granted: ["https://a.test"], denied: ["http://b.test:8080"], asksByDefault: false,
+        ))
+        let notificationsObject = try JSONSerialization.jsonObject(with: EngineWire.encode(notifications)) as? [String: Any]
+        let decisions = (notificationsObject?["notifications"] as? [String: Any])?["policy"] as? [String: Any]
+        #expect(decisions?["granted"] as? [String] == ["https://a.test"])
+        #expect(decisions?["denied"] as? [String] == ["http://b.test:8080"])
+        #expect(decisions?["asksByDefault"] as? Bool == false)
+    }
+
+    @Test("Decodes engine notification events and encodes their commands")
+    func engineNotifications() throws {
+        let shown = try EngineWire.decodeEngineEvent(data(#"""
+        {"notificationShown":{"profile":{"isolated":{"id":"6F1C2D3E-0000-4000-8000-000000000001"}},
+         "notification":{"id":"space-x/p#https://a.test#1","origin":"https://a.test","title":"T","body":"B","isSilent":false}}}
+        """#))
+        guard case let .notificationShown(profile, notification) = shown else {
+            Issue.record("decoded \(shown)")
+            return
+        }
+        #expect(profile == .isolated(id: UUID(uuidString: "6F1C2D3E-0000-4000-8000-000000000001")!))
+        #expect(notification.origin == URL(string: "https://a.test"))
+        #expect(notification.tag == nil)
+        #expect(throws: EngineError.self) {
+            try EngineWire.decodeEngineEvent(data(#"""
+            {"notificationShown":{"profile":{"shared":{}},
+             "notification":{"id":"1","origin":"javascript:alert(1)","title":"","body":"","isSilent":true}}}
+            """#))
+        }
+        let click = try EngineWire.encode(EngineCommand.notificationClicked(id: "n#https://a.test#t"))
+        #expect(String(decoding: click, as: UTF8.self) == #"{"notificationClicked":{"id":"n#https:\/\/a.test#t"}}"#)
     }
 
     @Test("Script values round-trip as plain JSON")

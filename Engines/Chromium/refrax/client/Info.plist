@@ -42,6 +42,7 @@
 		<string>rendererControl</string>
 		<string>snapshots</string>
 		<string>contentBlocking</string>
+		<string>notifications</string>
 	</array>
 </dict>
 </plist>

@@ -10,6 +10,8 @@ import AppKit
 final class ExternalEngineHost: NSObject, EngineHost {
     let bundle: EngineBundle
     let events: AsyncStream<HostEvent>
+    /// Receives the engine's events that belong to no page, validated.
+    var engineEventHandler: ((EngineEvent) -> Void)?
 
     private let eventContinuation: AsyncStream<HostEvent>.Continuation
     private let configuration: EngineConfiguration
@@ -95,6 +97,11 @@ final class ExternalEngineHost: NSObject, EngineHost {
         runtime.applyPolicy(data)
     }
 
+    func perform(_ command: EngineCommand) {
+        guard let runtime, let data = try? EngineWire.encode(command) else { return }
+        runtime.performCommand?(data)
+    }
+
     func removeProfile(_ profile: EngineProfileSpec) async {
         guard let runtime, let data = try? EngineWire.encode(profile) else { return }
         await withCheckedContinuation { continuation in
@@ -123,6 +130,14 @@ extension ExternalEngineHost: RFXEngineHostDelegate {
         runtime = nil
         startTask = nil
         eventContinuation.yield(.terminated(reason: reason))
+    }
+
+    func engineHost(_: any RFXEngineHost, didEmitEvent event: Data) {
+        do {
+            try engineEventHandler?(EngineWire.decodeEngineEvent(event))
+        } catch {
+            Logger.warning("Engine \(descriptor.id) sent a rejected message: \(error.localizedDescription)", category: Logger.engines)
+        }
     }
 }
 

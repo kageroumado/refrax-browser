@@ -34,10 +34,16 @@ static RFXEngineInfoKey const RFXEngineInfoOutOfProcess = @"RFXEngineOutOfProces
 
 @protocol RFXEnginePage;
 
+@protocol RFXEngineHost;
+
 NS_SWIFT_UI_ACTOR
 @protocol RFXEngineHostDelegate <NSObject>
 /// The engine's processes are gone; every page it hosted is dead.
 - (void)engineHostDidTerminateWithReason:(NSString *)reason;
+@optional
+/// `event`: UTF-8 JSON of one EngineEvent: something that happened outside any page, such as a
+/// service worker's notification.
+- (void)engineHost:(id<RFXEngineHost>)host didEmitEvent:(NSData *)event;
 @end
 
 NS_SWIFT_UI_ACTOR
@@ -78,6 +84,10 @@ NS_SWIFT_UI_ACTOR
 
 /// Closes every page and stops the engine. Called once, at quit or before an update.
 - (void)shutdown;
+
+@optional
+/// `command`: JSON EngineCommand, for something outside any page.
+- (void)performCommand:(NSData *)command;
 @end
 
 NS_SWIFT_UI_ACTOR

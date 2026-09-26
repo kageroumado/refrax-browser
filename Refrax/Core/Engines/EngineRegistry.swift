@@ -36,6 +36,9 @@ final class EngineRegistry {
     @ObservationIgnored private var hosts: [EngineID: ExternalEngineHost] = [:]
     @ObservationIgnored private var icons: [EngineID: NSImage] = [:]
 
+    /// Receives every running engine's events that belong to no page.
+    @ObservationIgnored var engineEventHandler: ((EngineID, EngineEvent) -> Void)?
+
     let enginesDirectory: URL
     let dataDirectory: URL
 
@@ -85,6 +88,9 @@ final class EngineRegistry {
             languages: Locale.preferredLanguages,
         )
         let host = ExternalEngineHost(bundle: bundle, configuration: configuration)
+        host.engineEventHandler = { [weak self] event in
+            self?.engineEventHandler?(id, event)
+        }
         hosts[id] = host
         do {
             try await host.start()
@@ -105,6 +111,11 @@ final class EngineRegistry {
         for host in hosts.values {
             host.apply(update)
         }
+    }
+
+    /// Sends a command to a running engine; an engine that isn't running has nothing to act on.
+    func perform(_ command: EngineCommand, on id: EngineID) {
+        hosts[id]?.perform(command)
     }
 
     /// Where an installed engine's bundle lives.

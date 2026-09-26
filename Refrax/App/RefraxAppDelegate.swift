@@ -371,6 +371,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engineRegistry.apply(.extensions(extensions: packages))
         }
         engineRegistry.apply(.extensions(extensions: extensionManager.enginePackages))
+        browserState.webNotifications.onEnginePolicyChange = { [engineRegistry] policy in
+            engineRegistry.apply(.notifications(policy: policy))
+        }
+        engineRegistry.engineEventHandler = { [webNotifications = browserState.webNotifications] engineID, event in
+            webNotifications.handle(event, from: engineID)
+        }
         self.keyboardShortcutsManager = KeyboardShortcutsManager(windowManager: windowManager)
         
         self.menuBarManager = MenuBarManager(

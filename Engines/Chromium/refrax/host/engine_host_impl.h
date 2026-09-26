@@ -16,6 +16,7 @@
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "refrax/common/mojom/engine.mojom.h"
+#include "refrax/host/notifications.h"
 #include "refrax/host/world_registry.h"
 
 class ScopedProfileKeepAlive;
@@ -30,7 +31,7 @@ class HostPage;
 
 // The host's side of the engine contract: one per client connection. Maps Refrax's spaces to
 // Chrome profiles and owns every page.
-class EngineHostImpl : public mojom::EngineHost {
+class EngineHostImpl : public mojom::EngineHost, public Notifications::Delegate {
  public:
   EngineHostImpl(mojo::PendingReceiver<mojom::EngineHost> receiver,
                  base::OnceClosure on_disconnect);
@@ -59,6 +60,7 @@ class EngineHostImpl : public mojom::EngineHost {
   void Start(const std::string& configuration,
              mojo::PendingAssociatedRemote<remote_cocoa::mojom::Application>
                  application,
+             mojo::PendingAssociatedRemote<mojom::EngineClient> client,
              StartCallback callback) override;
   void CreatePage(const std::string& spec,
                   mojo::PendingAssociatedReceiver<mojom::Page> page,
@@ -67,6 +69,12 @@ class EngineHostImpl : public mojom::EngineHost {
   void ApplyPolicy(const std::string& update) override;
   void RemoveProfile(const std::string& profile,
                      RemoveProfileCallback callback) override;
+  void PerformCommand(const std::string& command) override;
+
+  // Notifications::Delegate:
+  HostPage* PageShowing(Profile* profile, const GURL& document_url) override;
+  std::optional<base::DictValue> ProfileSpec(Profile* profile) override;
+  void EmitEngineEvent(std::string event) override;
 
  private:
   // Resolves the contract's EngineProfileSpec to a profile, loading it if needed; runs
@@ -85,6 +93,7 @@ class EngineHostImpl : public mojom::EngineHost {
 
   mojo::Receiver<mojom::EngineHost> receiver_;
   mojo::AssociatedRemote<remote_cocoa::mojom::Application> application_;
+  mojo::AssociatedRemote<mojom::EngineClient> client_;
   std::vector<std::unique_ptr<HostPage>> pages_;
   WorldRegistry worlds_;
   base::ListValue scripts_;

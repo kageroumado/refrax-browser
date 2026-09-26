@@ -12,6 +12,7 @@
 #include "base/functional/bind.h"
 #include "base/strings/sys_string_conversions.h"
 #include "components/remote_cocoa/app_shim/application_bridge.h"
+#include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/system/isolated_connection.h"
 #include "refrax/client/client_runtime.h"
@@ -30,6 +31,10 @@ NSError* EngineError(NSInteger code, NSString* description) {
 
 std::string ToString(NSData* data) {
   return std::string(static_cast<const char*>(data.bytes), data.length);
+}
+
+NSData* ToData(const std::string& string) {
+  return [NSData dataWithBytes:string.data() length:string.size()];
 }
 
 // The host's command line for the storage Refrax gave the engine.
@@ -72,12 +77,32 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
 // The Chromium engine's principal class (Engines/CONTRACT.md): runs Chromium's browser process
 // as "Refrax Chromium Host.app" inside this bundle and shows its pages through remote_cocoa.
 @interface RFXChromiumEngine : NSObject <RFXEngineHost>
+- (void)hostDidEmitEvent:(const std::string&)event;
 @end
+
+namespace {
+
+// Delivers the host's events outside any page to the engine's delegate.
+class EngineClientImpl : public refrax::mojom::EngineClient {
+ public:
+  EngineClientImpl(RFXChromiumEngine* engine,
+                   mojo::PendingAssociatedReceiver<refrax::mojom::EngineClient> receiver)
+      : engine_(engine), receiver_(this, std::move(receiver)) {}
+
+  void OnEvent(const std::string& event) override { [engine_ hostDidEmitEvent:event]; }
+
+ private:
+  __weak RFXChromiumEngine* engine_;
+  mojo::AssociatedReceiver<refrax::mojom::EngineClient> receiver_;
+};
+
+}  // namespace
 
 @implementation RFXChromiumEngine {
   std::unique_ptr<refrax::HostLauncher> _launcher;
   std::unique_ptr<mojo::IsolatedConnection> _connection;
   mojo::Remote<refrax::mojom::EngineHost> _host;
+  std::unique_ptr<EngineClientImpl> _client;
   NSHashTable<RFXChromiumPage*>* _pages;
   BOOL _terminated;
 }
@@ -152,7 +177,10 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
   remote_cocoa::ApplicationBridge::Get()->BindReceiver(
       application.InitWithNewEndpointAndPassReceiver());
 
-  _host->Start(configuration, std::move(application),
+  mojo::PendingAssociatedRemote<refrax::mojom::EngineClient> client;
+  _client = std::make_unique<EngineClientImpl>(self, client.InitWithNewEndpointAndPassReceiver());
+
+  _host->Start(configuration, std::move(application), std::move(client),
                base::BindOnce(
                    [](void (^completion)(NSError*), const std::optional<std::string>& error) {
                      completion(error ? EngineError(3, base::SysUTF8ToNSString(*error)) : nil);
@@ -192,6 +220,18 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
   }
 }
 
+- (void)performCommand:(NSData*)command {
+  if (_host.is_bound()) {
+    _host->PerformCommand(ToString(command));
+  }
+}
+
+- (void)hostDidEmitEvent:(const std::string&)event {
+  if ([_delegate respondsToSelector:@selector(engineHost:didEmitEvent:)]) {
+    [_delegate engineHost:self didEmitEvent:ToData(event)];
+  }
+}
+
 - (void)removeProfile:(NSData*)profile completion:(void (^)(void))completion {
   if (!_host.is_bound()) {
     completion();
@@ -207,6 +247,7 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
     [page close];
   }
   // Closing the pipe quits the host.
+  _client.reset();
   _host.reset();
   _connection.reset();
   _launcher.reset();
@@ -217,6 +258,7 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
     return;
   }
   _terminated = YES;
+  _client.reset();
   _host.reset();
   for (RFXChromiumPage* page in _pages.allObjects) {
     [page hostDidTerminate];

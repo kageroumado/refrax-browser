@@ -33,4 +33,14 @@ void HostContentBrowserClient::CreateThrottlesForNavigation(
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
 }
 
+void HostContentBrowserClient::OpenURL(
+    content::SiteInstance* site_instance,
+    const content::OpenURLParams& params,
+    base::OnceCallback<void(content::WebContents*)> callback) {
+  // Chrome would open a browser window of its own; Refrax owns every window. A service
+  // worker's clients.openWindow() resolves with null, and Refrax shows the site itself when
+  // the worker's notification is clicked.
+  std::move(callback).Run(nullptr);
+}
+
 }  // namespace refrax

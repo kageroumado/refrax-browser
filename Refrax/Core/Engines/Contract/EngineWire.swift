@@ -38,6 +38,10 @@ nonisolated enum EngineWire {
         try validated(decode(PageEvent.self, from: data))
     }
 
+    static func decodeEngineEvent(_ data: Data) throws -> EngineEvent {
+        try validated(decode(EngineEvent.self, from: data))
+    }
+
     static func decodeRequest(_ data: Data) throws -> PageRequestKind {
         try validated(decode(PageRequestKind.self, from: data))
     }
@@ -98,21 +102,34 @@ nonisolated enum EngineWire {
         case let .downloadFailed(id, reason):
             return .downloadFailed(id: capped(id), reason: capped(reason))
         case let .notificationShown(notification):
-            return try .notificationShown(notification: EngineNotification(
-                id: capped(notification.id),
-                origin: checked(notification.origin),
-                title: capped(notification.title),
-                body: capped(notification.body),
-                tag: notification.tag.map(capped),
-                iconURL: notification.iconURL.map(checked),
-                isSilent: notification.isSilent,
-            ))
+            return try .notificationShown(notification: validated(notification))
         case let .notificationClosed(id):
             return .notificationClosed(id: capped(id))
         case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             return event
         }
+    }
+
+    static func validated(_ event: EngineEvent) throws -> EngineEvent {
+        switch event {
+        case let .notificationShown(profile, notification):
+            return try .notificationShown(profile: profile, notification: validated(notification))
+        case let .notificationClosed(id):
+            return .notificationClosed(id: capped(id))
+        }
+    }
+
+    private static func validated(_ notification: EngineNotification) throws -> EngineNotification {
+        try EngineNotification(
+            id: capped(notification.id),
+            origin: checked(notification.origin),
+            title: capped(notification.title),
+            body: capped(notification.body),
+            tag: notification.tag.map(capped),
+            iconURL: notification.iconURL.map(checked),
+            isSilent: notification.isSilent,
+        )
     }
 
     static func validated(_ request: PageRequestKind) throws -> PageRequestKind {
