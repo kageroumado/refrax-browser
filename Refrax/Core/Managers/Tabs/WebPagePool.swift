@@ -283,7 +283,7 @@ final class WebPagePool {
     /// When that engine is no longer installed, or fails to start, the page loads in WebKit.
     private func restoreEngine(for page: WebPage) {
         guard let engineRegistry else { return }
-        let id = Self.startingEngine(pinned: page.tabPage.engineID, default: engineRegistry.defaultEngineID, registry: engineRegistry)
+        let id = Self.startingEngine(pinned: page.tabPage.engineID, default: state.settings.defaultEngineID, registry: engineRegistry)
         guard id != .systemWebKit else { return }
         page.initialLoadPending = false
         Task { [weak page] in

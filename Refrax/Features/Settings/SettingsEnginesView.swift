@@ -6,21 +6,22 @@ import SwiftUI
 /// Installed rendering engines: what each one is, whether it is running, and removal.
 struct EnginesSettingsView: View {
     @Environment(EngineRegistry.self) private var registry
+    @Environment(BrowserSettings.self) private var settings
     let highlightedItemId: String?
 
     @State private var pendingRemoval: EngineDescriptor?
     @State private var removalError: String?
 
     var body: some View {
-        @Bindable var registry = registry
+        @Bindable var settings = settings
         Form {
             Section {
-                Picker("Default engine", selection: $registry.defaultEngineID) {
+                Picker("Default engine", selection: $settings.defaultEngineID) {
                     ForEach(registry.descriptors, id: \.id) { descriptor in
                         Text(descriptor.displayName).tag(descriptor.id)
                     }
-                    if registry.descriptor(for: registry.defaultEngineID) == nil {
-                        Text("\(registry.defaultEngineID.rawValue) (not installed)").tag(registry.defaultEngineID)
+                    if registry.descriptor(for: settings.defaultEngineID) == nil {
+                        Text("\(settings.defaultEngineID.rawValue) (not installed)").tag(settings.defaultEngineID)
                     }
                 }
                 .highlightable(id: "engines.default", highlightedItemId: highlightedItemId)

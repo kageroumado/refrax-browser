@@ -413,21 +413,14 @@ struct EngineRegistryTests {
         #expect(WebPagePool.startingEngine(pinned: missing.rawValue, default: example, registry: registry) == .systemWebKit)
     }
 
-    @Test("The default engine persists in defaults, WebKit as no value")
-    func defaultEngine() throws {
-        let root = try makeRoot()
-        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
-        let suite = "refrax.tests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let example = EngineID(rawValue: "test.engine.example")
-
-        let registry = EngineRegistry(applicationSupport: root, defaults: defaults)
-        #expect(registry.defaultEngineID == .systemWebKit)
-        registry.defaultEngineID = example
-        #expect(EngineRegistry(applicationSupport: root, defaults: defaults).defaultEngineID == example)
-        registry.defaultEngineID = .systemWebKit
-        #expect(defaults.string(forKey: "defaultEngineID") == nil)
+    @Test("The default engine setting stores WebKit as empty")
+    func defaultEngineSetting() {
+        let settings = BrowserSettings()
+        #expect(settings.defaultEngineID == .systemWebKit)
+        settings.defaultEngineID = EngineID(rawValue: "test.engine.example")
+        #expect(settings.defaultEngineIDRaw == "test.engine.example")
+        settings.defaultEngineID = .systemWebKit
+        #expect(settings.defaultEngineIDRaw.isEmpty)
     }
 
     @Test("Uninstalling removes the engine; system WebKit can't be removed")

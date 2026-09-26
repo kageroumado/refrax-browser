@@ -39,23 +39,9 @@ final class EngineRegistry {
     let enginesDirectory: URL
     let dataDirectory: URL
 
-    /// The engine pages render with unless their tab was moved to another one; system WebKit
-    /// until chosen. Kept in this Mac's defaults and never synced: engines are installed per
-    /// Mac.
-    var defaultEngineID: EngineID {
-        didSet {
-            defaults.set(defaultEngineID == .systemWebKit ? nil : defaultEngineID.rawValue, forKey: Self.defaultEngineKey)
-        }
-    }
-
-    @ObservationIgnored private let defaults: UserDefaults
-    private static let defaultEngineKey = "defaultEngineID"
-
-    init(applicationSupport: URL, defaults: UserDefaults = .standard) {
+    init(applicationSupport: URL) {
         enginesDirectory = applicationSupport.appending(path: "Engines", directoryHint: .isDirectory)
         dataDirectory = applicationSupport.appending(path: "EngineData", directoryHint: .isDirectory)
-        self.defaults = defaults
-        defaultEngineID = defaults.string(forKey: Self.defaultEngineKey).map(EngineID.init(rawValue:)) ?? .systemWebKit
         refresh()
     }
 

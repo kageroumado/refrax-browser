@@ -165,7 +165,7 @@ final class TabPage: Identifiable {
     // MARK: - Rendering Engine
 
     /// The engine this page was moved to, as an ``EngineID`` raw value; `nil` for the default
-    /// engine (``EngineRegistry/defaultEngineID``).
+    /// engine (``BrowserSettings/defaultEngineID``).
     ///
     /// Remembered so the page returns to its engine after relaunch or eviction. A page
     /// whose engine is no longer installed renders with WebKit until it is reinstalled.
