@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Scrollable list of agent chat messages with timestamp grouping.
 ///
-/// Automatically scrolls to new messages when at the bottom.
+/// Stays pinned to the bottom while content grows, including a reply streaming into the last
+/// message, until the user scrolls up; new messages then raise a "New messages" pill.
 /// Groups messages with timestamps when there's a gap > 5 minutes.
 struct AgentMessageListView: View {
     let messages: [AgentMessage]
@@ -11,6 +12,7 @@ struct AgentMessageListView: View {
 
     @State private var scrolledToBottom = true
     @State private var showNewMessagePill = false
+    @State private var scrollPhase: ScrollPhase = .idle
 
     /// Minimum gap between messages to show a timestamp (5 minutes).
     private static let timestampGapThreshold: TimeInterval = 5 * 60
@@ -98,21 +100,33 @@ struct AgentMessageListView: View {
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
             .scrollEdgeEffectStyle(.soft, for: .all)
+            .onScrollPhaseChange { _, newPhase in
+                scrollPhase = newPhase
+            }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 let maxOffset = geometry.contentSize.height - geometry.containerSize.height
-                return geometry.contentOffset.y >= maxOffset - 20
+                return geometry.contentOffset.y >= maxOffset - Layout.bottomTolerance
             } action: { _, isAtBottom in
-                scrolledToBottom = isAtBottom
+                // Growing content also leaves the offset short of the bottom, so only the
+                // user's own scrolling unpins.
+                if isAtBottom {
+                    scrolledToBottom = true
+                    showNewMessagePill = false
+                } else if scrollPhase.isUserDriven {
+                    scrolledToBottom = false
+                }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height
+            } action: { oldHeight, newHeight in
+                if newHeight > oldHeight, scrolledToBottom, !scrollPhase.isUserDriven {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
             }
             .onChange(of: messages.count) { oldCount, newCount in
                 guard newCount > oldCount else { return }
 
-                // When the user sends a message, they're necessarily at the bottom
-                // of the conversation — always scroll to show their message.
-                // For assistant messages, respect the tracked scroll position.
-                // Note: scrolledToBottom may be stale here because adding content
-                // causes onScrollGeometryChange to fire first (maxOffset increases
-                // while viewport hasn't moved, making it appear "not at bottom").
+                // Sending a message always scrolls to it; other messages follow the pin.
                 let userJustSent = messages.last?.role == .user
                 if userJustSent || scrolledToBottom {
                     withAnimation(.easeOut(duration: 0.2)) {
@@ -146,6 +160,11 @@ struct AgentMessageListView: View {
                 }
             }
         }
+    }
+
+    private enum Layout {
+        /// How far above the bottom still counts as at the bottom.
+        static let bottomTolerance: CGFloat = 20
     }
 
     // MARK: - Timestamp Logic
@@ -216,6 +235,16 @@ struct AgentMessageListView: View {
         }
         .buttonStyle(.plain)
         .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
+    }
+}
+
+private extension ScrollPhase {
+    /// Whether the user is moving the scroll view, as opposed to a programmatic scroll.
+    var isUserDriven: Bool {
+        switch self {
+        case .tracking, .interacting, .decelerating: true
+        default: false
+        }
     }
 }
 

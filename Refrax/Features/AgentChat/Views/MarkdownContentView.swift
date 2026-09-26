@@ -4,9 +4,11 @@ import SwiftUI
 ///
 /// Parses markdown syntax and renders:
 /// - Fenced code blocks (```language ... ```) with monospace font and background
+/// - Headings (`#` through `######`)
+/// - Bulleted (`-`, `*`, `+`) and numbered (`1.`, `1)`) lists, nested by indentation
 /// - Inline code (`code`) with monospace font
 /// - Bold (**text**) and italic (*text*)
-/// - Regular text
+/// - Paragraphs separated by blank lines
 struct MarkdownContentView: View {
     let content: String
     let isUserMessage: Bool
@@ -23,6 +25,14 @@ struct MarkdownContentView: View {
                 case let .text(attributed):
                     Text(attributed)
                         .textSelection(.enabled)
+
+                case let .heading(attributed):
+                    Text(attributed)
+                        .textSelection(.enabled)
+                        .padding(.top, 2)
+
+                case let .list(items):
+                    listView(items)
 
                 case let .codeBlock(code, language):
                     codeBlockView(code: code, language: language)
@@ -44,7 +54,16 @@ struct MarkdownContentView: View {
 
     private enum ContentSegment {
         case text(AttributedString)
+        case heading(AttributedString)
+        case list([ListItem])
         case codeBlock(code: String, language: String?)
+    }
+
+    /// One list line: its marker (`•` or the number as written), nesting depth, and text.
+    private nonisolated struct ListItem: Sendable {
+        let marker: String
+        let depth: Int
+        let text: AttributedString
     }
 
     // MARK: - Parsing
@@ -69,8 +88,7 @@ struct MarkdownContentView: View {
                     let beforeText = String(remaining[beforeRange])
                     if !beforeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         let trimmed = beforeText.trimmingCharacters(in: .newlines)
-                        let attributed = Self.parseInlineMarkdown(trimmed, isUserMessage: isUserMessage, colorScheme: colorScheme)
-                        segments.append(.text(attributed))
+                        segments += Self.parseBlocks(trimmed, isUserMessage: isUserMessage, colorScheme: colorScheme)
                     }
 
                     // Extract language and code
@@ -88,8 +106,7 @@ struct MarkdownContentView: View {
                     // No more code blocks, append remaining text
                     let trimmed = remaining.trimmingCharacters(in: .newlines)
                     if !trimmed.isEmpty {
-                        let attributed = Self.parseInlineMarkdown(trimmed, isUserMessage: isUserMessage, colorScheme: colorScheme)
-                        segments.append(.text(attributed))
+                        segments += Self.parseBlocks(trimmed, isUserMessage: isUserMessage, colorScheme: colorScheme)
                     }
                     break
                 }
@@ -97,6 +114,67 @@ struct MarkdownContentView: View {
 
             return segments.isEmpty ? [.text(AttributedString(text))] : segments
         }.value
+    }
+
+    /// Splits text outside code blocks into paragraphs, headings, and lists.
+    private nonisolated static func parseBlocks(
+        _ text: String,
+        isUserMessage: Bool,
+        colorScheme: ColorScheme,
+    ) -> [ContentSegment] {
+        var segments: [ContentSegment] = []
+        var paragraph: [String] = []
+        var listItems: [ListItem] = []
+
+        func inline(_ text: String) -> AttributedString {
+            parseInlineMarkdown(text, isUserMessage: isUserMessage, colorScheme: colorScheme)
+        }
+        func flushParagraph() {
+            guard !paragraph.isEmpty else { return }
+            segments.append(.text(inline(paragraph.joined(separator: "\n"))))
+            paragraph.removeAll()
+        }
+        func flushList() {
+            guard !listItems.isEmpty else { return }
+            segments.append(.list(listItems))
+            listItems.removeAll()
+        }
+
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(line)
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                flushParagraph()
+                flushList()
+            } else if let match = line.wholeMatch(of: /(#{1,6})\s+(.+)/) {
+                flushParagraph()
+                flushList()
+                var heading = inline(String(match.2))
+                heading.font = match.1.count == 1 ? .title3.bold() : .headline
+                segments.append(.heading(heading))
+            } else if let match = line.wholeMatch(of: /( *)([-*+]|\d{1,9}[.)])\s+(.*)/) {
+                flushParagraph()
+                let marker = String(match.2)
+                listItems.append(ListItem(
+                    marker: marker.first?.isNumber == true ? marker : "•",
+                    depth: match.1.count / 2,
+                    text: inline(String(match.3)),
+                ))
+            } else if !listItems.isEmpty, line.first == " " {
+                // An indented continuation line belongs to the list item above it.
+                let last = listItems.removeLast()
+                listItems.append(ListItem(
+                    marker: last.marker,
+                    depth: last.depth,
+                    text: last.text + AttributedString(" ") + inline(line.trimmingCharacters(in: .whitespaces)),
+                ))
+            } else {
+                flushList()
+                paragraph.append(line)
+            }
+        }
+        flushParagraph()
+        flushList()
+        return segments
     }
 
     /// Parses inline markdown (bold, italic, inline code) into AttributedString.
@@ -166,6 +244,29 @@ struct MarkdownContentView: View {
         return result
     }
 
+    // MARK: - List View
+
+    private func listView(_ items: [ListItem]) -> some View {
+        VStack(alignment: .leading, spacing: Layout.listItemSpacing) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.marker)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Text(item.text)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, CGFloat(item.depth) * Layout.listIndent)
+            }
+        }
+    }
+
+    private enum Layout {
+        static let listItemSpacing: CGFloat = 4
+        static let listIndent: CGFloat = 16
+    }
+
     // MARK: - Code Block View
 
     private func codeBlockView(code: String, language: String?) -> some View {
@@ -218,6 +319,13 @@ struct MarkdownContentView: View {
             ```
             
             You can also use `inline code` like this.
+
+            ## Steps
+            - First item
+            - Second item
+              - Nested item
+            1. Numbered
+            2. Also numbered
             
             **Bold text** and *italic text* work too.
             """,
