@@ -23,7 +23,11 @@ final class RefraxWindow: NSWindow {
         toolbarStyle = .unified
         isMovableByWindowBackground = false
         isOpaque = false
-        backgroundColor = .clear
+        // Never clear: a clear background makes WindowServer derive the window's shadow
+        // from its pixels and re-render the whole layer tree on every display frame,
+        // key or not. The behind-window blur samples through `WindowBackgroundView`'s
+        // effect view instead, which cuts its own hole in the frame.
+        backgroundColor = .windowBackgroundColor
 
         // Set restoration identifier to enable state restoration
         identifier = NSUserInterfaceItemIdentifier("RefraxWindow")

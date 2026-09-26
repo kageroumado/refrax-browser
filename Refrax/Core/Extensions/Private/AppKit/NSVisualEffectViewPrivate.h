@@ -103,12 +103,15 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Clear State
 
 /**
- * Whether the visual effect is currently cleared (disabled).
+ * Whether the view draws its material.
  *
- * When YES, the view renders as transparent without any blur effect.
- * Useful for temporarily disabling the effect without removing the view.
+ * When cleared, the view keeps its behind-window backdrop registration and blur
+ * but draws no material fill of its own, so whatever sits above it supplies the
+ * frost. AppKit names the accessors `_isClear` / `_setClear:`; a property
+ * declaration would make Swift call a `set_clear:` that does not exist.
  */
-@property (nonatomic, getter=_isClear) BOOL _clear;
+- (BOOL)_isClear;
+- (void)_setClear:(BOOL)clear;
 
 /**
  * Updates the clear state after changes.
