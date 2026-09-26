@@ -6,6 +6,8 @@ extension MenuBarManager {
     func createViewMenu() -> NSMenuItem {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
+        // updateViewMenu keeps the engine item's title and the sidebar mode checkmarks current.
+        viewMenu.delegate = self
 
         // Show/Hide Sidebar
         let sidebarItem = NSMenuItem(
@@ -33,6 +35,7 @@ extension MenuBarManager {
         let sidebarModeItem = NSMenuItem(title: "Sidebar Mode", action: nil, keyEquivalent: "")
         sidebarModeItem.image = NSImage(systemSymbolName: "sidebar.squares.left", accessibilityDescription: nil)
         let sidebarModeMenu = NSMenu(title: "Sidebar Mode")
+        sidebarModeMenu.delegate = self
 
         let overlayModeItem = NSMenuItem(
             title: "Overlay",
@@ -280,14 +283,7 @@ extension MenuBarManager {
         guard let page = activeWindowController?.windowState.activeWebPage else { return }
         let registry = NSApp.typedDelegate.engineRegistry
         guard let target = alternateEngine(for: page, in: registry) else { return }
-        Task {
-            do {
-                try await page.switchEngine(to: target.id, registry: registry)
-            } catch {
-                Logger.error("Switching to \(target.displayName) failed: \(error)", category: Logger.engines)
-                NSAlert(error: error).runModal()
-            }
-        }
+        page.reload(in: target, registry: registry)
     }
 
     /// The engine the switch command moves `page` to.

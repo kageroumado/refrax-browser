@@ -178,6 +178,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
             ]
         case .engines:
             [
+                SearchableSettingItem(id: "engines.default", title: "Default engine", keywords: ["engine", "default", "webkit", "chromium", "blink", "renderer"]),
                 SearchableSettingItem(id: "engines.installed", title: "Installed engines", keywords: ["engine", "engines", "webkit", "chromium", "blink", "renderer"]),
                 SearchableSettingItem(id: "engines.folder", title: "Engines folder", keywords: ["engine", "folder", "install", "location"]),
             ]

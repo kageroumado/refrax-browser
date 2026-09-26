@@ -477,6 +477,10 @@ struct AddressBar: View {
                     onReloadWithoutContentBlockers: {
                         webPage?.reloadWithoutContentBlockers()
                     },
+                    otherEngines: engineRegistry.descriptors.filter { $0.id != (webPage?.activeEngineID ?? .systemWebKit) },
+                    onReloadInEngine: { engine in
+                        webPage?.reload(in: engine, registry: engineRegistry)
+                    },
                 )
             }
         }

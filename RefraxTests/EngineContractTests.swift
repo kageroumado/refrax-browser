@@ -398,6 +398,38 @@ struct EngineRegistryTests {
         #expect(registry.icon(for: .systemWebKit) == nil)
     }
 
+    @Test("A page starts in the engine its tab was moved to, else the default")
+    func startingEngine() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let registry = EngineRegistry(applicationSupport: root)
+        let example = EngineID(rawValue: "test.engine.example")
+        let missing = EngineID(rawValue: "test.engine.missing")
+        #expect(WebPagePool.startingEngine(pinned: nil, default: .systemWebKit, registry: registry) == .systemWebKit)
+        #expect(WebPagePool.startingEngine(pinned: nil, default: example, registry: registry) == example)
+        #expect(WebPagePool.startingEngine(pinned: EngineID.systemWebKit.rawValue, default: example, registry: registry) == .systemWebKit)
+        #expect(WebPagePool.startingEngine(pinned: example.rawValue, default: .systemWebKit, registry: registry) == example)
+        #expect(WebPagePool.startingEngine(pinned: nil, default: missing, registry: registry) == .systemWebKit)
+        #expect(WebPagePool.startingEngine(pinned: missing.rawValue, default: example, registry: registry) == .systemWebKit)
+    }
+
+    @Test("The default engine persists in defaults, WebKit as no value")
+    func defaultEngine() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let suite = "refrax.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let example = EngineID(rawValue: "test.engine.example")
+
+        let registry = EngineRegistry(applicationSupport: root, defaults: defaults)
+        #expect(registry.defaultEngineID == .systemWebKit)
+        registry.defaultEngineID = example
+        #expect(EngineRegistry(applicationSupport: root, defaults: defaults).defaultEngineID == example)
+        registry.defaultEngineID = .systemWebKit
+        #expect(defaults.string(forKey: "defaultEngineID") == nil)
+    }
+
     @Test("Uninstalling removes the engine; system WebKit can't be removed")
     func uninstall() throws {
         let root = try makeRoot()

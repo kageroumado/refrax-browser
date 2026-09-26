@@ -12,7 +12,22 @@ struct EnginesSettingsView: View {
     @State private var removalError: String?
 
     var body: some View {
+        @Bindable var registry = registry
         Form {
+            Section {
+                Picker("Default engine", selection: $registry.defaultEngineID) {
+                    ForEach(registry.descriptors, id: \.id) { descriptor in
+                        Text(descriptor.displayName).tag(descriptor.id)
+                    }
+                    if registry.descriptor(for: registry.defaultEngineID) == nil {
+                        Text("\(registry.defaultEngineID.rawValue) (not installed)").tag(registry.defaultEngineID)
+                    }
+                }
+                .highlightable(id: "engines.default", highlightedItemId: highlightedItemId)
+            } footer: {
+                Text("Pages render with this engine unless their tab was moved to another one with View → Reload in… or the reload button's menu. Open pages switch the next time they load.")
+            }
+
             Section {
                 ForEach(registry.descriptors, id: \.id) { descriptor in
                     EngineRow(
@@ -25,7 +40,7 @@ struct EnginesSettingsView: View {
             } header: {
                 Text("Installed Engines")
             } footer: {
-                Text("WebKit renders every page unless a tab is moved to another engine with View → Reload in…. A tab remembers its engine.")
+                Text("A tab remembers the engine it was moved to. Pages whose engine is removed render with WebKit.")
             }
             .highlightable(id: "engines.installed", highlightedItemId: highlightedItemId)
 

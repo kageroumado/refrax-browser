@@ -5,6 +5,9 @@ struct AddressBarReloadButton: View {
     let onReload: () -> Void
     let onReloadFromOrigin: () -> Void
     let onReloadWithoutContentBlockers: () -> Void
+    /// Engines the page could move to: every installed one except its current engine.
+    let otherEngines: [EngineDescriptor]
+    let onReloadInEngine: (EngineDescriptor) -> Void
     
     @State private var isHovered = false
     
@@ -33,6 +36,16 @@ struct AddressBarReloadButton: View {
             
             Button("Reload Without Content Blockers") {
                 onReloadWithoutContentBlockers()
+            }
+
+            if !otherEngines.isEmpty {
+                Divider()
+
+                ForEach(otherEngines, id: \.id) { engine in
+                    Button("Reload in \(engine.displayName)") {
+                        onReloadInEngine(engine)
+                    }
+                }
             }
         }
     }
