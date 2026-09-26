@@ -305,11 +305,9 @@ void HostPage::PerformCommand(const std::string& command) {
   } else if (name == "stopLoading") {
     web_contents_->Stop();
   } else if (name == "setZoom") {
-    double factor = fields.FindDouble("factor").value_or(1.0);
-    if (auto* zoom = zoom::ZoomController::FromWebContents(web_contents_.get())) {
-      zoom->SetZoomLevel(blink::ZoomFactorToZoomLevel(factor));
-      Emit("zoomChanged", base::DictValue().Set("factor", factor));
-    }
+    zoom_factor_ = fields.FindDouble("factor").value_or(1.0);
+    ApplyZoom();
+    Emit("zoomChanged", base::DictValue().Set("factor", zoom_factor_));
   } else if (name == "setAudioMuted") {
     web_contents_->SetAudioMuted(fields.FindBool("muted").value_or(false));
   } else if (name == "setVisibility") {
@@ -320,9 +318,12 @@ void HostPage::PerformCommand(const std::string& command) {
     }
     visible ? web_contents_->WasShown() : web_contents_->WasHidden();
   } else if (name == "focus") {
+    // The container first, then the renderer's own view inside it: Chrome's focus manager
+    // follows the first with WebContents::Focus, and keystrokes go to the second.
     if (attached_) {
       hostable_view()->ViewsHostableMakeFirstResponder();
     }
+    web_contents_->Focus();
   } else if (name == "cancelDownload") {
     if (const std::string* id = fields.FindString("id")) {
       downloads_->Cancel(*id);
@@ -438,9 +439,24 @@ void HostPage::DidRedirectNavigation(content::NavigationHandle* navigation) {
        base::DictValue().Set("url", contract::URLValue(navigation->GetURL())));
 }
 
+void HostPage::ApplyZoom() {
+  // Zoom belongs to the page and comes only from Refrax. Chrome's default mode shares one level
+  // across a host's pages and saves it in the profile, and ZoomController drops back to that
+  // mode on every new document, so the page is isolated again after each one.
+  auto* zoom = zoom::ZoomController::FromWebContents(web_contents_.get());
+  if (!zoom) {
+    return;
+  }
+  zoom->SetZoomMode(zoom::ZoomController::ZOOM_MODE_ISOLATED);
+  zoom->SetZoomLevel(blink::ZoomFactorToZoomLevel(zoom_factor_));
+}
+
 void HostPage::DidFinishNavigation(content::NavigationHandle* navigation) {
   if (!navigation->IsInPrimaryMainFrame()) {
     return;
+  }
+  if (navigation->HasCommitted() && !navigation->IsSameDocument()) {
+    ApplyZoom();
   }
   const GURL& url = navigation->GetURL();
   const int error = navigation->GetNetErrorCode();

@@ -458,7 +458,11 @@ cmd_conformance() {
 </dict>
 </plist>
 PLIST
-    codesign --force --sign - "$app" >/dev/null
+    # A real identity: macOS keys privacy grants (removable-volume access to the engine on the
+    # SSD) to the signature, so an ad-hoc one asks again after every rebuild.
+    local identity
+    identity=$(signing_identity)
+    codesign --force --sign "${identity:--}" "$app" >/dev/null
     local storage log status tail_pid
     storage=$(mktemp -d -t engine-conformance)
     log="$storage.log"

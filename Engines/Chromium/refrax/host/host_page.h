@@ -120,6 +120,9 @@ class HostPage : public mojom::Page,
                                   blink::mojom::MediaStreamType type) override;
 
  private:
+  // Puts the page's zoom at zoom_factor_, in its own isolated level.
+  void ApplyZoom();
+
   void Emit(std::string_view name, base::DictValue fields = {});
   void EmitBackForward();
   // Sends a contract request to Refrax; `answer` runs with its PageRequestAnswer.
@@ -142,6 +145,9 @@ class HostPage : public mojom::Page,
   std::unique_ptr<PageDownloads> downloads_;
 
   bool attached_ = false;
+  // The zoom Refrax last set (1 = 100%), kept across the page's navigations as WebKit's
+  // pageZoom is.
+  double zoom_factor_ = 1.0;
   gfx::Size size_;
   // Set when Refrax asked for the renderer to be killed, so its exit reads as intended.
   bool renderer_termination_requested_ = false;

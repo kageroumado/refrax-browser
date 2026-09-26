@@ -37,43 +37,55 @@ enum InputTests {
         return view.convert(local, to: nil)
     }
 
+    @MainActor private static var activationRefused = false
+
     /// Makes the runner the active app and the page's window key, and focuses the page; the
     /// page only takes input in the key window. macOS grants activation to an app launched from
     /// the frontmost app (cooperative activation), so a runner started from a background shell
     /// skips these tests.
     @MainActor
     static func focus(_ page: TestPage, _ context: Context) async throws {
+        guard !activationRefused else {
+            throw Skip("the runner was not made the active app; run it from a foreground terminal")
+        }
         NSApp.activate()
         page.window.makeKeyAndOrderFront(nil)
         do {
-            try await eventually("activation", timeout: 3) { NSApp.isActive && page.window.isKeyWindow ? true : nil }
+            try await eventually("activation", timeout: 10) { NSApp.isActive && page.window.isKeyWindow ? true : nil }
         } catch {
+            activationRefused = true
             throw Skip("the runner was not made the active app; run it from a foreground terminal")
         }
         page.command("focus")
         try await pause(0.3)
     }
 
-    /// Posts a CGEvent to this process: it arrives through the window server's path, backed by
-    /// a real CGEvent as a user's would, without moving the cursor.
+    /// Delivers a key event through NSApplication as the window server would, key equivalents
+    /// first. Built from a CGEvent, so it carries everything a real keystroke does; posting the
+    /// CGEvent instead would need Accessibility permission, without which it is dropped.
     @MainActor
     static func post(_ event: CGEvent?) {
-        event?.postToPid(getpid())
+        if let event, let nsEvent = NSEvent(cgEvent: event) {
+            NSApp.sendEvent(nsEvent)
+        }
     }
 
-    /// `point` in the page window, in global display coordinates (top-left origin).
+    /// A mouse event for the page's window, through NSApplication. (One built from a CGEvent
+    /// names no window, and NSApplication drops it.)
     @MainActor
-    static func global(_ point: NSPoint, in page: TestPage) -> CGPoint {
-        let screen = page.window.convertPoint(toScreen: point)
-        let height = NSScreen.screens.first?.frame.height ?? 0
-        return CGPoint(x: screen.x, y: height - screen.y)
-    }
-
-    @MainActor
-    static func mouse(_ type: CGEventType, at point: NSPoint, in page: TestPage) {
-        let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: global(point, in: page), mouseButton: .left)
-        event?.setIntegerValueField(.mouseEventClickState, value: 1)
-        post(event)
+    static func mouse(_ type: NSEvent.EventType, at point: NSPoint, in page: TestPage) {
+        let event = NSEvent.mouseEvent(
+            with: type,
+            location: point,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: page.window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: type == .leftMouseUp ? 0 : 1,
+        )!
+        NSApp.sendEvent(event)
     }
 
     /// Presses the left button at `from`, moves to `to` in steps, releases.

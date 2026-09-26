@@ -138,6 +138,20 @@ enum StabilityTests {
             try expect(zoomed > base, "zoom")
         },
 
+        ConformanceTest(name: "zoom.stays-in-its-page") { context in
+            // Refrax owns zoom and sends it per page; the engine keeps none of its own.
+            try context.engine.require("zoom")
+            let zoomed = try await context.page("/html/basic")
+            let base = try await zoomed.evaluate("devicePixelRatio") as? Double ?? 0
+            zoomed.command("setZoom", ["factor": 2.0])
+            try await eventuallyAsync("the zoomed page") {
+                abs((try await zoomed.evaluate("devicePixelRatio") as? Double ?? 0) - base * 2) < 0.01 ? true : nil
+            }
+            let sibling = try await context.page("/html/other")
+            let ratio = try await sibling.evaluate("devicePixelRatio") as? Double ?? 0
+            try expectEqual(ratio, base, "devicePixelRatio of another page on the same host")
+        },
+
         ConformanceTest(name: "visibility.reaches-the-page") { context in
             let page = try await context.page("/html/basic")
             page.command("setVisibility", ["visibility": "hidden"])

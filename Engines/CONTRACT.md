@@ -132,9 +132,10 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 | Case | Fields |
 |---|---|
 | `load` | `request`: `{ "url", "headers": {…}, "referrer?" }` |
-| `goBack`, `goForward`, `stopLoading`, `stopFinding`, `focus` | — |
+| `goBack`, `goForward`, `stopLoading`, `stopFinding` | — |
+| `focus` | — (keystrokes go to the page's content from then on) |
 | `reload` | `fromOrigin` (bypass caches) |
-| `setZoom` | `factor` |
+| `setZoom` | `factor` — this page's zoom, kept across its navigations; engines keep no zoom of their own (per site or saved) |
 | `setAudioMuted` | `muted` |
 | `setMediaSuspended` | `suspended` |
 | `find` | `query`: `{ "text", "forward", "matchCase", "findNext" }` |
