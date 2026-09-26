@@ -145,9 +145,6 @@ final class ExtensionManager {
     /// Manager for handling permission prompts.
     let permissionPromptManager = PermissionPromptManager()
 
-    /// Manager for handling extension popup presentation.
-    let popupManager = ExtensionPopupManager()
-
     /// Security analyzer for evaluating extension risks.
     let securityAnalyzer = ExtensionSecurityAnalyzer()
 

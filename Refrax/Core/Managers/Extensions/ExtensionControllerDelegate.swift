@@ -309,38 +309,50 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
 
     // MARK: - Extension Actions & Popups
 
+    /// Shows the action's popup in WebKit's own popover, under the address bar of the
+    /// active window.
+    ///
+    /// WebKit owns the popover and its web view: it installs their delegates, sizes the
+    /// popover to the page's content, and routes links the popup opens to new tabs.
     func webExtensionController(
         _: WKWebExtensionController,
         presentActionPopup action: WKWebExtension.Action,
         for extensionContext: WKWebExtensionContext,
     ) async throws {
         let extensionName = extensionContext.webExtension.displayName ?? "Unknown Extension"
-        let extensionIcon = extensionContext.webExtension.icon(for: CGSize(width: 32, height: 32))
-
-        Logger.info(
-            "Extension '\(extensionName)' wants to show popup",
-            category: Logger.extensions,
-        )
-
-        // Get the popup web view from the action
-        guard let popupWebView = action.popupWebView else {
-            Logger.warning(
-                "Extension '\(extensionName)' action has no popup web view",
-                category: Logger.extensions,
-            )
+        guard let popover = action.popupPopover else {
+            Logger.warning("Extension '\(extensionName)' action has no popup", category: Logger.extensions)
             return
         }
-
-        try await withCheckedThrowingContinuation { continuation in
-            let request = ExtensionPopupRequest(
-                extensionName: extensionName,
-                extensionIcon: extensionIcon,
-                popupWebView: popupWebView,
-                continuation: continuation,
-            )
-            MainActor.assumeIsolated {
-                manager.popupManager.enqueue(request)
-            }
+        guard let controller = windowManager?.activeWindowController,
+              let contentView = controller.window?.contentView
+        else {
+            throw PopupError.noWindow
         }
+
+        let anchor = Self.popupAnchor(addressBar: controller.windowState.addressBarFrame, in: contentView)
+        popover.show(relativeTo: anchor, of: contentView, preferredEdge: contentView.isFlipped ? .maxY : .minY)
+    }
+
+    private nonisolated enum PopupError: Error, LocalizedError {
+        case noWindow
+
+        var errorDescription: String? {
+            "No browser window to show the popup in"
+        }
+    }
+
+    /// The address bar's rectangle in `contentView`'s coordinates, or a point at the top
+    /// center when the address bar is hidden.
+    ///
+    /// The address bar reports its frame in SwiftUI's global space, which has a top-left origin.
+    private static func popupAnchor(addressBar frame: CGRect, in contentView: NSView) -> CGRect {
+        let bounds = contentView.bounds
+        guard !frame.isEmpty, bounds.contains(CGPoint(x: frame.midX, y: frame.midY)) else {
+            let y = contentView.isFlipped ? bounds.minY + 40 : bounds.maxY - 40
+            return CGRect(x: bounds.midX, y: y, width: 1, height: 1)
+        }
+        guard !contentView.isFlipped else { return frame }
+        return CGRect(x: frame.minX, y: bounds.height - frame.maxY, width: frame.width, height: frame.height)
     }
 }
