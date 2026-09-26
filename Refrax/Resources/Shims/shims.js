@@ -70,6 +70,45 @@
         window.browser = chrome;
     }
 
+    /**
+     * Makes every API function callable without its namespace as `this`.
+     *
+     * WebKit's native functions return `undefined` when called detached, while Chrome
+     * and Firefox accept it, and extensions rely on that: uBlock Origin stores
+     * `browser.runtime.getURL` in a variable, and its background page fails to start
+     * when the call returns nothing. Walks two levels, so `storage.local.get` is covered.
+     */
+    function bindNamespaceFunctions(namespace, depth) {
+        if (!namespace || typeof namespace !== 'object' || depth > 2) {
+            return;
+        }
+        for (const key in namespace) {
+            let value;
+            try {
+                value = namespace[key];
+            } catch (e) {
+                continue;
+            }
+            if (typeof value === 'function') {
+                try {
+                    Object.defineProperty(namespace, key, {
+                        value: value.bind(namespace),
+                        configurable: true,
+                        writable: true,
+                    });
+                } catch (e) {
+                    // Non-configurable members keep their native binding.
+                }
+            } else if (value && typeof value === 'object' && !key.startsWith('on')) {
+                bindNamespaceFunctions(value, depth + 1);
+            }
+        }
+    }
+
+    if (typeof browser !== 'undefined') {
+        bindNamespaceFunctions(browser, 0);
+    }
+
     // =========================================================================
     // Promise Utilities
     // =========================================================================
@@ -139,6 +178,64 @@
     }
 
     window.__ShimEvent = ShimEvent;
+
+    /**
+     * `requestIdleCallback`, which WebKit keeps behind a feature flag. Extensions written
+     * for Chrome and Firefox call it unguarded (uBlock Origin schedules badge updates with
+     * it). Runs the callback on a short timer with a fixed time budget.
+     */
+    if (typeof self.requestIdleCallback !== 'function') {
+        const idleBudgetMs = 50;
+        self.requestIdleCallback = function(callback) {
+            const start = Date.now();
+            return setTimeout(() => {
+                callback({
+                    didTimeout: false,
+                    timeRemaining: () => Math.max(0, idleBudgetMs - (Date.now() - start)),
+                });
+            }, 1);
+        };
+        self.cancelIdleCallback = function(handle) {
+            clearTimeout(handle);
+        };
+    }
+
+    /**
+     * Events Chrome and Firefox provide that WebKit does not. They accept listeners and
+     * never fire, so extensions that subscribe during startup keep loading: uBlock Origin
+     * subscribes to `webNavigation.onCreatedNavigationTarget` while building its tab
+     * tracker, and without the event its whole background page fails.
+     */
+    const missingEvents = {
+        runtime: ['onUpdateAvailable'],
+        webNavigation: [
+            'onCreatedNavigationTarget',
+            'onHistoryStateUpdated',
+            'onReferenceFragmentUpdated',
+            'onTabReplaced',
+        ],
+    };
+    if (typeof browser !== 'undefined') {
+        for (const [namespaceName, eventNames] of Object.entries(missingEvents)) {
+            const namespace = browser[namespaceName];
+            if (!namespace) {
+                continue;
+            }
+            for (const eventName of eventNames) {
+                if (namespace[eventName] !== undefined) {
+                    continue;
+                }
+                try {
+                    Object.defineProperty(namespace, eventName, {
+                        value: new ShimEvent(),
+                        configurable: true,
+                    });
+                } catch (e) {
+                    window.__shimLog?.warn(`Could not add ${namespaceName}.${eventName}`, e);
+                }
+            }
+        }
+    }
 
     // =========================================================================
     // Error Utilities

@@ -38,24 +38,20 @@ import WebKit
 /// ## Usage
 ///
 /// ```swift
-/// let injector = ShimInjector(extensionManager: extensionManager)
-/// injector.configure(context: extensionContext)
+/// let injector = ShimInjector()
+/// injector.install(on: controllerConfiguration)   // before creating the controller
+/// injector.extensionManager = extensionManager
 /// ```
 final class ShimInjector {
     // MARK: - Message Handler Names
 
-    /// The base message handler name for shim communication.
-    /// Actual handler names are suffixed with extension identifier.
-    static let messageHandlerBaseName = "refraxShim"
-
-    // MARK: - State
-
-    /// Tracks which extension contexts have been configured to avoid duplicate handler registration.
-    private var configuredContexts: Set<String> = []
+    /// The message handler the shims call, `webkit.messageHandlers.refraxShim`.
+    static let messageHandlerName = "refraxShim"
 
     // MARK: - Dependencies
 
-    unowned let extensionManager: ExtensionManager
+    /// Resolves which extension sent a message, from the sending frame's origin.
+    weak var extensionManager: ExtensionManager?
 
     /// The native shim implementations.
     private(set) lazy var storageSyncShim = StorageSyncShim()
@@ -74,95 +70,32 @@ final class ShimInjector {
 
     // MARK: - Initialization
 
-    /// Creates a shim injector.
+
+    // MARK: - Installation
+
+    /// Installs the shim scripts and their message handler on a controller configuration.
     ///
-    /// - Parameter extensionManager: The extension manager for context access.
-    init(extensionManager: ExtensionManager) {
-        self.extensionManager = extensionManager
-    }
-
-    // MARK: - Configuration
-
-    /// Configures an extension context with shim scripts and message handlers.
+    /// Call before creating the controller. WebKit builds every extension page's
+    /// configuration by copying the controller's, and the copies share its user content
+    /// controller, so the shims run at document start in every page the controller's
+    /// extensions open, background pages included.
     ///
-    /// Call this after loading the context into the controller (when webViewConfiguration
-    /// becomes available). This sets up:
-    /// 1. JavaScript shims injected at document start
-    /// 2. Native message handler for JavaScript-to-Swift calls
-    ///
-    /// Safe to call multiple times - duplicate configuration is skipped.
-    ///
-    /// - Parameter context: The extension context to configure.
-    func configure(context: WKWebExtensionContext) {
-        let extensionID = context.uniqueIdentifier
-
-        // Skip if already configured (prevents duplicate handler crash on reload)
-        guard !configuredContexts.contains(extensionID) else {
-            Logger.debug(
-                "Shims already configured for extension: \(extensionID), skipping",
-                category: Logger.extensions,
-            )
-            return
-        }
-
-        guard let configuration = context.webViewConfiguration else {
-            Logger.warning(
-                "Extension context has no webViewConfiguration, skipping shim injection",
-                category: Logger.extensions,
-            )
-            return
-        }
-
-        // Use extension-specific handler name to avoid conflicts between extensions
-        let handlerName = "\(Self.messageHandlerBaseName)_\(extensionID)"
-
-        // Create shim script with the correct handler name injected
-        let scriptWithHandler = shimScript.replacingOccurrences(
-            of: "webkit.messageHandlers.refraxShim",
-            with: "webkit.messageHandlers.\(handlerName)",
-        )
-
-        // Add the shim user script
-        let userScript = WKUserScript(
-            source: scriptWithHandler,
+    /// - Parameter configuration: The configuration the controller will be created with.
+    func install(on configuration: WKWebExtensionController.Configuration) {
+        let webViewConfiguration = configuration.webViewConfiguration ?? WKWebViewConfiguration()
+        let userContentController = webViewConfiguration.userContentController
+        userContentController.addUserScript(WKUserScript(
+            source: shimScript,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false,
             in: .page,
-        )
-        configuration.userContentController.addUserScript(userScript)
-
-        // Add the message handler for native callbacks
-        let messageHandler = ShimMessageHandler(
-            injector: self,
-            extensionIdentifier: extensionID,
-        )
-        configuration.userContentController.addScriptMessageHandler(
-            messageHandler,
+        ))
+        userContentController.addScriptMessageHandler(
+            ShimMessageHandler(injector: self),
             contentWorld: .page,
-            name: handlerName,
+            name: Self.messageHandlerName,
         )
-
-        // Mark as configured
-        configuredContexts.insert(extensionID)
-
-        Logger.debug(
-            "Configured shims for extension: \(extensionID)",
-            category: Logger.extensions,
-        )
-    }
-
-    /// Removes shim configuration for an extension context.
-    ///
-    /// Call this when unloading an extension to allow reconfiguration if reloaded.
-    ///
-    /// - Parameter context: The extension context to unconfigure.
-    func unconfigure(context: WKWebExtensionContext) {
-        let extensionID = context.uniqueIdentifier
-        configuredContexts.remove(extensionID)
-
-        // Note: We don't remove the script message handler here because
-        // the webViewConfiguration may be shared or already deallocated.
-        // WebKit handles cleanup when the context is destroyed.
+        configuration.webViewConfiguration = webViewConfiguration
     }
 
     // MARK: - Script Loading
@@ -251,11 +184,9 @@ final class ShimInjector {
 /// ```
 private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
     weak var injector: ShimInjector?
-    let extensionIdentifier: String
 
-    init(injector: ShimInjector, extensionIdentifier: String) {
+    init(injector: ShimInjector) {
         self.injector = injector
-        self.extensionIdentifier = extensionIdentifier
     }
 
     func userContentController(
@@ -271,17 +202,24 @@ private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithRepl
 
         let args = body["args"] as? [String: Any] ?? [:]
 
-        return await handleMessage(api: api, method: method, args: args)
+        let origin = message.frameInfo.securityOrigin
+        guard let injector,
+              let baseURL = URL(string: "\(origin.protocol)://\(origin.host)/"),
+              let extensionIdentifier = injector.extensionManager?.extensionContext(for: baseURL)?.uniqueIdentifier
+        else {
+            return (nil, "Message from a page that belongs to no extension")
+        }
+
+        return await handleMessage(api: api, method: method, args: args, injector: injector, extensionIdentifier: extensionIdentifier)
     }
 
     private func handleMessage(
         api: String,
         method: String,
         args: [String: Any],
+        injector: ShimInjector,
+        extensionIdentifier: String,
     ) async -> (Any?, String?) {
-        guard let injector else {
-            return (nil, "Shim injector deallocated")
-        }
 
         do {
             let result: Any?

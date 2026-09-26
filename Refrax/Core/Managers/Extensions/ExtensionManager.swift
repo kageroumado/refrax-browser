@@ -161,7 +161,7 @@ final class ExtensionManager {
     let updateChecker = ExtensionUpdateChecker()
 
     /// Shim injector for API compatibility.
-    private(set) var shimInjector: ShimInjector!
+    let shimInjector: ShimInjector
 
     /// The controller delegate handling extension callbacks (for default controller).
     private var controllerDelegate: ExtensionControllerDelegate?
@@ -216,7 +216,10 @@ final class ExtensionManager {
         self.state = state
 
         // Create the default extension controller
+        let shimInjector = ShimInjector()
+        self.shimInjector = shimInjector
         let configuration = WKWebExtensionController.Configuration.default()
+        shimInjector.install(on: configuration)
         self.defaultController = WKWebExtensionController(configuration: configuration)
 
         // Set up delegate
@@ -224,8 +227,7 @@ final class ExtensionManager {
         self.controllerDelegate = delegate
         defaultController.delegate = delegate
 
-        // Create shim injector (must be after self is fully initialized)
-        self.shimInjector = ShimInjector(extensionManager: self)
+        shimInjector.extensionManager = self
 
         // Wire up recovery manager
         recoveryManager.extensionManager = self
@@ -376,8 +378,6 @@ final class ExtensionManager {
         try defaultController.load(context)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
-        // Configure shims after loading (webViewConfiguration is only available after load)
-        shimInjector.configure(context: context)
 
         // Persist the extension
         installedExtensions.append(installedExtension)
@@ -441,6 +441,7 @@ final class ExtensionManager {
             configuration.defaultWebsiteDataStore = dataStoreManager.dataStore(for: space)
         }
 
+        shimInjector.install(on: configuration)
         let controller = WKWebExtensionController(configuration: configuration)
 
         // Set up delegate
@@ -475,6 +476,7 @@ final class ExtensionManager {
             configuration.defaultWebsiteDataStore = dataStoreManager.dataStore(for: space)
         }
 
+        shimInjector.install(on: configuration)
         let controller = WKWebExtensionController(configuration: configuration)
 
         // Set up delegate
@@ -612,8 +614,6 @@ final class ExtensionManager {
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
 
-        // Configure shims for API compatibility
-        shimInjector.configure(context: context)
 
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
@@ -696,8 +696,6 @@ final class ExtensionManager {
         try defaultController.load(context)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
-        // Configure shims after loading (webViewConfiguration is only available after load)
-        shimInjector.configure(context: context)
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -810,8 +808,6 @@ final class ExtensionManager {
         try defaultController.load(context)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
-        // Configure shims
-        shimInjector.configure(context: context)
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -1530,8 +1526,6 @@ final class ExtensionManager {
         try defaultController.load(context)
         loadedContexts[extension_.uniqueIdentifier] = context
 
-        // Configure shims after loading (webViewConfiguration is only available after load)
-        shimInjector.configure(context: context)
     }
 
     /// The folder an installed extension's resources load from. Everything except a local
@@ -1614,8 +1608,6 @@ final class ExtensionManager {
 
         try controller.load(context)
 
-        // Configure shims after loading (webViewConfiguration is only available after load)
-        shimInjector.configure(context: context)
 
         let key = SpaceExtensionKey(spaceID: spaceID, extensionIdentifier: extension_.uniqueIdentifier)
 
