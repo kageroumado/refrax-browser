@@ -1116,6 +1116,7 @@ final class WebPagePool {
             siteSettingsCoordinator: state.siteSettingsCoordinator,
             dialogPresenter: dialogPresenter,
         )
+        navigationDecider.pagePool = self
 
         let dependencies = WebPage.Dependencies(
             historyManager: state.historyManager,

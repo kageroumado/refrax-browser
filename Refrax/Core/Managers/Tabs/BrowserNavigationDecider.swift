@@ -140,6 +140,10 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
     /// Coordinator for per-domain settings.
     unowned let siteSettingsCoordinator: SiteSettingsCoordinator
 
+    /// The pool that built this decider's page, which replaces the page when it leaves an
+    /// extension. Weak: the web view can deliver a navigation after the pool is gone.
+    weak var pagePool: WebPagePool?
+
     /// Dialog presenter for routing user-facing prompts (mTLS picker) through
     /// the centralized `DialogState` system.
     unowned let dialogPresenter: BrowserDialogPresenter
@@ -297,12 +301,18 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             // Fall through → ExternalSchemeHandler → system handler
         }
 
+        // Resolved before the chain's suspension point; the route holds the page and pool
+        // strongly across the await.
+        let exitRoute = extensionExit(for: action)
+
         // Evaluate through handler chain
         let policy = await actionChain.evaluate(action)
 
         switch policy {
         case .allow, .next:
-            if leavesExtension(action) {
+            if let exitRoute,
+               exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url)
+            {
                 return .cancel
             }
         default:
@@ -495,17 +505,18 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
 
     // MARK: - Extension Pages
 
-    /// Whether `action` takes one of an extension's pages to a URL outside that extension.
+    /// The page, pool, and destination to check when `action` is a main-frame navigation on
+    /// one of an extension's pages.
     ///
-    /// Such a navigation needs a web view bound to no extension, so the pool replaces the page
-    /// and this navigation is cancelled. Navigations from a page into an extension stay with
-    /// WebKit, which refuses them: an extension's pages open only through Refrax itself
-    /// (the address bar, the extension APIs, the options page).
-    private func leavesExtension(_ action: WebPage.NavigationAction) -> Bool {
-        guard action.isMainFrame, let url = action.url,
-              let page = tabManager.state.webPage(for: tabPage.id),
-              page.extensionBaseURL != nil else { return false }
-        return tabManager.pagePool.replaceIfExtensionBoundaryCrossed(page, toLoad: url)
+    /// A navigation to a URL outside that extension needs a web view bound to no extension, so
+    /// the pool replaces the page and this navigation is cancelled. Navigations from a page into
+    /// an extension stay with WebKit, which refuses them: an extension's pages open only
+    /// through Refrax itself (the address bar, the extension APIs, the options page).
+    private func extensionExit(for action: WebPage.NavigationAction) -> (pool: WebPagePool, page: WebPage, url: URL)? {
+        guard action.isMainFrame, let url = action.url, let pagePool,
+              let page = pagePool.activePages[tabPage.id],
+              page.extensionBaseURL != nil else { return nil }
+        return (pagePool, page, url)
     }
 
     // MARK: - Policy Conversion
