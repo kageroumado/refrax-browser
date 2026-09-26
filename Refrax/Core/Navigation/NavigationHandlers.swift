@@ -84,6 +84,7 @@ struct ExternalSchemeHandler: NavigationActionHandler {
         "ws",
         "wss",
         DeepLink.scheme, // "refrax"
+        ExtensionPageRouting.scheme, // "webkit-extension"
     ]
 
     /// The URL opener used to launch external applications.

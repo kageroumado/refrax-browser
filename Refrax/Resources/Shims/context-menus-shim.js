@@ -168,6 +168,10 @@
 
     // Install the shim
     function installShim() {
+        // WebKit's own implementation, when it has one, stays in place.
+        if (typeof browser !== 'undefined' && (browser.menus || browser.contextMenus)) {
+            return;
+        }
         if (typeof browser !== 'undefined') {
             browser.contextMenus = contextMenusAPI;
             // Firefox uses menus namespace too

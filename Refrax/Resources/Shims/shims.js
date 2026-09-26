@@ -71,15 +71,44 @@
     }
 
     /**
-     * Makes every API function callable without its namespace as `this`.
+     * Keeps a WebKit API object alive for the life of the page.
      *
-     * WebKit's native functions return `undefined` when called detached, while Chrome
-     * and Firefox accept it, and extensions rely on that: uBlock Origin stores
-     * `browser.runtime.getURL` in a variable, and its background page fails to start
-     * when the call returns nothing. Walks two levels, so `storage.local.get` is covered.
+     * `browser` and its namespaces are JavaScriptCore callback objects. WebKit caches the
+     * object for each namespace weakly and makes a new one once the old is collected, so
+     * members the shims define on it would disappear. Members must be defined on the
+     * object itself: the class's own members are found before anything on the prototype.
+     * Holding every patched object here keeps WebKit returning that same object.
      */
-    function bindNamespaceFunctions(namespace, depth) {
-        if (!namespace || typeof namespace !== 'object' || depth > 2) {
+    const retainedNamespaces = new Set();
+    Object.defineProperty(window, '__refraxRetainedNamespaces', { value: retainedNamespaces });
+
+    function retain(object) {
+        retainedNamespaces.add(object);
+        return object;
+    }
+
+    function defineRetained(object, name, value) {
+        try {
+            Object.defineProperty(retain(object), name, { value, configurable: true, writable: true });
+            return true;
+        } catch (e) {
+            window.__shimLog?.warn(`Could not add ${name}`, e);
+            return false;
+        }
+    }
+
+    /**
+     * Makes every native API function callable without its namespace as `this`. Walks
+     * two levels, so `storage.local.get` is covered.
+     *
+     * WebKit's native functions return `undefined` when called detached, while Chrome and
+     * Firefox accept it, and extensions rely on that: uBlock Origin stores
+     * `browser.runtime.getURL` in a variable, and its background page fails to start when
+     * the call returns nothing. Each function is bound to its namespace, which stays
+     * the object `browser` returns because it is retained.
+     */
+    function bindNamespaceFunctions(namespace, path) {
+        if (!namespace || typeof namespace !== 'object' || path.length > 2) {
             return;
         }
         for (const key in namespace) {
@@ -89,24 +118,22 @@
             } catch (e) {
                 continue;
             }
-            if (typeof value === 'function') {
-                try {
-                    Object.defineProperty(namespace, key, {
-                        value: value.bind(namespace),
-                        configurable: true,
-                        writable: true,
-                    });
-                } catch (e) {
-                    // Non-configurable members keep their native binding.
+            if (typeof value === 'function' && path.length > 0) {
+                if (value.__refraxDetachable) {
+                    continue;
                 }
+                const detachable = value.bind(namespace);
+                detachable.__refraxDetachable = true;
+                defineRetained(namespace, key, detachable);
             } else if (value && typeof value === 'object' && !key.startsWith('on')) {
-                bindNamespaceFunctions(value, depth + 1);
+                retain(value);
+                bindNamespaceFunctions(value, [...path, key]);
             }
         }
     }
 
     if (typeof browser !== 'undefined') {
-        bindNamespaceFunctions(browser, 0);
+        bindNamespaceFunctions(browser, []);
     }
 
     // =========================================================================
@@ -179,6 +206,121 @@
 
     window.__ShimEvent = ShimEvent;
 
+    /** Defines `value` as `namespace[name]` when WebKit's namespace lacks it. */
+    function addMissingMember(namespace, name, value) {
+        if (!namespace || namespace[name] !== undefined) {
+            return;
+        }
+        defineRetained(namespace, name, value);
+    }
+
+    /**
+     * A `privacy` setting WebKit does not expose: reads report it as not controllable by
+     * extensions, and writes are accepted and have no effect. uBlock Origin builds its
+     * browser-settings helper only when `browser.privacy` exists, then reads that helper
+     * unconditionally.
+     */
+    function uncontrollableSetting(value) {
+        return {
+            get: () => Promise.resolve({ value, levelOfControl: 'not_controllable' }),
+            set: () => Promise.resolve(),
+            clear: () => Promise.resolve(),
+            onChange: new ShimEvent(),
+        };
+    }
+
+    if (typeof browser !== 'undefined') {
+        addMissingMember(browser, 'privacy', {
+            network: {
+                networkPredictionEnabled: uncontrollableSetting(true),
+                webRTCIPHandlingPolicy: uncontrollableSetting('default'),
+            },
+            services: {
+                passwordSavingEnabled: uncontrollableSetting(true),
+            },
+            websites: {
+                hyperlinkAuditingEnabled: uncontrollableSetting(true),
+                thirdPartyCookiesAllowed: uncontrollableSetting(false),
+            },
+        });
+
+        // Chrome's cache flush after listener changes. WebKit's webRequest only observes,
+        // so there is nothing to flush.
+        addMissingMember(browser.webRequest, 'handlerBehaviorChanged', function(callback) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return Promise.resolve();
+        });
+    }
+
+    /**
+     * Menu items whose URL patterns WebKit cannot match: it accepts only these schemes, and
+     * rejects the whole `menus.create` call otherwise (uBlock Origin's `abp:*` item for
+     * filter-list subscription links). Such patterns are dropped; an item left with none is
+     * not created, since an item without patterns would show on every page.
+     */
+    const matchableSchemes = new Set(['*', 'http', 'https', 'file', 'ftp', 'webkit-extension']);
+    const patternKeys = ['targetUrlPatterns', 'documentUrlPatterns'];
+
+    function isMatchablePattern(pattern) {
+        if (pattern === '<all_urls>') {
+            return true;
+        }
+        const separator = pattern.indexOf('://');
+        return separator > 0 && matchableSchemes.has(pattern.slice(0, separator));
+    }
+
+    function matchableProperties(properties) {
+        if (!properties || typeof properties !== 'object') {
+            return properties;
+        }
+        const result = { ...properties };
+        for (const key of patternKeys) {
+            if (!Array.isArray(result[key])) {
+                continue;
+            }
+            const patterns = result[key].filter(isMatchablePattern);
+            if (patterns.length === 0) {
+                return null;
+            }
+            result[key] = patterns;
+        }
+        return result;
+    }
+
+    function wrapMenus(namespace) {
+        if (!namespace || typeof namespace.create !== 'function') {
+            return;
+        }
+        if (namespace.__refraxMenusWrapped) {
+            return;
+        }
+        const create = namespace.create;
+        const update = namespace.update;
+        defineRetained(namespace, '__refraxMenusWrapped', true);
+        defineRetained(namespace, 'create', function(properties, callback) {
+            const matchable = matchableProperties(properties);
+            if (matchable === null) {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+                return properties.id;
+            }
+            return create.call(this, matchable, callback);
+        });
+        if (typeof update === 'function') {
+            defineRetained(namespace, 'update', function(id, properties, callback) {
+                return update.call(this, id, matchableProperties(properties) ?? {}, callback);
+            });
+        }
+    }
+
+    if (typeof browser !== 'undefined') {
+        wrapMenus(browser.menus);
+        wrapMenus(browser.contextMenus);
+    }
+
     /**
      * `requestIdleCallback`, which WebKit keeps behind a feature flag. Extensions written
      * for Chrome and Firefox call it unguarded (uBlock Origin schedules badge updates with
@@ -225,14 +367,7 @@
                 if (namespace[eventName] !== undefined) {
                     continue;
                 }
-                try {
-                    Object.defineProperty(namespace, eventName, {
-                        value: new ShimEvent(),
-                        configurable: true,
-                    });
-                } catch (e) {
-                    window.__shimLog?.warn(`Could not add ${namespaceName}.${eventName}`, e);
-                }
+                defineRetained(namespace, eventName, new ShimEvent());
             }
         }
     }

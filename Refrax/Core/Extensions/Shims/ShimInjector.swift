@@ -66,7 +66,7 @@ final class ShimInjector {
     // MARK: - Cached Scripts
 
     /// The combined shim JavaScript, loaded once from bundle.
-    private lazy var shimScript: String = loadShimScript()
+    private lazy var shimScript: String = Self.loadShimScript()
 
     // MARK: - Initialization
 
@@ -100,8 +100,8 @@ final class ShimInjector {
 
     // MARK: - Script Loading
 
-    /// Loads the combined shim JavaScript from the bundle.
-    private func loadShimScript() -> String {
+    /// Loads the combined shim JavaScript from the bundle, in injection order.
+    static func loadShimScript() -> String {
         var scripts: [String] = []
 
         // Load the base shim (namespace normalization, utilities)
@@ -139,7 +139,7 @@ final class ShimInjector {
     }
 
     /// Loads a JavaScript file from the bundle.
-    private func loadScript(named name: String) -> String? {
+    private static func loadScript(named name: String) -> String? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "js") else {
             Logger.debug("Shim script not found: \(name).js", category: Logger.extensions)
             return nil

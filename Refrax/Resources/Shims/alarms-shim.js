@@ -180,6 +180,10 @@
 
     // Install the shim
     function installShim() {
+        // WebKit's own implementation, when it has one, stays in place.
+        if (typeof browser !== 'undefined' && browser.alarms) {
+            return;
+        }
         if (typeof browser !== 'undefined') {
             browser.alarms = alarmsAPI;
         }

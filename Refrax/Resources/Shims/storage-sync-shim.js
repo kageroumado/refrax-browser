@@ -169,6 +169,10 @@
 
     // Install the shim
     function installShim() {
+        // WebKit's own implementation, when it has one, stays in place.
+        if (typeof browser !== 'undefined' && browser.storage?.sync) {
+            return;
+        }
         // Ensure browser.storage exists
         if (typeof browser !== 'undefined') {
             browser.storage = browser.storage || {};

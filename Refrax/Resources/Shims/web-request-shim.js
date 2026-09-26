@@ -164,6 +164,20 @@
             return Promise.reject(new Error('Not supported'));
         },
 
+        /**
+         * Flushes the in-memory cache after listener changes (Chrome).
+         * Resolves at once: no request reaches these listeners, so nothing is cached.
+         *
+         * @param {Function} [callback] - Called when done
+         * @returns {Promise<void>} Resolves immediately
+         */
+        handlerBehaviorChanged: function(callback) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return Promise.resolve();
+        },
+
         // Constants
         MAX_HANDLER_BEHAVIOR_CHANGED_CALLS_PER_10_MINUTES: 20
     };
@@ -180,9 +194,14 @@
         window.chrome = window.browser;
     }
 
-    // Install webRequest
-    browser.webRequest = webRequest;
-    chrome.webRequest = webRequest;
+    // Install webRequest. Where `browser` only has WebKit's getter, the assignment is
+    // refused and WebKit's observing webRequest stays, patched by the base shim.
+    try {
+        browser.webRequest = webRequest;
+        chrome.webRequest = webRequest;
+    } catch (e) {
+        shimLog.debug('webRequest shim not installed; using WebKit\'s webRequest');
+    }
 
     shimLog.debug('webRequest shim initialized (network blocking via native WebKit)');
 
