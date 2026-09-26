@@ -433,6 +433,8 @@ void HostPage::DidStartNavigation(content::NavigationHandle* navigation) {
   if (!navigation->IsInPrimaryMainFrame() || navigation->IsSameDocument()) {
     return;
   }
+  loading_navigation_id_ = navigation->GetNavigationId();
+  SetLoading(true);
   Emit("navigationStarted",
        base::DictValue().Set("url", contract::URLValue(navigation->GetURL())));
 }
@@ -460,6 +462,14 @@ void HostPage::ApplyZoom() {
 void HostPage::DidFinishNavigation(content::NavigationHandle* navigation) {
   if (!navigation->IsInPrimaryMainFrame()) {
     return;
+  }
+  if (loading_navigation_id_ == navigation->GetNavigationId()) {
+    loading_navigation_id_.reset();
+    // A committed document loads on until DidFinishLoad; one that never commits (a download,
+    // a 204, a navigation replaced or cancelled) leaves nothing loading.
+    if (!navigation->HasCommitted()) {
+      SetLoading(false);
+    }
   }
   if (navigation->HasCommitted() && !navigation->IsSameDocument()) {
     ApplyZoom();
@@ -492,12 +502,23 @@ void HostPage::DidFinishNavigation(content::NavigationHandle* navigation) {
   EmitBackForward();
 }
 
-void HostPage::DidStartLoading() {
-  Emit("loadingChanged", base::DictValue().Set("isLoading", true));
+void HostPage::DidStopLoading() {
+  // Nothing in the page is loading, so neither is its main frame.
+  if (!loading_navigation_id_) {
+    SetLoading(false);
+  }
 }
 
-void HostPage::DidStopLoading() {
-  Emit("loadingChanged", base::DictValue().Set("isLoading", false));
+// Follows the main frame's new documents only. Chromium's page-wide loading state
+// (DidStartLoading) also follows every subframe and same-document load, which Refrax would show
+// as the reload button and tab spinner flickering on pages that load frames: ~600 changes in a
+// Speedometer run.
+void HostPage::SetLoading(bool loading) {
+  if (loading == loading_) {
+    return;
+  }
+  loading_ = loading;
+  Emit("loadingChanged", base::DictValue().Set("isLoading", loading));
 }
 
 void HostPage::LoadProgressChanged(double progress) {
@@ -518,6 +539,17 @@ void HostPage::DidFinishLoad(content::RenderFrameHost* frame,
     }
   }
   Emit("navigationFinished", std::move(fields));
+  if (!loading_navigation_id_) {
+    SetLoading(false);
+  }
+}
+
+void HostPage::DidFailLoad(content::RenderFrameHost* frame,
+                           const GURL& validated_url,
+                           int error_code) {
+  if (frame->IsInPrimaryMainFrame() && !loading_navigation_id_) {
+    SetLoading(false);
+  }
 }
 
 void HostPage::TitleWasSet(content::NavigationEntry* entry) {

@@ -4,8 +4,8 @@ assert(is_mac)
 import("//base/allocator/partition_allocator/partition_alloc.gni")
 
 # The client: the executable of "Refrax Chromium.engine", loaded into Refrax's process. It must
-# be built where PartitionAlloc is not the malloc (see Docs/plans/chromium-host.md, Allocator):
-# out/Dev, or out/ReleaseClient for shipping.
+# be built where PartitionAlloc is not the malloc (Engines/Chromium/args.client.gn): out/Dev, or
+# out/Release for shipping.
 assert(!use_allocator_shim,
        "The Refrax client loads into Refrax's process; build it with use_allocator_shim=false.")
 

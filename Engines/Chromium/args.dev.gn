@@ -1,5 +1,6 @@
-# Development configuration on top of args.gn. One static build directory produces both the
-# host app and the client that loads into Refrax, and relinks in minutes: no LTO, no PGO.
+# Development configuration on top of args.gn and args.client.gn. One static build directory
+# produces both the host app and the client that loads into Refrax, so the dev host allocates
+# through the system malloc too, and relinks in minutes: no LTO, no PGO.
 is_official_build = false
 is_component_build = false
 use_thin_lto = false
@@ -10,13 +11,6 @@ dcheck_always_on = true
 dcheck_is_configurable = true
 symbol_level = 1
 enable_dsyms = false
-
-# The client is loaded into Refrax's process. PartitionAlloc-as-malloc replaces the default
-# malloc zone from a load-time constructor while Refrax's threads run, and the setting is per
-# build directory, so the whole dev build goes without it.
-use_partition_alloc_as_malloc = false
-use_allocator_shim = false
-enable_backup_ref_ptr_support = false
 
 # Non-official builds default to transpiling DevTools with esbuild, a binary ungoogled prunes;
 # tsc, as in the release build, is in the tree.

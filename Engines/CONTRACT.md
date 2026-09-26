@@ -109,7 +109,7 @@ since 1970, optional fields may be omitted or `null`.
 | `navigationFailed` | `failure` | See below |
 | `titleChanged` | `title` | |
 | `progressChanged` | `progress` | 0…1 |
-| `loadingChanged` | `isLoading` | |
+| `loadingChanged` | `isLoading` | True from a main-frame navigation to a new document until that document finishes loading or the navigation ends without one. Subframe loads and same-document navigations leave it unchanged |
 | `backForwardChanged` | `canGoBack`, `canGoForward` | |
 | `securityChanged` | `security`: `secure` \| `mixedContent` \| `insecure` \| `notApplicable` | After commit, when known |
 | `faviconsChanged` | `urls` | Candidate icon URLs; Refrax fetches and caches |

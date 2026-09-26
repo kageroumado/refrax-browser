@@ -108,6 +108,33 @@ enum NavigationTests {
             try expectEqual(echo, "yes-3", "header the server received")
         },
 
+        ConformanceTest(name: "loading.follows-the-main-frame") { context in
+            // Refrax shows loadingChanged as the reload button and tab spinner, so only the main
+            // frame's new documents may move it: never a frame the page adds, nor a pushState.
+            let page = try await context.page("/html/basic")
+            let mark = page.events.count
+            _ = try await page.evaluate("""
+                new Promise(done => {
+                  const frame = document.createElement('iframe');
+                  frame.onload = () => { history.pushState({}, '', '?pushed'); done(true); };
+                  frame.src = '/html/child';
+                  document.body.append(frame);
+                })
+                """)
+            try await pause(0.5)
+            let changes = page.events[mark...].filter { $0.name == "loadingChanged" }.map { $0.fields["isLoading"] as? Bool }
+            try expectEqual(changes.count, 0, "loadingChanged for a subframe and a pushState (\(changes))")
+
+            let next = page.events.count
+            try await page.load(context.url("/html/frames"))
+            @MainActor func loads() -> [Bool] {
+                page.events[next...].filter { $0.name == "loadingChanged" }.compactMap { $0.fields["isLoading"] as? Bool }
+            }
+            try await eventually("loadingChanged to settle") { loads().last == false ? true : nil }
+            try await pause(0.3)
+            try expectEqual(loads(), [true, false], "loadingChanged for a new document with a frame")
+        },
+
         ConformanceTest(name: "navigation.stop-loading") { context in
             let page = try await context.page("/html/basic")
             let mark = page.events.count

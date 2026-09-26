@@ -4,6 +4,7 @@
 #define REFRAX_HOST_HOST_PAGE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -84,11 +85,13 @@ class HostPage : public mojom::Page,
   void DidStartNavigation(content::NavigationHandle* navigation) override;
   void DidRedirectNavigation(content::NavigationHandle* navigation) override;
   void DidFinishNavigation(content::NavigationHandle* navigation) override;
-  void DidStartLoading() override;
   void DidStopLoading() override;
   void LoadProgressChanged(double progress) override;
   void DidFinishLoad(content::RenderFrameHost* frame,
                      const GURL& validated_url) override;
+  void DidFailLoad(content::RenderFrameHost* frame,
+                   const GURL& validated_url,
+                   int error_code) override;
   void TitleWasSet(content::NavigationEntry* entry) override;
   void DidUpdateFaviconURL(
       content::RenderFrameHost* frame,
@@ -125,6 +128,9 @@ class HostPage : public mojom::Page,
                                   blink::mojom::MediaStreamType type) override;
 
  private:
+  // Emits loadingChanged when `loading` differs from what Refrax was last told.
+  void SetLoading(bool loading);
+
   // Puts the page's zoom at zoom_factor_, in its own isolated level.
   void ApplyZoom();
 
@@ -152,6 +158,10 @@ class HostPage : public mojom::Page,
   // The zoom Refrax last set (1 = 100%), kept across the page's navigations as WebKit's
   // pageZoom is.
   double zoom_factor_ = 1.0;
+  // Whether the main frame is loading a new document (CONTRACT.md §4.1 loadingChanged), and the
+  // main-frame navigation it is waiting on, until that one commits.
+  bool loading_ = false;
+  std::optional<int64_t> loading_navigation_id_;
   gfx::Size size_;
   // Set when Refrax asked for the renderer to be killed, so its exit reads as intended.
   bool renderer_termination_requested_ = false;

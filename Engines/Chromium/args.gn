@@ -7,8 +7,3 @@ enable_dsyms = true
 # The chrome target builds "Refrax Chromium Host.app" (website.refrax.engine.chromium.host),
 # with its framework and helpers renamed to match.
 branding_file_path = "//refrax/host/BRANDING"
-# The client loads into Refrax's process and must not install Chromium's allocator shim, and
-# host and client share this build: both allocate through the system malloc.
-use_partition_alloc_as_malloc = false
-use_allocator_shim = false
-enable_backup_ref_ptr_support = false

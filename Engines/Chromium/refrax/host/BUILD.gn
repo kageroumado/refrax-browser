@@ -2,6 +2,7 @@
 
 assert(is_mac)
 
+import("//base/allocator/partition_allocator/partition_alloc.gni")
 import("//testing/test.gni")
 
 # The host's logic that needs no browser: contract JSON, filter-list compiling, URL matching,
@@ -111,9 +112,12 @@ source_set("host") {
   ]
   frameworks = [ "AppKit.framework" ]
 
-  # The client ships in the same engine bundle and must match this build's Mojo interfaces, so
-  # building the host (the chrome target) builds it too.
-  data_deps = [ "//refrax/client:RefraxChromium" ]
+  # The client ships in the same engine bundle, so building the host (the chrome target) builds
+  # it too where it can be built: a directory without the allocator shim (out/Dev). The release
+  # host's directory keeps the shim, and forge builds the client in out/Release.
+  if (!use_allocator_shim) {
+    data_deps = [ "//refrax/client:RefraxChromium" ]
+  }
 }
 
 test("refrax_unittests") {

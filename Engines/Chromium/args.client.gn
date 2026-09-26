@@ -1,0 +1,8 @@
+# For build directories that build the client (out/Release, out/Dev), on top of args.gn. The
+# client loads into Refrax's process, where PartitionAlloc-as-malloc would replace the default
+# malloc zone from a load-time constructor while Refrax's threads run; these settings apply to a
+# whole build directory, so the release host builds apart, in out/ReleaseHost, and keeps
+# PartitionAlloc.
+use_partition_alloc_as_malloc = false
+use_allocator_shim = false
+enable_backup_ref_ptr_support = false
