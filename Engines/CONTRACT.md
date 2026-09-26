@@ -1,6 +1,6 @@
 # Refrax engine contract
 
-**Version 1.0.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
+**Version 1.1.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
 tabs, spaces, history, bookmarks, passwords, extensions as installed artifacts, content-blocking
 lists, user scripts, settings. An engine renders pages and reports what happens in them. System
 WebKit is built in; every other engine is a separately installed bundle that speaks this contract.
@@ -14,7 +14,8 @@ describes the same schema for engine authors, and the binary interface in `SDK/R
    page's view. Everything else is a message: *events* describe what happened, *commands* ask for
    something to happen, *requests* ask Refrax to decide, *policy* configures the engine.
 2. **Refrax is the source of truth** for browser data. Engines don't keep history, bookmarks,
-   passwords, extension installs, or blocking lists of their own; they receive what they need.
+   passwords, extension installs, blocking lists, or keychain items of their own; they receive
+   what they need.
 3. **Engines are untrusted input.** Refrax size-caps, decodes, and validates every message
    (§6). A malformed message is dropped; a stream of them closes the page.
 4. **Facts, once.** Emit an event when something changes, not on a timer, and not twice.
@@ -34,7 +35,7 @@ An engine is a loadable bundle named `<Name>.engine`, installed at
 | `CFBundleIdentifier` | string | Engine ID, reverse-DNS (`website.refrax.engine.chromium`). `system.webkit` is reserved. |
 | `CFBundleShortVersionString` | string | Version of the engine bundle |
 | `NSPrincipalClass` | string | Class conforming to `RFXEngineHost` |
-| `RFXEngineContractVersion` | string | Contract version implemented, `"1.0"` |
+| `RFXEngineContractVersion` | string | Contract version implemented, `"1.1"` |
 | `RFXEngineDisplayName` | string | Name in Settings → Engines |
 | `RFXEngineVersion` | string | Version of the rendering engine, e.g. `"Chromium 155.0.8059.12"` |
 | `RFXEngineVendor` | string | Who built it |
@@ -225,10 +226,11 @@ neither list asks with a `permission` request. Engines never store a notificatio
 their own, including the answer to that request: Refrax sends the updated policy before it
 answers. Origins are serialized as `scheme://host[:port]`.
 
-### 4.6 Engine events and commands
+### 4.6 Engine events, commands and requests
 
 What happens outside any page travels between the engine and Refrax directly
-(`engineHost:didEmitEvent:` and `performCommand:` in `RFXEngine.h`), in the same JSON shape.
+(`engineHost:didEmitEvent:`, `performCommand:` and `engineHost:didRequest:reply:` in
+`RFXEngine.h`), in the same JSON shape.
 
 | Event (engine → Refrax) | Fields | When |
 |---|---|---|
@@ -238,6 +240,19 @@ What happens outside any page travels between the engine and Refrax directly
 | Command (Refrax → engine) | Fields |
 |---|---|
 | `notificationClicked`, `notificationClosed` | `id` — the user clicked or dismissed the notification; fire its `notificationclick` / `notificationclose` (or `click` / `close`) event |
+
+| Request (engine → Refrax, answered once) | Fields | Answers |
+|---|---|---|
+| `secret` | `name`: `[A-Za-z0-9._-]`, 1–64 characters | `{"secret":{"value":"<base64>"}}` \| `{"unavailable":{}}` |
+
+`secret` is how an engine gets key material, such as the key it encrypts cookies with. Refrax
+keeps each engine's secrets in its own keychain, one item per engine id and name, and creates a
+secret on the first request for it: 32 random bytes, the same on every later request. An engine
+never creates keychain items: the access list of an item belongs to the code signature that
+created it, so an engine update signed differently would stop at a keychain prompt no one sees.
+`unavailable` means the keychain can't be read now (it is locked); the engine still loads pages.
+Refrax answers every `secret` request, including one sent before `startWithConfiguration:`
+completes, since an engine may need its secrets to finish starting.
 
 Notification ids are unique across the engine's profiles, so an id alone names the notification in
 either direction.

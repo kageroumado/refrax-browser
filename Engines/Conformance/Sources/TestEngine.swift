@@ -11,6 +11,22 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
     private(set) var pages: [TestPage] = []
     /// Events the engine reported outside any page, in order.
     private(set) var events: [TestPage.Message] = []
+    /// Names of the secrets the engine asked for, in order.
+    private(set) var secretRequests: [String] = []
+    /// Refrax's answer to a secret request: the secret, or nil for `unavailable`.
+    var secret: @MainActor (String) -> Data? = TestEngine.runSecret
+
+    /// One secret per name for the whole run, as Refrax keeps one per engine and name.
+    private static var runSecrets: [String: Data] = [:]
+
+    static func runSecret(_ name: String) -> Data? {
+        if let secret = runSecrets[name] {
+            return secret
+        }
+        let secret = Data((0 ..< 32).map { _ in UInt8.random(in: .min ... .max) })
+        runSecrets[name] = secret
+        return secret
+    }
 
     /// A new instance of the bundle's principal class. The bundle's code loads once per process;
     /// later instances reuse it, as Refrax does after an engine dies.
@@ -117,6 +133,20 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
 
     func engineHostDidTerminate(withReason reason: String) {
         terminationReason = reason
+    }
+
+    func engineHost(_ host: any RFXEngineHost, didRequest request: Data, reply: @escaping (Data) -> Void) {
+        guard let message = JSON.message(request), message.name == "secret",
+              let name = message.fields["name"] as? String else {
+            reply(JSON.data(["unavailable": [String: Any]()]))
+            return
+        }
+        secretRequests.append(name)
+        if let value = secret(name) {
+            reply(JSON.data(["secret": ["value": value.base64EncodedString()]]))
+        } else {
+            reply(JSON.data(["unavailable": [String: Any]()]))
+        }
     }
 
     func engineHost(_ host: any RFXEngineHost, didEmitEvent event: Data) {

@@ -149,6 +149,8 @@ final class EngineRegistry {
             if fileManager.fileExists(atPath: data.path(percentEncoded: false)) {
                 try fileManager.trashItem(at: data, resultingItemURL: nil)
             }
+            // They only unlock the data just trashed.
+            EngineSecrets.removeSecrets(for: id)
         }
         Logger.info("Removed engine \(id)\(removingData ? " and its data" : "")", category: Logger.engines)
         refresh()

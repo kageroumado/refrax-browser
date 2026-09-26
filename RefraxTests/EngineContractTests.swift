@@ -257,6 +257,38 @@ struct EngineWireTests {
     func unknownCase() {
         #expect(throws: EngineError.self) { try EngineWire.decodeEvent(data(#"{"formatHardDrive":{}}"#)) }
     }
+
+    @Test("Secret requests carry a plain name; answers carry base64 in the shape the host parses")
+    func secretRequests() throws {
+        #expect(try EngineWire.decodeEngineRequest(data(#"{"secret":{"name":"storageKey"}}"#)) == .secret(name: "storageKey"))
+        for name in ["", "../other", "a b", "ключ", String(repeating: "k", count: 65)] {
+            let request = try String(decoding: JSONSerialization.data(withJSONObject: ["secret": ["name": name]]), as: UTF8.self)
+            #expect(throws: EngineError.self, "\(name)") { try EngineWire.decodeEngineRequest(data(request)) }
+        }
+        let answer = try EngineWire.encode(EngineRequestAnswer.secret(value: Data([0xFF, 0x00, 0x7F])))
+        #expect(String(decoding: answer, as: UTF8.self) == #"{"secret":{"value":"\/wB\/"}}"#)
+        #expect(String(decoding: try EngineWire.encode(EngineRequestAnswer.unavailable), as: UTF8.self) == #"{"unavailable":{}}"#)
+    }
+}
+
+@Suite("Engine secrets", .tags(.engines))
+struct EngineSecretsTests {
+    @Test("A secret is created once, stays the same, and goes with its engine's data")
+    func lifecycle() throws {
+        let engine = EngineID(rawValue: "test.secrets.\(UUID().uuidString)")
+        defer { EngineSecrets.removeSecrets(for: engine) }
+        let first = try #require(EngineSecrets.secret(named: "storageKey", for: engine))
+        #expect(first.count == EngineSecrets.secretSize)
+        #expect(EngineSecrets.secret(named: "storageKey", for: engine) == first)
+        #expect(EngineSecrets.secret(named: "other", for: engine) != first)
+
+        let neighbor = EngineID(rawValue: "\(engine.rawValue).neighbor")
+        defer { EngineSecrets.removeSecrets(for: neighbor) }
+        let kept = try #require(EngineSecrets.secret(named: "storageKey", for: neighbor))
+        EngineSecrets.removeSecrets(for: engine)
+        #expect(EngineSecrets.secret(named: "storageKey", for: engine) != first)
+        #expect(EngineSecrets.secret(named: "storageKey", for: neighbor) == kept)
+    }
 }
 
 // MARK: - Versioning and discovery

@@ -23,6 +23,7 @@
 #include "refrax/host/content_blocking.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/download_delegate.h"
+#include "refrax/host/engine_requests.h"
 #include "refrax/host/host_page.h"
 
 namespace refrax {
@@ -102,6 +103,7 @@ EngineHostImpl::EngineHostImpl(mojo::PendingReceiver<mojom::EngineHost> receiver
 }
 
 EngineHostImpl::~EngineHostImpl() {
+  EngineRequests::Get().Disconnect();
   Notifications::Get().SetDelegate(nullptr);
   DownloadDelegate::SetAsker({});
   // Pages detach their views through `application_`, so they go first.
@@ -121,6 +123,7 @@ void EngineHostImpl::Start(
   // client at launch; its languages are the profiles' accept-languages (applied per profile).
   application_.Bind(std::move(application));
   client_.Bind(std::move(client));
+  EngineRequests::Get().Connect(client_.get());
   Notifications::Get().SetDelegate(this);
   std::move(callback).Run(std::nullopt);
 }

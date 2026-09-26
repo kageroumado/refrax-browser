@@ -132,6 +132,26 @@ extension ExternalEngineHost: RFXEngineHostDelegate {
         eventContinuation.yield(.terminated(reason: reason))
     }
 
+    func engineHost(_: any RFXEngineHost, didRequest request: Data, reply: @escaping (Data) -> Void) {
+        let once = ReplyOnce(reply)
+        let decoded: EngineRequest
+        do {
+            decoded = try EngineWire.decodeEngineRequest(request)
+        } catch {
+            Logger.warning("Engine \(descriptor.id) sent a rejected request: \(error.localizedDescription)", category: Logger.engines)
+            once.send((try? EngineWire.encode(EngineRequestAnswer.unavailable)) ?? Data())
+            return
+        }
+        switch decoded {
+        case let .secret(name):
+            let engine = descriptor.id
+            Task.detached(name: "Engine secret") {
+                let answer = EngineSecrets.secret(named: name, for: engine).map { EngineRequestAnswer.secret(value: $0) } ?? .unavailable
+                once.send((try? EngineWire.encode(answer)) ?? Data())
+            }
+        }
+    }
+
     func engineHost(_: any RFXEngineHost, didEmitEvent event: Data) {
         do {
             try engineEventHandler?(EngineWire.decodeEngineEvent(event))

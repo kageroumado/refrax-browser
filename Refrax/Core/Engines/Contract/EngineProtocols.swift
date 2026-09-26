@@ -152,6 +152,19 @@ nonisolated enum EngineCommand: Codable, Hashable, Sendable {
     case notificationClosed(id: String)
 }
 
+/// A question an engine asks Refrax that concerns no one page, answered once.
+nonisolated enum EngineRequest: Codable, Hashable, Sendable {
+    /// Key material Refrax keeps in its keychain for the engine (``EngineSecrets``).
+    case secret(name: String)
+}
+
+nonisolated enum EngineRequestAnswer: Codable, Hashable, Sendable {
+    /// Base64 in JSON.
+    case secret(value: Data)
+    /// The keychain can't be read now.
+    case unavailable
+}
+
 nonisolated enum HostEvent: Hashable, Sendable {
     /// The engine process exited or stopped answering; every page it hosted is gone.
     case terminated(reason: String)

@@ -44,6 +44,8 @@ interface EngineHost {
 interface EngineClient {
   // The contract's EngineEvent.
   OnEvent(string event);
+  // The contract's EngineRequest, answered once with an EngineRequestAnswer.
+  OnRequest(string request) => (string answer);
 };
 
 interface Page {

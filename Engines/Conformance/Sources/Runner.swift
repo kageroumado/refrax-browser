@@ -68,10 +68,18 @@ final class Context {
         ])
     }
 
-    /// A fresh engine instance from the same bundle, started on the same storage.
-    func restartEngine() async throws {
+    /// A fresh engine instance from the same bundle, started on the same storage once the
+    /// previous one has shut down, as Refrax replaces an engine. `secret` answers its secret
+    /// requests.
+    func restartEngine(secret: @escaping @MainActor (String) -> Data? = TestEngine.runSecret) async throws {
         engine.closeAll()
+        engine.host.shutdown()
+        // Its processes hold the storage's databases until they exit.
+        _ = try? await eventually("the previous engine's processes to exit", timeout: 20) {
+            HostTests.childProcesses().isEmpty ? true : nil
+        }
         engine = try TestEngine(bundle: bundle)
+        engine.secret = secret
         try await engine.start(storage: storage)
         touchedPolicy.removeAll()
     }

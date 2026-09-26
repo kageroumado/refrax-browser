@@ -1,0 +1,51 @@
+--- a/chrome/browser/browser_process_impl.h
++++ b/chrome/browser/browser_process_impl.h
+@@ -247,6 +247,12 @@
+   void set_additional_os_crypt_async_provider_for_test(
+       size_t precedence,
+       std::unique_ptr<os_crypt_async::KeyProvider> provider) override;
++
++  // Makes `provider` the only OSCryptAsync key provider, in place of the platform's, for an
++  // embedder that keeps the key itself: Refrax's engine host gets it from Refrax. Set before
++  // PreMainMessageLoopRun.
++  void set_os_crypt_async_key_provider(
++      std::unique_ptr<os_crypt_async::KeyProvider> provider);
+ 
+   BuildState* GetBuildState() override;
+ 
+@@ -508,6 +514,8 @@
+   std::optional<std::pair<size_t, std::unique_ptr<os_crypt_async::KeyProvider>>>
+       additional_provider_for_test_;
+ 
++  std::unique_ptr<os_crypt_async::KeyProvider> embedder_key_provider_;
++
+   // Do not add new members to this class. Instead use GlobalFeatures. See
+   // browser_process.h file level comments for more details.
+ 
+--- a/chrome/browser/browser_process_impl.cc
++++ b/chrome/browser/browser_process_impl.cc
+@@ -1288,6 +1288,12 @@
+   CHECK(!os_crypt_async_);
+   additional_provider_for_test_.emplace(
+       std::make_pair(precedence, std::move(provider)));
++}
++
++void BrowserProcessImpl::set_os_crypt_async_key_provider(
++    std::unique_ptr<os_crypt_async::KeyProvider> provider) {
++  CHECK(!os_crypt_async_);
++  embedder_key_provider_ = std::move(provider);
+ }
+ 
+ BuildState* BrowserProcessImpl::GetBuildState() {
+@@ -1621,6 +1627,11 @@
+   }
+ #endif  // BUILDFLAG(IS_MAC)
+ 
++  if (embedder_key_provider_) {
++    providers.clear();
++    providers.emplace_back(/*precedence=*/10u, std::move(embedder_key_provider_));
++  }
++
+   os_crypt_async_ =
+       std::make_unique<os_crypt_async::OSCryptAsync>(std::move(providers));
+ 

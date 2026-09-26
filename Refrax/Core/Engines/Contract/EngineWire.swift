@@ -42,6 +42,10 @@ nonisolated enum EngineWire {
         try validated(decode(EngineEvent.self, from: data))
     }
 
+    static func decodeEngineRequest(_ data: Data) throws -> EngineRequest {
+        try validated(decode(EngineRequest.self, from: data))
+    }
+
     static func decodeRequest(_ data: Data) throws -> PageRequestKind {
         try validated(decode(PageRequestKind.self, from: data))
     }
@@ -118,6 +122,20 @@ nonisolated enum EngineWire {
         case let .notificationClosed(id):
             return .notificationClosed(id: capped(id))
         }
+    }
+
+    static func validated(_ request: EngineRequest) throws -> EngineRequest {
+        switch request {
+        case let .secret(name):
+            guard (1 ... 64).contains(name.count), name.allSatisfy(isSecretNameCharacter) else {
+                throw EngineError.malformedMessage("rejected secret name \(name.prefix(80))")
+            }
+            return request
+        }
+    }
+
+    private static func isSecretNameCharacter(_ character: Character) -> Bool {
+        character.isASCII && (character.isLetter || character.isNumber || ".-_".contains(character))
     }
 
     private static func validated(_ notification: EngineNotification) throws -> EngineNotification {

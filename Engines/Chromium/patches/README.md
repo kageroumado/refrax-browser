@@ -25,14 +25,6 @@ Chrome itself never calls them; its behavior is unchanged.
   tab helpers (session ids, zoom, permissions, popup blocking, dialogs, extensions) without a
   `Browser`.
 
-## `os-crypt-keychain-name.patch`
-
-`components/os_crypt/common/keychain_password_mac.mm`: the engine's cookie and password
-encryption key lives in its own keychain item, "Refrax Chromium Safe Storage". Every
-non-Google Chromium shares "Chromium Safe Storage", whose access list belongs to whichever
-Chromium created it; the host would block on a keychain prompt it has no UI to show, which
-stalls every HTTP load and the host's shutdown.
-
 ## `chrome-renderer-refrax-agents.patch`
 
 `chrome/renderer/chrome_content_renderer_client.cc` and `chrome/renderer/BUILD.gn`: attach two
@@ -61,3 +53,12 @@ download delegate each profile creates, so Refrax's `DownloadDelegate` (which as
 where each download goes) goes through the profile's full download setup.
 `SetDownloadManagerDelegateForTesting` replaces the delegate after that setup has been skipped,
 including the history service's next download id, and no download ever starts.
+
+## `os-crypt-embedder-key-provider.patch`
+
+`chrome/browser/browser_process_impl{.h,.cc}`: a public `set_os_crypt_async_key_provider`, beside
+`set_additional_os_crypt_async_provider_for_test`, that makes one provider the only one. The host
+installs `SecretKeyProvider` (`//refrax/host/secret_key_provider.cc`), whose key is a secret
+Refrax keeps in its own keychain. Chrome's `KeychainKeyProvider` would create a keychain item
+owned by the host's code signature; after an update signed differently, reading it stops at a
+keychain prompt, and every HTTP load waits on the cookie store until someone answers it.

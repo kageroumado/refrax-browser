@@ -4,7 +4,8 @@ assert(is_mac)
 
 import("//testing/test.gni")
 
-# The host's logic that needs no browser: contract JSON, filter-list compiling, URL matching.
+# The host's logic that needs no browser: contract JSON, filter-list compiling, URL matching,
+# secrets.
 # Its own target so refrax_unittests links it without //chrome.
 source_set("support") {
   sources = [
@@ -12,6 +13,8 @@ source_set("support") {
     "content_blocking_compiler.h",
     "contract_json.cc",
     "contract_json.h",
+    "secrets.cc",
+    "secrets.h",
     "url_matching.cc",
     "url_matching.h",
   ]
@@ -41,6 +44,8 @@ source_set("host") {
     "engine_connection.mm",
     "engine_host_impl.mm",
     "engine_host_impl.h",
+    "engine_requests.cc",
+    "engine_requests.h",
     "host_content_browser_client.cc",
     "host_content_browser_client.h",
     "host_page.h",
@@ -57,6 +62,8 @@ source_set("host") {
     "permission_prompt.h",
     "refrax_browser_main_extra_parts.mm",
     "refrax_browser_main_extra_parts.h",
+    "secret_key_provider.cc",
+    "secret_key_provider.h",
     "switches.cc",
     "switches.h",
     "world_registry.cc",
@@ -77,6 +84,8 @@ source_set("host") {
     "//components/input",
     "//components/keyed_service/content",
     "//components/keep_alive_registry",
+    "//components/os_crypt/async/browser:key_provider_interface",
+    "//components/os_crypt/async/common",
     "//components/prefs",
     "//components/permissions",
     "//components/remote_cocoa/browser",
@@ -111,6 +120,7 @@ test("refrax_unittests") {
   sources = [
     "content_blocking_compiler_unittest.cc",
     "contract_json_unittest.cc",
+    "secrets_unittest.cc",
     "url_matching_unittest.cc",
   ]
   deps = [

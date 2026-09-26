@@ -44,6 +44,11 @@ NS_SWIFT_UI_ACTOR
 /// `event`: UTF-8 JSON of one EngineEvent: something that happened outside any page, such as a
 /// service worker's notification.
 - (void)engineHost:(id<RFXEngineHost>)host didEmitEvent:(NSData *)event;
+/// `request`: JSON EngineRequest, a question outside any page, such as a `secret` the engine
+/// needs to start. `reply` takes JSON EngineRequestAnswer and must be called once.
+- (void)engineHost:(id<RFXEngineHost>)host
+        didRequest:(NSData *)request
+             reply:(void (^)(NSData *answer))reply;
 @end
 
 NS_SWIFT_UI_ACTOR

@@ -18,6 +18,7 @@
 
 #import <AppKit/AppKit.h>
 #import <ImageIO/ImageIO.h>
+#import <Security/Security.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import "RFXEngine.h"
@@ -197,6 +198,41 @@ static void Note(NSString* message) {
 
 - (void)engineHostDidTerminateWithReason:(NSString*)reason {
   Note([@"engine terminated: " stringByAppendingString:reason]);
+}
+
+// Answers `secret` from <storage>/Secrets/<name>, 32 random bytes made on first use, where
+// Refrax would use its keychain.
+- (void)engineHost:(id<RFXEngineHost>)host
+        didRequest:(NSData*)request
+             reply:(void (^)(NSData*))reply {
+  NSDictionary* message = [NSJSONSerialization JSONObjectWithData:request options:0 error:nil];
+  NSString* name = [message isKindOfClass:NSDictionary.class] ? message[@"secret"][@"name"] : nil;
+  NSCharacterSet* allowed = [NSCharacterSet
+      characterSetWithCharactersInString:
+          @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"];
+  if (![name isKindOfClass:NSString.class] || name.length == 0 || name.length > 64 ||
+      [name rangeOfCharacterFromSet:allowed.invertedSet].location != NSNotFound) {
+    reply([@"{\"unavailable\":{}}" dataUsingEncoding:NSUTF8StringEncoding]);
+    return;
+  }
+  NSURL* folder = [self.storage URLByAppendingPathComponent:@"Secrets" isDirectory:YES];
+  NSURL* file = [folder URLByAppendingPathComponent:name];
+  NSData* secret = [NSData dataWithContentsOfURL:file];
+  if (secret.length != 32) {
+    NSMutableData* bytes = [NSMutableData dataWithLength:32];
+    (void)SecRandomCopyBytes(kSecRandomDefault, 32, bytes.mutableBytes);
+    [NSFileManager.defaultManager createDirectoryAtURL:folder
+                           withIntermediateDirectories:YES
+                                            attributes:nil
+                                                 error:nil];
+    [bytes writeToURL:file atomically:YES];
+    secret = bytes;
+  }
+  Note([@"secret requested: " stringByAppendingString:name]);
+  reply([NSJSONSerialization
+      dataWithJSONObject:@{@"secret" : @{@"value" : [secret base64EncodedStringWithOptions:0]}}
+                 options:0
+                   error:nil]);
 }
 
 // MARK: RFXEnginePageDelegate

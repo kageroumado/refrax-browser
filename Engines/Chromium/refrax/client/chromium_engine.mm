@@ -2,6 +2,7 @@
 
 #import <AppKit/AppKit.h>
 
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -10,6 +11,7 @@
 #include "base/apple/foundation_util.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
+#include "base/strings/string_split.h"
 #include "base/strings/sys_string_conversions.h"
 #include "components/remote_cocoa/app_shim/application_bridge.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
@@ -69,6 +71,13 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
       [languages isKindOfClass:NSArray.class] && languages.count > 0) {
     arguments.push_back("--lang=" + base::SysNSStringToUTF8(languages.firstObject));
   }
+  // Extra host switches for diagnosing the host, space-separated: --log-net-log=…, --vmodule=….
+  if (const char* flags = std::getenv("REFRAX_CHROMIUM_HOST_FLAGS")) {
+    for (std::string& flag : base::SplitString(flags, " ", base::TRIM_WHITESPACE,
+                                               base::SPLIT_WANT_NONEMPTY)) {
+      arguments.push_back(std::move(flag));
+    }
+  }
   return arguments;
 }
 
@@ -78,11 +87,12 @@ std::vector<std::string> HostArguments(NSDictionary* configuration) {
 // as "Refrax Chromium Host.app" inside this bundle and shows its pages through remote_cocoa.
 @interface RFXChromiumEngine : NSObject <RFXEngineHost>
 - (void)hostDidEmitEvent:(const std::string&)event;
+- (void)hostDidRequest:(const std::string&)request reply:(void (^)(NSData* answer))reply;
 @end
 
 namespace {
 
-// Delivers the host's events outside any page to the engine's delegate.
+// Delivers the host's events and requests outside any page to the engine's delegate.
 class EngineClientImpl : public refrax::mojom::EngineClient {
  public:
   EngineClientImpl(RFXChromiumEngine* engine,
@@ -90,6 +100,17 @@ class EngineClientImpl : public refrax::mojom::EngineClient {
       : engine_(engine), receiver_(this, std::move(receiver)) {}
 
   void OnEvent(const std::string& event) override { [engine_ hostDidEmitEvent:event]; }
+
+  void OnRequest(const std::string& request, OnRequestCallback callback) override {
+    // Blocks copy their captures; the Mojo reply is move-only, so it rides in a shared_ptr.
+    auto reply = std::make_shared<OnRequestCallback>(std::move(callback));
+    [engine_ hostDidRequest:request
+                      reply:^(NSData* answer) {
+                        if (*reply) {
+                          std::move(*reply).Run(ToString(answer));
+                        }
+                      }];
+  }
 
  private:
   __weak RFXChromiumEngine* engine_;
@@ -230,6 +251,14 @@ class EngineClientImpl : public refrax::mojom::EngineClient {
   if ([_delegate respondsToSelector:@selector(engineHost:didEmitEvent:)]) {
     [_delegate engineHost:self didEmitEvent:ToData(event)];
   }
+}
+
+- (void)hostDidRequest:(const std::string&)request reply:(void (^)(NSData* answer))reply {
+  if (![_delegate respondsToSelector:@selector(engineHost:didRequest:reply:)]) {
+    reply(ToData(R"({"unavailable":{}})"));
+    return;
+  }
+  [_delegate engineHost:self didRequest:ToData(request) reply:reply];
 }
 
 - (void)removeProfile:(NSData*)profile completion:(void (^)(void))completion {

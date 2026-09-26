@@ -11,6 +11,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "chrome/browser/after_startup_task_utils.h"
+#include "chrome/browser/browser_process_impl.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -19,6 +20,7 @@
 #include "refrax/host/engine_connection.h"
 #include "refrax/host/engine_host_impl.h"
 #include "refrax/host/notifications.h"
+#include "refrax/host/secret_key_provider.h"
 #include "refrax/host/switches.h"
 
 namespace refrax {
@@ -42,6 +44,13 @@ RefraxBrowserMainExtraParts::~RefraxBrowserMainExtraParts() = default;
 
 void RefraxBrowserMainExtraParts::PreEarlyInitialization() {
   HideFromDock();
+}
+
+void RefraxBrowserMainExtraParts::PostCreateThreads() {
+  // Before the browser process creates OSCryptAsync, which asks for the key at once; the request
+  // waits for the client to connect.
+  static_cast<BrowserProcessImpl*>(g_browser_process)
+      ->set_os_crypt_async_key_provider(std::make_unique<SecretKeyProvider>());
 }
 
 void RefraxBrowserMainExtraParts::PreProfileInit() {
