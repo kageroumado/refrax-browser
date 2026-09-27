@@ -46,6 +46,9 @@ class HostPage : public mojom::Page,
   HostPage& operator=(const HostPage&) = delete;
   ~HostPage() override;
 
+  // The Refrax page showing `web_contents`, or null for contents Refrax doesn't own.
+  static HostPage* FromWebContents(content::WebContents* web_contents);
+
   // The id the client registers its container NSView under.
   uint64_t container_ns_view_id() const { return container_ns_view_id_; }
 
@@ -63,6 +66,10 @@ class HostPage : public mojom::Page,
 
   // Sends the contract's PageEvent `name`.
   void Emit(std::string_view name, base::DictValue fields = {});
+
+  // Sends a contract request to Refrax; `answer` runs with its PageRequestAnswer.
+  void SendRequest(std::string request,
+                   base::OnceCallback<void(const std::string&)> answer);
 
   base::WeakPtr<HostPage> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
 
@@ -135,12 +142,12 @@ class HostPage : public mojom::Page,
   void ApplyZoom();
 
   void EmitBackForward();
-  // Sends a contract request to Refrax; `answer` runs with its PageRequestAnswer.
-  void SendRequest(std::string request,
-                   base::OnceCallback<void(const std::string&)> answer);
+  // Asks Refrax to open `url`. `is_new_window_request` is true when the page asked for a new
+  // browsing context, false when the user's modifier click did.
   void RequestOpenURL(const GURL& url,
                       WindowOpenDisposition disposition,
-                      bool user_gesture);
+                      bool user_gesture,
+                      bool is_new_window_request);
   ui::ViewsHostableView* hostable_view() const;
   void ApplyBounds();
 

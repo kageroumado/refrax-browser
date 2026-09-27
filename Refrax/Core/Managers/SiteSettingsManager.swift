@@ -69,6 +69,9 @@ final class SiteSettingsManager {
 
     private let saver: DebouncedModelContextSaver
 
+    /// Called after settings are saved, deleted, or reset.
+    @ObservationIgnored var onChange: (() -> Void)?
+
     // MARK: - Initialization
 
     init(modelContext: ModelContext) {
@@ -210,6 +213,7 @@ final class SiteSettingsManager {
     func save(_ settings: SiteSettings) {
         settings.markModified()
         scheduleSave()
+        onChange?()
     }
 
     /// Deletes settings for a domain.
@@ -240,6 +244,7 @@ final class SiteSettingsManager {
         noSettingsDomains.insert(normalized)
 
         scheduleSave()
+        onChange?()
         Logger.debug("Deleted site settings for: \(normalized)", category: Logger.data)
     }
 
@@ -271,6 +276,7 @@ final class SiteSettingsManager {
         }
 
         scheduleSave()
+        onChange?()
         Logger.debug("Deleted site settings for \(domains.count) domains", category: Logger.data)
     }
 
@@ -337,6 +343,7 @@ final class SiteSettingsManager {
         }
 
         scheduleSave()
+        onChange?()
         Logger.debug("Reset site settings for \(domains.count) domains", category: Logger.data)
     }
 
@@ -428,10 +435,10 @@ final class SiteSettingsManager {
     /// Fetches site settings sorted by domain with optional limit.
     ///
     /// - Parameters:
-    ///   - limit: Maximum number of results to return. Defaults to 500.
+    ///   - limit: Maximum number of results to return, or nil for all of them. Defaults to 500.
     /// - Note: This performs a database fetch. Cache the result if needed repeatedly.
     /// - Returns: Site settings sorted alphabetically by domain.
-    func fetchAllSiteSettings(limit: Int = 500) -> [SiteSettings] {
+    func fetchAllSiteSettings(limit: Int? = 500) -> [SiteSettings] {
         var descriptor = FetchDescriptor<SiteSettings>(
             sortBy: [SortDescriptor(\.domain)],
         )

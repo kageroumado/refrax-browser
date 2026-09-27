@@ -2,6 +2,7 @@
 
 #include "refrax/host/engine_host_impl.h"
 
+#include <set>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -25,6 +26,7 @@
 #include "refrax/host/download_delegate.h"
 #include "refrax/host/engine_requests.h"
 #include "refrax/host/host_page.h"
+#include "refrax/host/site_settings.h"
 
 namespace refrax {
 
@@ -163,6 +165,7 @@ void EngineHostImpl::CreatePageInProfile(
     std::move(callback).Run(0);
     return;
   }
+  SiteSettings::Get().ApplyTo(profile);
   auto host_page = std::make_unique<HostPage>(
       this, profile, std::move(page_id), std::move(page), std::move(client));
   const uint64_t container_id = host_page->container_ns_view_id();
@@ -223,8 +226,22 @@ void EngineHostImpl::ApplyPolicy(const std::string& update) {
     Notifications::Get().ApplyPolicy(*policy);
     return;
   }
-  // Extensions and site settings are not declared in the engine's capabilities yet, so
-  // Refrax does not send them.
+  if (category == "siteSettings") {
+    const base::DictValue* policy = fields.FindDict("policy");
+    if (!policy || !SiteSettings::Get().Apply(*policy)) {
+      receiver_.ReportBadMessage("ApplyPolicy: siteSettings without a policy");
+      return;
+    }
+    std::set<Profile*> profiles;
+    for (const auto& page : pages_) {
+      profiles.insert(Profile::FromBrowserContext(page->web_contents()->GetBrowserContext()));
+    }
+    for (Profile* profile : profiles) {
+      SiteSettings::Get().ApplyTo(profile);
+    }
+    return;
+  }
+  // Extensions are not declared in the engine's capabilities yet, so Refrax does not send them.
   VLOG(1) << "Policy category not handled: " << category;
 }
 

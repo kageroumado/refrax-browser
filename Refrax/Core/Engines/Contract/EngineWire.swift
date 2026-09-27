@@ -152,8 +152,15 @@ nonisolated enum EngineWire {
 
     static func validated(_ request: PageRequestKind) throws -> PageRequestKind {
         switch request {
-        case let .openURL(url, disposition, userGesture):
-            return try .openURL(url: checked(url), disposition: disposition, userGesture: userGesture)
+        case let .openURL(url, disposition, userGesture, isNewWindowRequest):
+            return try .openURL(
+                url: checked(url),
+                disposition: disposition,
+                userGesture: userGesture,
+                isNewWindowRequest: isNewWindowRequest,
+            )
+        case let .navigation(url, kind, initiatorOrigin):
+            return try .navigation(url: checked(url), kind: kind, initiatorOrigin: initiatorOrigin.map(capped))
         case let .permission(kind, origin):
             return try .permission(kind: kind, origin: checked(origin))
         case let .javaScriptDialog(dialog):

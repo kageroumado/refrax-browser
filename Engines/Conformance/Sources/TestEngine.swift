@@ -185,7 +185,7 @@ final class TestPage: NSObject, RFXEnginePageDelegate {
 
     /// Answers each request; returns nil to leave it unanswered (the reply is kept in
     /// `pendingReplies`). Defaults to a user who confirms dialogs, denies permissions, lets
-    /// Refrax open URLs and cancels downloads.
+    /// Refrax open URLs, allows navigations and cancels downloads.
     var answer: (Message) -> [String: Any]? = TestPage.defaultAnswer
     private(set) var pendingReplies: [(Data) -> Void] = []
     /// Answers each script message; defaults to resolving with the message's body.
@@ -215,6 +215,7 @@ final class TestPage: NSObject, RFXEnginePageDelegate {
     nonisolated static func defaultAnswer(_ request: Message) -> [String: Any]? {
         switch request.name {
         case "openURL": ["handled": [:]]
+        case "navigation": ["allow": [:]]
         case "permission": ["deny": [:]]
         case "javaScriptDialog": ["confirm": ["text": "conformance"]]
         default: ["cancel": [:]]

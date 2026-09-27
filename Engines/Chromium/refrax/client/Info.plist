@@ -25,7 +25,7 @@
 	<key>NSPrincipalClass</key>
 	<string>RFXChromiumEngine</string>
 	<key>RFXEngineContractVersion</key>
-	<string>1.1</string>
+	<string>1.2</string>
 	<key>RFXEngineDisplayName</key>
 	<string>Chromium</string>
 	<key>RFXEngineVersion</key>

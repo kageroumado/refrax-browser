@@ -276,22 +276,25 @@ extension WebPage {
 
 extension WebPage {
     /// Answers a decision the engine is waiting on.
-    ///
-    /// Permission and dialog requests are denied: the permission broker and dialog
-    /// presenter are WebKit-only until they speak the contract.
     private func answer(_ request: PageRequestKind) async -> PageRequestAnswer {
         switch request {
-        case let .openURL(url, disposition, _):
-            let decider = backingNavigationDelegate.navigationDecider
-            switch disposition {
-            case .currentTab:
+        case let .openURL(url, disposition, userGesture, isNewWindowRequest):
+            if disposition == .currentTab {
                 load(url)
-            case .backgroundTab:
-                decider.openInNewTab(url: url, activate: false)
-            case .foregroundTab, .popup, .newWindow:
-                decider.openInNewTab(url: url, activate: true)
+            } else {
+                await backingNavigationDelegate.navigationDecider.openEngineRequest(EngineNavigationAction(
+                    url: url,
+                    disposition: disposition,
+                    userGesture: userGesture,
+                    isNewWindowRequest: isNewWindowRequest,
+                    sourceURL: self.url,
+                ))
             }
             return .handled
+
+        case let .navigation(url, kind, initiatorOrigin):
+            let action = EngineNavigationAction(url: url, kind: kind, initiatorOrigin: initiatorOrigin)
+            return await backingNavigationDelegate.navigationDecider.allowsEngineNavigation(action) ? .allow : .cancel
 
         case let .download(id, url, suggestedFilename, mimeType, totalBytes):
             // The engine writes the file (only it holds the session); Refrax picks the place,

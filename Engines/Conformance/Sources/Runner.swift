@@ -57,6 +57,11 @@ final class Context {
         notes.append(line)
     }
 
+    /// The contract's `siteSettings` policy.
+    func siteSettings(javaScriptEnabled: Bool = true, rules: [[String: Any]] = []) {
+        apply("siteSettings", ["policy": ["javaScriptEnabled": javaScriptEnabled, "rules": rules]])
+    }
+
     func contentBlocking(enabled: Bool = true, lists: [String], allowlistedHosts: [String] = []) {
         blockingLists = lists
         apply("contentBlocking", [
@@ -96,6 +101,9 @@ final class Context {
         }
         if touchedPolicy.contains("notifications") {
             notifications()
+        }
+        if touchedPolicy.contains("siteSettings") {
+            siteSettings()
         }
         touchedPolicy.removeAll()
         notes.removeAll()

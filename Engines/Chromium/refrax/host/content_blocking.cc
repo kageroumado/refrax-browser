@@ -135,6 +135,11 @@ void ContentBlocking::OnCompiled(const std::string& content_version,
   service->IndexAndStoreAndPublishRulesetIfNeeded(info);
 }
 
+void ContentBlocking::SetSiteExceptions(std::set<std::string> hosts) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  site_exceptions_ = std::move(hosts);
+}
+
 void ContentBlocking::MaybeAddThrottle(
     content::NavigationThrottleRegistry& registry) const {
   if (!received_policy_ || !enabled_) {
@@ -151,7 +156,8 @@ bool ContentBlocking::IsActiveFor(const GURL& url) const {
   if (!received_policy_ || !enabled_ || !url.SchemeIsHTTPOrHTTPS()) {
     return false;
   }
-  return !url_matching::IsAllowlistedHost(allowlisted_hosts_, url.host());
+  return !url_matching::IsAllowlistedHost(allowlisted_hosts_, url.host()) &&
+         !url_matching::IsAllowlistedHost(site_exceptions_, url.host());
 }
 
 }  // namespace refrax

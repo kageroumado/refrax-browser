@@ -144,5 +144,55 @@ enum NavigationTests {
             try await page.waitForEvent("loadingChanged", after: mark) { $0["isLoading"] as? Bool == false }
             try expectEqual(try await page.evaluate("document.title") as? String, "basic", "the page after stopping")
         },
+
+        ConformanceTest(name: "navigation.refrax-load-asks-refrax") { context in
+            let page = try await context.page("/html/basic")
+            let mark = page.requests.count
+            try await page.load(context.url("/html/other"))
+            let request = try await page.waitForRequest("navigation", after: mark)
+            try expect((request["url"] as? String)?.hasSuffix("/html/other") == true, "url \(request["url"] ?? "nil")")
+            try expectEqual(request["kind"] as? String, "other", "kind")
+            try expect(request["initiatorOrigin"] == nil, "a load Refrax started named an initiator: \(request["initiatorOrigin"] ?? "")")
+        },
+
+        ConformanceTest(name: "navigation.link-click-names-its-initiator") { context in
+            let page = try await context.page("/html/links")
+            let mark = page.requests.count
+            _ = try await page.evaluate("document.getElementById('link').click()", gesture: true)
+            let request = try await page.waitForRequest("navigation", after: mark)
+            try expect((request["url"] as? String)?.hasSuffix("/html/other") == true, "url \(request["url"] ?? "nil")")
+            try expectEqual(request["kind"] as? String, "link", "kind")
+            let origin = context.url("/").dropLast()
+            try expectEqual(request["initiatorOrigin"] as? String, String(origin), "initiatorOrigin")
+        },
+
+        ConformanceTest(name: "navigation.cancel-keeps-the-page") { context in
+            let page = try await context.page("/html/basic")
+            page.answer = { request in
+                request.name == "navigation" ? ["cancel": [:]] : TestPage.defaultAnswer(request)
+            }
+            let mark = page.requests.count
+            _ = try await page.evaluate("location.href = '/html/other'")
+            try await page.waitForRequest("navigation", after: mark)
+            try await pause(1)
+            try expectEqual(try await page.evaluate("document.title") as? String, "basic", "the page after a cancelled navigation")
+            try expect(!page.events.contains { $0.name == "navigationCommitted" && ($0.fields["url"] as? String)?.hasSuffix("/html/other") == true },
+                       "a cancelled navigation committed")
+        },
+
+        ConformanceTest(name: "navigation.waits-for-the-answer") { context in
+            let page = try await context.page("/html/basic")
+            page.answer = { request in
+                request.name == "navigation" ? nil : TestPage.defaultAnswer(request)
+            }
+            let mark = page.requests.count
+            _ = try await page.evaluate("location.href = '/html/other'")
+            try await page.waitForRequest("navigation", after: mark)
+            try await pause(1)
+            try expectEqual(try await page.evaluate("document.title") as? String, "basic", "the page before Refrax answered")
+            page.answer = TestPage.defaultAnswer
+            page.pendingReplies.forEach { $0(JSON.data(["allow": [:]])) }
+            try await page.waitForEvent("titleChanged") { $0["title"] as? String == "other" }
+        },
     ]
 }

@@ -299,7 +299,16 @@ nonisolated enum ScriptValue: Hashable, Sendable {
 /// within its own timeout applies the safe default (deny / cancel).
 nonisolated enum PageRequestKind: Codable, Hashable, Sendable {
     /// The page wants a URL opened outside itself (`window.open`, ⌘-click, `target=_blank`).
-    case openURL(url: URL, disposition: OpenDisposition, userGesture: Bool)
+    /// `isNewWindowRequest` is true when the page asked for a new browsing context
+    /// (`target=_blank`, `window.open`) and false when the user's modifier click did; engines
+    /// that omit it leave Refrax to infer it from `disposition`.
+    case openURL(url: URL, disposition: OpenDisposition, userGesture: Bool, isNewWindowRequest: Bool?)
+    /// A main-frame navigation is about to send its first request; answered `allow` or `cancel`.
+    /// Refrax answers `cancel` when it handles the URL itself: a cleaned URL loads through a
+    /// new `load`, a preview or a new tab opens, an external app takes it.
+    /// `initiatorOrigin` is the serialized origin of the document that started it (`"null"` for an
+    /// opaque origin), absent when Refrax or the user started it.
+    case navigation(url: URL, kind: NavigationKind, initiatorOrigin: String?)
     case permission(kind: PermissionKind, origin: URL)
     case javaScriptDialog(dialog: JavaScriptDialog)
     /// Where to save a download; answered with a destination or a cancel. `id` names the download
@@ -313,6 +322,17 @@ nonisolated enum OpenDisposition: String, Codable, Hashable, Sendable {
     case backgroundTab
     case popup
     case newWindow
+}
+
+/// What started a main-frame navigation.
+nonisolated enum NavigationKind: String, Codable, Hashable, Sendable {
+    /// The user activated a link in the page.
+    case link
+    case formSubmission
+    case backForward
+    case reload
+    /// Anything else: a script, a meta refresh, or a `load` from Refrax.
+    case other
 }
 
 nonisolated enum PermissionKind: String, Codable, Hashable, Sendable {

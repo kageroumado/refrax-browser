@@ -5,6 +5,7 @@
 #include "base/command_line.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "refrax/host/content_blocking.h"
+#include "refrax/host/navigation_policy.h"
 #include "refrax/host/refrax_browser_main_extra_parts.h"
 #include "refrax/host/switches.h"
 
@@ -30,6 +31,8 @@ void HostContentBrowserClient::CreateThrottlesForNavigation(
   // First, so the filter's page activation is known before Chrome's subresource filter
   // throttles act on it.
   ContentBlocking::Get().MaybeAddThrottle(registry);
+  // Refrax decides before Chrome's throttles see the request.
+  navigation_policy::MaybeAddThrottle(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
 }
 

@@ -375,6 +375,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browserState.webNotifications.onEnginePolicyChange = { [engineRegistry] policy in
             engineRegistry.apply(.notifications(policy: policy))
         }
+        browserState.siteSettingsCoordinator.onEnginePolicyChange = { [engineRegistry] policy in
+            engineRegistry.apply(.siteSettings(policy: policy))
+        }
         engineRegistry.engineEventHandler = { [webNotifications = browserState.webNotifications] engineID, event in
             webNotifications.handle(event, from: engineID)
         }

@@ -41,6 +41,10 @@ class ContentBlocking {
   // Must run before Chrome adds its subresource filter throttles.
   void MaybeAddThrottle(content::NavigationThrottleRegistry& registry) const;
 
+  // Replaces the sites where Refrax's site settings turn blocking off (CONTRACT.md §4.5
+  // `siteSettings`), lowercase hosts covering their subdomains.
+  void SetSiteExceptions(std::set<std::string> hosts);
+
   // Whether a page at `url` is filtered.
   bool IsActiveFor(const GURL& url) const;
 
@@ -56,6 +60,7 @@ class ContentBlocking {
   bool received_policy_ = false;
   bool enabled_ = false;
   std::set<std::string> allowlisted_hosts_;
+  std::set<std::string> site_exceptions_;
 
   base::WeakPtrFactory<ContentBlocking> weak_factory_{this};
 };

@@ -10,7 +10,7 @@ nonisolated enum PolicyUpdate: Codable, Hashable, Sendable {
     case contentBlocking(policy: ContentBlockingPolicy)
     case scripts(scripts: [InjectedScript])
     case extensions(extensions: [ExtensionPackage])
-    case siteSettings(rules: [SiteSettingsRule])
+    case siteSettings(policy: SiteSettingsPolicy)
     case notifications(policy: NotificationPolicy)
 }
 
@@ -87,12 +87,27 @@ nonisolated struct ExtensionPackage: Codable, Hashable, Sendable {
     let isEnabled: Bool
 }
 
+/// Refrax's per-site settings an engine enforces itself. Zoom is set per page (`setZoom`),
+/// permissions are answered per request, and popups arrive as `openURL` requests, so none of
+/// them are here.
+nonisolated struct SiteSettingsPolicy: Codable, Hashable, Sendable {
+    /// Whether pages run JavaScript where no rule says otherwise.
+    var javaScriptEnabled = true
+    var rules: [SiteSettingsRule] = []
+}
+
+/// Overrides for one site. `host` is a registrable domain and covers its subdomains; an absent
+/// field leaves the default.
 nonisolated struct SiteSettingsRule: Codable, Hashable, Sendable {
     let host: String
     var javaScriptEnabled: Bool?
-    var zoom: Double?
-    var userAgent: String?
     var contentBlockingEnabled: Bool?
+    /// Media may play with sound before the user interacts with the page.
+    var autoplayWithSound: Bool?
+
+    var hasOverrides: Bool {
+        javaScriptEnabled != nil || contentBlockingEnabled != nil || autoplayWithSound != nil
+    }
 }
 
 /// Every notification decision Refrax holds. Engines answer notification permission from it

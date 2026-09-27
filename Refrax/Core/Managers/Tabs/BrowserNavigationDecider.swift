@@ -320,7 +320,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         }
 
         // Convert our policy to WebKit policy
-        return await handleActionPolicy(policy, for: action, preferences: &preferences)
+        return await handleActionPolicy(policy)
     }
 
     /// Decides the policy for a navigation response.
@@ -503,6 +503,45 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         )
     }
 
+    // MARK: - Engine Navigations
+
+    /// Decides a main-frame navigation a plug-in engine is about to start, through the same
+    /// handler chain as WebKit's.
+    ///
+    /// Refrax carries out every outcome but letting the navigation go (a cleaned URL loads
+    /// anew, a preview or tab opens), so the engine goes ahead only on `true`.
+    func allowsEngineNavigation(_ action: EngineNavigationAction) async -> Bool {
+        let policy = await actionChain.evaluate(action)
+        switch policy {
+        case .allow, .next:
+            return true
+        case .download:
+            // The engine saves it through its own `download` request.
+            return true
+        case .cancel, .redirect, .openInNewTab, .showPreview:
+            _ = await handleActionPolicy(policy)
+            return false
+        }
+    }
+
+    /// Opens a URL a plug-in engine's page wants opened outside itself, where the handler chain
+    /// says: a new tab by default, a preview from a contained tab, nowhere for a blocked popup.
+    func openEngineRequest(_ action: EngineNavigationAction) async {
+        guard let url = action.url else { return }
+        switch await actionChain.evaluate(action) {
+        case .allow, .next, .download:
+            openInNewTab(url: url, activate: action.shouldActivateNewTab)
+        case let .redirect(newURL):
+            openInNewTab(url: newURL, activate: action.shouldActivateNewTab)
+        case let .openInNewTab(newURL, activate):
+            openInNewTab(url: newURL, activate: activate)
+        case let .showPreview(previewURL):
+            await showLinkPreview(for: previewURL)
+        case .cancel:
+            break
+        }
+    }
+
     // MARK: - Extension Pages
 
     /// The page, pool, and destination to check when `action` is a main-frame navigation on
@@ -522,11 +561,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
     // MARK: - Policy Conversion
 
     /// Converts our navigation action policy to WebKit's policy.
-    private func handleActionPolicy(
-        _ policy: NavigationActionPolicy,
-        for _: WebPage.NavigationAction,
-        preferences _: inout WebPage.NavigationPreferences,
-    ) async -> WKNavigationActionPolicy {
+    private func handleActionPolicy(_ policy: NavigationActionPolicy) async -> WKNavigationActionPolicy {
         switch policy {
         case .allow:
             return .allow

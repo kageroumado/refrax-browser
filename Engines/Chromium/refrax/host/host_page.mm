@@ -4,11 +4,13 @@
 
 #import <AppKit/AppKit.h>
 
+#include <memory>
 #include <utility>
 
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/supports_user_data.h"
 #include "base/time/time.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tab_helpers.h"
@@ -115,7 +117,25 @@ std::string_view TerminationReason(base::TerminationStatus status,
   }
 }
 
+// Ties a WebContents to the Refrax page that owns it.
+class PageLink : public base::SupportsUserData::Data {
+ public:
+  explicit PageLink(base::WeakPtr<HostPage> page) : page_(std::move(page)) {}
+  HostPage* page() const { return page_.get(); }
+
+ private:
+  base::WeakPtr<HostPage> page_;
+};
+
+const char kPageLinkKey[] = "refrax.host_page";
+
 }  // namespace
+
+// static
+HostPage* HostPage::FromWebContents(content::WebContents* web_contents) {
+  auto* link = static_cast<PageLink*>(web_contents->GetUserData(kPageLinkKey));
+  return link ? link->page() : nullptr;
+}
 
 HostPage::HostPage(EngineHostImpl* engine,
                    Profile* profile,
@@ -132,6 +152,8 @@ HostPage::HostPage(EngineHostImpl* engine,
   // A full Chrome tab minus the tab strip: session ids, zoom, permissions, popup blocking,
   // dialogs, extensions.
   TabHelpers::AttachTabHelpers(web_contents_.get());
+  web_contents_->SetUserData(kPageLinkKey,
+                             std::make_unique<PageLink>(weak_factory_.GetWeakPtr()));
   web_contents_->SetDelegate(this);
   Observe(web_contents_.get());
   // The client is gone: nobody waits for a reply.
@@ -224,14 +246,16 @@ void HostPage::SendRequest(std::string request,
 
 void HostPage::RequestOpenURL(const GURL& url,
                               WindowOpenDisposition disposition,
-                              bool user_gesture) {
+                              bool user_gesture,
+                              bool is_new_window_request) {
   // Refrax owns every tab and window; it opens the URL where it decides.
   client_->OnRequest(
       contract::Message("openURL",
                         base::DictValue()
                             .Set("url", contract::URLValue(url))
                             .Set("disposition", DispositionName(disposition))
-                            .Set("userGesture", user_gesture)),
+                            .Set("userGesture", user_gesture)
+                            .Set("isNewWindowRequest", is_new_window_request)),
       base::DoNothing());
 }
 
@@ -615,7 +639,9 @@ content::WebContents* HostPage::OpenURLFromTab(
     }
     return source;
   }
-  RequestOpenURL(params.url, params.disposition, params.user_gesture);
+  // A link the user opened elsewhere with a modifier click or the middle button.
+  RequestOpenURL(params.url, params.disposition, params.user_gesture,
+                 /*is_new_window_request=*/false);
   return nullptr;
 }
 
@@ -629,7 +655,8 @@ content::WebContents* HostPage::AddNewContents(
     bool* was_blocked) {
   // Refrax opens the URL in a page of its own; the opener relationship to this page is not
   // kept, so `new_contents` is dropped.
-  RequestOpenURL(target_url, disposition, user_gesture);
+  RequestOpenURL(target_url, disposition, user_gesture,
+                 /*is_new_window_request=*/true);
   return nullptr;
 }
 

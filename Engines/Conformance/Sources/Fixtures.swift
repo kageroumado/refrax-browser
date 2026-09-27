@@ -13,6 +13,9 @@ enum Fixtures {
         "notify": notify,
         "basic": "<!doctype html><title>basic</title><p id=p>basic page</p>",
         "other": "<!doctype html><title>other</title><p>other page</p>",
+        "links": "<!doctype html><title>links</title><a id=link href=\"/html/other\">other</a>",
+        // Requests /asset/js-ran-<host> when the page's own script runs.
+        "scripted": "<!doctype html><title>scripted</title><script>new Image().src = '/asset/js-ran-' + location.hostname</script>",
         "excluded": "<!doctype html><title>excluded</title>",
 
         // Records whether a document-start script ran before the page's first script, and

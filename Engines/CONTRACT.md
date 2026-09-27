@@ -1,6 +1,6 @@
 # Refrax engine contract
 
-**Version 1.1.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
+**Version 1.2.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
 tabs, spaces, history, bookmarks, passwords, extensions as installed artifacts, content-blocking
 lists, user scripts, settings. An engine renders pages and reports what happens in them. System
 WebKit is built in; every other engine is a separately installed bundle that speaks this contract.
@@ -35,7 +35,7 @@ An engine is a loadable bundle named `<Name>.engine`, installed at
 | `CFBundleIdentifier` | string | Engine ID, reverse-DNS (`website.refrax.engine.chromium`). `system.webkit` is reserved. |
 | `CFBundleShortVersionString` | string | Version of the engine bundle |
 | `NSPrincipalClass` | string | Class conforming to `RFXEngineHost` |
-| `RFXEngineContractVersion` | string | Contract version implemented, `"1.1"` |
+| `RFXEngineContractVersion` | string | Contract version implemented, `"1.2"` |
 | `RFXEngineDisplayName` | string | Name in Settings → Engines |
 | `RFXEngineVersion` | string | Version of the rendering engine, e.g. `"Chromium 155.0.8059.12"` |
 | `RFXEngineVendor` | string | Who built it |
@@ -151,10 +151,25 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 
 | Case | Fields | Answers |
 |---|---|---|
-| `openURL` | `url`, `disposition` (`currentTab`\|`foregroundTab`\|`backgroundTab`\|`popup`\|`newWindow`), `userGesture` | `{"handled":{}}` — Refrax opens it |
+| `openURL` | `url`, `disposition` (`currentTab`\|`foregroundTab`\|`backgroundTab`\|`popup`\|`newWindow`), `userGesture`, `isNewWindowRequest?` (1.2) | `{"handled":{}}` — Refrax opens it |
+| `navigation` (1.2) | `url`, `kind` (`link`\|`formSubmission`\|`backForward`\|`reload`\|`other`), `initiatorOrigin?` | `{"allow":{}}` \| `{"cancel":{}}` |
 | `permission` | `kind` (`camera`, `microphone`, `cameraAndMicrophone`, `geolocation`, `notifications`, `screenCapture`, `clipboardRead`), `origin` | `{"allow":{}}` \| `{"deny":{}}` |
 | `javaScriptDialog` | `dialog`: `{ "kind": alert\|confirm\|prompt\|beforeUnload, "message", "defaultText?", "origin?" }` | `{"confirm":{"text":…?}}` \| `{"cancel":{}}` |
 | `download` | `id`, `url`, `suggestedFilename`, `mimeType?`, `totalBytes?` | `{"saveTo":{"url":"file:///…"}}` \| `{"cancel":{}}` |
+
+`navigation` is asked for every main-frame navigation to an `http`, `https`, `file`, `data`, `blob` or
+`refrax` URL before its first request, including the ones Refrax starts; the navigation waits
+for the answer and goes ahead only on `allow`. Refrax answers `cancel` when it takes the URL
+somewhere itself: it loads a cleaned URL with a new `load`, shows a preview, opens a tab, or hands
+the URL to another app. Redirects go ahead without asking. `kind` is `link` only for a link the
+user activated in the page (a script's location change is `other`). `initiatorOrigin` is the
+serialized origin of the document that started the navigation (`"null"` when opaque), omitted
+when Refrax or the user started it (address bar, reload, back/forward).
+
+`openURL`'s `isNewWindowRequest` is true when the page asked for a new browsing context
+(`target=_blank`, `window.open`) and false when the user's modifier click or middle button did.
+Refrax decides where the URL goes: a new tab, a preview, or nowhere for a popup the site's
+settings block.
 
 Engines never show their own dialog or permission UI. Refrax answers `permission` from the
 site's settings or asks the user, and shows `javaScriptDialog` in the page's own pane, labeled
@@ -213,11 +228,20 @@ message as untrusted.)
 | `contentBlocking` | `policy`: `{ "isEnabled", "lists": [{ "id", "contents" }], "allowlistedHosts": [...] }` — lists in Adblock Plus / uBlock syntax |
 | `scripts` | `scripts`: `[{ "id", "source", "injectionTime": documentStart\|documentEnd, "world", "mainFrameOnly", "matches", "excludes", "channels" }]` — replaces the previous set |
 | `extensions` | `extensions`: `[{ "id", "directory", "grantedPermissions", "grantedHostPatterns", "isEnabled" }]` — unpacked, read-only |
-| `siteSettings` | `rules`: `[{ "host", "javaScriptEnabled?", "zoom?", "userAgent?", "contentBlockingEnabled?" }]` |
+| `siteSettings` (1.2) | `policy`: `{ "javaScriptEnabled", "rules": [{ "host", "javaScriptEnabled?", "contentBlockingEnabled?", "autoplayWithSound?" }] }` |
 | `notifications` | `policy`: `{ "granted": [origin], "denied": [origin], "asksByDefault" }` — every notification decision Refrax holds |
 
 Each update replaces that category's previous state. Engines apply policy to existing and future
 pages and never fetch, update, or persist these artifacts themselves.
+
+`siteSettings` is Refrax's per-site settings an engine enforces itself. `javaScriptEnabled` is
+the default; a rule's `host` is a registrable domain and covers its subdomains, and an absent
+field leaves the default. `contentBlockingEnabled: false` spares the site as `allowlistedHosts`
+does; `autoplayWithSound: true` lets its media play with sound before the user interacts, where
+the default lets only muted media autoplay. Changes take effect on the next load. Zoom (`setZoom`)
+and permissions (`permission` requests) are per page and per request instead. Engines block no
+popups of their own: every new window a page asks for reaches Refrax as `openURL`, with
+`userGesture`, and Refrax decides.
 
 `notifications` is the only source of notification permission in the engine: `Notification.permission`
 and permission queries read it (`granted`, `denied`, or for other origins `default` when

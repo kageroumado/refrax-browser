@@ -8,7 +8,7 @@ import AppKit
 /// adds messages or optional fields. Refrax loads an engine when the majors
 /// match and the engine's minor is not newer than Refrax's.
 nonisolated struct EngineContractVersion: Codable, Hashable, Sendable, Comparable, CustomStringConvertible {
-    static let current = EngineContractVersion(major: 1, minor: 1)
+    static let current = EngineContractVersion(major: 1, minor: 2)
 
     let major: Int
     let minor: Int

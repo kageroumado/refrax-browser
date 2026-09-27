@@ -15,6 +15,17 @@ final class SiteSettingsCoordinator {
     private let siteSettingsManager: SiteSettingsManager
     private let browserSettings: BrowserSettings
 
+    private var enginePolicyObservation: Task<Void, Never>?
+
+    /// Receives ``enginePolicy`` whenever a site setting or a browser default it reads changes.
+    var onEnginePolicyChange: ((SiteSettingsPolicy) -> Void)? {
+        didSet {
+            siteSettingsManager.onChange = { [weak self] in self?.publishEnginePolicy() }
+            observeJavaScriptDefaults()
+            publishEnginePolicy()
+        }
+    }
+
     init(siteSettingsManager: SiteSettingsManager, browserSettings: BrowserSettings) {
         self.siteSettingsManager = siteSettingsManager
         self.browserSettings = browserSettings
@@ -121,7 +132,11 @@ final class SiteSettingsCoordinator {
 
     /// Resolves JavaScript allowance for a URL with per-domain overrides.
     func allowsJavaScript(for url: URL) -> Bool {
-        if let siteSettings = siteSettingsManager.settings(for: url) {
+        allowsJavaScript(with: siteSettingsManager.settings(for: url))
+    }
+
+    private func allowsJavaScript(with siteSettings: SiteSettings?) -> Bool {
+        if let siteSettings {
             if siteSettings.allowJavaScript == false {
                 return false
             }
@@ -134,6 +149,47 @@ final class SiteSettingsCoordinator {
         }
 
         return browserSettings.enableJavaScript
+    }
+
+    // MARK: - Engine Policy
+
+    /// The per-site settings a plug-in engine enforces: a rule for each saved site that
+    /// differs from the defaults in JavaScript, content blocking, or autoplay with sound.
+    var enginePolicy: SiteSettingsPolicy {
+        let javaScriptByDefault = browserSettings.enableJavaScript
+        let rules = siteSettingsManager.fetchAllSiteSettings(limit: nil).compactMap { settings -> SiteSettingsRule? in
+            var rule = SiteSettingsRule(host: settings.domain)
+            let javaScript = allowsJavaScript(with: settings)
+            if javaScript != javaScriptByDefault {
+                rule.javaScriptEnabled = javaScript
+            }
+            if !settings.enableContentBlockers {
+                rule.contentBlockingEnabled = false
+            }
+            if settings.autoPlayPolicy == .allowAll {
+                rule.autoplayWithSound = true
+            }
+            return rule.hasOverrides ? rule : nil
+        }
+        return SiteSettingsPolicy(javaScriptEnabled: javaScriptByDefault, rules: rules)
+    }
+
+    private func publishEnginePolicy() {
+        onEnginePolicyChange?(enginePolicy)
+    }
+
+    private func observeJavaScriptDefaults() {
+        enginePolicyObservation?.cancel()
+        let browserSettings = browserSettings
+        let changes = Observations {
+            (browserSettings.enableJavaScript, browserSettings.allowJavaScriptWhitelist)
+        }
+        enginePolicyObservation = Task(name: "Site settings engine policy") { [weak self] in
+            for await _ in changes.dropFirst() {
+                guard let self else { return }
+                publishEnginePolicy()
+            }
+        }
     }
 
     /// Resolves the popup policy for a URL.
