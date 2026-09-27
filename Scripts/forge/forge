@@ -9,8 +9,9 @@
 #   forge sign <name> | notarize <name> | install <name> [debug]  (the Mac Refrax runs on)
 #   forge harness <name> <url> [args] | conformance <name> [tests…]  (the Mac Refrax runs on)
 #
-# FORGE is the workspace (default: the Ugreen SSD on the Mac Studio). A host with the forge
-# elsewhere exports FORGE before running, e.g. FORGE=~/Forge/chromium on the MacBook.
+# FORGE is the workspace: the Chromium checkout, toolchains, build directories and artifacts,
+# about 150 GB. It defaults to ~/Forge/chromium; export FORGE to keep it elsewhere, such as an
+# external SSD.
 #
 # The source and toolchains come through ungoogled-chromium-macos at the tag pinned in
 # Scripts/forge/ungoogled-macos.txt: a shallow git clone of Chromium (which carries the PGO
@@ -21,7 +22,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-FORGE="${FORGE:-/Volumes/Ugreen/Projects/refrax/engines/chromium}"
+FORGE="${FORGE:-$HOME/Forge/chromium}"
 UNGOOGLED_TAG="$(tr -d '[:space:]' <"$SCRIPT_DIR/ungoogled-macos.txt")"
 REFRAX_ARGS="$REPO_ROOT/Engines/Chromium/args.gn"
 PATCHES="$REPO_ROOT/Engines/Chromium/patches"

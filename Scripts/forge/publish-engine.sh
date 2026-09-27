@@ -16,7 +16,7 @@ ENGINE_ID=website.refrax.engine.chromium
 ENGINE_NAME="Refrax Chromium.engine"
 HOST_NAME="Refrax Chromium Host"
 CATALOG_TAG=catalog
-FORGE="${FORGE:-/Volumes/Ugreen/Projects/refrax/engines/chromium}"
+FORGE="${FORGE:-$HOME/Forge/chromium}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 die() { echo "publish-engine: $*" >&2; exit 1; }
