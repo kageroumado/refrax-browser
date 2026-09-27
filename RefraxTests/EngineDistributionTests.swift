@@ -182,7 +182,7 @@ struct EngineDistributionTests {
 
         let registry = EngineRegistry(applicationSupport: support)
         #expect(registry.descriptor(for: engine)?.version == "152.0.7977.82-r1")
-        #expect(!FileManager.default.fileExists(atPath: engines.appending(path: ".pending/\(engine.rawValue)").path(percentEncoded: false)))
+        #expect(!FileManager.default.fileExists(atPath: engines.appending(path: ".pending").path(percentEncoded: false)))
         #expect(registry.descriptors.count == 2, "the .pending folder is never scanned as an engine")
 
         // An engine that isn't running is replaced in place, and the registry reads the new

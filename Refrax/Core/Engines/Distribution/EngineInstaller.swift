@@ -156,6 +156,9 @@ nonisolated enum EngineInstaller {
                 Logger.warning("Could not install pending engine \(bundle.path): \(error.localizedDescription)", category: Logger.engines)
             }
         }
+        if (try? fileManager.contentsOfDirectory(atPath: pendingRoot.path(percentEncoded: false)))?.isEmpty == true {
+            try? fileManager.removeItem(at: pendingRoot)
+        }
     }
 
     /// Makes `bundle` the only engine in `directory`; the previous one goes to the Trash.
