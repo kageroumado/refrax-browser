@@ -47,7 +47,7 @@ nonisolated enum EngineInstaller {
         defer { try? FileManager.default.removeItem(at: staging) }
 
         let archive = staging.appending(path: release.url.lastPathComponent)
-        try await download(release.url, to: archive, declaredSize: release.sizeBytes, session: session) {
+        try await download(release.url, to: archive, session: session) {
             stage(.downloading(fraction: $0))
         }
         stage(.verifying)
@@ -186,11 +186,11 @@ nonisolated enum EngineInstaller {
         }
     }
 
-    /// A download task with progress against the declared size; never a byte-by-byte async loop,
+    /// A download task reporting its progress; never a byte-by-byte async loop,
     /// which costs an await per byte. URLSession deletes its temporary file when the completion
     /// handler returns, so it is moved inside the handler.
     private static func download(
-        _ url: URL, to destination: URL, declaredSize: Int64, session: URLSession,
+        _ url: URL, to destination: URL, session: URLSession,
         progress: @escaping @Sendable (Double) -> Void,
     ) async throws {
         let transfer = Transfer()
@@ -214,9 +214,10 @@ nonisolated enum EngineInstaller {
                         continuation.resume(throwing: error)
                     }
                 }
+                // The task's progress counts percent (totalUnitCount 100), not bytes.
                 nonisolated(unsafe) var reported = -1.0
-                let observation = task.progress.observe(\.completedUnitCount) { taskProgress, _ in
-                    let fraction = min(1, Double(taskProgress.completedUnitCount) / Double(max(declaredSize, 1)))
+                let observation = task.progress.observe(\.fractionCompleted) { taskProgress, _ in
+                    let fraction = min(1, max(0, taskProgress.fractionCompleted))
                     guard fraction - reported >= 0.01 || fraction >= 1 else { return }
                     reported = fraction
                     progress(fraction)

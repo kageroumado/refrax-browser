@@ -329,11 +329,13 @@ cmd_package() {
     plutil -insert RFXEngineBuild -string "$name" "$engine/Contents/Info.plist"
 
     # Nothing LaunchServices would route to the host; its state lives where the client points
-    # --user-data-dir. LSUIElement must stay unset: Chromium reads it as "this is a helper
-    # process" (base::apple::IsBackgroundOnlyProcess) and looks for its framework in the wrong
-    # place. The host hides from the Dock at runtime instead (RefraxBrowserMainExtraParts).
+    # --user-data-dir. LSBackgroundOnly keeps it out of the Dock from its first instant (AppKit
+    # registers a regular app, and the Dock animates its tile, before any code of ours runs).
+    # LSUIElement must stay unset: Chromium reads it as "this is a helper process"
+    # (base::apple::IsBackgroundOnlyProcess) and looks for its framework in the wrong place.
     local plist="$host/Contents/Info.plist" key
     plutil -replace CrProductDirName -string "$HOST_NAME" "$plist"
+    plutil -replace LSBackgroundOnly -bool YES "$plist"
     for key in CFBundleURLTypes CFBundleDocumentTypes NSUserActivityTypes OSAScriptingDefinition; do
         plutil -remove "$key" "$plist" 2>/dev/null || true
     done

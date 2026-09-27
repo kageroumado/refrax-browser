@@ -30,8 +30,9 @@ namespace {
 // How long a clean exit may take after the client disconnects.
 constexpr base::TimeDelta kExitDeadline = base::Seconds(10);
 
-// The host shows nothing of its own: no Dock icon, no menu bar. Set before the application
-// finishes launching, so the icon never appears.
+// The host shows nothing of its own: no Dock icon, no menu bar. LSBackgroundOnly in its
+// Info.plist keeps it out of the Dock at launch (forge package); an accessory app, unlike a
+// background-only one, may still show windows and menus.
 void HideFromDock() {
   [NSApplication.sharedApplication
       setActivationPolicy:NSApplicationActivationPolicyAccessory];
