@@ -347,6 +347,19 @@ cmd_package() {
         [[ "$archs" == arm64 ]] || { log "not arm64-only ($archs): $file"; bad=1; }
     done < <(find "$engine" -type f -print0)
     ((bad == 0)) || die "non-arm64 Mach-O in $engine"
+
+    # The dSYM of every binary the engine ships, for symbolicating its crash reports: published
+    # with the release, never inside the engine.
+    local dsyms dsym
+    dsyms="$(artifact_dir "$name" package)/dSYMs"
+    [[ -e "$dsyms" ]] && trash "$dsyms"
+    mkdir -p "$dsyms"
+    while IFS= read -r -d '' file; do
+        lipo -archs "$file" >/dev/null 2>&1 || continue
+        for dsym in "$out/${file##*/}.dSYM" "$client_out/${file##*/}.dSYM"; do
+            [[ -d "$dsym" ]] && { rsync -a "$dsym" "$dsyms/"; break; }
+        done
+    done < <(find "$engine" -type f -print0)
     cp "$out/args.gn" "$(artifact_dir "$name" package)/args.gn"
     [[ "$client_out" != "$out" ]] && cp "$client_out/args.gn" "$(artifact_dir "$name" package)/args.client.gn"
     log "packaged $engine ($(du -sh "$engine" | cut -f1))"

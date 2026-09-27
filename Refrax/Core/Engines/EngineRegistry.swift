@@ -48,12 +48,17 @@ final class EngineRegistry {
         refresh()
     }
 
-    /// Rescans the engines directory.
+    /// Downloads and installs engines from the engine catalog.
+    @ObservationIgnored private(set) lazy var distribution = EngineDistribution(registry: self)
+
+    /// Rescans the engines directory, first installing any engine downloaded while its
+    /// predecessor ran.
     func refresh() {
+        EngineInstaller.applyPending(in: enginesDirectory, skipping: runningEngines)
         let fileManager = FileManager.default
         let engineDirectories = (try? fileManager.contentsOfDirectory(at: enginesDirectory, includingPropertiesForKeys: nil)) ?? []
         var found: [EngineID: EngineBundle] = [:]
-        for directory in engineDirectories {
+        for directory in engineDirectories where !directory.lastPathComponent.hasPrefix(".") {
             let candidates = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
             for url in candidates where url.pathExtension == "engine" {
                 guard let bundle = EngineBundle(url: url), bundle.descriptor.id != .systemWebKit else { continue }

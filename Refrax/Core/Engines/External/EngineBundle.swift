@@ -13,7 +13,7 @@ nonisolated struct EngineBundle: Hashable, Sendable {
               let info = bundle.infoDictionary,
               let identifier = bundle.bundleIdentifier,
               let principalClass = info["NSPrincipalClass"] as? String,
-              let contract = (info[RFXEngineInfoKey.contractVersion.rawValue] as? String).flatMap(Self.parseVersion)
+              let contract = (info[RFXEngineInfoKey.contractVersion.rawValue] as? String).flatMap(EngineContractVersion.init(string:))
         else {
             return nil
         }
@@ -22,19 +22,14 @@ nonisolated struct EngineBundle: Hashable, Sendable {
         descriptor = EngineDescriptor(
             id: EngineID(rawValue: identifier),
             displayName: info[RFXEngineInfoKey.displayName.rawValue] as? String ?? url.deletingPathExtension().lastPathComponent,
-            version: info["CFBundleShortVersionString"] as? String ?? "0",
+            // The release forge packaged (`152.0.7977.82-r1`), what the engine catalog names.
+            version: info["RFXEngineBuild"] as? String ?? info["CFBundleShortVersionString"] as? String ?? "0",
             engineVersion: info[RFXEngineInfoKey.engineVersion.rawValue] as? String ?? "",
             vendor: info[RFXEngineInfoKey.vendor.rawValue] as? String ?? "",
             contractVersion: contract,
             capabilities: EngineCapabilities(names: info[RFXEngineInfoKey.capabilities.rawValue] as? [String] ?? []),
             isOutOfProcess: info[RFXEngineInfoKey.outOfProcess.rawValue] as? Bool ?? false,
         )
-    }
-
-    private static func parseVersion(_ string: String) -> EngineContractVersion? {
-        let parts = string.split(separator: ".").compactMap { Int($0) }
-        guard parts.count == 2 else { return nil }
-        return EngineContractVersion(major: parts[0], minor: parts[1])
     }
 
     // MARK: Code Signature

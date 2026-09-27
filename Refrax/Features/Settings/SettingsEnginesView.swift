@@ -45,6 +45,9 @@ struct EnginesSettingsView: View {
             }
             .highlightable(id: "engines.installed", highlightedItemId: highlightedItemId)
 
+            AvailableEnginesSection(distribution: registry.distribution)
+                .highlightable(id: "engines.available", highlightedItemId: highlightedItemId)
+
             Section {
                 LabeledContent("Location") {
                     Text((registry.enginesDirectory.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath)
@@ -170,5 +173,131 @@ private struct EngineRow: View {
             .filter { descriptor.capabilities.contains($0.1) }
             .map(\.0)
         return names.isEmpty ? "Renders pages" : "Supports: " + names.joined(separator: ", ")
+    }
+}
+
+// MARK: - Available Engines
+
+/// Engines the catalog offers: installs, updates and their progress.
+private struct AvailableEnginesSection: View {
+    let distribution: EngineDistribution
+
+    var body: some View {
+        Section {
+            ForEach(distribution.offers) { offer in
+                OfferRow(offer: offer, state: distribution.installs[offer.id], distribution: distribution)
+            }
+            ForEach(pendingOnly, id: \.self) { id in
+                LabeledContent(id.rawValue) {
+                    Text("Relaunch Refrax to finish updating")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Check for Updates") {
+                    Task { await distribution.checkForUpdates() }
+                }
+                .disabled(distribution.catalogState == .checking)
+            }
+        } header: {
+            Text("Available Engines")
+        } footer: {
+            Text("Engines download from Refrax's release page, and install only if they carry Refrax's release signature and developer signature.")
+        }
+        .task {
+            if distribution.catalogState == .unchecked {
+                await distribution.checkForUpdates()
+            }
+        }
+    }
+
+    /// Engines updated in the background whose offer is gone because the catalog now matches
+    /// what was downloaded, but which wait for a relaunch.
+    private var pendingOnly: [EngineID] {
+        let offered = Set(distribution.offers.map(\.id))
+        return distribution.installs.compactMap { id, state in
+            state == .pendingRelaunch && !offered.contains(id) ? id : nil
+        }
+        .sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private var statusText: String {
+        switch distribution.catalogState {
+        case .unchecked, .checking:
+            "Checking…"
+        case let .failed(message):
+            "Couldn't check: \(message)"
+        case let .loaded(checkedAt):
+            distribution.offers.isEmpty
+                ? "Up to date · checked \(checkedAt.formatted(date: .omitted, time: .shortened))"
+                : "Checked \(checkedAt.formatted(date: .omitted, time: .shortened))"
+        }
+    }
+}
+
+private struct OfferRow: View {
+    let offer: EngineDistribution.Offer
+    let state: EngineDistribution.InstallState?
+    let distribution: EngineDistribution
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "shippingbox")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(offer.displayName)
+                    .font(.headline)
+                Text(details)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if case let .failed(message) = state {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Spacer()
+
+            trailing
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder private var trailing: some View {
+        switch state {
+        case let .downloading(fraction):
+            HStack(spacing: 8) {
+                ProgressView(value: fraction)
+                    .frame(width: 90)
+                Button("Cancel") { distribution.cancelInstall(offer.id) }
+            }
+        case .verifying:
+            ProgressView().controlSize(.small)
+            Text("Verifying…").foregroundStyle(.secondary)
+        case .installing:
+            ProgressView().controlSize(.small)
+            Text("Installing…").foregroundStyle(.secondary)
+        case .pendingRelaunch:
+            Text("Relaunch Refrax to finish")
+                .foregroundStyle(.secondary)
+        case .failed, nil:
+            Button(offer.isUpdate ? "Update" : "Install") { distribution.install(offer) }
+        }
+    }
+
+    private var details: String {
+        let size = ByteCountFormatter.string(fromByteCount: offer.release.sizeBytes, countStyle: .file)
+        if let installed = offer.installedVersion {
+            return "\(installed) → \(offer.release.version) · \(size)"
+        }
+        return "\(offer.release.version) · \(size)"
     }
 }
