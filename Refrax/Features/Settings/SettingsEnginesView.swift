@@ -189,8 +189,7 @@ private struct AvailableEnginesSection: View {
             }
             ForEach(pendingOnly, id: \.self) { id in
                 LabeledContent(id.rawValue) {
-                    Text("Relaunch Refrax to finish updating")
-                        .foregroundStyle(.secondary)
+                    RelaunchPrompt()
                 }
             }
             HStack {
@@ -235,6 +234,19 @@ private struct AvailableEnginesSection: View {
             distribution.offers.isEmpty
                 ? "Up to date · checked \(checkedAt.formatted(date: .omitted, time: .shortened))"
                 : "Checked \(checkedAt.formatted(date: .omitted, time: .shortened))"
+        }
+    }
+}
+
+/// An update to a running engine installs at the next launch: a loaded engine can't be unloaded.
+private struct RelaunchPrompt: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Takes effect after a relaunch")
+                .foregroundStyle(.secondary)
+            Button("Relaunch Refrax") {
+                AppDelegate.relaunchAfterQuitting()
+            }
         }
     }
 }
@@ -286,8 +298,7 @@ private struct OfferRow: View {
             ProgressView().controlSize(.small)
             Text("Installing…").foregroundStyle(.secondary)
         case .pendingRelaunch:
-            Text("Relaunch Refrax to finish")
-                .foregroundStyle(.secondary)
+            RelaunchPrompt()
         case .failed, nil:
             Button(offer.isUpdate ? "Update" : "Install") { distribution.install(offer) }
         }

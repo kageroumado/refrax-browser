@@ -1497,6 +1497,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         relaunchApp()
     }
 
+    /// Quits the way ⌘Q does, saving the session and stopping engines, then opens Refrax again
+    /// once this process has exited. If the quit is cancelled, the reopen waits for the next one.
+    static func relaunchAfterQuitting() {
+        let waiter = Process()
+        waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
+        waiter.arguments = [
+            "-c", #"while /bin/kill -0 "$0" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open "$1""#,
+            String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath,
+        ]
+        do {
+            try waiter.run()
+        } catch {
+            Logger.warning("Could not schedule the relaunch: \(error.localizedDescription)", category: Logger.system)
+        }
+        NSApp.terminate(nil)
+    }
+
     /// Relaunches the app by spawning a new instance and exiting.
     ///
     /// Used by full reset (Settings > Storage) and database recovery.
