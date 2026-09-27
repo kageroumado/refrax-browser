@@ -35,6 +35,7 @@ struct EnginesSettingsView: View {
                         descriptor: descriptor,
                         isRunning: registry.runningEngines.contains(descriptor.id),
                         bundleURL: registry.bundleURL(for: descriptor.id),
+                        securityFloor: registry.securityFloor(blocking: descriptor.id)?.description,
                         onRemove: { pendingRemoval = descriptor },
                     )
                 }
@@ -104,6 +105,8 @@ private struct EngineRow: View {
     let descriptor: EngineDescriptor
     let isRunning: Bool
     let bundleURL: URL?
+    /// The release this one is below, when it may not run.
+    let securityFloor: String?
     let onRemove: () -> Void
 
     private var isBuiltIn: Bool {
@@ -121,6 +124,14 @@ private struct EngineRow: View {
                 HStack(spacing: 6) {
                     Text(descriptor.displayName)
                         .font(.headline)
+                    if securityFloor != nil {
+                        Text("Update required")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(.red))
+                    }
                     if isRunning, !isBuiltIn {
                         Text("Running")
                             .font(.caption2.weight(.medium))
@@ -133,6 +144,11 @@ private struct EngineRow: View {
                 Text(details)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let securityFloor {
+                    Text("This release has known security problems. Its pages render with WebKit until it's updated to \(securityFloor) or later.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
                 Text(capabilitySummary)
                     .font(.caption)
                     .foregroundStyle(.tertiary)

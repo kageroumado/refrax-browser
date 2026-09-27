@@ -368,10 +368,10 @@ final class WebPagePool {
     }
 
     /// The engine a page starts in: the one its tab was moved to, else the default; system
-    /// WebKit when that engine isn't installed.
+    /// WebKit when that engine isn't installed or its release is below the security floor.
     static func startingEngine(pinned: String?, default defaultEngine: EngineID, registry: EngineRegistry) -> EngineID {
         let id = pinned.map(EngineID.init(rawValue:)) ?? defaultEngine
-        return registry.descriptor(for: id) == nil ? .systemWebKit : id
+        return registry.descriptor(for: id) == nil || registry.securityFloor(blocking: id) != nil ? .systemWebKit : id
     }
 
     /// Creates a popup page using the provided WebKit configuration.

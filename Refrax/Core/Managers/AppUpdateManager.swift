@@ -35,6 +35,9 @@ import Security
 /// - **Manual**: Menu bar "Check for Updates…" or Command Lens "Check for Updates"
 /// - **Startup**: Immediate check during ``RefraxAppDelegate/startDeferredMaintenance()``
 ///
+/// Every check also checks the engine catalog (``EngineDistribution``) and installs updates to
+/// installed engines.
+///
 /// When an update is found, download begins automatically. No user action required.
 ///
 /// ## Installation Process
@@ -147,6 +150,9 @@ final class AppUpdateManager {
         static let pendingNotes = "pendingUpdateNotes"
     }
 
+    /// Installed engines' updates, checked on every app update check.
+    @ObservationIgnored weak var engineDistribution: EngineDistribution?
+
     // MARK: - Initialization
 
     init(settings: BrowserSettings) {
@@ -163,6 +169,9 @@ final class AppUpdateManager {
         if !manual, !settings.checkForUpdatesAutomatically {
             return
         }
+
+        // Engines update on the same checks, and independently of the app's own update.
+        await engineDistribution?.checkForUpdates(installingUpdates: true)
 
         // Skip automatic checks right after a successful update
         if !manual, justUpdated != nil {

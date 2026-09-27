@@ -42,10 +42,35 @@ final class EngineRegistry {
     let enginesDirectory: URL
     let dataDirectory: URL
 
+    /// Each engine's security floor, from the last verified engine catalog.
+    private(set) var securityFloors: [EngineID: EngineReleaseVersion] = [:]
+
+    /// Where the last verified engine catalog is kept, hidden from the engine scan.
+    var catalogCacheDirectory: URL {
+        enginesDirectory.appending(path: ".catalog", directoryHint: .isDirectory)
+    }
+
     init(applicationSupport: URL) {
         enginesDirectory = applicationSupport.appending(path: "Engines", directoryHint: .isDirectory)
         dataDirectory = applicationSupport.appending(path: "EngineData", directoryHint: .isDirectory)
         refresh()
+        if let catalog = EngineCatalog.cached(in: catalogCacheDirectory) {
+            securityFloors = catalog.securityFloors
+        }
+    }
+
+    func updateSecurityFloors(from catalog: EngineCatalog) {
+        securityFloors = catalog.securityFloors
+    }
+
+    /// The floor an installed engine's release is below, if it is. A local build (dev-28)
+    /// carries no release version and is never held to one.
+    func securityFloor(blocking id: EngineID) -> EngineReleaseVersion? {
+        guard let floor = securityFloors[id],
+              let installed = descriptor(for: id).flatMap({ EngineReleaseVersion($0.version) }),
+              installed < floor
+        else { return nil }
+        return floor
     }
 
     /// Downloads and installs engines from the engine catalog.
@@ -87,6 +112,9 @@ final class EngineRegistry {
             return host
         }
         guard let bundle = bundles[id] else { throw EngineError.notInstalled(id) }
+        if let floor = securityFloor(blocking: id) {
+            throw EngineError.belowSecurityFloor(engine: bundle.descriptor.displayName, floor: floor.description)
+        }
         let configuration = EngineConfiguration(
             storageDirectory: dataDirectory.appending(path: id.rawValue, directoryHint: .isDirectory),
             logFile: dataDirectory.appending(path: "\(id.rawValue).log"),

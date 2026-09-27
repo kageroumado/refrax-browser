@@ -103,6 +103,9 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
         let displayName: String
         /// Release per channel; `stable` is what Refrax installs.
         let channels: [String: Release]
+        /// The oldest release still safe to run. An installed release below it doesn't start:
+        /// its pages render with WebKit until the engine is updated.
+        var securityFloor: String?
     }
 
     static let schemaVersion = 1
@@ -112,14 +115,41 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
     /// Keyed by engine ID.
     let engines: [String: Engine]
 
-    /// Downloads the catalog and verifies it against the pinned key before decoding it.
-    static func fetch(session: URLSession = .shared, key: Curve25519.Signing.PublicKey? = nil) async throws -> EngineCatalog {
+    /// Downloads the catalog and verifies it against the pinned key before decoding it. With a
+    /// cache directory, the verified bytes and signature are kept there for ``cached(in:key:)``.
+    static func fetch(
+        session: URLSession = .shared, key: Curve25519.Signing.PublicKey? = nil, cachingIn cache: URL? = nil,
+    ) async throws -> EngineCatalog {
         let key = try key ?? EngineSignature.pinnedKey()
         let data = try await download(url, session: session, limit: 1 << 20)
         let signature = try await download(EngineSignature.signatureURL(for: url), session: session, limit: 1024)
         try EngineSignature.verify(data, signatureFile: signature, subject: url.lastPathComponent, key: key)
-        return try decode(data)
+        let catalog = try decode(data)
+        if let cache {
+            do {
+                try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+                try data.write(to: cache.appending(path: cacheFileName), options: .atomic)
+                try signature.write(to: cache.appending(path: cacheFileName + ".sig"), options: .atomic)
+            } catch {
+                Logger.warning("Could not cache the engine catalog: \(error.localizedDescription)", category: Logger.engines)
+            }
+        }
+        return catalog
     }
+
+    /// The last catalog ``fetch(session:key:cachingIn:)`` verified, verified again; nil when
+    /// there is none or it no longer verifies. What Refrax knows of security floors offline and
+    /// before its first check.
+    static func cached(in cache: URL, key: Curve25519.Signing.PublicKey? = nil) -> EngineCatalog? {
+        guard let key = try? key ?? EngineSignature.pinnedKey(),
+              let data = try? Data(contentsOf: cache.appending(path: cacheFileName)),
+              let signature = try? Data(contentsOf: cache.appending(path: cacheFileName + ".sig")),
+              (try? EngineSignature.verify(data, signatureFile: signature, subject: cacheFileName, key: key)) != nil
+        else { return nil }
+        return try? decode(data)
+    }
+
+    private static let cacheFileName = "engines.json"
 
     static func decode(_ data: Data) throws -> EngineCatalog {
         let catalog: EngineCatalog
@@ -139,6 +169,15 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
         engines[id.rawValue]?.channels["stable"]
     }
 
+    /// Each engine's security floor, where the catalog sets one.
+    var securityFloors: [EngineID: EngineReleaseVersion] {
+        engines.reduce(into: [:]) { floors, entry in
+            if let floor = entry.value.securityFloor.flatMap(EngineReleaseVersion.init) {
+                floors[EngineID(rawValue: entry.key)] = floor
+            }
+        }
+    }
+
     /// Everything that would stop Refrax installing from this catalog; empty means publishable.
     /// The publish script runs it before uploading.
     func problems() -> [String] {
@@ -149,6 +188,15 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
         for (id, engine) in engines.sorted(by: { $0.key < $1.key }) {
             if engine.channels["stable"] == nil {
                 problems.append("\(id): no stable channel")
+            }
+            if let floor = engine.securityFloor {
+                if let floorVersion = EngineReleaseVersion(floor) {
+                    if let stable = engine.channels["stable"].flatMap({ EngineReleaseVersion($0.version) }), stable < floorVersion {
+                        problems.append("\(id).securityFloor \(floor) is newer than the stable release: nothing could run")
+                    }
+                } else {
+                    problems.append("\(id).securityFloor \(floor) is not <version>-r<revision>")
+                }
             }
             for (channel, release) in engine.channels.sorted(by: { $0.key < $1.key }) {
                 let label = "\(id).channels.\(channel)"

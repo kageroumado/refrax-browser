@@ -187,6 +187,8 @@ nonisolated enum EngineError: LocalizedError, Equatable {
     case malformedMessage(String)
     /// The page belongs to a WebKit extension and renders only in WebKit.
     case webKitOnlyPage
+    /// The installed release is older than the oldest one still safe to run.
+    case belowSecurityFloor(engine: String, floor: String)
 
     var errorDescription: String? {
         switch self {
@@ -210,6 +212,8 @@ nonisolated enum EngineError: LocalizedError, Equatable {
             "The engine sent a malformed message: \(detail)"
         case .webKitOnlyPage:
             "Extension pages render only in WebKit."
+        case let .belowSecurityFloor(engine, floor):
+            "This version of \(engine) has known security problems. Update it to \(floor) or later in Settings → Engines."
         }
     }
 }

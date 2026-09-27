@@ -78,16 +78,28 @@ final class EngineDistribution {
         .sorted { $0.displayName < $1.displayName }
     }
 
-    /// Fetches the catalog again; failures stay in ``catalogState``.
-    func checkForUpdates() async {
+    /// Fetches the catalog again; failures stay in ``catalogState``. Each verified catalog is
+    /// cached and gives the registry its security floors. With `installingUpdates`, updates to
+    /// installed engines download and install as app updates do; one to an engine running now
+    /// takes effect at the next launch.
+    func checkForUpdates(installingUpdates: Bool = false) async {
         guard catalogState != .checking else { return }
         catalogState = .checking
         do {
-            catalog = try await EngineCatalog.fetch()
+            let catalog = try await EngineCatalog.fetch(cachingIn: registry.catalogCacheDirectory)
+            self.catalog = catalog
+            registry.updateSecurityFloors(from: catalog)
             catalogState = .loaded(checkedAt: .now)
         } catch {
             Logger.warning("Engine catalog check failed: \(error.localizedDescription)", category: Logger.engines)
             catalogState = .failed(error.localizedDescription)
+            return
+        }
+        if installingUpdates {
+            for offer in offers where offer.isUpdate && installs[offer.id] == nil {
+                Logger.info("Engine update available: \(offer.id) \(offer.release.version)", category: Logger.engines)
+                install(offer)
+            }
         }
     }
 

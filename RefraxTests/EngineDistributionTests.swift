@@ -214,4 +214,70 @@ struct EngineDistributionTests {
         #expect(offers(installed: "152.0.7977.82-r3").isEmpty)
         #expect(offers(installed: "dev-28").isEmpty)
     }
+
+    @Test("The catalog's security floor must name a release no newer than stable")
+    func securityFloorRules() {
+        func catalog(floor: String?) -> EngineCatalog {
+            var entry = EngineCatalog.Engine(displayName: "Chromium", channels: ["stable": release(version: "152.0.7977.82-r2")])
+            entry.securityFloor = floor
+            return EngineCatalog(schema: 1, engines: [engine.rawValue: entry])
+        }
+        #expect(catalog(floor: "152.0.7977.82-r2").problems().isEmpty)
+        #expect(catalog(floor: "152.0.7977.82-r2").securityFloors[engine] == EngineReleaseVersion("152.0.7977.82-r2"))
+        #expect(catalog(floor: nil).securityFloors.isEmpty)
+        #expect(catalog(floor: "152.0.7977.82-r3").problems().contains { $0.contains("newer than the stable release") })
+        #expect(catalog(floor: "recent").problems().contains { $0.contains("securityFloor") })
+    }
+
+    @Test("A cached catalog counts only while its signature verifies")
+    func cachedCatalog() throws {
+        let cache = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let data = Data(#"{"schema":1,"engines":{"website.refrax.engine.chromium":{"displayName":"Chromium","channels":{},"securityFloor":"152.0.7977.82-r2"}}}"#.utf8)
+        try data.write(to: cache.appending(path: "engines.json"))
+        try signatureFile(for: data).write(to: cache.appending(path: "engines.json.sig"))
+        #expect(EngineCatalog.cached(in: cache, key: key.publicKey)?.securityFloors[engine] == EngineReleaseVersion("152.0.7977.82-r2"))
+        #expect(EngineCatalog.cached(in: cache, key: Curve25519.Signing.PrivateKey().publicKey) == nil)
+        try Data(#"{"schema":1,"engines":{}}"#.utf8).write(to: cache.appending(path: "engines.json"))
+        #expect(EngineCatalog.cached(in: cache, key: key.publicKey) == nil, "a catalog edited on disk is ignored")
+    }
+
+    @Test("An engine below the security floor doesn't start; its pages render with WebKit")
+    func securityFloorBlocksEngine() async throws {
+        let support = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let engines = support.appending(path: "Engines/\(engine.rawValue)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: engines, withIntermediateDirectories: true)
+        _ = try makeEngineBundle(in: engines, build: "152.0.7977.82-r1")
+        let registry = EngineRegistry(applicationSupport: support)
+
+        var entry = EngineCatalog.Engine(displayName: "Chromium", channels: ["stable": release(version: "152.0.7977.82-r2")])
+        entry.securityFloor = "152.0.7977.82-r2"
+        registry.updateSecurityFloors(from: EngineCatalog(schema: 1, engines: [engine.rawValue: entry]))
+
+        #expect(registry.securityFloor(blocking: engine)?.description == "152.0.7977.82-r2")
+        #expect(WebPagePool.startingEngine(pinned: engine.rawValue, default: .systemWebKit, registry: registry) == .systemWebKit)
+        await #expect(throws: EngineError.belowSecurityFloor(engine: "Chromium", floor: "152.0.7977.82-r2")) {
+            _ = try await registry.host(for: engine)
+        }
+
+        entry.securityFloor = "152.0.7977.82-r1"
+        registry.updateSecurityFloors(from: EngineCatalog(schema: 1, engines: [engine.rawValue: entry]))
+        #expect(registry.securityFloor(blocking: engine) == nil)
+        #expect(WebPagePool.startingEngine(pinned: engine.rawValue, default: .systemWebKit, registry: registry) == engine)
+    }
+
+    @Test("A local build is never held to the security floor")
+    func securityFloorSparesLocalBuilds() throws {
+        let support = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let engines = support.appending(path: "Engines/\(engine.rawValue)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: engines, withIntermediateDirectories: true)
+        _ = try makeEngineBundle(in: engines, build: "dev-28")
+        let registry = EngineRegistry(applicationSupport: support)
+        var entry = EngineCatalog.Engine(displayName: "Chromium", channels: [:])
+        entry.securityFloor = "999.0.0.0-r1"
+        registry.updateSecurityFloors(from: EngineCatalog(schema: 1, engines: [engine.rawValue: entry]))
+        #expect(registry.securityFloor(blocking: engine) == nil)
+    }
 }
