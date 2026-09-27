@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import WebKit
 
 /// A floating panel for previewing links.
 ///
@@ -302,7 +301,8 @@ final class LinkPreviewPanel: NSPanel, NSWindowDelegate {
 ///
 /// Layout:
 /// - Outer container with 20pt corner radius and frosted glass background
-/// - 40pt toolbar with close button (left), title (center), share and "Open in New Tab" (right)
+/// - 44pt toolbar laid out like Quick Look: close button and bold title on the left,
+///   a borderless share button and a capsule "Open in New Tab" button on the right
 /// - Web content inset 8pt from bottom/left/right with 12pt corner radius
 private struct LinkPreviewPanelView: View {
     let webPage: WebPage
@@ -314,7 +314,12 @@ private struct LinkPreviewPanelView: View {
         static let outerCornerRadius: CGFloat = 20
         static let innerCornerRadius: CGFloat = 12
         static let contentInset: CGFloat = 8
-        static let toolbarHeight: CGFloat = 40
+        static let toolbarHeight: CGFloat = 44
+        static let toolbarLeading: CGFloat = 14
+        static let toolbarTrailing: CGFloat = 8
+        static let titleLeading: CGFloat = 10
+        static let trailingGroupSpacing: CGFloat = 20
+        static let shareButtonSize: CGFloat = 24
     }
 
     /// Dynamic title that observes WebPage changes.
@@ -340,44 +345,46 @@ private struct LinkPreviewPanelView: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            // Close button
+        HStack(spacing: 0) {
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 15))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .help("Close")
+            .padding(.trailing, Layout.titleLeading)
 
-            Spacer()
-
-            // Title
             Text(title)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                .truncationMode(.middle)
 
-            Spacer()
+            Spacer(minLength: Layout.trailingGroupSpacing)
 
-            // Share button
             ShareButton(onShare: onShare)
+                .frame(width: Layout.shareButtonSize, height: Layout.shareButtonSize)
+                .padding(.trailing, Layout.trailingGroupSpacing)
 
-            // Open in New Tab button
-            Button(action: onOpenInNewTab) {
-                Text("Open in New Tab")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            Button("Open in New Tab", action: onOpenInNewTab)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, Layout.toolbarLeading)
+        .padding(.trailing, Layout.toolbarTrailing)
         .frame(height: Layout.toolbarHeight)
     }
 
     // MARK: - Web Content
 
     private var webContent: some View {
-        WebViewWrapper(webView: webPage.webKitView)
+        let pageView = webPage.contentView
+        return PageViewWrapper(pageView: pageView)
+            // The engine attaches after the panel opens and swaps the view; a new identity
+            // makes SwiftUI host the new one.
+            .id(ObjectIdentifier(pageView))
             .clipShape(RoundedRectangle(cornerRadius: Layout.innerCornerRadius))
             .padding([.leading, .trailing, .bottom], Layout.contentInset)
     }
@@ -404,13 +411,14 @@ private struct ShareButton: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton()
-        button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Share")
-        button.bezelStyle = .smallSquare
-        button.isBordered = true
+        button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Share")?
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = "Share"
         button.target = context.coordinator
         button.action = #selector(Coordinator.buttonClicked(_:))
-        // Constrain width to prevent excessive expansion
-        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
         return button
     }
 
@@ -437,17 +445,15 @@ private struct ShareButton: NSViewRepresentable {
     }
 }
 
-// MARK: - WebView Wrapper
+// MARK: - Page View Wrapper
 
-/// NSViewRepresentable wrapper for WKWebView.
-private struct WebViewWrapper: NSViewRepresentable {
-    let webView: WKWebView
+/// Hosts the view rendering the page, whichever engine provides it.
+private struct PageViewWrapper: NSViewRepresentable {
+    let pageView: NSView
 
-    func makeNSView(context _: Context) -> WKWebView {
-        webView
+    func makeNSView(context _: Context) -> NSView {
+        pageView
     }
 
-    func updateNSView(_: WKWebView, context _: Context) {
-        // No updates needed
-    }
+    func updateNSView(_: NSView, context _: Context) {}
 }
