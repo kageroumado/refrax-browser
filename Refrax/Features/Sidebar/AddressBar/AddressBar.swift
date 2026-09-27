@@ -261,7 +261,7 @@ struct AddressBar: View {
 
         return HStack(spacing: 0) {
             engineBadge
-            Text(isEmpty ? "Ask, search, or go..." : displayDomain)
+            Text(isEmpty ? "Search or go..." : displayDomain)
                 .font(.system(size: Constants.Typography.bodyMediumSize))
                 .foregroundStyle(isEmpty ? Color.secondary : urlTextColor)
                 .lineLimit(1)
@@ -297,7 +297,7 @@ struct AddressBar: View {
 
         return HStack(spacing: 0) {
             engineBadge
-            Text(isEmpty ? "Ask, search, or go..." : displayDomain)
+            Text(isEmpty ? "Search or go..." : displayDomain)
                 .font(.system(size: Constants.Typography.bodyMediumSize))
                 .foregroundStyle(foregroundColor)
                 .lineLimit(1)

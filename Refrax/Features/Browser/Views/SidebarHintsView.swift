@@ -24,7 +24,7 @@ struct SidebarHintsView: View {
                 hintBubble(
                     icons: ["sidebar.left", "rectangle.split.2x1", "sidebar.right"],
                     title: "Toolbar",
-                    description: "Toggle sidebar visibility (\(Text("⌘S").bold())), enable split view for side-by-side browsing, or show the reference pane for pinned pages and AI chat. The sidebar has three modes: default, compact, and overlay — configurable in settings."
+                    description: "Toggle sidebar visibility (\(Text("⌘S").bold())), enable split view for side-by-side browsing, or show the reference pane for pages you keep beside the one you're reading. The sidebar has three modes: default, compact, and overlay — configurable in settings."
                 )
                 .padding(.bottom, Constants.clusterGap)
 
@@ -148,7 +148,6 @@ struct SidebarHintsView: View {
             shortcutEntry("⌘F", "Find in Page")
             shortcutEntry("⌘⌃T", "Split View")
             shortcutEntry("⌘⌃S", "Reference Pane")
-            shortcutEntry("⌘⌃A", "Agent Chat")
             shortcutEntry("⌘⌥I", "Web Inspector")
         }
     }

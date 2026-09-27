@@ -135,7 +135,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             browserSettings: settings,
         )
 
-        let agentChatManager = AgentChatManager(settings: settings)
         let customSearchEngineManager = CustomSearchEngineManager(modelContext: modelContext)
 
         let commandLensManager = CommandLensManager(
@@ -146,7 +145,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             siteSettingsManager: siteSettingsManager,
             downloadManager: downloadManager,
             referencePaneManager: referencePaneManager,
-            agentChatManager: agentChatManager,
             extensionManager: extensionManager,
             customSearchEngineManager: customSearchEngineManager,
             localNetworkSource: LocalNetworkDirectory(),
@@ -285,9 +283,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             offlineContentManager: offlineContentManager,
             tabHealthProvider: tabHealthProvider,
             processMemoryMonitor: processMemoryMonitor,
-            agentChatManager: agentChatManager,
             visualFeedbackManager: VisualFeedbackManager(),
-            thoughtStreamStore: ThoughtStreamStore(),
             humanInterventionManager: HumanInterventionManager(),
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),

@@ -57,12 +57,6 @@ enum SuggestionType: Hashable, Sendable {
     ///   - state: Current download state (for display).
     case download(fileURL: URL, state: DownloadState)
 
-    /// An AI query to send to the agent chat system.
-    ///
-    /// When selected, activates AI mode and sends the query through
-    /// `AgentChatManager` for streaming response.
-    case askAI
-
     /// An app-level action (feedback, update check, etc.)
     ///
     /// Used by `ActionsProvider` for browser-level operations that aren't

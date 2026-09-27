@@ -35,7 +35,6 @@ struct CommandLensView: View {
             HStack(spacing: Layout.buttonSpacing) {
                 VStack(spacing: 0) {
                     textFieldCapsule
-                    aiResponseArea
                     suggestionsArea
                 }
                 .scaleEffect(providerSwitchScale)
@@ -97,31 +96,10 @@ struct CommandLensView: View {
             searchEngineBadge
             textField
             loadingIndicator
-            aiIntentIndicator
             clearButton
         }
         .frame(height: isSmallMode ? Layout.heightSmall : Layout.height)
         .padding(.horizontal, isSmallMode ? 8 : 16)
-    }
-
-    @ViewBuilder
-    private var aiIntentIndicator: some View {
-        if manager.isAIIntent, !manager.isAIMode, !showCategoryButtons {
-            Button { manager.sendAIQuery() } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .medium))
-                    Text("⌘↵")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                }
-                .foregroundStyle(.purple)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.purple.opacity(0.15), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Ask Claude (⌘Enter)")
-        }
     }
 
     private var searchIcon: some View {
@@ -244,7 +222,7 @@ struct CommandLensView: View {
         if manager.showSearchEngineBadge {
             return "Search \(manager.currentSearchEngine.name)"
         }
-        return "Ask, search, or go..."
+        return "Search or go..."
     }
 
     // MARK: - Category Buttons
@@ -262,24 +240,11 @@ struct CommandLensView: View {
         }
     }
 
-    // MARK: - AI Response Area
-
-    @ViewBuilder
-    private var aiResponseArea: some View {
-        if manager.isAIMode {
-            Divider().padding(.horizontal, 12)
-            ScrollView {
-                CommandLensAIView()
-            }
-            .frame(maxHeight: 300)
-        }
-    }
-
     // MARK: - Suggestions Area
 
     @ViewBuilder
     private var suggestionsArea: some View {
-        if manager.isPopupVisible, !manager.suggestions.isEmpty, !manager.isAIMode {
+        if manager.isPopupVisible, !manager.suggestions.isEmpty {
             VStack(spacing: 0) {
                 Divider().padding(.horizontal, Layout.horizontalPadding)
                 SuggestionsListView()
@@ -308,10 +273,6 @@ struct CommandLensView: View {
     private func handleCommit(commandKey: Bool, optionKey: Bool) {
         if manager.hasCategorySelection {
             manager.commitExpandedModeSelection()
-        } else if commandKey, manager.isAIIntent {
-            manager.sendAIQuery()
-        } else if commandKey, manager.isAIMode {
-            manager.transferToReferencePane()
         } else {
             manager.commitSelection(commandKeyHeld: commandKey, optionKeyHeld: optionKey)
         }

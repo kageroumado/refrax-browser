@@ -154,25 +154,6 @@ extension BrowserSettings: Syncable {
         record["ytdlpUseCookies"] = ytdlpUseCookies as NSNumber
         record["ytdlpDeleteAfterPhotosImport"] = ytdlpDeleteAfterPhotosImport as NSNumber
 
-        // MARK: - Agent Chat
-
-        record["agentEnabled"] = agentEnabled as NSNumber
-        record["agentSessionKey"] = agentSessionKey as NSString
-        record["agentAutoIncludeContext"] = agentAutoIncludeContext as NSNumber
-        record["agentProviderKindRaw"] = agentProviderKind.rawValue as NSString
-        record["agentClaudeModel"] = agentClaudeModel as NSString
-        record["agentClaudeMaxTokens"] = agentClaudeMaxTokens as NSNumber
-        record["agentOpenAIModel"] = agentOpenAIModel as NSString
-        record["agentOpenRouterModel"] = agentOpenRouterModel as NSString
-        record["agentCustomModel"] = agentCustomModel as NSString
-        record["agentCustomBaseURL"] = agentCustomBaseURL as NSString
-        record["agentCustomRequiresAuth"] = agentCustomRequiresAuth as NSNumber
-        record["agentOpenAIMaxTokens"] = agentOpenAIMaxTokens as NSNumber
-        record["agentClaudeCodeModel"] = agentClaudeCodeModel as NSString
-        record["agentCodexModel"] = agentCodexModel as NSString
-        record["agentDisplayName"] = agentDisplayName as NSString
-        record["agentAvatarData"] = agentAvatarData as NSData?
-
         // MARK: - Widgets: Calendar
 
         record["showCalendarWidget"] = showCalendarWidget as NSNumber
@@ -397,30 +378,6 @@ extension BrowserSettings: Syncable {
         settings.ytdlpEnabled = (record["ytdlpEnabled"] as? Bool) ?? true
         settings.ytdlpUseCookies = (record["ytdlpUseCookies"] as? Bool) ?? true
         settings.ytdlpDeleteAfterPhotosImport = (record["ytdlpDeleteAfterPhotosImport"] as? Bool) ?? false
-
-        // MARK: - Agent Chat
-
-        settings.agentEnabled = (record["agentEnabled"] as? Bool) ?? true
-        settings.agentSessionKey = record["agentSessionKey"] as? String ?? "agent:main:main"
-        settings.agentAutoIncludeContext = (record["agentAutoIncludeContext"] as? Bool) ?? true
-        settings.agentProviderKind = (record["agentProviderKindRaw"] as? String)
-            .flatMap(AgentProviderKind.init(rawValue:)) ?? .claudeAPI
-        settings.agentClaudeModel = ClaudeModel.migrated(
-            record["agentClaudeModel"] as? String ?? ClaudeModel.sonnet.rawValue,
-        )
-        settings.agentClaudeMaxTokens = (record["agentClaudeMaxTokens"] as? Int) ?? 8_192
-        settings.agentOpenAIModel = record["agentOpenAIModel"] as? String ?? "gpt-5"
-        settings.agentOpenRouterModel = record["agentOpenRouterModel"] as? String
-            ?? "anthropic/claude-opus-4.6"
-        settings.agentCustomModel = record["agentCustomModel"] as? String ?? ""
-        settings.agentCustomBaseURL = record["agentCustomBaseURL"] as? String
-            ?? "http://localhost:11434/v1"
-        settings.agentCustomRequiresAuth = (record["agentCustomRequiresAuth"] as? Bool) ?? false
-        settings.agentOpenAIMaxTokens = (record["agentOpenAIMaxTokens"] as? Int) ?? 4_096
-        settings.agentClaudeCodeModel = record["agentClaudeCodeModel"] as? String ?? ""
-        settings.agentCodexModel = record["agentCodexModel"] as? String ?? ""
-        settings.agentDisplayName = record["agentDisplayName"] as? String ?? "Agent"
-        settings.agentAvatarData = record["agentAvatarData"] as? Data
 
         // MARK: - Widgets: Calendar
 

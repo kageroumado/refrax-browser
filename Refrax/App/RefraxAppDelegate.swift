@@ -127,9 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let offlineContentManager: OfflineContentManager
     let servicesProvider: ServicesProvider
     let webInspectorManager: WebInspectorManager
-    let agentChatManager: AgentChatManager
     let visualFeedbackManager: VisualFeedbackManager
-    let thoughtStreamStore: ThoughtStreamStore
     let humanInterventionManager: HumanInterventionManager
     let customSearchEngineManager: CustomSearchEngineManager
 
@@ -439,11 +437,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.translationManager = TranslationManager()
         self.offlineContentManager = OfflineContentManager()
         self.webInspectorManager = WebInspectorManager()
-        self.agentChatManager = AgentChatManager(settings: settings)
         self.visualFeedbackManager = VisualFeedbackManager()
         self.humanInterventionManager = HumanInterventionManager()
-        self.thoughtStreamStore = ThoughtStreamStore()
-        agentChatManager.thoughtStreamStore = thoughtStreamStore
         self.servicesProvider = ServicesProvider(
             tabManager: tabManager,
             bookmarksManager: bookmarksManager,
@@ -564,19 +559,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tiered setup pattern: Fire-and-forget tasks at appropriate priorities.
         // This allows the first frame to render without waiting for any setup.
 
-        // Configure the agent tool system (fast — a few actor hops)
-        Task {
-            await self.agentChatManager.configureToolSystem(
-                controlServer: self.controlServer,
-                windowManager: self.windowManager,
-                userStyleManager: self.userStyleManager,
-                pagePool: self.pagePool,
-            ) { [weak windowManager] in
-                guard let windowState = windowManager?.activeWindowController?.windowState else { return nil }
-                return BrowserContextProvider.extractContext(from: windowState)
-            }
-        }
-
         // Tier 1: Fast setups (~5ms total) - reader mode and auto consent
         Task(priority: .userInitiated) {
             async let reader: Void = self.readerModeManager.setup()
@@ -623,7 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startUtilitySetup()
         historyActivityManager.start()
         browserState.spaceLockManager.start()
-        runLegacyAgentCredentialMigration()
+        removeRetiredAgentChatData()
         migrateCredentialsToSharedGroup()
 
         // Clean up any stale aria2 daemon from a previous crash
@@ -965,8 +947,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// - Marks a clean shutdown for crash detection
     /// - Gracefully stops the control server and the aria2 daemon
     func applicationWillTerminate(_: Notification) {
-        CLIProcessRegistry.terminateAll()
-
         // Quitting skips per-window close notifications, so capture the active
         // window's geometry here for new windows created after the next launch
         if let controller = windowManager.activeWindowController,
@@ -1037,20 +1017,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Legacy Agent Credential Migration
+    // MARK: - Retired Agent Chat
 
-    /// Removes OAuth tokens stored by releases that supported Sign in with Claude.
-    ///
-    /// The OAuth path has been removed; the Anthropic API is now reached only
-    /// through user-supplied API keys. This runs once per install to evict the
-    /// three legacy keychain accounts (`anthropic-oauth-access`,
-    /// `anthropic-oauth-refresh`, `anthropic-oauth-expiry`).
-    private func runLegacyAgentCredentialMigration() {
-        let migrationKey = "website.refrax.migration.removedClaudeOAuth"
+    /// Keychain services that held the retired agent chat's API keys (and Sign in with Claude
+    /// tokens), one per provider.
+    private static let retiredAgentCredentialServices = [
+        "website.refrax.browser.claude-credentials",
+        "website.refrax.browser.claude-code-credentials",
+        "website.refrax.browser.codex-credentials",
+        "website.refrax.browser.openai-credentials",
+        "website.refrax.browser.openrouter-credentials",
+        "website.refrax.browser.custom-credentials",
+    ]
+
+    /// Deletes what the retired agent chat left behind, once per install: its API keys in the
+    /// keychain and its saved conversations in Application Support.
+    private func removeRetiredAgentChatData() {
+        let migrationKey = "website.refrax.migration.removedAgentChat"
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: migrationKey) else { return }
 
-        ClaudeCredentialStore.deleteLegacyOAuthCredentials()
+        for service in Self.retiredAgentCredentialServices {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+            ]
+            SecItemDelete(query as CFDictionary)
+        }
+        if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let agentDirectory = appSupport
+                .appendingPathComponent(Constants.App.bundleID)
+                .appendingPathComponent("agent")
+            try? FileManager.default.removeItem(at: agentDirectory)
+        }
         defaults.set(true, forKey: migrationKey)
     }
 

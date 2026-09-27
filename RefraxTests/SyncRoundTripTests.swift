@@ -301,7 +301,6 @@ struct SyncRoundTripTests {
         settings.feedbackName = "Kiri"
         settings.feedbackEmail = "test@example.com"
         settings.archiveEnabled = true
-        settings.agentDisplayName = "Sora"
         context.insert(settings)
         try context.save()
 
@@ -320,7 +319,6 @@ struct SyncRoundTripTests {
         #expect(record["feedbackName"] as? String == "Kiri")
         #expect(record["feedbackEmail"] as? String == "test@example.com")
         #expect(record["archiveEnabled"] as? Bool == true)
-        #expect(record["agentDisplayName"] as? String == "Sora")
     }
 
     @Test("BrowserSettings applyRecord updates existing singleton")
@@ -342,7 +340,6 @@ struct SyncRoundTripTests {
         record["feedbackEmail"] = "updated@example.com" as NSString
         record["doNotTrack"] = false as NSNumber
         record["speedReaderWPM"] = 350 as NSNumber
-        record["agentDisplayName"] = "Agent V2" as NSString
 
         let result = try BrowserSettings.applyRecord(record, into: context)
         try context.save()
@@ -351,7 +348,6 @@ struct SyncRoundTripTests {
         #expect(result.feedbackEmail == "updated@example.com")
         #expect(result.doNotTrack == false)
         #expect(result.speedReaderWPM == 350)
-        #expect(result.agentDisplayName == "Agent V2")
 
         let allSettings = try context.fetch(FetchDescriptor<BrowserSettings>())
         #expect(allSettings.count == 1, "BrowserSettings must remain a singleton")
@@ -371,7 +367,7 @@ struct SyncRoundTripTests {
         settings.feedbackName = "Tester"
         settings.archiveEnabled = true
         settings.archiveClearHours = 48
-        settings.agentClaudeMaxTokens = 16_384
+        settings.aria2ThresholdMB = 512
         settings.controlAccessModeRaw = ControlAccessMode.open.rawValue
         context.insert(settings)
         try context.save()
@@ -397,7 +393,7 @@ struct SyncRoundTripTests {
         #expect(decoded.feedbackName == "Tester")
         #expect(decoded.archiveEnabled == true)
         #expect(decoded.archiveClearHours == 48)
-        #expect(decoded.agentClaudeMaxTokens == 16_384)
+        #expect(decoded.aria2ThresholdMB == 512)
         #expect(decoded.controlAccessModeRaw == ControlAccessMode.open.rawValue)
     }
 

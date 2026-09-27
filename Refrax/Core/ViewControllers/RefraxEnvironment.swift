@@ -52,9 +52,7 @@ struct RefraxEnvironment {
     let offlineContentManager: OfflineContentManager
     let tabHealthProvider: TabHealthProvider
     let processMemoryMonitor: ProcessMemoryMonitor
-    let agentChatManager: AgentChatManager
     let visualFeedbackManager: VisualFeedbackManager
-    let thoughtStreamStore: ThoughtStreamStore
     let humanInterventionManager: HumanInterventionManager
     let customSearchEngineManager: CustomSearchEngineManager
     let appUpdateManager: AppUpdateManager
@@ -121,9 +119,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.offlineContentManager)
             .environment(environment.tabHealthProvider)
             .environment(environment.processMemoryMonitor)
-            .environment(environment.agentChatManager)
             .environment(environment.visualFeedbackManager)
-            .environment(environment.thoughtStreamStore)
             .environment(environment.humanInterventionManager)
             .environment(environment.customSearchEngineManager)
             .environment(environment.appUpdateManager)

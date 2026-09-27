@@ -82,28 +82,6 @@ final class CommandLensManager {
         ExpandedModeButton.allButtons
     }
 
-    // MARK: - AI Mode State
-
-    /// Whether AI mode is active (showing AI response area).
-    var isAIMode: Bool = false
-
-    /// Whether the AI is currently generating a response.
-    var isAILoading: Bool = false
-
-    /// The current AI response text.
-    var aiResponse: String?
-
-    /// Error message if AI request failed.
-    var aiError: String?
-
-    /// The original query sent to AI.
-    var aiQuery: String?
-
-    /// Whether the current input looks like an AI query.
-    var isAIIntent: Bool {
-        AIIntentDetector.isAIIntent(inputText)
-    }
-
     // MARK: - Computed Properties
 
     /// The active search engine (selected or default from settings).
@@ -138,12 +116,10 @@ final class CommandLensManager {
     private let siteSettingsManager: SiteSettingsManager
     private let downloadManager: DownloadManager
     private let referencePaneManager: ReferencePaneManager
-    private let agentChatManager: AgentChatManager
     private let extensionManager: ExtensionManager
     private let customSearchEngineManager: CustomSearchEngineManager
     private let localNetworkSource: any LocalNetworkSnapshotSource
 
-    @ObservationIgnored private var aiStreamingTask: Task<Void, Never>?
 
     // MARK: - Providers
 
@@ -168,7 +144,6 @@ final class CommandLensManager {
         siteSettingsManager: SiteSettingsManager,
         downloadManager: DownloadManager,
         referencePaneManager: ReferencePaneManager,
-        agentChatManager: AgentChatManager,
         extensionManager: ExtensionManager,
         customSearchEngineManager: CustomSearchEngineManager,
         localNetworkSource: any LocalNetworkSnapshotSource,
@@ -180,7 +155,6 @@ final class CommandLensManager {
         self.siteSettingsManager = siteSettingsManager
         self.downloadManager = downloadManager
         self.referencePaneManager = referencePaneManager
-        self.agentChatManager = agentChatManager
         self.extensionManager = extensionManager
         self.customSearchEngineManager = customSearchEngineManager
         self.localNetworkSource = localNetworkSource
@@ -771,121 +745,6 @@ final class CommandLensManager {
             }
     }
 
-    // MARK: - AI Mode
-
-    /// Whether the AI response is actively streaming.
-    var isAIStreaming: Bool {
-        isAIMode && aiResponse != nil && agentChatManager.isStreaming
-    }
-
-    /// Sends the current input as an AI query via the agent chat system.
-    ///
-    /// The query flows through `AgentChatManager`, so the conversation is
-    /// automatically available in the Reference Pane when transferring.
-    func sendAIQuery() {
-        let query = AIIntentDetector.extractQuery(inputText)
-        guard !query.isEmpty else { return }
-
-        guard agentChatManager.isProviderConfigured else {
-            isAIMode = true
-            aiError = "Set up the agent in the Reference Pane's Agent Chat"
-            return
-        }
-
-        guard !agentChatManager.isStreaming else {
-            isAIMode = true
-            aiError = "Agent is busy — continue in Reference Pane"
-            return
-        }
-
-        isAIMode = true
-        isAILoading = true
-        aiQuery = query
-        aiResponse = nil
-        aiError = nil
-
-        aiStreamingTask?.cancel()
-
-        Task {
-            // Ensure connection
-            if !agentChatManager.connectionState.isConnected {
-                await agentChatManager.connect()
-            }
-
-            // Build browser context
-            let context = BrowserContextProvider.shouldIncludeContext(for: query)
-                ? await BrowserContextProvider.extractContextWithSelection(from: windowState)
-                : nil
-
-            // Send through the agent chat pipeline
-            await agentChatManager.sendMessage(query, context: context)
-
-            // Observe streaming response
-            let manager = agentChatManager
-            aiStreamingTask = Task { [weak self] in
-                let changes = Observations {
-                    (manager.messages.count, manager.isStreaming)
-                }
-
-                for await _ in changes {
-                    guard let self, isAIMode else { return }
-
-                    // Extract latest assistant message
-                    if let lastAssistant = manager.messages.last(where: { $0.role == .assistant }) {
-                        let text = lastAssistant.textContent
-                        if !text.isEmpty {
-                            isAILoading = false
-                            aiResponse = text
-                        }
-                    }
-
-                    // Check for errors
-                    if let chatError = manager.error {
-                        isAILoading = false
-                        aiError = chatError.message
-                        return
-                    }
-
-                    // Streaming complete
-                    if !manager.isStreaming, aiResponse != nil {
-                        isAILoading = false
-                        return
-                    }
-                }
-            }
-        }
-    }
-
-    /// Transfers the current AI conversation to the Reference Pane.
-    ///
-    /// The conversation is already in `AgentChatManager`, so no state
-    /// transfer is needed — just open the pane and close the lens.
-    func transferToReferencePane() {
-        aiStreamingTask?.cancel()
-        aiStreamingTask = nil
-
-        // Open Reference Pane in agent chat mode if not already active
-        if !windowState.isAgentChatActive {
-            windowState.toggleAgentChat()
-        } else if windowState.isInspectorCollapsed {
-            windowState.isInspectorCollapsed = false
-        }
-
-        closeCurrentLens()
-        reset()
-    }
-
-    /// Clears AI mode state without dismissing the lens.
-    func clearAIState() {
-        aiStreamingTask?.cancel()
-        aiStreamingTask = nil
-        isAIMode = false
-        isAILoading = false
-        aiResponse = nil
-        aiError = nil
-        aiQuery = nil
-    }
-
     // MARK: - Provider Management
 
     private func fetchLocalSuggestions(context: SuggestionContext) async -> [CommandLensSuggestion] {
@@ -1003,26 +862,6 @@ final class CommandLensManager {
         )
     }
 
-    /// Creates an "Ask Claude" suggestion when the input looks like an AI query.
-    ///
-    /// Shown after the search suggestion so users can choose between
-    /// searching the web or asking the AI assistant.
-    private func createAskAISuggestion() -> CommandLensSuggestion? {
-        guard !inputText.isEmpty, isAIIntent else { return nil }
-
-        let query = AIIntentDetector.extractQuery(inputText)
-        return CommandLensSuggestion(
-            type: .askAI,
-            text: query,
-            description: "Ask Claude",
-            iconName: "sparkles",
-            groupHeader: nil,
-            isRemovable: false,
-            keywordAction: nil,
-            url: nil,
-        )
-    }
-
     /// Sorts suggestions based on heuristics.
     ///
     /// Order:
@@ -1057,12 +896,7 @@ final class CommandLensManager {
             result.append(searchSuggestion)
         }
 
-        // 4. Ask AI suggestion (when input looks like a question/intent)
-        if let aiSuggestion = createAskAISuggestion() {
-            result.append(aiSuggestion)
-        }
-
-        // 5. All other suggestions in original order
+        // 4. All other suggestions in original order
         result.append(contentsOf: remaining)
 
         return result
@@ -1496,13 +1330,6 @@ final class CommandLensManager {
         expandedSelection = -1
         hadUserInteraction = false
         categorySearchMode = nil
-        aiStreamingTask?.cancel()
-        aiStreamingTask = nil
-        isAIMode = false
-        isAILoading = false
-        aiResponse = nil
-        aiError = nil
-        aiQuery = nil
         searchTask?.cancel()
         searchTask = nil
         updateAvailableEmptyStateActions()
@@ -1694,9 +1521,6 @@ final class CommandLensManager {
             }
             closeCurrentLens()
             reset()
-
-        case .askAI:
-            sendAIQuery()
 
         case let .appAction(action):
             switch action {

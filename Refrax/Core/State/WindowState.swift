@@ -618,12 +618,6 @@ final class WindowState {
     /// because the content is being displayed in the separate window.
     var hasReferencePaneWindow = false
 
-    /// Whether the agent chat is active in the reference pane.
-    ///
-    /// When true, the reference pane shows the agent chat interface instead of
-    /// reference tabs. Toggled via Cmd+Shift+S keyboard shortcut.
-    var isAgentChatActive = false
-
     // MARK: - Toast Notification State
 
     /// Current toast message to display, if any.
@@ -935,22 +929,6 @@ final class WindowState {
     /// Toggle inspector/reference pane visibility
     func toggleInspector() {
         isInspectorCollapsed.toggle()
-    }
-
-    /// Toggles agent chat in the reference pane.
-    ///
-    /// With chat active but the pane hidden, reveals the pane instead of
-    /// leaving chat, so the shortcut always brings chat into view first.
-    func toggleAgentChat() {
-        if isAgentChatActive, isInspectorCollapsed {
-            isInspectorCollapsed = false
-            return
-        }
-        isAgentChatActive.toggle()
-        // Ensure inspector is visible when activating chat
-        if isAgentChatActive, isInspectorCollapsed {
-            isInspectorCollapsed = false
-        }
     }
 
     // MARK: - Detail Tray Actions

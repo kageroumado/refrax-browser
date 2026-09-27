@@ -22,12 +22,6 @@ struct SuggestionIconView: View {
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             
-        case .askAI:
-            Image(systemName: suggestion.iconName)
-                .font(isSmall ? .system(size: 14, weight: .medium) : .system(size: 22, weight: .medium))
-                .frame(width: size, height: size, alignment: .center)
-                .foregroundStyle(.purple)
-
         default:
             Image(systemName: suggestion.iconName)
                 .font(isSmall ? .system(size: 14, weight: .medium) : .system(size: 22, weight: .medium))

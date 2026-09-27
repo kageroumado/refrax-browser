@@ -517,76 +517,6 @@ final class BrowserSettings {
     /// file is deleted after successful import to the Photos library.
     var ytdlpDeleteAfterPhotosImport: Bool
 
-    // MARK: - Agent Chat
-
-    /// Whether the agent chat feature is enabled.
-    var agentEnabled: Bool
-
-    /// Session key for agent chat conversations.
-    ///
-    /// Use "agent:main:main" for continuity with Discord DMs.
-    var agentSessionKey: String
-
-    /// Whether to automatically include browser context in messages.
-    ///
-    /// When enabled and a message references "this page" or similar,
-    /// the current URL, title, and selection are included.
-    var agentAutoIncludeContext: Bool
-
-    /// Which provider backend to use for agent chat.
-    var agentProviderKind: AgentProviderKind
-
-    /// Claude model identifier for direct API mode.
-    var agentClaudeModel: String
-
-    /// Maximum output tokens for Claude API responses.
-    var agentClaudeMaxTokens: Int
-
-    /// Model identifier used when ``agentProviderKind`` is `.openAI`.
-    var agentOpenAIModel: String = "gpt-5"
-
-    /// Model identifier used when ``agentProviderKind`` is `.openRouter`.
-    ///
-    /// OpenRouter routes by `provider/model-slug`; defaults to a
-    /// tool-calling-capable Claude.
-    var agentOpenRouterModel: String = "anthropic/claude-opus-4.6"
-
-    /// Model identifier used when ``agentProviderKind`` is `.custom`.
-    ///
-    /// Typically the identifier returned by the custom endpoint's
-    /// `GET /v1/models` response (e.g., `llama3.1:latest` for Ollama).
-    var agentCustomModel: String = ""
-
-    /// Base URL for the custom OpenAI-compatible endpoint.
-    ///
-    /// Must include the API prefix — e.g., `http://localhost:11434/v1` for
-    /// Ollama, `http://localhost:1234/v1` for LM Studio.
-    var agentCustomBaseURL: String = "http://localhost:11434/v1"
-
-    /// Whether the custom endpoint requires an API key. When `false`, no
-    /// `Authorization` header is sent (typical for fully local servers).
-    var agentCustomRequiresAuth: Bool = false
-
-    /// Maximum output tokens for OpenAI-compatible providers.
-    var agentOpenAIMaxTokens: Int = 4_096
-
-    /// Model passed to `claude --model` when ``agentProviderKind`` is `.claudeCode`.
-    ///
-    /// Empty means the CLI's own default model.
-    var agentClaudeCodeModel: String = ""
-
-    /// Model passed to `codex exec --model` when ``agentProviderKind`` is `.codex`.
-    ///
-    /// Empty means the CLI's own default model.
-    var agentCodexModel: String = ""
-
-    /// Display name for the agent in chat header.
-    var agentDisplayName: String
-
-    /// Custom avatar image data for the agent (PNG).
-    /// If nil, shows default person icon.
-    var agentAvatarData: Data?
-
     // MARK: - Widgets: Calendar
 
     /// Whether to show the calendar widget in the sidebar.
@@ -843,22 +773,6 @@ final class BrowserSettings {
         self.ytdlpEnabled = true
         self.ytdlpUseCookies = true
         self.ytdlpDeleteAfterPhotosImport = false
-        self.agentEnabled = true
-        self.agentSessionKey = "agent:main:main"
-        self.agentAutoIncludeContext = true
-        self.agentProviderKind = .claudeAPI
-        self.agentClaudeModel = ClaudeModel.sonnet.rawValue
-        self.agentClaudeMaxTokens = 8_192
-        self.agentOpenAIModel = "gpt-5"
-        self.agentOpenRouterModel = "anthropic/claude-opus-4.6"
-        self.agentCustomModel = ""
-        self.agentCustomBaseURL = "http://localhost:11434/v1"
-        self.agentCustomRequiresAuth = false
-        self.agentOpenAIMaxTokens = 4_096
-        self.agentClaudeCodeModel = ""
-        self.agentCodexModel = ""
-        self.agentDisplayName = "Agent"
-        self.agentAvatarData = nil
         self.preferredMailHandlerRaw = MailHandler.system.rawValue
         self.feedbackName = ""
         self.feedbackEmail = ""
@@ -1265,19 +1179,6 @@ final class BrowserSettings {
         ytdlpEnabled = true
         ytdlpUseCookies = true
         ytdlpDeleteAfterPhotosImport = false
-        agentProviderKind = .claudeAPI
-        agentClaudeModel = ClaudeModel.sonnet.rawValue
-        agentClaudeMaxTokens = 8_192
-        agentOpenAIModel = "gpt-5"
-        agentOpenRouterModel = "anthropic/claude-opus-4.6"
-        agentCustomModel = ""
-        agentCustomBaseURL = "http://localhost:11434/v1"
-        agentCustomRequiresAuth = false
-        agentOpenAIMaxTokens = 4_096
-        agentClaudeCodeModel = ""
-        agentCodexModel = ""
-        agentDisplayName = "Agent"
-        agentAvatarData = nil
         feedbackName = ""
         feedbackEmail = ""
         verboseLoggingEnabled = false

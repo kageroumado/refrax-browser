@@ -18,15 +18,16 @@
 Refrax is a maximalist browser for macOS — built natively in Swift and WebKit, with the
 features other browsers dropped and several that exist nowhere else. Vertical tabs, spaces you
 can lock behind Touch ID, a command palette that takes plain language, a CLI that scripts the
-whole browser, and an MCP server so an agent can browse beside you.
+whole browser for you or your agent, and an optional Chromium engine for the sites that need it.
 
 ## Features
 
 - **Vertical tabs & spaces.** Grouped tabs in a sidebar, organized into spaces — and any space can be locked behind Touch ID.
 - **Plain-language command palette.** Type what you want in natural language, not just a fuzzy-matched command name.
 - **Scriptable from the terminal.** `refrax-ctl` is a headless CLI that drives the entire browser: tabs, spaces, navigation, screenshots.
-- **Agent-ready.** A built-in MCP server lets your AI agent browse alongside you.
-- **Native Liquid Glass UI.** Swift and WebKit against the macOS design system — not a re-skinned Chromium.
+- **Agent-ready.** Claude Code, Codex, or any agent that runs shell commands drives Refrax through `refrax-ctl`; Refrax installs its skill for Claude Code.
+- **Two engines.** Pages render with WebKit, or with Chromium for the sites that need it: download it in Settings → Engines, then choose it per page or as the default.
+- **Native Liquid Glass UI.** Swift against the macOS design system — not a re-skinned Chromium.
 
 ## Download
 

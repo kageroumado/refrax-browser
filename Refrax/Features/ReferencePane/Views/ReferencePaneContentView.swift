@@ -118,9 +118,7 @@ struct ReferencePaneContentView: View {
 
     private var mainContentView: some View {
         Group {
-            if windowState.isAgentChatActive {
-                AgentChatView()
-            } else if let content = activeReferenceContent {
+            if let content = activeReferenceContent {
                 referenceContentView(for: content)
             } else {
                 emptyStateView
@@ -239,32 +237,16 @@ struct ReferencePaneContentView: View {
                 availableTabsList
             }
 
-            // Agent chat button
-            Button {
-                windowState.toggleAgentChat()
-            } label: {
-                Label("Agent Chat", systemImage: "sparkles")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: 200)
-            .accessibilityIdentifier("reference-pane-agent-chat")
-            .accessibilityLabel("Open agent chat")
-
             if referenceTabs.count < 4 {
                 Button(action: addEmptyReferenceTab) {
                     Label("Command Lens", systemImage: "sparkle.magnifyingglass")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .frame(maxWidth: 200)
                 .accessibilityIdentifier("reference-pane-command-lens")
                 .accessibilityLabel("Add reference tab via Command Lens")
             }
-
-            Text("Tip: ⌘⌃A to toggle chat")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
