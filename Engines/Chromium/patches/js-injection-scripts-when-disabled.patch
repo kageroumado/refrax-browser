@@ -1,0 +1,65 @@
+--- a/components/js_injection/renderer/js_communication.cc
++++ b/components/js_injection/renderer/js_communication.cc
+@@ -5,6 +5,7 @@
+ #include "components/js_injection/renderer/js_communication.h"
+ 
+ #include <algorithm>
++#include <tuple>
+ 
+ #include "base/feature_list.h"
+ #include "components/js_injection/common/interfaces.mojom-shared.h"
+@@ -28,6 +29,43 @@
+ // If enabled will bind browser->js pipes lazily instead of when the window
+ // object is cleared.
+ BASE_FEATURE(kLazyBindJsInjection, base::FEATURE_ENABLED_BY_DEFAULT);
++
++// Refrax: compiles and runs the source string in the function's first argument.
++void RunSource(const v8::FunctionCallbackInfo<v8::Value>& info) {
++  v8::Isolate* isolate = info.GetIsolate();
++  v8::Local<v8::Context> context = isolate->GetCurrentContext();
++  v8::Local<v8::Script> script;
++  if (v8::Script::Compile(context, info[0].As<v8::String>()).ToLocal(&script)) {
++    std::ignore = script->Run(context);
++  }
++}
++
++// Refrax: runs an injected main-world script even where the page may not run its own (its
++// site's JavaScript is off, or a sandbox forbids scripts), as WebKit runs an app's user
++// scripts. WebLocalFrame::ExecuteScript refuses there; CallFunctionEvenIfScriptDisabled, the
++// path extensions use, does not. //refrax/renderer/frame_scripts.cc does the same for
++// evaluateScript.
++void ExecuteInMainWorld(blink::WebLocalFrame* frame, const std::u16string& source) {
++  v8::Isolate* isolate = frame->GetAgentGroupScheduler()->Isolate();
++  v8::HandleScope handles(isolate);
++  v8::Local<v8::Context> context = frame->MainWorldScriptContext();
++  v8::Context::Scope context_scope(context);
++  v8::Local<v8::Function> run;
++  v8::Local<v8::String> text;
++  if (!v8::Function::New(context, &RunSource).ToLocal(&run) ||
++      !v8::String::NewFromTwoByte(isolate,
++                                  reinterpret_cast<const uint16_t*>(source.data()),
++                                  v8::NewStringType::kNormal, static_cast<int>(source.size()))
++           .ToLocal(&text)) {
++    return;
++  }
++  // Reported to the console, as ExecuteScript reports a script's exception.
++  v8::TryCatch try_catch(isolate);
++  try_catch.SetVerbose(true);
++  v8::Local<v8::Value> argv[] = {text};
++  std::ignore =
++      frame->CallFunctionEvenIfScriptDisabled(run, v8::Undefined(isolate), 1, argv);
++}
+ 
+ }  // namespace
+ 
+@@ -242,8 +280,8 @@
+     }
+     if (script->injection_time == injection_time) {
+       if (script->js_world == content::ISOLATED_WORLD_ID_GLOBAL) {
+-        js_communication->render_frame()->GetWebFrame()->ExecuteScript(
+-            blink::WebScriptSource(script->script));
++        ExecuteInMainWorld(js_communication->render_frame()->GetWebFrame(),
++                           script->script.Utf16());
+       } else {
+         js_communication->render_frame()
+             ->GetWebFrame()

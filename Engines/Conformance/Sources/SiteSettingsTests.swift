@@ -48,6 +48,30 @@ enum SiteSettingsTests {
             try expect(try await scriptRan(context, host: "127.0.0.1"), "script did not run once the policy was cleared")
         },
 
+        ConformanceTest(name: "site-settings.refrax-scripts-run-with-javascript-off") { context in
+            context.scripts([
+                ScriptTests.script("window.__injectedPage = 'page';"),
+                ScriptTests.script("document.documentElement.dataset.isolated = 'isolated';", world: "conformance"),
+            ])
+            context.siteSettings(rules: [["host": "localhost", "javaScriptEnabled": false]])
+            let path = "/asset/js-ran-localhost"
+            let before = context.server.hits(path)
+            let page = try await context.page("/html/scripted", host: "localhost")
+            try await pause(0.5)
+            try expectEqual(context.server.hits(path), before, "the page's own script ran with JavaScript off")
+            try expectEqual(try await page.evaluate("document.title") as? String, "scripted", "evaluation in the page world")
+            try expectEqual(try await page.evaluate("window.__injectedPage") as? String, "page", "an injected page-world script")
+            try expectEqual(try await page.evaluate("document.documentElement.dataset.isolated") as? String, "isolated",
+                            "an injected isolated-world script")
+            try expectEqual(try await page.evaluate("Promise.resolve(6 * 7)") as? Int, 42, "an awaited promise")
+            do {
+                _ = try await page.evaluate("(")
+                throw Failure("a syntax error evaluated")
+            } catch let error as EvaluationError {
+                try expect(error.message.contains("SyntaxError"), "error \(error.message)")
+            }
+        },
+
         ConformanceTest(name: "site-settings.content-blocking-off-for-a-site", timeout: 300) { context in
             try context.engine.require("contentBlocking")
             context.contentBlocking(lists: [Fixtures.blockingList])

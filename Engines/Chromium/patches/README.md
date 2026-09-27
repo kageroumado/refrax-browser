@@ -44,6 +44,15 @@ per-frame agents the engine host drives, both inert without it:
   browser-side script APIs reach only content's own world ids (`ISOLATED_WORLD_ID_MAX`) and
   never await promises.
 
+## `js-injection-scripts-when-disabled.patch`
+
+`components/js_injection/renderer/js_communication.cc`: runs Refrax's injected main-world
+scripts through `WebLocalFrame::CallFunctionEvenIfScriptDisabled`, the path extensions use,
+instead of `ExecuteScript`, which refuses in a page whose site has JavaScript off or whose
+sandbox forbids scripts. WebKit runs an app's user scripts in those pages, and Refrax's features
+rely on it. `//refrax/renderer/frame_scripts.cc` does the same for `evaluateScript`; the
+injection loop itself belongs to `js_injection`, so the change can't live in `//refrax`.
+
 ## `permissions-view-factory.patch`
 
 `components/permissions/permission_request_manager.h`: a public `set_view_factory`, beside the

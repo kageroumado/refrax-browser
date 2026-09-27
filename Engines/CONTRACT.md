@@ -196,7 +196,9 @@ and completes with the result as a plain JSON value (`42`, `"x"`, `{"a":[true,nu
 must not be given a synthetic user gesture unless `userGesture` is true. `undefined` is `null`;
 integral numbers carry no fraction; a promise settles before the call completes; a thrown value
 fails the call with its message (a syntax error's message names `SyntaxError`). Every call
-completes exactly once, with an error if the page closes or its engine dies first. Injected
+completes exactly once, with an error if the page closes or its engine dies first. Refrax's scripts, evaluated or injected, run in every world even where the page's own
+scripts may not (its site's JavaScript is off, or a sandbox forbids scripts), as WebKit runs an
+app's scripts. Injected
 scripts' `matches` and `excludes` are WebExtensions match patterns (empty `matches`: every page).
 
 Scripts Refrax injects (policy `scripts`, §4.5) post messages with the WebKit call shape, in the

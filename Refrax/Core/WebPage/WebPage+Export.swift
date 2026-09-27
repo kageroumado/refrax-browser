@@ -173,6 +173,11 @@ extension WebPage {
         snapshotWidth: CGFloat?,
         afterScreenUpdates: Bool,
     ) async throws -> Data {
+        // A plug-in engine captures what its view shows; full-page and region captures are WebKit's.
+        if enginePage != nil {
+            return try await pngData(from: snapshot())
+        }
+
         let configuration = WKSnapshotConfiguration()
 
         // Set rect if specific region, otherwise use .null for default behavior
@@ -187,15 +192,15 @@ extension WebPage {
         configuration.snapshotWidth = snapshotWidth.map { NSNumber(value: $0) }
         configuration.afterScreenUpdates = afterScreenUpdates
 
-        let snapshot = try await backingWebView.takeSnapshot(configuration: configuration)
+        return try await pngData(from: backingWebView.takeSnapshot(configuration: configuration))
+    }
 
-        // Convert to PNG data
-        guard let tiffData = snapshot.tiffRepresentation,
+    private func pngData(from image: NSImage) throws -> Data {
+        guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let pngData = bitmap.representation(using: .png, properties: [:]) else {
             throw ExportError.conversionFailed
         }
-
         return pngData
     }
 

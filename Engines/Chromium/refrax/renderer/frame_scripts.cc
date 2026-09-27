@@ -23,6 +23,7 @@
 #include "v8/include/v8-message.h"
 #include "v8/include/v8-primitive.h"
 #include "v8/include/v8-promise.h"
+#include "v8/include/v8-script.h"
 
 namespace refrax {
 
@@ -42,6 +43,39 @@ void CaptureReportedException(v8::Local<v8::Message> message, v8::Local<v8::Valu
   if (g_reported_exception && !*g_reported_exception) {
     *g_reported_exception = Describe(v8::Isolate::GetCurrent(), message->Get());
   }
+}
+
+// Compiles and runs the source string in the function's first argument, returning its
+// completion value; an exception propagates to the caller.
+void RunSource(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+  v8::Local<v8::Script> script;
+  v8::Local<v8::Value> result;
+  if (v8::Script::Compile(context, info[0].As<v8::String>()).ToLocal(&script) &&
+      script->Run(context).ToLocal(&result)) {
+    info.GetReturnValue().Set(result);
+  }
+}
+
+// Runs `source` in the main world even where the page may not run its own scripts (its site's
+// JavaScript is off, or a sandbox forbids scripts): WebKit runs an app's scripts there too.
+// Blink's ExecuteScriptAndReturnValue refuses in those pages; a call through
+// CallFunctionEvenIfScriptDisabled, the path extensions use, does not.
+v8::MaybeLocal<v8::Value> ExecuteInMainWorld(blink::WebLocalFrame* frame,
+                                             v8::Isolate* isolate,
+                                             v8::Local<v8::Context> context,
+                                             const std::string& source) {
+  v8::Local<v8::Function> run;
+  v8::Local<v8::String> text;
+  if (!v8::Function::New(context, &RunSource).ToLocal(&run) ||
+      !v8::String::NewFromUtf8(isolate, source.data(), v8::NewStringType::kNormal,
+                               static_cast<int>(source.size()))
+           .ToLocal(&text)) {
+    return {};
+  }
+  v8::Local<v8::Value> argv[] = {text};
+  return frame->CallFunctionEvenIfScriptDisabled(run, v8::Undefined(isolate), 1, argv);
 }
 
 // Completes an evaluation with `value`: JSON-compatible data, with undefined as null.
@@ -100,16 +134,17 @@ void FrameScripts::Evaluate(const std::string& source,
     frame->NotifyUserActivation(
         blink::mojom::UserActivationNotificationType::kInteraction);
   }
-  const blink::WebScriptSource script{blink::WebString::FromUtf8(source)};
   std::optional<std::string> reported_exception;
   g_reported_exception = &reported_exception;
   isolate->AddMessageListener(&CaptureReportedException);
   v8::TryCatch try_catch(isolate);
+  // Isolated worlds run whether or not the page may run scripts.
   v8::Local<v8::Value> value =
       world_id == content::ISOLATED_WORLD_ID_GLOBAL
-          ? frame->ExecuteScriptAndReturnValue(script)
+          ? ExecuteInMainWorld(frame, isolate, context, source).FromMaybe(v8::Local<v8::Value>())
           : frame->ExecuteScriptInIsolatedWorldAndReturnValue(
-                world_id, script, blink::BackForwardCacheAware::kAllow);
+                world_id, blink::WebScriptSource(blink::WebString::FromUtf8(source)),
+                blink::BackForwardCacheAware::kAllow);
   isolate->RemoveMessageListeners(&CaptureReportedException);
   g_reported_exception = nullptr;
   if (try_catch.HasCaught()) {
