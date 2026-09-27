@@ -8,10 +8,14 @@ nonisolated struct EngineBundle: Hashable, Sendable {
     let principalClassName: String
 
     /// Reads and validates a bundle's Info.plist. Returns nil for anything that isn't a usable engine.
+    ///
+    /// Reads the file itself: `Bundle(url:)` caches a bundle per path for the life of the process,
+    /// so an engine updated in place would keep reporting the release it replaced.
     init?(url: URL) {
-        guard let bundle = Bundle(url: url),
-              let info = bundle.infoDictionary,
-              let identifier = bundle.bundleIdentifier,
+        let plist = url.appending(path: "Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let info = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
+              let identifier = info["CFBundleIdentifier"] as? String,
               let principalClass = info["NSPrincipalClass"] as? String,
               let contract = (info[RFXEngineInfoKey.contractVersion.rawValue] as? String).flatMap(EngineContractVersion.init(string:))
         else {

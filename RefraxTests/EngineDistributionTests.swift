@@ -166,7 +166,7 @@ struct EngineDistributionTests {
         }
     }
 
-    @Test("A running engine's update waits in .pending; the registry installs it and ignores the folder")
+    @Test("An update waits in .pending while its engine runs, else replaces it in place; the registry reads either")
     func pendingInstall() throws {
         let support = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
@@ -184,6 +184,17 @@ struct EngineDistributionTests {
         #expect(registry.descriptor(for: engine)?.version == "152.0.7977.82-r1")
         #expect(!FileManager.default.fileExists(atPath: engines.appending(path: ".pending/\(engine.rawValue)").path(percentEncoded: false)))
         #expect(registry.descriptors.count == 2, "the .pending folder is never scanned as an engine")
+
+        // An engine that isn't running is replaced in place, and the registry reads the new
+        // release from the same path.
+        let newer = downloads.appending(path: "newer", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: newer, withIntermediateDirectories: true)
+        let replaced = try EngineInstaller.place(
+            makeEngineBundle(in: newer, build: "152.0.7977.82-r2"), engine: engine, in: engines, replacingRunningEngine: false,
+        )
+        #expect(replaced == .installed(engines.appending(path: "\(engine.rawValue)/Refrax Chromium.engine")))
+        registry.refresh()
+        #expect(registry.descriptor(for: engine)?.version == "152.0.7977.82-r2")
     }
 
     @Test("Offers new engines and newer releases, never a local build or one Refrax can't run")
