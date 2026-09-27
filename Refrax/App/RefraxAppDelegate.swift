@@ -608,6 +608,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         removeRetiredAgentChatData()
         migrateCredentialsToSharedGroup()
 
+        engineRegistry.verifyInstalledEngines()
+
         // Clean up any stale aria2 daemon from a previous crash
         Task(priority: .utility) {
             await Aria2Daemon().cleanupStaleDaemon()

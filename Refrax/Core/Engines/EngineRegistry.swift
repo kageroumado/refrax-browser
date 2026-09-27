@@ -35,6 +35,9 @@ final class EngineRegistry {
     @ObservationIgnored private var policy: [PolicyUpdate.Category: PolicyUpdate] = [:]
     @ObservationIgnored private var hosts: [EngineID: ExternalEngineHost] = [:]
     @ObservationIgnored private var icons: [EngineID: NSImage] = [:]
+    /// Each installed bundle's code-signature check, run once off the main thread: a strict
+    /// check hashes every file in the bundle, hundreds of megabytes for Chromium.
+    @ObservationIgnored private var signatureChecks: [EngineBundle: Task<Void, any Error>] = [:]
 
     /// Receives every running engine's events that belong to no page.
     @ObservationIgnored var engineEventHandler: ((EngineID, EngineEvent) -> Void)?
@@ -91,6 +94,9 @@ final class EngineRegistry {
             }
         }
         bundles = found
+        // A bundle installed in place of another may carry the same version, so every check
+        // runs again on the bundles now on disk.
+        signatureChecks.removeAll()
         descriptors = [Self.systemWebKit] + found.values.map(\.descriptor).sorted { $0.displayName < $1.displayName }
     }
 
@@ -105,6 +111,27 @@ final class EngineRegistry {
             ?? descriptors.first { $0.displayName.lowercased() == needle }?.id
     }
 
+    /// Checks every installed engine's code signature at background priority, so an engine's
+    /// first page doesn't wait on it. Called once Refrax has finished launching.
+    func verifyInstalledEngines() {
+        for bundle in bundles.values {
+            _ = signatureCheck(for: bundle, priority: .background)
+        }
+    }
+
+    /// The signature check of `bundle`, started at `priority` unless already under way. Awaiting
+    /// it from higher-priority work raises its priority.
+    private func signatureCheck(for bundle: EngineBundle, priority: TaskPriority) -> Task<Void, any Error> {
+        if let check = signatureChecks[bundle] {
+            return check
+        }
+        let check = Task.detached(name: "Verify \(bundle.descriptor.displayName) signature", priority: priority) {
+            try bundle.verifySignature()
+        }
+        signatureChecks[bundle] = check
+        return check
+    }
+
     /// The running host for an installed engine, started on first use.
     func host(for id: EngineID) async throws -> ExternalEngineHost {
         if let host = hosts[id] {
@@ -114,6 +141,11 @@ final class EngineRegistry {
         guard let bundle = bundles[id] else { throw EngineError.notInstalled(id) }
         if let floor = securityFloor(blocking: id) {
             throw EngineError.belowSecurityFloor(engine: bundle.descriptor.displayName, floor: floor.description)
+        }
+        try await signatureCheck(for: bundle, priority: .userInitiated).value
+        if let host = hosts[id] {
+            try await host.start()
+            return host
         }
         let configuration = EngineConfiguration(
             storageDirectory: dataDirectory.appending(path: id.rawValue, directoryHint: .isDirectory),

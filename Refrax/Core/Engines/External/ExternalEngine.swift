@@ -53,8 +53,6 @@ final class ExternalEngineHost: NSObject, EngineHost {
         guard EngineContractVersion.current.accepts(descriptor.contractVersion) else {
             throw EngineError.incompatibleContract(id, engine: descriptor.contractVersion)
         }
-        try bundle.verifySignature()
-
         guard let nsBundle = Bundle(url: bundle.url) else {
             throw EngineError.failedToLoad(id, reason: "The bundle could not be opened.")
         }
