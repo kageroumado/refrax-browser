@@ -167,7 +167,7 @@ prerelease=()
 [[ "$channel" == beta ]] && prerelease=(--prerelease)
 log "creating release $tag"
 gh release create "$tag" -R "$REPO" --title "Chromium $upstream (r$revision)" --notes-file "$notes" \
-    --latest=false "${prerelease[@]}" "${assets[@]}"
+    --latest=false ${prerelease[@]+"${prerelease[@]}"} "${assets[@]}"
 
 served=$(gh api "repos/$REPO/releases/tags/chromium%2F$version" --jq ".assets[] | select(.name == \"$zip_name\") | .digest")
 [[ "$served" == "sha256:$sha" ]] || die "GitHub serves $zip_name with digest $served, not sha256:$sha; the catalog was not updated"
