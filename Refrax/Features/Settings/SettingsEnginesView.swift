@@ -159,7 +159,8 @@ private struct EngineRow: View {
     }
 
     private var details: String {
-        var parts = [descriptor.engineVersion]
+        // An installed release names itself (152.0.7977.82-r2); a local build shows what it renders with.
+        var parts = [EngineReleaseVersion(descriptor.version) != nil ? "\(descriptor.displayName) \(descriptor.version)" : descriptor.engineVersion]
         if !descriptor.vendor.isEmpty {
             parts.append(descriptor.vendor)
         }
@@ -191,6 +192,15 @@ private struct AvailableEnginesSection: View {
                 LabeledContent(id.rawValue) {
                     RelaunchPrompt()
                 }
+            }
+            ForEach(distribution.completed, id: \.version) { completion in
+                Label(
+                    completion.isUpdate
+                        ? "\(completion.displayName) updated to \(completion.version)"
+                        : "\(completion.displayName) \(completion.version) installed",
+                    systemImage: "checkmark.circle.fill",
+                )
+                .foregroundStyle(.secondary)
             }
             HStack {
                 Text(statusText)

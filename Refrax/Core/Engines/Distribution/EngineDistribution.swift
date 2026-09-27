@@ -36,6 +36,14 @@ final class EngineDistribution {
     private(set) var catalogState: CatalogState = .unchecked
     private(set) var catalog: EngineCatalog?
     private(set) var installs: [EngineID: InstallState] = [:]
+    /// The engines installed this session, and whether each replaced an older release.
+    private(set) var completed: [Completion] = []
+
+    struct Completion: Equatable {
+        let displayName: String
+        let version: String
+        let isUpdate: Bool
+    }
 
     @ObservationIgnored private unowned let registry: EngineRegistry
     @ObservationIgnored private var tasks: [EngineID: Task<Void, Never>] = [:]
@@ -98,7 +106,7 @@ final class EngineDistribution {
                         DispatchQueue.main.async { self?.report(stage, for: id) }
                     },
                 )
-                self?.finish(id, outcome: outcome)
+                self?.finish(offer, outcome: outcome)
             } catch is CancellationError {
                 self?.installs[id] = nil
                 self?.tasks[id] = nil
@@ -123,13 +131,15 @@ final class EngineDistribution {
         }
     }
 
-    private func finish(_ id: EngineID, outcome: EngineInstaller.Outcome) {
+    private func finish(_ offer: Offer, outcome: EngineInstaller.Outcome) {
+        let id = offer.id
         tasks[id] = nil
         switch outcome {
         case .installed:
             installs[id] = nil
             registry.refresh()
-            Logger.info("Installed engine \(id)", category: Logger.engines)
+            completed.append(Completion(displayName: offer.displayName, version: offer.release.version, isUpdate: offer.isUpdate))
+            Logger.info("Installed engine \(id) \(offer.release.version)", category: Logger.engines)
         case .pendingRelaunch:
             installs[id] = .pendingRelaunch
         }
