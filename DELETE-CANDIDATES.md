@@ -1,6 +1,6 @@
 # Delete candidates
 
-Looks dead; scope or origin unverified. Kiri confirms → it goes.
+Looks dead; scope or origin unverified.
 
 ## `Refrax/Core/Agent/AgentChatClientProtocol.swift` + `AgentChatManager.swift` + `AgentChatInputView.swift` — HTTP endpoint / large-attachment scaffolding
 - **What**: `isHTTPEndpointAvailable`, `httpEndpointError`, `checkHTTPEndpointAvailability()`, `enableHTTPEndpoint()` on the protocol and manager, `pendingAttachmentsRequireHTTP`, and the input view's HTTP warning state
