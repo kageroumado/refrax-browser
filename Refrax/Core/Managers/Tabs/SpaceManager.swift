@@ -489,6 +489,9 @@ final class SpaceManager {
                 state.indexTab(tab)
             }
 
+            // Restored tabs never pass through dispatchTabOpened
+            state.extensionManager?.dispatchTabsRestored(space.tabs)
+
             // Note: active tab is tracked per-window in WindowState
             // Note: active reference tab is per-window only
             // WindowState.setActiveSpace() handles restoration
