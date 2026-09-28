@@ -326,6 +326,7 @@ actor ContentBlockingManager {
         if let index = filterLists.firstIndex(where: { $0.id == listID }) {
             filterLists[index].ruleCount = totalRules
             filterLists[index].chunkCount = chunks.count
+            filterLists[index].compilerVersion = WebKitRuleCompiler.version
             saveFilterListState()
         }
 
@@ -388,8 +389,11 @@ actor ContentBlockingManager {
 
     private func loadOrCompileRules() async {
         for list in filterLists where list.isEnabled {
+            // Rules compiled by an older compiler are rebuilt from the cached filter text
+            let isCompiledByCurrentVersion = list.compilerVersion == WebKitRuleCompiler.version
+
             // Determine how many chunks to try loading (use stored count or default to max)
-            let expectedChunks = list.chunkCount ?? Self.maxChunksPerList
+            let expectedChunks = isCompiledByCurrentVersion ? list.chunkCount ?? Self.maxChunksPerList : 0
 
             // Try to load all chunks from WebKit's cache
             var loadedFromCache = false

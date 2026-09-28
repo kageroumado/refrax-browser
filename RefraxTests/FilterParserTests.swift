@@ -184,17 +184,89 @@ struct WebKitRuleCompilerCosmeticTests {
         #expect(ifDomain.contains("*example.com"))
     }
 
-    @Test("Compiles exception cosmetic rule to ignore-previous-rules")
-    func exceptionCosmeticRule() throws {
-        let result = parser.parse("#@#.cookie-banner")
-        let json = compiler.compile(result)
-
+    /// The WebKit rules a filter list compiles to.
+    private func compiledRules(_ content: String) throws -> [[String: Any]] {
+        let json = compiler.compile(parser.parse(content))
         let data = try #require(json.data(using: .utf8))
-        let rules = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        return try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+    }
+
+    @Test("A network rule without a party option blocks first-party requests too")
+    func networkRuleMatchesBothParties() throws {
+        let rules = try compiledRules("""
+        /pagead/*
+        ||tracker.example^$third-party
+        """)
+        let triggers = rules.compactMap { $0["trigger"] as? [String: Any] }
+        let pagead = try #require(triggers.first { ($0["url-filter"] as? String)?.contains("pagead") == true })
+        #expect(pagead["load-type"] == nil)
+
+        let tracker = try #require(triggers.first { ($0["url-filter"] as? String)?.contains("tracker") == true })
+        #expect(tracker["load-type"] as? [String] == ["third-party"])
+    }
+
+    @Test("A global exception drops the selector and emits no rule-cancelling action")
+    func globalExceptionDropsSelector() throws {
+        let rules = try compiledRules("""
+        ||ads.example.com^
+        ##.cookie-banner
+        ##.ad-unit
+        #@#.cookie-banner
+        """)
+
+        let actions = rules.compactMap { $0["action"] as? [String: String] }
+        #expect(!actions.contains { $0["type"] == "ignore-previous-rules" })
+        #expect(actions.contains { $0["type"] == "block" })
+
+        let selectors = actions.compactMap { $0["selector"] }
+        #expect(selectors == [".ad-unit"])
+    }
+
+    @Test("A domain exception excludes its domains from a generic hiding rule")
+    func domainExceptionExcludesDomains() throws {
+        let rules = try compiledRules("""
+        ##.sponsored
+        example.com#@#.sponsored
+        """)
         #expect(rules.count == 1)
 
+        let trigger = try #require(rules[0]["trigger"] as? [String: Any])
+        #expect(trigger["unless-domain"] as? [String] == ["*example.com"])
         let action = try #require(rules[0]["action"] as? [String: String])
-        #expect(action["type"] == "ignore-previous-rules")
+        #expect(action["selector"] == ".sponsored")
+    }
+
+    @Test("A domain exception removes its domains, and their subdomains, from a scoped rule")
+    func domainExceptionNarrowsScopedRule() throws {
+        let rules = try compiledRules("""
+        example.com,sub.other.org,news.site##.promo
+        other.org#@#.promo
+        """)
+        #expect(rules.count == 1)
+
+        let trigger = try #require(rules[0]["trigger"] as? [String: Any])
+        #expect(trigger["if-domain"] as? [String] == ["*example.com", "*news.site"])
+    }
+
+    @Test("A domain exception covering every domain of a scoped rule drops it")
+    func domainExceptionDropsScopedRule() throws {
+        let rules = try compiledRules("""
+        example.com##.promo
+        example.com#@#.promo
+        """)
+        #expect(rules.isEmpty)
+    }
+
+    @Test("An exception leaves other selectors on the same domains hidden")
+    func exceptionOnlyAffectsItsSelector() throws {
+        let rules = try compiledRules("""
+        example.com##.promo
+        example.com##.banner
+        example.com#@#.promo
+        """)
+        #expect(rules.count == 1)
+        let action = try #require(rules[0]["action"] as? [String: String])
+        #expect(action["selector"] == ".banner")
     }
 
     @Test("Groups cosmetic rules with same domain into single rule")

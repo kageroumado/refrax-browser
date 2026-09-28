@@ -18,6 +18,7 @@ struct CompactSidebarContent: View {
     @Environment(BrowserState.self) private var browserState
     @Environment(Sidebar.LayoutManager.self) private var layoutManager
     @Environment(SpaceManager.self) private var spaceManager
+    @Environment(Sidebar.DependencyContainer.self) private var dependencyContainer
 
     @State private var showingFavoritesPopover = false
 
@@ -61,7 +62,9 @@ struct CompactSidebarContent: View {
             topContentInset: topControlsHeight,
             bottomContentInset: bottomControlsHeight,
             onScrollChange: nil,
-            emptyAreaMenuBuilder: nil,
+            emptyAreaMenuBuilder: { [dependencyContainer] in
+                SidebarContextMenus.buildEmptyAreaMenu(dependencies: dependencyContainer)
+            },
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .top) {
