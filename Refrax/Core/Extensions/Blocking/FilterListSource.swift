@@ -33,6 +33,9 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
     /// Number of WebKit rule list chunks this list compiled to.
     var chunkCount: Int?
 
+    /// ``WebKitRuleCompiler/version`` that produced the cached compiled chunks.
+    var compilerVersion: Int? = nil
+
     // MARK: - Categories
 
     /// Categories for filter lists.
