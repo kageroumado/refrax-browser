@@ -1,7 +1,6 @@
 import AppKit
 import Observation
 import SwiftUI
-import WebKit
 
 /// A group drawn on the tab canvas as a zone that holds its member tiles.
 struct CanvasZone: Identifiable, Equatable {
@@ -475,7 +474,7 @@ final class TabCanvasManager {
               let page = pagePool.existingPage(for: activeTab.activePage) else {
             return Layout.defaultTileSize
         }
-        let bounds = page.backingWebView.bounds
+        let bounds = page.contentView.bounds
         guard bounds.width > 0, bounds.height > 0 else { return Layout.defaultTileSize }
         let height = (Layout.tileWidth * bounds.height / bounds.width).rounded()
         return CGSize(width: Layout.tileWidth, height: height)
@@ -609,14 +608,10 @@ final class TabCanvasManager {
 
     private func refreshSnapshot(for tab: Tab) async {
         guard let page = pagePool.existingPage(for: tab.activePage) else { return }
-        let webView = page.backingWebView
-        guard webView.bounds.width > 0, webView.bounds.height > 0 else { return }
-
-        let configuration = WKSnapshotConfiguration()
-        configuration.snapshotWidth = NSNumber(value: Layout.snapshotWidth)
-        configuration.afterScreenUpdates = false
-
-        guard let image = try? await webView.takeSnapshot(configuration: configuration) else { return }
+        let bounds = page.contentView.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let captured = try? await page.snapshot(),
+              let image = captured.scaled(toWidth: CGFloat(Layout.snapshotWidth)) else { return }
         snapshots[tab.id] = image
         if let tiff = image.tiffRepresentation {
             await CanvasSnapshotStore.save(tiff: tiff, for: tab.id)
