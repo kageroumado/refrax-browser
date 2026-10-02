@@ -101,7 +101,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
         let view = TabCanvasScrollView(deskSize: TabCanvasManager.Layout.deskSize)
         view.onActivate = { [weak manager] tab in manager?.dismiss(activating: tab) }
         view.onDismiss = { [weak manager] in manager?.dismiss(activating: nil) }
-        view.onMove = { [weak manager] tabID, frame in manager?.moveTile(tabID, to: frame) }
+        view.onSettle = { [weak manager] frames in manager?.settleTiles(frames) }
         view.onTileDropped = { [weak manager] tabID in manager?.finishTileDrag(tabID) }
         view.onTileFellOffDesk = { [weak manager] tabID in manager?.tileFellOffDesk(tabID) }
         view.onZoneMoved = { [weak manager] groupID, delta in manager?.moveZone(groupID, by: delta) }

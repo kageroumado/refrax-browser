@@ -198,8 +198,15 @@ final class TabCanvasManager {
 
     // MARK: - Tiles
 
-    /// Records a tile's new position while it is being dragged.
-    func moveTile(_ tabID: Tab.ID, to frame: CGRect) {
+    /// Records where tiles came to rest, and reshapes the zones around them.
+    func settleTiles(_ frames: [Tab.ID: CGRect]) {
+        for (tabID, frame) in frames {
+            moveTile(tabID, to: frame)
+        }
+        rebuildGroups()
+    }
+
+    private func moveTile(_ tabID: Tab.ID, to frame: CGRect) {
         tileFrames[tabID] = frame
         tab(for: tabID)?.boardFrame = frame
         tabManager.state.scheduleSave()

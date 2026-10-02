@@ -2,6 +2,10 @@ import AppKit
 
 /// The document view: the desk, with zones beneath the tiles and magnets beside them.
 ///
+/// Tiles are bodies in a ``CanvasPhysics`` world stepped on the display link while
+/// anything moves: dragged tiles push the others, flung ones slide and collide, and
+/// a tile whose center leaves the desk falls off.
+///
 /// Planes stack bottom to top: desk surface, zones, tiles, magnets, then an overlay
 /// for the lasso and the selection outline. A tile is always grabbed before the zone
 /// under it, and the empty part of a zone drags the zone. Dragging on the bare desk
@@ -9,7 +13,8 @@ import AppKit
 final class TabCanvasBoardView: NSView {
     var onActivate: ((Tab, CGRect) -> Void)?
     var onDismiss: (() -> Void)?
-    var onMove: ((Tab.ID, CGRect) -> Void)?
+    /// Tiles that came to rest somewhere new, by tab.
+    var onSettle: (([Tab.ID: CGRect]) -> Void)?
     var onTileDropped: ((Tab.ID) -> Void)?
     var onTileFellOffDesk: ((Tab.ID) -> Void)?
     var onZoneMoved: ((UUID, CGPoint) -> Void)?
@@ -35,7 +40,10 @@ final class TabCanvasBoardView: NSView {
 
     private var lassoPoints: [CGPoint] = []
     private var isLassoing = false
-    private lazy var motion = CanvasMotion(host: self)
+    private var physics: CanvasPhysics
+    private var displayLink: CADisplayLink?
+    private var lastStepTime: CFTimeInterval = 0
+    private var lastDragTimes: [Tab.ID: CFTimeInterval] = [:]
 
     private enum Constants {
         static let deskCornerRadius: CGFloat = 40
@@ -44,8 +52,6 @@ final class TabCanvasBoardView: NSView {
         static let selectionInset: CGFloat = 12
         static let selectionCornerRadius: CGFloat = 18
         static let antsPeriod: CFTimeInterval = 0.6
-        /// Below this speed a released tile just settles where it is.
-        static let flingSpeed: CGFloat = 500
         static let fallDuration: TimeInterval = 0.25
     }
 
@@ -54,6 +60,7 @@ final class TabCanvasBoardView: NSView {
 
     init(deskSize: CGSize) {
         self.deskSize = deskSize
+        physics = CanvasPhysics(desk: CGRect(origin: .zero, size: deskSize))
         super.init(frame: CGRect(origin: .zero, size: deskSize))
         wantsLayer = true
 
@@ -118,7 +125,7 @@ final class TabCanvasBoardView: NSView {
     private func reloadTiles(_ content: CanvasBoardContent) {
         let ids = Set(content.tabs.map(\.id))
         for (id, tile) in tiles where !ids.contains(id) {
-            motion.stop(tile)
+            physics.remove(id)
             tile.removeFromSuperview()
             tiles[id] = nil
         }
@@ -128,10 +135,13 @@ final class TabCanvasBoardView: NSView {
             tile.tab = tab
             tile.snapshot = content.snapshots[tab.id]
             tile.isSelected = content.selectedTabIDs.contains(tab.id)
-            if !tile.isDragging, !motion.isMoving(tile), tile.frame != frame {
+            // While the simulation moves a tile, it owns the position.
+            if !tile.isDragging, !physics.isActive(tab.id) {
                 tile.frame = frame
+                physics.place(tab.id, frame: frame)
             }
         }
+        startSimulationIfNeeded()
     }
 
     private func reloadZones(_ zones: [CanvasZone]) {
@@ -203,13 +213,11 @@ final class TabCanvasBoardView: NSView {
             guard let self, isInteractionEnabled else { return }
             onActivate?(tile.tab, tile.frame)
         }
+        tile.onDrag = { [weak self] tile in
+            self?.hold(tile.tab.id, at: tile.frame)
+        }
         tile.onRelease = { [weak self] tile, velocity in
-            guard let self else { return }
-            if hypot(velocity.x, velocity.y) >= Constants.flingSpeed {
-                motion.launch(tile, velocity: velocity)
-            } else {
-                settle(tile)
-            }
+            self?.release([tile.tab.id], velocity: velocity, dropped: true)
         }
         tilePlane.addSubview(tile)
         tiles[tab.id] = tile
@@ -223,6 +231,7 @@ final class TabCanvasBoardView: NSView {
             self?.shiftTiles(view.zone.memberTabIDs, by: delta)
         }
         view.onDragEnd = { [weak self] view, delta in
+            self?.release(view.zone.memberTabIDs, velocity: .zero, dropped: false)
             self?.onZoneMoved?(view.zone.id, delta)
         }
         zonePlane.addSubview(view)
@@ -236,6 +245,7 @@ final class TabCanvasBoardView: NSView {
             self?.shiftTiles(view.magnet.memberTabIDs, by: delta)
         }
         view.onDragEnd = { [weak self] view, delta in
+            self?.release(view.magnet.memberTabIDs, velocity: .zero, dropped: false)
             self?.onMagnetMoved?(view.magnet.id, delta)
         }
         view.onActivate = { [weak self] view in
@@ -246,31 +256,86 @@ final class TabCanvasBoardView: NSView {
         return view
     }
 
+    /// Carries a zone's or magnet's members: they are held, so they push what they meet.
     private func shiftTiles(_ tabIDs: [Tab.ID], by delta: CGPoint) {
         for tabID in tabIDs {
             if let tile = tiles[tabID] {
                 tile.frame = tile.frame.offsetBy(dx: delta.x, dy: delta.y)
+                hold(tabID, at: tile.frame)
             }
         }
     }
 
-    // MARK: - Settling and Falling
+    // MARK: - Simulation
 
-    /// A released tile either lands on the desk or, past its edge, falls off.
-    fileprivate func settle(_ tile: CanvasTileView) {
-        let center = CGPoint(x: tile.frame.midX, y: tile.frame.midY)
-        if bounds.contains(center) {
-            tile.frame = tile.frame.integral
-            onMove?(tile.tab.id, tile.frame)
-            onTileDropped?(tile.tab.id)
-        } else {
-            fall(tile)
+    private func hold(_ tabID: Tab.ID, at frame: CGRect) {
+        let now = CACurrentMediaTime()
+        let elapsed = lastDragTimes[tabID].map { CGFloat(now - $0) } ?? 0
+        lastDragTimes[tabID] = now
+        physics.drag(tabID, to: frame, elapsed: elapsed)
+        startSimulationIfNeeded()
+    }
+
+    private func release(_ tabIDs: [Tab.ID], velocity: CGPoint, dropped: Bool) {
+        for tabID in tabIDs {
+            lastDragTimes[tabID] = nil
+            physics.release(tabID, velocity: velocity, dropped: dropped)
+        }
+        startSimulationIfNeeded()
+    }
+
+    private func startSimulationIfNeeded() {
+        guard displayLink == nil, physics.isRunning else { return }
+        lastStepTime = CACurrentMediaTime()
+        let link = displayLink(target: self, selector: #selector(stepSimulation))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    @objc
+    private func stepSimulation() {
+        let now = CACurrentMediaTime()
+        let events = physics.step(CGFloat(now - lastStepTime))
+        lastStepTime = now
+
+        for (tabID, body) in physics.bodies {
+            if let tile = tiles[tabID], !tile.isDragging, tile.frame != body.frame {
+                tile.frame = body.frame
+            }
+        }
+
+        var settled: [Tab.ID: CGRect] = [:]
+        var dropped: [Tab.ID] = []
+        for event in events {
+            switch event {
+            case let .settled(tabID, frame, wasDropped):
+                settled[tabID] = frame
+                if wasDropped {
+                    dropped.append(tabID)
+                }
+            case let .fell(tabID):
+                if let tile = tiles[tabID] {
+                    fall(tile)
+                }
+            }
+        }
+        if !settled.isEmpty {
+            onSettle?(settled)
+        }
+        for tabID in dropped {
+            onTileDropped?(tabID)
+        }
+
+        if !physics.isRunning {
+            displayLink?.invalidate()
+            displayLink = nil
         }
     }
 
     private func fall(_ tile: CanvasTileView) {
         let tabID = tile.tab.id
         tiles[tabID] = nil
+        lastDragTimes[tabID] = nil
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = Constants.fallDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
@@ -358,79 +423,5 @@ private final class CanvasPlaneView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
-    }
-}
-
-// MARK: - Motion
-
-/// Moves flung tiles on a display link with friction, until they stop or leave the desk.
-///
-/// This is the seed of the canvas physics: velocity, damping, and the desk edge.
-/// Collisions, stacking, and magnet attraction forces belong here too.
-private final class CanvasMotion {
-    private unowned let host: TabCanvasBoardView
-    private var moving: [ObjectIdentifier: (tile: CanvasTileView, velocity: CGPoint)] = [:]
-    private var displayLink: CADisplayLink?
-    private var lastTime: CFTimeInterval = 0
-
-    private enum Constants {
-        /// Velocity decay per second: v · e^(−damping · dt).
-        static let damping: CGFloat = 4.5
-        /// Below this speed the tile settles.
-        static let restSpeed: CGFloat = 40
-    }
-
-    init(host: TabCanvasBoardView) {
-        self.host = host
-    }
-
-    func launch(_ tile: CanvasTileView, velocity: CGPoint) {
-        moving[ObjectIdentifier(tile)] = (tile, velocity)
-        startIfNeeded()
-    }
-
-    func stop(_ tile: CanvasTileView) {
-        moving[ObjectIdentifier(tile)] = nil
-    }
-
-    func isMoving(_ tile: CanvasTileView) -> Bool {
-        moving[ObjectIdentifier(tile)] != nil
-    }
-
-    private func startIfNeeded() {
-        guard displayLink == nil else { return }
-        lastTime = CACurrentMediaTime()
-        let link = host.displayLink(target: self, selector: #selector(step))
-        link.add(to: .main, forMode: .common)
-        displayLink = link
-    }
-
-    @objc
-    private func step() {
-        let now = CACurrentMediaTime()
-        let dt = CGFloat(min(now - lastTime, 1.0 / 30))
-        lastTime = now
-
-        for (key, entry) in moving {
-            let tile = entry.tile
-            var velocity = entry.velocity
-            tile.frame = tile.frame.offsetBy(dx: velocity.x * dt, dy: velocity.y * dt)
-            let decay = exp(-Constants.damping * dt)
-            velocity = CGPoint(x: velocity.x * decay, y: velocity.y * decay)
-
-            let center = CGPoint(x: tile.frame.midX, y: tile.frame.midY)
-            let offDesk = !host.bounds.contains(center)
-            if offDesk || hypot(velocity.x, velocity.y) < Constants.restSpeed {
-                moving[key] = nil
-                host.settle(tile)
-            } else {
-                moving[key] = (tile, velocity)
-            }
-        }
-
-        if moving.isEmpty {
-            displayLink?.invalidate()
-            displayLink = nil
-        }
     }
 }

@@ -8,7 +8,7 @@ import AppKit
 final class TabCanvasScrollView: NSScrollView {
     var onActivate: ((Tab) -> Void)?
     var onDismiss: (() -> Void)?
-    var onMove: ((Tab.ID, CGRect) -> Void)?
+    var onSettle: (([Tab.ID: CGRect]) -> Void)?
     var onTileDropped: ((Tab.ID) -> Void)?
     var onTileFellOffDesk: ((Tab.ID) -> Void)?
     var onZoneMoved: ((UUID, CGPoint) -> Void)?
@@ -42,7 +42,7 @@ final class TabCanvasScrollView: NSScrollView {
 
         board.onActivate = { [weak self] tab, frame in self?.zoom(into: frame) { self?.onActivate?(tab) } }
         board.onDismiss = { [weak self] in self?.dismissZoomingIntoFocusedTile() }
-        board.onMove = { [weak self] tabID, frame in self?.onMove?(tabID, frame) }
+        board.onSettle = { [weak self] frames in self?.onSettle?(frames) }
         board.onTileDropped = { [weak self] tabID in self?.onTileDropped?(tabID) }
         board.onTileFellOffDesk = { [weak self] tabID in self?.onTileFellOffDesk?(tabID) }
         board.onZoneMoved = { [weak self] groupID, delta in self?.onZoneMoved?(groupID, delta) }

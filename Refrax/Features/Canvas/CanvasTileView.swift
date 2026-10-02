@@ -18,6 +18,8 @@ final class CanvasTileView: NSView {
     }
 
     var onClick: ((CanvasTileView) -> Void)?
+    /// Called after each move while the tile is dragged.
+    var onDrag: ((CanvasTileView) -> Void)?
     /// Called on drop with the release velocity in board points per second.
     var onRelease: ((CanvasTileView, CGPoint) -> Void)?
     private(set) var isDragging = false
@@ -112,6 +114,7 @@ final class CanvasTileView: NSView {
         frame = frameAtDragStart.offsetBy(dx: delta.x, dy: delta.y)
         samples.append((CACurrentMediaTime(), point))
         samples.removeAll { CACurrentMediaTime() - $0.time > Constants.velocityWindow * 4 }
+        onDrag?(self)
     }
 
     override func mouseUp(with _: NSEvent) {
