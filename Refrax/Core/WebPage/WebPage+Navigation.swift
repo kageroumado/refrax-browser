@@ -233,12 +233,13 @@ extension WebPage {
         if url.isFileURL {
             let readAccessURL = url.deletingLastPathComponent()
 
+            let navigation = toNavigationSequence(stopsLoadingWhenCancelled: false) {
+                $0.loadFileURL(url, allowingReadAccessTo: readAccessURL)
+            }
             loadTask = Task { [weak self] in
                 guard let self else { return }
                 do {
-                    for try await _ in toNavigationSequence({
-                        $0.loadFileURL(url, allowingReadAccessTo: readAccessURL)
-                    }) {}
+                    for try await _ in navigation {}
                 } catch is CancellationError {
                     Logger.debug("Load cancelled: \(url.absoluteString)", category: Logger.navigation)
                 } catch {
@@ -248,15 +249,16 @@ extension WebPage {
                 }
             }
 
-            return toNavigationSequence { $0.loadFileURL(url, allowingReadAccessTo: readAccessURL) }
+            return Self.detachedNavigationSequence()
         }
 
         let request = makeRequest(for: url)
+        let navigation = toNavigationSequence(stopsLoadingWhenCancelled: false) { $0.load(request) }
 
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await _ in toNavigationSequence({ $0.load(request) }) {
+                for try await _ in navigation {
                     // Events handled by navigationObservationTask
                 }
             } catch is CancellationError {
@@ -269,7 +271,10 @@ extension WebPage {
             }
         }
 
-        return toNavigationSequence { $0.load(request) }
+        // `loadTask` owns the one WebKit navigation. Handing out a second sequence
+        // would mean loading the request twice, and dropping it, as every caller
+        // does, would stop the load on its way out (see `toNavigationSequence`).
+        return Self.detachedNavigationSequence()
     }
 
     /// Loads the web content at the specified URL (optional version).
@@ -315,10 +320,12 @@ extension WebPage {
             }
         }
 
+        let navigation = toNavigationSequence(stopsLoadingWhenCancelled: false) { $0.load(request) }
+
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await _ in toNavigationSequence({ $0.load(request) }) {}
+                for try await _ in navigation {}
             } catch is CancellationError {
                 Logger.debug("Load request cancelled", category: Logger.navigation)
             } catch {
@@ -329,7 +336,8 @@ extension WebPage {
             }
         }
 
-        return toNavigationSequence { $0.load(request) }
+        // One WebKit navigation, owned by `loadTask` (see `load(_:)` for URLs).
+        return Self.detachedNavigationSequence()
     }
 
     /// Loads the contents of the specified HTML string.
@@ -1056,7 +1064,16 @@ extension WebPage {
         backingNavigationDelegate.pagePool?.replaceIfExtensionBoundaryCrossed(self, toLoad: url) ?? false
     }
 
+    /// Starts a WebKit navigation and streams its events.
+    ///
+    /// - Parameters:
+    ///   - stopsLoadingWhenCancelled: Whether cancelling the stream (or dropping it
+    ///     unread) stops the page loading. Right for a caller consuming the stream;
+    ///     wrong for `loadTask`, which `startNewNavigation` cancels just as the next
+    ///     navigation begins, so the stop would land on that one instead.
+    ///   - load: Starts the navigation on the web view.
     private func toNavigationSequence(
+        stopsLoadingWhenCancelled: Bool = true,
         _ load: (WKWebView) -> WKNavigation?,
     ) -> AsyncThrowingStream<NavigationEvent, any Error> {
         guard let navigation = load(backingWebView) else {
@@ -1069,7 +1086,7 @@ extension WebPage {
         continuation.onTermination = { [weak self] termination in
             guard let self else { return }
             DispatchQueue.main.async {
-                if case .cancelled = termination {
+                if stopsLoadingWhenCancelled, case .cancelled = termination {
                     self.stopLoading()
                 }
                 self.scopedNavigations[ObjectIdentifier(navigation)] = nil

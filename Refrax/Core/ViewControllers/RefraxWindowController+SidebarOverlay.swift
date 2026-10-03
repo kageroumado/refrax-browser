@@ -7,12 +7,63 @@ import SwiftUI
 ///
 /// Similar to `DetailTrayContainerView`, this tracks when the cursor enters
 /// or exits the sidebar overlay area to properly block WebKit mouse events.
+///
+/// The overlay slides in by translating its layer, which AppKit ignores for hit
+/// testing and tracking areas: the frame always spans the full sidebar width. Both
+/// are therefore clipped to the part of the overlay actually on screen, so a click
+/// beside a barely-revealed sidebar reaches the page instead of an invisible tab.
 final class SidebarOverlayContainerView: NSView {
     private var trackingArea: NSTrackingArea?
 
-    /// Called when the cursor enters or exits the overlay container.
+    /// Whether the cursor was last reported inside the visible part of the overlay.
+    private var isCursorInside = false
+
+    /// Called when the cursor enters or exits the visible part of the overlay.
     /// The callback receives `true` when cursor enters, `false` when it exits.
     var onCursorPresenceChanged: ((Bool) -> Void)?
+
+    /// Current on-screen horizontal offset of the overlay, including in-flight animations.
+    private var visibleTranslation: CGFloat {
+        guard let layer else { return 0 }
+        return (layer.presentation() ?? layer).transform.m41
+    }
+
+    /// Whether a point in the superview's coordinates lies over the visible overlay.
+    private func isVisible(at point: NSPoint) -> Bool {
+        !isHidden && point.x < frame.maxX + visibleTranslation && frame.contains(point)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard isVisible(at: point) else { return nil }
+
+        // SwiftUI locates clicks from the event's window position, which ignores the
+        // layer translation. While the overlay is still sliding, forwarding the click
+        // would hit whatever row sits there once fully open, not the one drawn under
+        // the cursor, so the container absorbs it instead.
+        guard abs(visibleTranslation) < 0.5 else { return self }
+
+        return super.hitTest(point)
+    }
+
+    override func mouseDown(with _: NSEvent) {
+        // Absorbs clicks on a partially revealed overlay (see `hitTest`).
+    }
+
+    /// Re-evaluates whether the cursor is over the visible overlay.
+    ///
+    /// Called when the overlay moves under a stationary cursor, which produces
+    /// no tracking-area events.
+    func refreshCursorPresence() {
+        guard let window, let superview else { return }
+        let location = superview.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        updateCursorPresence(isVisible(at: location))
+    }
+
+    private func updateCursorPresence(_ isInside: Bool) {
+        guard isInside != isCursorInside else { return }
+        isCursorInside = isInside
+        onCursorPresenceChanged?(isInside)
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -33,7 +84,7 @@ final class SidebarOverlayContainerView: NSView {
 
         trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil,
         )
@@ -43,12 +94,16 @@ final class SidebarOverlayContainerView: NSView {
         }
     }
 
-    override func mouseEntered(with _: NSEvent) {
-        onCursorPresenceChanged?(true)
+    override func mouseEntered(with event: NSEvent) {
+        updateCursorPresence(isVisible(at: superview?.convert(event.locationInWindow, from: nil) ?? .zero))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateCursorPresence(isVisible(at: superview?.convert(event.locationInWindow, from: nil) ?? .zero))
     }
 
     override func mouseExited(with _: NSEvent) {
-        onCursorPresenceChanged?(false)
+        updateCursorPresence(false)
     }
 }
 
@@ -95,6 +150,7 @@ extension RefraxWindowController {
             isOverlayTriggered = false
             sidebarTrackingView?.isOverlayTriggered = false
             removeOverlayAnimations()
+            applyOverlayModeWidth()
         }
 
         let rawProgress = 1.0 - (x / activationWidth)
@@ -110,6 +166,19 @@ extension RefraxWindowController {
             updateSidebarOverlayProgress(easedProgress)
             updateWindowChromeForOverlayTracking()
         }
+    }
+
+    /// Sizes the overlay container for the full sidebar before a hover reveal.
+    ///
+    /// Compact mode narrows the same container to the strip width, and not every
+    /// path back to overlay mode restores it (the compact → overlay transition's
+    /// reset is generation-guarded and can be superseded). Without this, the hover
+    /// reveal slides out a strip-width sidebar.
+    func applyOverlayModeWidth() {
+        let width = windowState.sidebarThickness + Constants.SidebarAnimation.glassEffectPadding
+        guard let constraint = sidebarOverlayWidthConstraint, constraint.constant != width else { return }
+        constraint.constant = width
+        sidebarOverlayContainer?.superview?.layoutSubtreeIfNeeded()
     }
 
     /// Updates the sidebar overlay container transform for cursor-follow progress.
@@ -135,6 +204,7 @@ extension RefraxWindowController {
         layer.removeAnimation(forKey: "sidebarOverlayAnimation")
         layer.transform = CATransform3DMakeTranslation(offset, 0, 0)
         CATransaction.commit()
+        container.refreshCursorPresence()
 
         // Synchronize detail tray position with overlay
         updateDetailTrayForOverlayProgress(progress)
@@ -349,11 +419,10 @@ extension RefraxWindowController {
 
             if !visible {
                 container.isHidden = true
-                isCursorInSidebarOverlay = false
-                updateOverlayEventBlocking()
                 windowState.sidebarOverlayTrailingEdge = 0
             }
             removeOverlayAnimations()
+            container.refreshCursorPresence()
         }
         layer.add(animation, forKey: "sidebarOverlayAnimation")
         layer.transform = toTransform
@@ -393,6 +462,7 @@ extension RefraxWindowController {
 
             windowState.hasShownTutorialPeek = true
             isTutorialPeekActive = true
+            applyOverlayModeWidth()
 
             let peekProgress = Constants.SidebarAnimation.tutorialPeekDistance / windowState.sidebarThickness
 
@@ -461,6 +531,7 @@ extension RefraxWindowController {
         CATransaction.setCompletionBlock { [weak self] in
             guard let self, animationGeneration == overlayAnimationGeneration else { return }
             removeOverlayAnimations()
+            sidebarOverlayContainer?.refreshCursorPresence()
         }
         layer.add(animation, forKey: "sidebarOverlayAnimation")
         layer.transform = toTransform
@@ -486,8 +557,7 @@ extension RefraxWindowController {
         CATransaction.commit()
 
         container.isHidden = true
-        isCursorInSidebarOverlay = false
-        updateOverlayEventBlocking()
+        container.refreshCursorPresence()
         windowState.sidebarOverlayTrailingEdge = 0
     }
 }

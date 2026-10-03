@@ -375,7 +375,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try defaultController.load(context)
+        try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
 
@@ -619,7 +619,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try defaultController.load(context)
+        try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -693,7 +693,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try defaultController.load(context)
+        try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
 
@@ -805,7 +805,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load into default controller
-        try defaultController.load(context)
+        try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
 
@@ -1240,6 +1240,46 @@ final class ExtensionManager {
 
     // MARK: - Tab Event Dispatching
 
+    /// Loads a context into a controller and reports the tabs that already exist.
+    ///
+    /// WebKit routes a page's extension traffic (content script ports, messages,
+    /// `tabs.executeScript`) only to tabs reported through `didOpenTab`; a window's
+    /// `tabs(for:)` listing doesn't count. Tabs restored at launch predate every
+    /// context, so without this their content scripts fail with "Tab not found"
+    /// and blockers like uBlock Origin never apply their filters to them.
+    private func load(_ context: WKWebExtensionContext, into controller: WKWebExtensionController) throws {
+        try controller.load(context)
+
+        for space in state.spaces where space.isLoaded {
+            reportExistingTabs(space.tabs, to: context)
+        }
+    }
+
+    /// Reports tabs that appeared without `dispatchTabOpened`, such as tabs of a
+    /// space restored from storage, to the extensions already running for them.
+    ///
+    /// - Parameter tabs: The restored tabs.
+    func dispatchTabsRestored(_ tabs: [Tab]) {
+        for tab in tabs {
+            for context in controller(for: tab).extensionContexts {
+                reportExistingTabs([tab], to: context)
+            }
+        }
+    }
+
+    /// Opens each of `tabs` in `context` unless it already knows the tab, skipping
+    /// tabs whose web views belong to another controller.
+    private func reportExistingTabs(_ tabs: [Tab], to context: WKWebExtensionContext) {
+        guard let pagePool = state.pagePool, let owner = context.webExtensionController else { return }
+
+        for tab in tabs where controller(for: tab) === owner {
+            guard let tabPage = tab.pages.first else { continue }
+            let extensionTab = extensionTab(for: tabPage, pagePool: pagePool)
+            guard !context.openTabs.contains(AnyHashable(extensionTab)) else { continue }
+            context.didOpenTab(extensionTab)
+        }
+    }
+
     /// The controller for a tab's web views: its space's, matching the data store
     /// `WebPageSettingsApplier` gives the tab.
     func controller(for tab: Tab) -> WKWebExtensionController {
@@ -1523,7 +1563,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try defaultController.load(context)
+        try load(context, into: defaultController)
         loadedContexts[extension_.uniqueIdentifier] = context
 
     }
@@ -1606,8 +1646,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try controller.load(context)
-
+        try load(context, into: controller)
 
         let key = SpaceExtensionKey(spaceID: spaceID, extensionIdentifier: extension_.uniqueIdentifier)
 

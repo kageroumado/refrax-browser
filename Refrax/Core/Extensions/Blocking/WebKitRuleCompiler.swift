@@ -36,6 +36,13 @@ nonisolated struct WebKitRuleCompiler: Sendable {
     /// reaches rules in its own list, so full chunks are both faster and more exact.
     static let maxRulesPerList = 150_000
 
+    /// Version of the compiled output. Bump it when compilation changes, so rule
+    /// lists cached in WebKit's store are recompiled rather than reused.
+    ///
+    /// - 2: Rules without a party option match first-party requests; `#@#`
+    ///   exceptions no longer compile to `ignore-previous-rules`.
+    static let version = 2
+
     /// Default resource types for blocking rules that don't specify types.
     /// Excludes `document` to prevent blocking main frame navigations.
     private static let defaultBlockingResourceTypes = [
@@ -128,14 +135,13 @@ nonisolated struct WebKitRuleCompiler: Sendable {
             resourceTypes = Self.defaultBlockingResourceTypes
         }
 
-        // Third-party / first-party
+        // Third-party / first-party. Without `$third-party` or `$first-party` a rule
+        // matches both, as in uBlock Origin and Adblock Plus: sites like YouTube serve
+        // their ads and ad beacons from their own domain.
         let hasDomains = rule.domains?.isEmpty == false
         var loadType: [String]?
         if let thirdParty = rule.thirdParty {
             loadType = thirdParty ? ["third-party"] : ["first-party"]
-        } else if !rule.isException, !hasDomains {
-            // Blocking rules without domain restrictions should only block third-party
-            loadType = ["third-party"]
         }
 
         let action: [String: String] = [
@@ -640,31 +646,40 @@ nonisolated struct WebKitRuleCompiler: Sendable {
     ///
     /// Selectors with the same domain constraints are merged into a single rule with
     /// a comma-separated selector list, reducing the total rule count.
+    ///
+    /// Exceptions (`#@#`) unhide one selector, which WebKit can't express: its only
+    /// exception action, `ignore-previous-rules`, cancels every earlier rule in the
+    /// list, network blocks included. They're applied here instead, by dropping the
+    /// selector from the hiding rules on the excepted domains.
     private func compileCosmeticRules(_ rules: [FilterParser.CosmeticRule]) -> [[String: Any]] {
-        // Group by (domains, excludeDomains, isException) to merge selectors
+        // Group by (domains, excludeDomains) to merge selectors
         struct DomainKey: Hashable {
             let domains: [String]?
             let excludeDomains: [String]?
-            let isException: Bool
         }
 
+        let exceptions = cosmeticExceptions(in: rules)
         var groups: [DomainKey: [String]] = [:]
+        var groupOrder: [DomainKey] = []
 
-        for rule in rules {
+        for rule in rules where !rule.isException {
             // Validate selector is ASCII (WebKit requirement)
             guard rule.selector.allSatisfy(\.isASCII) else { continue }
+            guard let key = applyingExceptions(exceptions[rule.selector], to: rule).map({
+                DomainKey(domains: $0.domains, excludeDomains: $0.excludeDomains)
+            }) else { continue }
 
-            let key = DomainKey(
-                domains: rule.domains,
-                excludeDomains: rule.excludeDomains,
-                isException: rule.isException,
-            )
+            if groups[key] == nil {
+                groupOrder.append(key)
+            }
             groups[key, default: []].append(rule.selector)
         }
 
         var webkitRules: [[String: Any]] = []
 
-        for (key, selectors) in groups {
+        for key in groupOrder {
+            guard let selectors = groups[key] else { continue }
+
             // WebKit css-display-none supports comma-separated selectors
             let combinedSelector = selectors.joined(separator: ", ")
 
@@ -683,16 +698,72 @@ nonisolated struct WebKitRuleCompiler: Sendable {
                 trigger["unless-domain"] = validDomains
             }
 
-            let action: [String: String] = if key.isException {
-                ["type": "ignore-previous-rules"]
-            } else {
-                ["type": "css-display-none", "selector": combinedSelector]
-            }
-
-            webkitRules.append(["trigger": trigger, "action": action])
+            webkitRules.append([
+                "trigger": trigger,
+                "action": ["type": "css-display-none", "selector": combinedSelector],
+            ])
         }
 
         return webkitRules
+    }
+
+    /// Where each selector is excepted from hiding.
+    ///
+    /// Maps a selector to the domains of its `#@#` exceptions, or to `nil` when an
+    /// exception applies everywhere.
+    private func cosmeticExceptions(in rules: [FilterParser.CosmeticRule]) -> [String: Set<String>?] {
+        var exceptions: [String: Set<String>?] = [:]
+        for rule in rules where rule.isException {
+            guard let domains = rule.domains, !domains.isEmpty else {
+                exceptions[rule.selector] = .some(nil)
+                continue
+            }
+            if case .some(nil) = exceptions[rule.selector] {
+                continue
+            }
+            let normalized = domains.map { normalizeCosmeticDomain($0) }
+            exceptions[rule.selector] = .some((exceptions[rule.selector] ?? []).map { $0.union(normalized) })
+        }
+        return exceptions
+    }
+
+    /// The domain constraints left for a hiding rule once its selector's exceptions apply.
+    ///
+    /// - Parameters:
+    ///   - exception: The selector's exception domains; `.some(nil)` for everywhere,
+    ///     `nil` when the selector has no exception.
+    ///   - rule: The hiding rule.
+    /// - Returns: The rule's domains and excluded domains, or `nil` when the
+    ///   exceptions leave nowhere to hide the selector.
+    private func applyingExceptions(
+        _ exception: Set<String>??,
+        to rule: FilterParser.CosmeticRule,
+    ) -> (domains: [String]?, excludeDomains: [String]?)? {
+        guard let exception else { return (rule.domains, rule.excludeDomains) }
+        guard let exceptedDomains = exception else { return nil }
+
+        func isExcepted(_ domain: String) -> Bool {
+            let domain = normalizeCosmeticDomain(domain)
+            return exceptedDomains.contains { domain == $0 || domain.hasSuffix(".\($0)") }
+        }
+
+        if let domains = rule.domains, !domains.isEmpty {
+            // Hidden only on listed domains: stop hiding on the excepted ones
+            let remaining = domains.filter { !isExcepted($0) }
+            return remaining.isEmpty ? nil : (remaining, rule.excludeDomains)
+        }
+
+        // Hidden everywhere: exclude the excepted domains as well
+        let excluded = (rule.excludeDomains ?? []) + exceptedDomains.sorted().filter { excepted in
+            !(rule.excludeDomains ?? []).contains { normalizeCosmeticDomain($0) == excepted }
+        }
+        return (nil, excluded)
+    }
+
+    /// Lowercases a filter-list domain and drops a leading dot.
+    private func normalizeCosmeticDomain(_ domain: String) -> String {
+        let lowered = domain.lowercased()
+        return lowered.hasPrefix(".") ? String(lowered.dropFirst()) : lowered
     }
 
     // MARK: - Serialization
