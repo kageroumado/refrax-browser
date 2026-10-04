@@ -26,6 +26,7 @@ static NSMutableArray<NSString *> *records;
 static CFAbsoluteTime windowStart;
 static NSUInteger windowCount;
 static NSISO8601DateFormatter *timestampFormatter;
+static NSRegularExpression *urlExpression;
 static _Thread_local BOOL isRecording;
 
 static NSString *RefraxThreadDescription(void) {
@@ -39,6 +40,21 @@ static NSString *RefraxThreadDescription(void) {
     char label[128] = {0};
     pthread_getname_np(pthread_self(), label, sizeof(label));
     return label[0] != 0 ? @(label) : @"unnamed thread";
+}
+
+/// Cuts every URL in an exception reason down to its scheme and host. The log
+/// leaves the machine with crash reports, and reasons quote page URLs, paths,
+/// and queries.
+static NSString *RefraxRedactedReason(NSString *reason) {
+    NSMutableString *redacted = [reason mutableCopy];
+    NSArray<NSTextCheckingResult *> *matches = [urlExpression matchesInString:reason options:0 range:NSMakeRange(0, reason.length)];
+    for (NSTextCheckingResult *match in matches.reverseObjectEnumerator) {
+        NSString *scheme = [reason substringWithRange:[match rangeAtIndex:1]];
+        NSRange hostRange = [match rangeAtIndex:2];
+        NSString *host = hostRange.location != NSNotFound ? [reason substringWithRange:hostRange] : @"";
+        [redacted replaceCharactersInRange:match.range withString:[NSString stringWithFormat:@"%@://%@/…", scheme, host]];
+    }
+    return redacted;
 }
 
 static NSString *RefraxStackDescription(NSException *exception, BOOL symbolicate) {
@@ -75,7 +91,7 @@ static void RefraxRecord(NSException *exception) {
     BOOL symbolicate = windowCount <= kSymbolicatedPerSecond;
     os_unfair_lock_unlock(&recorderLock);
 
-    NSString *reason = exception.reason ?: @"(no reason)";
+    NSString *reason = RefraxRedactedReason(exception.reason ?: @"(no reason)");
     if (reason.length > kReasonLimit) {
         reason = [[reason substringToIndex:kReasonLimit] stringByAppendingString:@"…"];
     }
@@ -122,6 +138,7 @@ void RefraxExceptionRecorderInstall(NSString *path) {
         records = [NSMutableArray arrayWithCapacity:kRecordCapacity + 1];
         timestampFormatter = [[NSISO8601DateFormatter alloc] init];
         timestampFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+        urlExpression = [NSRegularExpression regularExpressionWithPattern:@"\\b([a-zA-Z][a-zA-Z0-9+.-]*)://(?:[^/\\s'\"<>)@]*@)?([^/\\s'\"<>)]*)[^\\s'\"<>)]*" options:0 error:NULL];
     });
 
     os_unfair_lock_lock(&recorderLock);

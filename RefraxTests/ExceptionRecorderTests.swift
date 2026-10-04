@@ -29,6 +29,21 @@ struct ExceptionRecorderTests {
     }
 
     @Test
+    func `URLs in a reason keep only their scheme and host`() throws {
+        let url = makeLogURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        RefraxExceptionRecorderInstall(url.path)
+
+        raise("RefraxTestException", reason: "failed to load https://mail.example.com/inbox/42?token=secret for file:///Users/someone/Notes.txt via ftp://kiri:hunter2@files.example.org/a")
+
+        let log = try String(contentsOf: url, encoding: .utf8)
+        #expect(log.contains("failed to load https://mail.example.com/… for file:///… via ftp://files.example.org/…"))
+        #expect(!log.contains("secret"))
+        #expect(!log.contains("someone"))
+        #expect(!log.contains("hunter2"))
+    }
+
+    @Test
     func `The log keeps only the newest four exceptions, newest last`() throws {
         let url = makeLogURL()
         defer { try? FileManager.default.removeItem(at: url) }

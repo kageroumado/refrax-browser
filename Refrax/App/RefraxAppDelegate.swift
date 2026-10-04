@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let feedbackManager: FeedbackManager
     let appUpdateManager: AppUpdateManager
 
-    /// iCloud Sync
+    // iCloud Sync
     /// Separate container for sync metadata (CloudKit system fields, history tokens).
     private(set) var syncContainer: ModelContainer?
 
