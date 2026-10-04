@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension RoutingRule: Syncable {
-    nonisolated static var ckRecordType: String { "RoutingRule" }
+    nonisolated static var ckRecordType: String {
+        "RoutingRule"
+    }
 
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Scalars
@@ -10,13 +12,9 @@ extension RoutingRule: Syncable {
         record["priority"] = priority as NSNumber
         record["isEnabled"] = isEnabled as NSNumber
 
-        // Codable arrays/structs encoded as JSON
-        if let conditionsData = try? JSONEncoder().encode(conditions) {
-            record["conditionsJSON"] = String(data: conditionsData, encoding: .utf8) as NSString?
-        }
-        if let actionData = try? JSONEncoder().encode(action) {
-            record["actionJSON"] = String(data: actionData, encoding: .utf8) as NSString?
-        }
+        // The model stores conditions and action in the record's JSON form
+        record["conditionsJSON"] = conditionsJSON as NSString
+        record["actionJSON"] = actionJSON as NSString
 
         // Dates
         record["createdAt"] = createdAt as NSDate
@@ -42,23 +40,19 @@ extension RoutingRule: Syncable {
                 throw SyncError.missingRequiredField("name")
             }
             // Decode conditions and action from JSON
-            let conditions: [RoutingCondition]
-            if let json = record["conditionsJSON"] as? String,
-               let data = json.data(using: .utf8)
-            {
-                conditions = (try? JSONDecoder().decode([RoutingCondition].self, from: data)) ?? []
+            let conditions: [RoutingCondition] = if let json = record["conditionsJSON"] as? String,
+                                                    let data = json.data(using: .utf8) {
+                (try? JSONDecoder().decode([RoutingCondition].self, from: data)) ?? []
             } else {
-                conditions = []
+                []
             }
 
-            let action: RoutingAction
-            if let json = record["actionJSON"] as? String,
-               let data = json.data(using: .utf8)
-            {
-                action = (try? JSONDecoder().decode(RoutingAction.self, from: data))
+            let action: RoutingAction = if let json = record["actionJSON"] as? String,
+                                           let data = json.data(using: .utf8) {
+                (try? JSONDecoder().decode(RoutingAction.self, from: data))
                     ?? .openInBackground
             } else {
-                action = .openInBackground
+                .openInBackground
             }
 
             rule = RoutingRule(name: name, conditions: conditions, action: action)
@@ -76,16 +70,14 @@ extension RoutingRule: Syncable {
         // Decode conditions
         if let json = record["conditionsJSON"] as? String,
            let data = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([RoutingCondition].self, from: data)
-        {
+           let decoded = try? JSONDecoder().decode([RoutingCondition].self, from: data) {
             rule.conditions = decoded
         }
 
         // Decode action
         if let json = record["actionJSON"] as? String,
            let data = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(RoutingAction.self, from: data)
-        {
+           let decoded = try? JSONDecoder().decode(RoutingAction.self, from: data) {
             rule.action = decoded
         }
 
