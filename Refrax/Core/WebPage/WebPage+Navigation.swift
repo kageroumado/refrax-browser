@@ -376,10 +376,14 @@ extension WebPage {
         let generation = startNewNavigation()
         updateAutoFillURL(item.url)
 
+        // Built here rather than through `load(_:)` so cancelling `loadTask` when the
+        // next navigation starts doesn't stop that one (see `toNavigationSequence`).
+        let navigation = toNavigationSequence(stopsLoadingWhenCancelled: false) { $0.go(to: item.wrapped) }
+
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await _ in load(item) {}
+                for try await _ in navigation {}
             } catch is CancellationError {
                 Logger.debug("Back/forward navigation cancelled", category: Logger.navigation)
             } catch {
@@ -487,10 +491,14 @@ extension WebPage {
             return Self.detachedNavigationSequence()
         }
 
+        let navigation = toNavigationSequence(stopsLoadingWhenCancelled: false) {
+            fromOrigin ? $0.reloadFromOrigin() : $0.reload()
+        }
+
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await _ in toNavigationSequence({ fromOrigin ? $0.reloadFromOrigin() : $0.reload() }) {}
+                for try await _ in navigation {}
             } catch is CancellationError {
                 Logger.debug("Reload cancelled", category: Logger.navigation)
             } catch {
@@ -500,7 +508,8 @@ extension WebPage {
             }
         }
 
-        return toNavigationSequence { fromOrigin ? $0.reloadFromOrigin() : $0.reload() }
+        // One WebKit navigation, owned by `loadTask` (see `load(_:)` for URLs).
+        return Self.detachedNavigationSequence()
     }
 
     /// Reloads the current page bypassing content blockers.
