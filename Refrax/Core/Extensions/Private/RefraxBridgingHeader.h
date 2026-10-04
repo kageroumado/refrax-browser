@@ -59,6 +59,7 @@
 
 // Foundation helpers (ObjC @try/@catch bridge for exception-raising Cocoa APIs)
 #import "Foundation/RefraxExceptionCatch.h"
+#import "Foundation/RefraxExceptionRecorder.h"
 
 // WebKit private APIs (WKWebView, delegates, thumbnail, context menu, etc.)
 #import "WebKit/WebKitPrivate.h"

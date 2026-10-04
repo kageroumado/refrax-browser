@@ -18,10 +18,34 @@ nonisolated enum CrashMonitor: Sendable {
     private static let sentReportsURL = Directories.appStorage
         .appendingPathComponent("sent_crash_reports.json")
 
-    /// Writes the sentinel file, marking the session as in-progress.
+    /// The last few Objective-C exceptions thrown in this session, written by
+    /// `RefraxExceptionRecorderInstall`.
+    private static let exceptionLogURL = Directories.appStorage
+        .appendingPathComponent("exceptions.log")
+
+    /// The previous session's exception log, kept for its crash report.
+    private static let previousExceptionLogURL = Directories.appStorage
+        .appendingPathComponent("exceptions-previous-session.log")
+
+    /// Writes the sentinel file, marking the session as in-progress, sets the
+    /// previous session's exception log aside, and starts recording exceptions.
     static func markLaunched() {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         try? timestamp.write(to: sentinelURL, atomically: true, encoding: .utf8)
+
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: previousExceptionLogURL)
+        try? fileManager.moveItem(at: exceptionLogURL, to: previousExceptionLogURL)
+        RefraxExceptionRecorderInstall(exceptionLogURL.path)
+    }
+
+    /// The previous session's exception log, when it recorded any exception.
+    ///
+    /// A crash report for an exception AppKit traps on carries the backtrace
+    /// without the exception's name and reason; this log carries both, newest last.
+    static func previousSessionExceptionLog() -> URL? {
+        let size = (try? previousExceptionLogURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        return size > 0 ? previousExceptionLogURL : nil
     }
 
     /// Removes the sentinel file, indicating a clean shutdown.

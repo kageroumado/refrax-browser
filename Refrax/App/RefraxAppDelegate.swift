@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let feedbackManager: FeedbackManager
     let appUpdateManager: AppUpdateManager
 
-    // iCloud Sync
+    /// iCloud Sync
     /// Separate container for sync metadata (CloudKit system fields, history tokens).
     private(set) var syncContainer: ModelContainer?
 
@@ -289,7 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 schema: syncSchema,
                 url: Directories.appStorage.appendingPathComponent("sync.store"),
                 allowsSave: true,
-                cloudKitDatabase: .none
+                cloudKitDatabase: .none,
             )
             self.syncContainer = try ModelContainer(for: syncSchema, configurations: [syncConfig])
         } catch {
@@ -679,7 +679,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bookmarksManager: bookmarksManager,
             historyManager: historyManager,
             passwordsManager: passwordsManager,
-            modelContainer: modelContainer
+            modelContainer: modelContainer,
         )
         controller.onCompleted = { [weak self] in
             guard let self else { return }
@@ -837,10 +837,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !crashReports.isEmpty {
                 Logger.warning(
                     "Previous session terminated abnormally — sending crash report (\(crashReports.count) report(s))",
-                    category: Logger.system
+                    category: Logger.system,
                 )
+                let attachments = crashReports + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
                 Task.detached(priority: .utility) { [appUpdateManager] in
-                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: crashReports)
+                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: attachments)
                     CrashMonitor.markReportsSent(crashReports)
                     await MainActor.run {
                         appUpdateManager.crashReportSent = true
@@ -866,7 +867,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard exception == nil, let container else {
                     Logger.error(
                         "iCloud container unavailable: \(exception?.reason ?? "missing entitlement")",
-                        category: Logger.storage
+                        category: Logger.storage,
                     )
                     return
                 }
@@ -875,7 +876,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if status == .available {
                         self.syncCoordinator = SyncCoordinator(
                             mainContainer: self.modelContainer,
-                            syncContainer: syncContainer
+                            syncContainer: syncContainer,
                         )
                     }
                 } catch {

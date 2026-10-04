@@ -88,6 +88,7 @@ final class FeedbackManager {
         if CrashMonitor.didCrashPreviously() {
             category = .crash
             let crashReports = CrashMonitor.collectCrashReports()
+                + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
             for url in crashReports {
                 if let attachment = makeAttachment(from: url, isAutoAttached: true) {
                     attachments.append(attachment)
