@@ -239,6 +239,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Onboarding window controller, active only during first-launch flow.
     private var onboardingWindowController: OnboardingWindowController?
 
+    /// URLs and files from other applications, held until spaces and windows exist.
+    private var pendingExternalURLs = PendingExternalURLs()
+
     // MARK: - Initialization
 
     /// Creates the application delegate and all manager instances.
@@ -704,6 +707,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tabManager.initializeWindow(controller.windowState, with: tempSpace)
 
         DispatchQueue.main.async { [self] in
+            defer { openPendingExternalURLs() }
+
             // Guard against window being closed before restoration completes
             guard windowManager.windowControllers.contains(where: { $0 === controller }) else {
                 return
@@ -736,6 +741,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for controller in windowManager.windowControllers {
                 controller.finalizeInitialization()
             }
+            openPendingExternalURLs()
 
             // Perform deferred history maintenance after first frame
             startDeferredMaintenance()
@@ -1084,8 +1090,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Detect source app before Refrax activates
-        let sourceApp = ExternalURLHandler.detectSourceApp()
-        windowManager.openExternalURL(url, sourceAppBundleID: sourceApp)
+        openExternalURL(url, sourceAppBundleID: ExternalURLHandler.detectSourceApp())
+    }
+
+    /// Opens a URL from another application, or holds it until launch has loaded spaces.
+    private func openExternalURL(_ url: URL, sourceAppBundleID: String?) {
+        let request = PendingExternalURLs.Request(url: url, sourceAppBundleID: sourceAppBundleID)
+        guard let request = pendingExternalURLs.admit(request) else {
+            Logger.info(
+                "Holding external URL until launch completes: \(url.absoluteString.prefix(100))",
+                category: Logger.navigation,
+            )
+            return
+        }
+        windowManager.openExternalURL(request.url, sourceAppBundleID: request.sourceAppBundleID)
+    }
+
+    /// Lets external URLs through and opens the ones that arrived during launch.
+    ///
+    /// Called once spaces are loaded and the launch windows are initialized.
+    private func openPendingExternalURLs() {
+        for request in pendingExternalURLs.open() {
+            windowManager.openExternalURL(request.url, sourceAppBundleID: request.sourceAppBundleID)
+        }
     }
 
     // MARK: - BitTorrent Handling
@@ -1163,8 +1190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // File opens are typically from Finder, detect source
-        let sourceApp = ExternalURLHandler.detectSourceApp()
-        windowManager.openExternalURL(fileURL, sourceAppBundleID: sourceApp)
+        openExternalURL(fileURL, sourceAppBundleID: ExternalURLHandler.detectSourceApp())
         return true
     }
 
@@ -1180,17 +1206,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 continue
             }
 
-            windowManager.openExternalURL(fileURL, sourceAppBundleID: sourceApp)
+            openExternalURL(fileURL, sourceAppBundleID: sourceApp)
         }
     }
 
     func application(_: NSApplication, open urls: [URL]) {
-        guard browserState.settings.hasCompletedOnboarding else { return }
-
         // Detect source app once for all URLs
         let sourceApp = ExternalURLHandler.detectSourceApp()
         for url in urls {
-            windowManager.openExternalURL(url, sourceAppBundleID: sourceApp)
+            openExternalURL(url, sourceAppBundleID: sourceApp)
         }
     }
 
@@ -1407,6 +1431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let firstTab = space.tabs.first {
             tabManager.setActiveTab(firstTab, in: controller.windowState)
         }
+        openPendingExternalURLs()
     }
 
     // MARK: - Logging
