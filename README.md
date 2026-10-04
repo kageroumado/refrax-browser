@@ -11,6 +11,8 @@
 [![GPLv3](https://img.shields.io/badge/license-GPL_v3-0d0a10?style=for-the-badge&logo=gnu&logoColor=white)](LICENSE)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#building)
 
+<a href="https://kagerou.glass/get/refrax?from=readme"><img src=".github/download.svg" alt="Download Refrax for Mac" width="360" height="80"></a><br><sub>A signed, notarized disk image · updates itself · free and open source (GPLv3)</sub>
+
 <img src=".github/screenshot.avif" alt="Refrax browser: sidebar with grouped tabs and spaces, a Liquid Glass interface, and a webpage in the main pane" width="820">
 
 </div>
@@ -32,7 +34,8 @@ it, page by page.
 
 ## Download
 
-Builds and automatic updates are distributed from **<https://kagerou.glass/refrax/>**.
+**[Download Refrax](https://kagerou.glass/get/refrax?from=readme)**, a signed, notarized disk image of the latest release.
+The app keeps itself up to date from **<https://kagerou.glass/refrax/>**.
 
 ## Engines
 
