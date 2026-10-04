@@ -4,40 +4,6 @@ import SwiftUI
 
 /// App-wide constants for layout, animation, and configuration
 enum Constants {
-    /// Release distribution channel.
-    ///
-    /// Centralizes all channel-specific policy (telemetry, activation, disclaimers)
-    /// so feature code checks a single enum instead of scattered conditionals.
-    /// Currently hardcoded to `.alpha`.
-    nonisolated enum ReleaseChannel: String, Sendable {
-        case alpha, beta, release
-
-        /// Alpha forces telemetry on; beta and release respect user preference.
-        var forceTelemetry: Bool {
-            switch self {
-            case .alpha: true
-            case .beta, .release: false
-            }
-        }
-
-        /// Alpha and beta require invite codes; release is open.
-        var requiresActivation: Bool {
-            switch self {
-            case .alpha, .beta: true
-            case .release: false
-            }
-        }
-
-        /// Only alpha shows the disclaimer screen in onboarding.
-        var showsAlphaDisclaimer: Bool {
-            self == .alpha
-        }
-
-        var displayName: String {
-            rawValue.capitalized
-        }
-    }
-
     // MARK: - Layout
 
     enum Layout {
@@ -182,7 +148,6 @@ enum Constants {
         static let gpcMessageHandlerName = "refraxGPC"
         static let credentialSubmitHandlerName = "refraxCredentialSubmit"
         static let autoFillFocusHandlerName = "refraxAutoFillFocus"
-        static let releaseChannel: ReleaseChannel = .alpha
     }
 
     /// Backend service endpoints hosted at refrax.website.
@@ -193,7 +158,7 @@ enum Constants {
     /// ## Update Channels
     ///
     /// The active ``UpdateChannel`` is selected at compile time:
-    /// - **Alpha** (release builds): Production server at `refrax.website`
+    /// - **Production** (release builds): Production server at `refrax.website`
     /// - **Localhost** (debug builds): Local dev server at `localhost:8080`,
     ///   with ``UpdateChannel/forceUpdate`` enabled (skips version comparison)
     nonisolated enum API: Sendable {
@@ -202,13 +167,13 @@ enum Constants {
         /// Determines which server the app checks for updates.
         enum UpdateChannel: Sendable {
             /// Production update server at refrax.website (release builds).
-            case alpha
+            case production
             /// Local development server for testing (debug builds).
             case localhost
 
             var baseURL: String? {
                 switch self {
-                case .alpha:
+                case .production:
                     API.token.map { "https://refrax.website/api/\($0)" }
                 case .localhost:
                     "http://localhost:8080/api"
@@ -226,7 +191,7 @@ enum Constants {
         /// Release archives inject `REFRAX_API_TOKEN` into Info.plist at build
         /// time (`kagerou publish`); dev runs may provide it via the scheme's
         /// `REFRAX_API_TOKEN` environment variable. When absent, every
-        /// server-channel feature (updates, activation, telemetry, feedback)
+        /// server-channel feature (updates, telemetry, feedback)
         /// disables itself — see ``hasServerAccess``.
         private static let token: String? = {
             if let value = Bundle.main.object(forInfoDictionaryKey: "RefraxAPIToken") as? String,
@@ -249,7 +214,7 @@ enum Constants {
         #if DEBUG
         static let channel: UpdateChannel = .localhost
         #else
-        static let channel: UpdateChannel = .alpha
+        static let channel: UpdateChannel = .production
         #endif
 
         private static func endpoint(base: String?, path: String, context: String) -> Foundation.URL? {
@@ -289,11 +254,7 @@ enum Constants {
         ]
 
         static var feedback: Foundation.URL? {
-            endpoint(base: UpdateChannel.alpha.baseURL, path: "/feedback", context: "feedback")
-        }
-
-        static var activate: Foundation.URL? {
-            endpoint(base: channel.baseURL, path: "/activate", context: "activate")
+            endpoint(base: UpdateChannel.production.baseURL, path: "/feedback", context: "feedback")
         }
 
         static var telemetryHeartbeat: Foundation.URL? {

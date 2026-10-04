@@ -294,24 +294,19 @@ struct PrivacySettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // MARK: - Diagnostics
+            // MARK: - Telemetry
 
             Section {
-                Toggle("Send anonymous usage data", isOn: $settings.telemetryEnabled)
-                    .disabled(Constants.App.releaseChannel.forceTelemetry)
+                TelemetryTierPicker(tier: $settings.telemetryTier)
                     .highlightable(id: "privacy.telemetry", highlightedItemId: highlightedItemId)
+
+                TelemetryDisclosureView(tier: settings.telemetryTier)
             } header: {
-                Text("Diagnostics")
+                Text("Telemetry")
             } footer: {
-                if Constants.App.releaseChannel.forceTelemetry {
-                    Text("Diagnostics are always enabled during the alpha. This will become optional in a future release.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Once daily on launch: anonymous device identifier, app version, macOS version, and language.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("You can change this any time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // MARK: - Passwords & AutoFill

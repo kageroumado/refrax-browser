@@ -239,6 +239,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Onboarding window controller, active only during first-launch flow.
     private var onboardingWindowController: OnboardingWindowController?
 
+    /// The one-time telemetry prompt, while it is open.
+    private var telemetryPromptWindowController: TelemetryPromptWindowController?
+
+    /// How long after deferred maintenance starts the telemetry prompt appears.
+    private static let telemetryPromptDelay: TimeInterval = 2
+
     /// URLs and files from other applications, held until spaces and windows exist.
     private var pendingExternalURLs = PendingExternalURLs()
 
@@ -298,18 +304,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.settings = BrowserSettings.fetchOrCreate(in: modelContainer.mainContext)
-
-        // Restore activation status after a full reset (Tier 4).
-        // The reset writes activation info to a separate UserDefaults suite before
-        // wiping the main suite and database. On relaunch, we restore it here.
-        let restoreSuite = UserDefaults(suiteName: "website.refrax.browser.activation-restore")
-        if let restored = restoreSuite?.object(forKey: "isActivated") as? Bool, restored {
-            settings.isActivated = true
-            settings.activationCode = restoreSuite?.string(forKey: "activationCode")
-            restoreSuite?.removePersistentDomain(forName: "website.refrax.browser.activation-restore")
-            restoreSuite?.synchronize()
-            Logger.info("Restored activation status after full reset", category: Logger.storage)
-        }
 
         self.siteSettingsManager = SiteSettingsManager(modelContext: modelContainer.mainContext)
         self.autoFillState = AutoFillState()
@@ -600,6 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         CrashMonitor.markLaunched()
+        LaunchHistory.recordLaunch()
         logStorageMode()
         setupMenuBar()
         registerURLHandler()
@@ -622,7 +617,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Debug builds skip onboarding so fresh launches (--in-memory
             // especially) land directly in a browsing window.
             browserState.settings.hasCompletedOnboarding = true
-            browserState.settings.isActivated = true
         #endif
 
         if browserState.settings.hasCompletedOnboarding {
@@ -630,7 +624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if !browserState.settings.hasCompletedOnboarding {
-            // Migration for existing alpha testers: if they have browsing data
+            // Installs from before onboarding existed: if they have browsing data
             // but no onboarding flag (pre-onboarding install), skip onboarding.
             // Only run this once — don't re-trigger after a debug reset.
             if !browserState.settings.hasRunOnboardingMigration {
@@ -643,7 +637,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
                 if hasExistingData {
                     browserState.settings.hasCompletedOnboarding = true
-                    browserState.settings.isActivated = true
                 }
             }
 
@@ -652,6 +645,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
         }
+
+        UsageLogStore.recordUse(tier: browserState.settings.telemetryTier)
 
         // UI Test mode: Skip normal initialization and create test data
         if UITestSetup.isUITestMode {
@@ -669,7 +664,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    /// Shows the onboarding window for first-launch activation.
+    /// Asks an install that finished onboarding without choosing a telemetry
+    /// tier to choose one, a moment after the browser window appears.
+    ///
+    /// Nothing is sent until a tier is chosen; closing the prompt chooses
+    /// ``TelemetryTier/off``.
+    private func showTelemetryPromptIfNeeded() {
+        guard settings.needsTelemetryPrompt else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.telemetryPromptDelay) { [self] in
+            guard settings.needsTelemetryPrompt, telemetryPromptWindowController == nil else { return }
+            let controller = TelemetryPromptWindowController()
+            controller.onClosed = { [weak self] in
+                self?.telemetryPromptWindowController = nil
+            }
+            controller.showWindow(settings: settings)
+            telemetryPromptWindowController = controller
+        }
+    }
+
+    /// Shows the onboarding window on first launch.
     ///
     /// The main browser window is not created until onboarding completes.
     private func showOnboarding() {
@@ -812,6 +825,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduledTasksManager.registerTask { @MainActor in
             await PersistentLogWriter.shared.pruneOldLogs()
         }
+        // A day spent in Refrax without switching away still counts as a day of use.
+        scheduledTasksManager.registerTask { @MainActor [settings] in
+            if NSApp.isActive {
+                UsageLogStore.recordUse(tier: settings.telemetryTier)
+            }
+        }
 
         // Post-update detection (shows notification if app was just updated)
         appUpdateManager.detectPostUpdate()
@@ -830,9 +849,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Crash detection — auto-submit crash report if previous session crashed
-        if CrashMonitor.didCrashPreviously() {
+        // and the user shares crash reports
+        if settings.telemetryTier.sendsCrashReports, CrashMonitor.didCrashPreviously() {
             let crashReports = CrashMonitor.collectCrashReports()
-            CrashMonitor.clearSentinel()
 
             if !crashReports.isEmpty {
                 Logger.warning(
@@ -840,8 +859,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     category: Logger.system,
                 )
                 let attachments = crashReports + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
+                let context = CrashContext.collect(crashReports: crashReports, registry: engineRegistry)
                 Task.detached(priority: .utility) { [appUpdateManager] in
-                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: attachments)
+                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: attachments, context: context)
                     CrashMonitor.markReportsSent(crashReports)
                     await MainActor.run {
                         appUpdateManager.crashReportSent = true
@@ -904,9 +924,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CLISkillInstaller.install()
             refreshCLIHelperInstall()
         }
+        showTelemetryPromptIfNeeded()
         TelemetryService.sendHeartbeatIfNeeded(settings: settings)
 
         observeControlAccessMode()
+    }
+
+    /// Counts today as a day Refrax was used.
+    func applicationDidBecomeActive(_: Notification) {
+        UsageLogStore.recordUse(tier: settings.telemetryTier)
     }
 
     /// Returns `false` to keep the app running when all windows close.

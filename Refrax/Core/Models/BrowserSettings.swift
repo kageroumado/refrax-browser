@@ -639,13 +639,7 @@ final class BrowserSettings {
     /// Whether to automatically check for updates on the hourly schedule.
     var checkForUpdatesAutomatically: Bool = true
 
-    // MARK: - Activation & Telemetry
-
-    /// Whether the app has been activated with a valid invite code.
-    var isActivated: Bool = false
-
-    /// The invite code used to activate this device.
-    var activationCode: String?
+    // MARK: - Onboarding & Telemetry
 
     /// Whether the user has completed the onboarding flow.
     ///
@@ -659,8 +653,27 @@ final class BrowserSettings {
     /// re-triggering after a debug reset.
     var hasRunOnboardingMigration: Bool = false
 
-    /// Whether anonymous telemetry is enabled (opt-out).
-    var telemetryEnabled: Bool = true
+    /// Raw ``TelemetryTier``; `nil` until the user chooses one in onboarding
+    /// or in the one-time telemetry prompt.
+    ///
+    /// Stays on this Mac: each install consents for itself.
+    var telemetryTierRaw: String?
+
+    /// How much anonymous telemetry the user shares. ``TelemetryTier/off`` until chosen.
+    var telemetryTier: TelemetryTier {
+        get { telemetryTierRaw.flatMap(TelemetryTier.init(rawValue:)) ?? .off }
+        set {
+            telemetryTierRaw = newValue.rawValue
+            if !newValue.sendsCounting {
+                UsageLogStore.clear()
+            }
+        }
+    }
+
+    /// Whether to ask for a telemetry tier once: onboarding is done and no tier was chosen.
+    var needsTelemetryPrompt: Bool {
+        TelemetryTier.needsPrompt(hasCompletedOnboarding: hasCompletedOnboarding, chosenTier: telemetryTierRaw)
+    }
 
     /// Timestamp of the last heartbeat ping sent to the server.
     ///
@@ -778,11 +791,8 @@ final class BrowserSettings {
         self.feedbackEmail = ""
         self.verboseLoggingEnabled = false
         self.checkForUpdatesAutomatically = true
-        self.isActivated = false
-        self.activationCode = nil
         self.hasCompletedOnboarding = false
         self.hasRunOnboardingMigration = false
-        self.telemetryEnabled = false
         self.lastHeartbeatDate = nil
         self.featureFlagOverridesJSON = "{}"
         self.iCloudSyncEnabled = false
@@ -1183,7 +1193,6 @@ final class BrowserSettings {
         feedbackEmail = ""
         verboseLoggingEnabled = false
         checkForUpdatesAutomatically = true
-        telemetryEnabled = false
         lastHeartbeatDate = nil
         featureFlagOverridesJSON = "{}"
         iCloudSyncEnabled = false

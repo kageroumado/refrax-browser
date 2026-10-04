@@ -426,17 +426,7 @@ struct StorageSettingsView: View {
         isClearing = true
         activeClearTier = .fullReset
 
-        // 1. Preserve activation status
-        let isActivated = settings.isActivated
-        let activationCode = settings.activationCode
-
-        // Write activation info to a separate UserDefaults suite that survives the wipe
-        let restoreSuite = UserDefaults(suiteName: "website.refrax.browser.activation-restore")
-        restoreSuite?.set(isActivated, forKey: "isActivated")
-        restoreSuite?.set(activationCode, forKey: "activationCode")
-        restoreSuite?.synchronize()
-
-        // 2. Clear all WebKit data from all stores
+        // 1. Clear all WebKit data from all stores
         await WKWebsiteDataStore.default().removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
             modifiedSince: .distantPast
@@ -452,10 +442,10 @@ struct StorageSettingsView: View {
             }
         }
 
-        // 3. Clear Spotlight index
+        // 2. Clear Spotlight index
         try? await CSSearchableIndex.default().deleteAllSearchableItems()
 
-        // 4. Wipe the entire app storage directory (SwiftData DB, logs, extensions, everything)
+        // 3. Wipe the entire app storage directory (SwiftData DB, logs, extensions, everything)
         let fm = FileManager.default
         let appStorage = Directories.appStorage
         if let contents = try? fm.contentsOfDirectory(at: appStorage, includingPropertiesForKeys: nil) {
@@ -464,7 +454,7 @@ struct StorageSettingsView: View {
             }
         }
 
-        // 5. Clear UserDefaults (window restoration state, preferences)
+        // 4. Clear UserDefaults (window restoration state, preferences)
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
             UserDefaults.standard.synchronize()
@@ -472,7 +462,7 @@ struct StorageSettingsView: View {
 
         Logger.info("Full reset completed (Tier 4), relaunching", category: Logger.storage)
 
-        // 6. Relaunch
+        // 5. Relaunch
         AppDelegate.relaunchApp()
     }
 

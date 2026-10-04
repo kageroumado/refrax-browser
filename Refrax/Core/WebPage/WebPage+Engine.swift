@@ -47,6 +47,9 @@ extension WebPage {
             enginePage = page
             observe(page)
             page.perform(.setZoom(factor: backingWebView.pageZoom))
+            if id == .chromium {
+                UsageLogStore.recordChromiumUse(tier: settingsApplier.settings.telemetryTier)
+            }
         }
         tabPage.engineID = id.rawValue
         Logger.info("Page \(tabPage.id) now renders with \(id): \(currentURL.absoluteString)", category: Logger.engines)

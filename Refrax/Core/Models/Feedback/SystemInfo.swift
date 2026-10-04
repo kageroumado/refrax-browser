@@ -44,21 +44,11 @@ nonisolated struct SystemInfo: Codable, Sendable {
         let processInfo = ProcessInfo.processInfo
         let osVersion = processInfo.operatingSystemVersion
 
-        var size: size_t = 0
-        var hardwareModel = "Unknown"
-        sysctlbyname("hw.model", nil, &size, nil, 0)
-        if size > 0 {
-            var model = [CChar](repeating: 0, count: size)
-            sysctlbyname("hw.model", &model, &size, nil, 0)
-            let bytes = model.prefix(while: { $0 != 0 }).map(UInt8.init)
-            hardwareModel = String(decoding: bytes, as: UTF8.self)
-        }
-
         return SystemInfo(
             refraxVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown",
             refraxBuild: bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown",
             macOSVersion: "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)",
-            hardwareModel: hardwareModel,
+            hardwareModel: hardwareModel(),
             memoryGB: Int(processInfo.physicalMemory / (1_024 * 1_024 * 1_024)),
             locale: Locale.current.identifier,
             tabCount: tabCount,
@@ -66,5 +56,16 @@ nonisolated struct SystemInfo: Codable, Sendable {
             extensionCount: extensionCount,
             uptime: processInfo.systemUptime,
         )
+    }
+
+    /// The Mac's model identifier, e.g. `Mac16,10`.
+    static func hardwareModel() -> String {
+        var size: size_t = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        guard size > 0 else { return "Unknown" }
+        var model = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        let bytes = model.prefix(while: { $0 != 0 }).map(UInt8.init)
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

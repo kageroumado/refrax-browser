@@ -157,6 +157,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(id: "privacy.customRedirects", title: "Custom redirects", keywords: ["redirect", "custom", "nitter", "twitter"]),
                 SearchableSettingItem(id: "privacy.appRedirects", title: "App redirects", keywords: ["app", "redirect", "open", "external"]),
                 SearchableSettingItem(id: "privacy.routingRules", title: "URL routing rules", keywords: ["routing", "rules", "url", "redirect", "space", "group", "glimpse", "automatic"]),
+                SearchableSettingItem(id: "privacy.telemetry", title: "Telemetry", keywords: ["telemetry", "analytics", "crash", "reports", "diagnostics", "usage", "anonymous", "privacy"]),
                 SearchableSettingItem(id: "privacy.lockTimeout", title: "Space locking timeout", keywords: ["lock", "touch id", "space", "timeout", "auto-lock", "password", "authentication"]),
                 SearchableSettingItem(id: "privacy.retentionPeriod", title: "History retention period", keywords: ["history", "retention", "days", "week", "month", "year"]),
                 SearchableSettingItem(id: "privacy.clearHistory", title: "Clear all history", keywords: ["history", "clear", "delete", "remove", "all"]),

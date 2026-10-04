@@ -2,8 +2,6 @@ import SwiftUI
 
 /// First onboarding screen: welcome branding.
 struct OnboardingWelcomeView: View {
-    @Environment(BrowserSettings.self) private var settings
-
     let onNext: () -> Void
 
     var body: some View {
@@ -26,7 +24,6 @@ struct OnboardingWelcomeView: View {
             Spacer()
 
             Button {
-                settings.isActivated = true
                 onNext()
             } label: {
                 Text("Get Started")

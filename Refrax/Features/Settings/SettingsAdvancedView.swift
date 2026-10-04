@@ -12,7 +12,6 @@ struct AdvancedSettingsView: View {
     @State private var cliHelperStatus: CLIHelperStatus?
     @State private var isInstallingCLIHelper = false
     @State private var showResetAlert = false
-    @State private var showResetActivationAlert = false
     @State private var showJavaScriptSitesSheet = false
     @State private var whitelistedSitesCount: Int = 0
     @State private var allowedClients: [AllowedClient] = []
@@ -118,19 +117,6 @@ struct AdvancedSettingsView: View {
                 .foregroundStyle(.red)
                 .highlightable(id: "advanced.reset", highlightedItemId: highlightedItemId)
             }
-
-            #if DEBUG
-            Section {
-                Button("Reset Activation & Onboarding") {
-                    showResetActivationAlert = true
-                }
-                .foregroundStyle(.red)
-            } header: {
-                Text("Debug")
-            } footer: {
-                Text("Clears activation state and onboarding flag. The onboarding flow will appear on next launch.")
-            }
-            #endif
         }
         .formStyle(.grouped)
         .onAppear {
@@ -157,20 +143,6 @@ struct AdvancedSettingsView: View {
         } message: {
             Text("This will reset all settings to their default values. This action cannot be undone.")
         }
-        #if DEBUG
-        .alert("Reset Activation", isPresented: $showResetActivationAlert) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset", role: .destructive) {
-                settings.isActivated = false
-                settings.activationCode = nil
-                settings.hasCompletedOnboarding = false
-                settings.telemetryEnabled = false
-                settings.lastHeartbeatDate = nil
-            }
-        } message: {
-            Text("This will clear activation and onboarding state. Restart the app to see the onboarding flow.")
-        }
-        #endif
         .sheet(isPresented: $showJavaScriptSitesSheet, onDismiss: refreshWhitelistCount) {
             JavaScriptSitesSheet(globalJSEnabled: settings.enableJavaScript)
         }

@@ -34,6 +34,9 @@ nonisolated struct EngineID: RawRepresentable, Codable, Hashable, Sendable, Cust
     /// The operating system's WebKit, hosted in Refrax's process.
     static let systemWebKit = EngineID(rawValue: "system.webkit")
 
+    /// Refrax's Chromium engine, installed from the Engines pane.
+    static let chromium = EngineID(rawValue: "website.refrax.engine.chromium")
+
     let rawValue: String
 
     init(rawValue: String) {

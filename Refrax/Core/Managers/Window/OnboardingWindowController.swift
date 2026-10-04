@@ -5,7 +5,7 @@ import SwiftUI
 /// Manages the onboarding window shown on first launch.
 ///
 /// Presents a chromeless window with the onboarding flow.
-/// The close button quits the app — users cannot bypass activation.
+/// The close button quits the app; the browser opens once onboarding completes.
 final class OnboardingWindowController {
     private var window: NSWindow?
 

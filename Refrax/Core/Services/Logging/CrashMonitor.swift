@@ -3,7 +3,7 @@ import Foundation
 /// Detects previous crashes via a sentinel file.
 ///
 /// A sentinel file is written on launch and removed on clean shutdown.
-/// If the sentinel exists at the start of the next session, the previous
+/// If the sentinel exists when the next session launches, the previous
 /// session terminated abnormally (crash, force quit, or power loss).
 ///
 /// ## Integration Points
@@ -12,6 +12,9 @@ import Foundation
 /// - `applicationWillTerminate`: call ``markCleanShutdown()``
 /// - `startDeferredMaintenance`: check ``didCrashPreviously()``
 nonisolated enum CrashMonitor: Sendable {
+    /// Launches in a row whose session ended abnormally, counted at launch.
+    private static let consecutiveCrashesKey = "crashMonitorConsecutiveLaunchCrashes"
+
     private static let sentinelURL = Directories.appStorage
         .appendingPathComponent("crash_sentinel")
 
@@ -30,6 +33,12 @@ nonisolated enum CrashMonitor: Sendable {
     /// Writes the sentinel file, marking the session as in-progress, sets the
     /// previous session's exception log aside, and starts recording exceptions.
     static func markLaunched() {
+        let previousEndedAbnormally = FileManager.default.fileExists(atPath: sentinelURL.path)
+        UserDefaults.standard.set(
+            previousEndedAbnormally ? consecutiveLaunchCrashes + 1 : 0,
+            forKey: consecutiveCrashesKey,
+        )
+
         let timestamp = ISO8601DateFormatter().string(from: Date())
         try? timestamp.write(to: sentinelURL, atomically: true, encoding: .utf8)
 
@@ -51,19 +60,17 @@ nonisolated enum CrashMonitor: Sendable {
     /// Removes the sentinel file, indicating a clean shutdown.
     static func markCleanShutdown() {
         try? FileManager.default.removeItem(at: sentinelURL)
+        UserDefaults.standard.set(0, forKey: consecutiveCrashesKey)
     }
 
-    /// Returns `true` if the sentinel exists, indicating the previous session did not shut down cleanly.
+    /// Whether the previous session did not shut down cleanly, as found by ``markLaunched()``.
     static func didCrashPreviously() -> Bool {
-        FileManager.default.fileExists(atPath: sentinelURL.path)
+        consecutiveLaunchCrashes > 0
     }
 
-    /// Removes the sentinel file without implying a clean shutdown.
-    ///
-    /// Call this after acknowledging a previous crash to prevent
-    /// repeated crash detection on subsequent launches.
-    static func clearSentinel() {
-        try? FileManager.default.removeItem(at: sentinelURL)
+    /// Launches in a row, ending with the previous one, whose session ended abnormally.
+    static var consecutiveLaunchCrashes: Int {
+        UserDefaults.standard.integer(forKey: consecutiveCrashesKey)
     }
 
     /// Records crash report filenames as sent so they aren't re-submitted.
