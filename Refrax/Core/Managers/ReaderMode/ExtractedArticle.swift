@@ -2,10 +2,11 @@ import Foundation
 
 /// Content extracted from a web page using Readability.js.
 ///
-/// Contains the article's main content, metadata, and computed properties
-/// like estimated reading time. The extraction preserves HTML formatting
-/// in ``content`` while providing plain text in ``textContent``.
-struct ExtractedArticle: Sendable, Equatable {
+/// Contains the article's main content, metadata, and its reading statistics. The
+/// extraction preserves HTML formatting in ``content`` while providing plain text in
+/// ``textContent``. The statistics are computed once, when the article is created,
+/// because a long page's text runs to megabytes and views read them on every update.
+nonisolated struct ExtractedArticle: Sendable, Equatable {
     /// The article's title.
     let title: String
 
@@ -35,24 +36,34 @@ struct ExtractedArticle: Sendable, Equatable {
     /// The original URL of the article.
     let sourceURL: URL
 
-    /// Word count of the plain text content.
-    var wordCount: Int {
-        textContent.split(whereSeparator: \.isWhitespace).count
-    }
+    /// Number of whitespace-separated words in ``textContent``.
+    let wordCount: Int
 
-    /// Number of images in the article content.
-    ///
-    /// Counted by occurrences of `<img` tags in the HTML content.
-    var imageCount: Int {
-        // Count <img tags (case-insensitive)
-        let pattern = "<img"
-        var count = 0
-        var searchRange = content.startIndex ..< content.endIndex
-        while let range = content.range(of: pattern, options: .caseInsensitive, range: searchRange) {
-            count += 1
-            searchRange = range.upperBound ..< content.endIndex
-        }
-        return count
+    /// Number of `<img` tags in ``content``, matched case-insensitively.
+    let imageCount: Int
+
+    /// Creates an article and computes its statistics. Linear in the text length; create
+    /// long articles off the main actor (``ReaderExtraction/decode(_:sourceURL:)``).
+    init(
+        title: String,
+        byline: String?,
+        content: String,
+        textContent: String,
+        excerpt: String?,
+        siteName: String?,
+        publishedTime: Date?,
+        sourceURL: URL,
+    ) {
+        self.title = title
+        self.byline = byline
+        self.content = content
+        self.textContent = textContent
+        self.excerpt = excerpt
+        self.siteName = siteName
+        self.publishedTime = publishedTime
+        self.sourceURL = sourceURL
+        self.wordCount = Self.wordCount(of: textContent)
+        self.imageCount = Self.imageCount(in: content)
     }
 
     /// Estimated reading time in minutes.
@@ -95,42 +106,120 @@ struct ExtractedArticle: Sendable, Equatable {
     }
 }
 
-// MARK: - JSON Decoding
+// MARK: - Statistics
 
-extension ExtractedArticle {
-    /// Creates an article from Readability.js JSON output.
-    ///
-    /// - Parameters:
-    ///   - json: The parsed JSON dictionary from Readability.parse()
-    ///   - sourceURL: The URL of the page that was extracted
-    /// - Returns: An extracted article, or nil if required fields are missing
-    static func from(json: [String: Any], sourceURL: URL) -> ExtractedArticle? {
-        guard let title = json["title"] as? String,
-              let content = json["content"] as? String,
-              let textContent = json["textContent"] as? String
-        else {
-            return nil
-        }
-
-        // Parse published time if present
-        var publishedTime: Date?
-        if let timeString = json["publishedTime"] as? String {
-            // Try with fractional seconds first, then without
-            publishedTime = try? Date(timeString, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true))
-            if publishedTime == nil {
-                publishedTime = try? Date(timeString, strategy: .iso8601)
+nonisolated extension ExtractedArticle {
+    /// Counts runs of non-whitespace scalars.
+    static func wordCount(of text: String) -> Int {
+        var count = 0
+        var isInWord = false
+        for scalar in text.unicodeScalars {
+            let isWhitespace = scalar.isASCII
+                ? scalar == " " || (0x09 ... 0x0D).contains(scalar.value)
+                : scalar.properties.isWhitespace
+            if isWhitespace {
+                isInWord = false
+            } else if !isInWord {
+                isInWord = true
+                count += 1
             }
         }
+        return count
+    }
 
-        return ExtractedArticle(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            byline: (json["byline"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-            content: content,
-            textContent: textContent,
-            excerpt: (json["excerpt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-            siteName: (json["siteName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-            publishedTime: publishedTime,
+    /// Counts `<img` tag openings, case-insensitively, in one pass over the UTF-8 bytes.
+    static func imageCount(in html: String) -> Int {
+        let pattern = Array("<img".utf8)
+        var count = 0
+        var matched = 0
+        for byte in html.utf8 {
+            // ASCII letters fold to lowercase with 0x20; "<" has no case.
+            let folded = (0x41 ... 0x5A).contains(byte) ? byte | 0x20 : byte
+            if folded == pattern[matched] {
+                matched += 1
+                if matched == pattern.count {
+                    count += 1
+                    matched = 0
+                }
+            } else {
+                matched = folded == pattern[0] ? 1 : 0
+            }
+        }
+        return count
+    }
+}
+
+// MARK: - Readability Output
+
+nonisolated extension ExtractedArticle {
+    /// Creates an article from Readability.js output.
+    init(payload: ReaderArticlePayload, sourceURL: URL) {
+        self.init(
+            title: payload.title.trimmingCharacters(in: .whitespacesAndNewlines),
+            byline: payload.byline?.trimmingCharacters(in: .whitespacesAndNewlines),
+            content: payload.content,
+            textContent: payload.textContent,
+            excerpt: payload.excerpt?.trimmingCharacters(in: .whitespacesAndNewlines),
+            siteName: payload.siteName?.trimmingCharacters(in: .whitespacesAndNewlines),
+            publishedTime: payload.publishedTime.flatMap(Self.parseDate),
             sourceURL: sourceURL,
         )
+    }
+
+    /// Parses an ISO 8601 date, with or without fractional seconds.
+    private static func parseDate(_ string: String) -> Date? {
+        (try? Date(string, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+            ?? (try? Date(string, strategy: .iso8601))
+    }
+}
+
+/// The fields Readability.js returns for an article, as the extraction script reports them.
+nonisolated struct ReaderArticlePayload: Sendable, Equatable, Decodable {
+    let title: String
+    let byline: String?
+    let content: String
+    let textContent: String
+    let excerpt: String?
+    let siteName: String?
+    let publishedTime: String?
+}
+
+// MARK: - Extraction Result
+
+/// The outcome of running Readability.js on a page.
+nonisolated enum ReaderExtraction: Sendable, Equatable {
+    /// Readability found an article.
+    case article(ExtractedArticle)
+    /// The page is above ``ReaderModeManager/Limits``, or extraction ran past its timeout.
+    case tooLong
+    /// Readability found no article, or the script failed.
+    case failed
+
+    /// The script's JSON report: `status` is `"extracted"`, `"tooLong"`, or `"failed"`, and
+    /// `article` is present with `"extracted"`.
+    private struct Report: Decodable {
+        let status: String
+        let article: ReaderArticlePayload?
+    }
+
+    /// Decodes the extraction script's JSON report and computes the article's statistics,
+    /// off the main actor: a long page's report runs to megabytes.
+    @concurrent
+    static func decode(_ json: String, sourceURL: URL) async -> ReaderExtraction {
+        parse(json, sourceURL: sourceURL)
+    }
+
+    /// Decodes the extraction script's JSON report on the calling actor.
+    static func parse(_ json: String, sourceURL: URL) -> ReaderExtraction {
+        guard let report = try? JSONDecoder().decode(Report.self, from: Data(json.utf8)) else { return .failed }
+        switch report.status {
+        case "extracted":
+            guard let payload = report.article else { return .failed }
+            return .article(ExtractedArticle(payload: payload, sourceURL: sourceURL))
+        case "tooLong":
+            return .tooLong
+        default:
+            return .failed
+        }
     }
 }

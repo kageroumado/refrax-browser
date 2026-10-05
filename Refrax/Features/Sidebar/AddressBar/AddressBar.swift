@@ -594,8 +594,15 @@ struct AddressBar: View {
     private func toggleReaderMode() {
         guard let webPage else { return }
         Task {
-            await readerModeManager.toggleReader(for: webPage)
+            await toggleReader(for: webPage)
         }
+    }
+
+    /// Toggles Reader Mode and, when the page is too long for Reader, hides the button and says so.
+    private func toggleReader(for webPage: WebPage) async {
+        guard await readerModeManager.toggleReader(for: webPage) == .tooLong else { return }
+        isReaderAvailable = false
+        windowState.showToast("This page is too long for Reader")
     }
 
     /// Toggles "Calm This Page" for the current domain and applies it to
@@ -637,7 +644,7 @@ struct AddressBar: View {
                let url = webPage.url,
                let settings = siteSettingsManager.settings(for: url),
                settings.useReaderWhenAvailable {
-                await readerModeManager.toggleReader(for: webPage)
+                await toggleReader(for: webPage)
             }
         }
     }

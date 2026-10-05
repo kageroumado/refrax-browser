@@ -17,7 +17,7 @@ import WebKit
 /// - Uses Readability.js (Apache 2.0 license) for proven article extraction
 /// - Scripts run in an isolated content world to avoid page interference
 /// - Per-page state allows different tabs to have independent reader states
-/// - Availability check is lightweight; full extraction happens on demand
+/// - Availability check is lightweight and capped by element count; full extraction happens on demand
 ///
 /// ## Integration
 ///
@@ -34,7 +34,7 @@ import WebKit
 /// let isAvailable = await readerModeManager.checkAvailability(for: webPage)
 ///
 /// // Extract and display article
-/// if let article = try await readerModeManager.extractArticle(from: webPage) {
+/// if case let .article(article) = await readerModeManager.extractArticle(from: webPage) {
 ///     // Show in ReaderView
 /// }
 /// ```
@@ -93,16 +93,42 @@ final class ReaderModeManager {
     }
 
     /// Toggles reader mode for a tab page. If active, deactivates. Otherwise, extracts and activates.
-    func toggleReader(for webPage: WebPage) async {
+    ///
+    /// - Returns: The extraction outcome when Reader was opening, or `nil` when it closed.
+    @discardableResult
+    func toggleReader(for webPage: WebPage) async -> ReaderExtraction? {
         let tabPageID = webPage.tabPage.id
 
         if isReaderActive(for: tabPageID) {
             deactivateReader(for: tabPageID)
-        } else {
-            if let article = await extractArticle(from: webPage) {
-                activateReader(for: tabPageID, article: article)
-            }
+            return nil
         }
+        let extraction = await extractArticle(from: webPage)
+        if case let .article(article) = extraction {
+            activateReader(for: tabPageID, article: article)
+        }
+        return extraction
+    }
+
+    // MARK: - Limits
+
+    /// Bounds on the work Reader does in a page, so a huge page costs a quick refusal
+    /// instead of seconds of parsing.
+    enum Limits {
+        /// Pages with more DOM elements than this are too long for Reader. Both the
+        /// availability check and extraction count elements (under 1 ms even at 335,000)
+        /// before running Readability, whose parse grows with the element count: on an
+        /// M1 Max, 48 ms at 8,000 elements, 275 ms at 49,000, 1.8 s at 335,000 (the
+        /// single-page HTML spec), and 2.5 s at 120,000 in a deeply nested HN thread. This
+        /// bound keeps the nested case near 1 s. Text length tracks the element count on
+        /// these pages, so it gets no limit of its own.
+        static let maxElements = 50_000
+
+        /// How long extraction may run before Reader gives up and reports the page as too long.
+        static let extractionTimeout: Duration = .seconds(5)
+
+        /// How long a manual availability check may run before it reports the page as unavailable.
+        static let availabilityTimeout: Duration = .seconds(3)
     }
 
     // MARK: - Per-Page State
@@ -113,16 +139,19 @@ final class ReaderModeManager {
     /// Cached extracted articles per URL.
     private var articleCache: [URL: ExtractedArticle] = [:]
 
-    /// Pending extraction continuations waiting for results.
-    private var pendingExtractions: [URL: CheckedContinuation<ExtractedArticle?, Never>] = [:]
+    /// Running availability checks, shared by every caller asking about the same URL.
+    private var availabilityChecks: [URL: Task<Bool, Never>] = [:]
 
-    /// Pending availability checks waiting for results.
-    private var pendingAvailabilityChecks: [URL: CheckedContinuation<Bool, Never>] = [:]
+    /// Running extractions, shared by every caller asking about the same URL.
+    private var extractions: [URL: Task<ReaderExtraction, Never>] = [:]
 
     // MARK: - Private State
 
     private var isSetUp = false
     private var availabilityScriptID: UUID?
+
+    /// The extraction script, built once from the bundled Readability.js.
+    private var extractionScript: String?
 
     /// Content world for scripts (isolated from page scripts).
     private static let scriptWorldName = "RefraxScripts"
@@ -131,6 +160,9 @@ final class ReaderModeManager {
     // MARK: - Constants
 
     private static let messageHandlerName = "readerMode"
+
+    /// The function the availability script defines in the reader content world.
+    private static let availabilityFunctionName = "refraxReaderAvailable"
 
     // MARK: - Initialization
 
@@ -166,11 +198,12 @@ final class ReaderModeManager {
     // MARK: - Script Registration
 
     private func registerAvailabilityScript() async {
-        guard availabilityScriptID == nil else { return }
+        guard availabilityScriptID == nil,
+              let readerableSource = await Self.loadScript(named: "Readability-readerable")
+        else { return }
 
-        let scriptSource = await generateAvailabilityScript()
         let script = WKUserScript(
-            source: scriptSource,
+            source: Self.availabilityScript(readerableSource: readerableSource),
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true,
             in: scriptWorld,
@@ -191,51 +224,32 @@ final class ReaderModeManager {
     /// Checks if a page is suitable for Reader Mode.
     ///
     /// Uses Readability.js's `isProbablyReaderable()` heuristic to determine
-    /// if the page contains article-like content.
+    /// if the page contains article-like content. Pages above ``Limits/maxElements``
+    /// are unavailable.
     ///
     /// - Parameter webPage: The WebPage to check.
     /// - Returns: Whether Reader Mode is available for this page.
     func checkAvailability(for webPage: WebPage) async -> Bool {
         guard let url = webPage.url else { return false }
 
-        // Return cached result if available
         if let cached = availabilityCache[url] {
             return cached
         }
-
-        // If there's already a pending check for this URL, wait for it to complete
-        // rather than creating a duplicate that would leak the existing continuation.
-        if pendingAvailabilityChecks[url] != nil {
-            // Poll until the pending check completes (slightly longer than the 3s timeout)
-            for _ in 0 ..< 12 {
-                try? await Task.sleep(for: .milliseconds(300))
-                if let cached = availabilityCache[url] {
-                    return cached
-                }
-                if pendingAvailabilityChecks[url] == nil {
-                    break
-                }
-            }
-            return availabilityCache[url] ?? false
+        if let running = availabilityChecks[url] {
+            return await running.value
         }
 
-        // The availability script runs automatically on page load and posts result.
-        // If we don't have a result yet, trigger a manual check.
-        return await withCheckedContinuation { continuation in
-            pendingAvailabilityChecks[url] = continuation
-
-            // Inject and run availability check
-            let script = generateAvailabilityCheckScript()
-            Task { _ = try? await webPage.evaluateJavaScript(script, contentWorld: scriptWorld) }
-
-            // Timeout after 3 seconds
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                if let pending = self.pendingAvailabilityChecks.removeValue(forKey: url) {
-                    pending.resume(returning: false)
-                }
-            }
+        let check = Task {
+            let script = "typeof \(Self.availabilityFunctionName) === 'function' && \(Self.availabilityFunctionName)()"
+            let evaluation: ScriptEvaluation<Bool> = await evaluate(script, in: webPage, timeout: Limits.availabilityTimeout)
+            guard case let .finished(available) = evaluation else { return false }
+            return available ?? false
         }
+        availabilityChecks[url] = check
+        let available = await check.value
+        availabilityChecks[url] = nil
+        availabilityCache[url] = available
+        return available
     }
 
     /// Returns cached availability for a URL without triggering a check.
@@ -248,51 +262,51 @@ final class ReaderModeManager {
 
     /// Extracts article content from a web page.
     ///
-    /// Uses Readability.js to parse the page and extract the main article content,
-    /// title, byline, and other metadata.
+    /// Readability.js parses a copy of the page in the web content process; the report it
+    /// returns is decoded, and the article's statistics computed, off the main actor. A page
+    /// above ``Limits/maxElements``, or one whose extraction outlasts
+    /// ``Limits/extractionTimeout``, is reported as ``ReaderExtraction/tooLong`` and marked
+    /// unavailable.
     ///
     /// - Parameter webPage: The WebPage to extract from.
-    /// - Returns: The extracted article, or nil if extraction failed.
-    func extractArticle(from webPage: WebPage) async -> ExtractedArticle? {
-        guard let url = webPage.url else { return nil }
+    func extractArticle(from webPage: WebPage) async -> ReaderExtraction {
+        guard let url = webPage.url else { return .failed }
 
-        // Return cached article if available
         if let cached = articleCache[url] {
-            return cached
+            return .article(cached)
+        }
+        if let running = extractions[url] {
+            return await running.value
         }
 
-        // If there's already a pending extraction for this URL, wait for it to complete
-        // rather than creating a duplicate that would leak the existing continuation.
-        if pendingExtractions[url] != nil {
-            // Poll until the pending extraction completes (slightly longer than the 10s timeout)
-            for _ in 0 ..< 35 {
-                try? await Task.sleep(for: .milliseconds(300))
-                if let cached = articleCache[url] {
-                    return cached
-                }
-                if pendingExtractions[url] == nil {
-                    break
-                }
-            }
-            return articleCache[url]
+        let extraction = Task { await runExtraction(in: webPage, url: url) }
+        extractions[url] = extraction
+        let result = await extraction.value
+        extractions[url] = nil
+
+        switch result {
+        case let .article(article):
+            articleCache[url] = article
+        case .tooLong:
+            availabilityCache[url] = false
+        case .failed:
+            break
         }
+        return result
+    }
 
-        // Generate extraction script on background thread before entering continuation
-        let script = await generateExtractionScript()
+    private func runExtraction(in webPage: WebPage, url: URL) async -> ReaderExtraction {
+        guard let script = await loadExtractionScript() else { return .failed }
 
-        return await withCheckedContinuation { continuation in
-            pendingExtractions[url] = continuation
-
-            // Inject and run extraction
-            Task { _ = try? await webPage.evaluateJavaScript(script, contentWorld: scriptWorld) }
-
-            // Timeout after 10 seconds
-            Task {
-                try? await Task.sleep(for: .seconds(10))
-                if let pending = self.pendingExtractions.removeValue(forKey: url) {
-                    pending.resume(returning: nil)
-                }
-            }
+        let evaluation: ScriptEvaluation<String> = await evaluate(script, in: webPage, timeout: Limits.extractionTimeout)
+        switch evaluation {
+        case let .finished(report?):
+            return await ReaderExtraction.decode(report, sourceURL: url)
+        case .finished(nil):
+            return .failed
+        case .timedOut:
+            Logger.info("Reader extraction timed out after \(Limits.extractionTimeout)", category: Logger.tabs)
+            return .tooLong
         }
     }
 
@@ -316,142 +330,142 @@ final class ReaderModeManager {
         articleCache.removeAll()
     }
 
+    // MARK: - Script Evaluation
+
+    /// A script's result, or the timeout that passed first.
+    private enum ScriptEvaluation<Value: Sendable>: Sendable {
+        case finished(Value?)
+        case timedOut
+    }
+
+    /// Evaluates `script` in the reader content world, giving up after `timeout`.
+    ///
+    /// A continuation rather than `withTimeout(seconds:operation:)`: a task group returns only
+    /// once every child has, and WebKit cannot cancel a script that is running, so the group
+    /// would wait out the whole evaluation. Past the timeout the script keeps running in the
+    /// web content process; only the wait ends.
+    private func evaluate<Value: Sendable>(
+        _ script: String,
+        in webPage: WebPage,
+        timeout: Duration,
+    ) async -> ScriptEvaluation<Value> {
+        await withCheckedContinuation { continuation in
+            let race = FirstFinisher(continuation)
+            race.timer = Task {
+                try? await Task.sleep(for: timeout)
+                race.finish(with: .timedOut)
+            }
+            Task {
+                let result = try? await webPage.evaluateJavaScript(script, contentWorld: scriptWorld)
+                race.finish(with: .finished(result as? Value))
+            }
+        }
+    }
+
     // MARK: - Script Generation
 
-    private func generateAvailabilityScript() async -> String {
-        guard let readabilityURL = Bundle.main.url(forResource: "Readability-readerable", withExtension: "js") else {
-            Logger.error("Failed to load Readability-readerable.js", category: Logger.tabs)
-            return ""
+    /// Reads a bundled script off the main actor.
+    @concurrent
+    private static func loadScript(named name: String) async -> String? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "js"),
+              let source = try? String(contentsOf: url, encoding: .utf8)
+        else {
+            Logger.error("Failed to load \(name).js", category: Logger.tabs)
+            return nil
         }
+        return source
+    }
 
-        // Load script file on background thread to avoid blocking main thread
-        let readabilitySource: String? = await Task.detached(priority: .userInitiated) {
-            try? String(contentsOf: readabilityURL, encoding: .utf8)
-        }.value
-
-        guard let readabilitySource else {
-            Logger.error("Failed to load Readability-readerable.js", category: Logger.tabs)
-            return ""
+    private func loadExtractionScript() async -> String? {
+        if let extractionScript {
+            return extractionScript
         }
+        guard let readabilitySource = await Self.loadScript(named: "Readability") else { return nil }
+        let script = Self.extractionScript(readabilitySource: readabilitySource)
+        extractionScript = script
+        return script
+    }
 
-        return """
+    /// Defines the availability function in the reader content world and reports the
+    /// result once the DOM is ready.
+    private static func availabilityScript(readerableSource: String) -> String {
+        """
         (() => {
             'use strict';
         
             // Readability-readerable.js
-            \(readabilitySource)
+            \(readerableSource)
         
-            // Check availability after page loads
-            function checkAvailability() {
+            function isReaderAvailable() {
                 try {
-                    const isReaderable = isProbablyReaderable(document, {
+                    if (document.getElementsByTagName('*').length > \(Limits.maxElements)) {
+                        return false;
+                    }
+                    return isProbablyReaderable(document, {
                         minContentLength: 140,
                         minScore: 20
-                    });
-                    window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                        type: 'availability',
-                        available: isReaderable,
-                        url: location.href
                     });
                 } catch (e) {
-                    window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                        type: 'availability',
-                        available: false,
-                        url: location.href,
-                        error: e.message
-                    });
+                    return false;
                 }
             }
         
-            // Run check when DOM is ready
+            // ReaderModeManager.checkAvailability calls this from the same content world.
+            window.\(availabilityFunctionName) = isReaderAvailable;
+        
+            function reportAvailability() {
+                window.webkit.messageHandlers.\(messageHandlerName).postMessage({
+                    type: 'availability',
+                    available: isReaderAvailable(),
+                    url: location.href
+                });
+            }
+        
             if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                setTimeout(checkAvailability, 100);
+                setTimeout(reportAvailability, 100);
             } else {
-                document.addEventListener('DOMContentLoaded', () => setTimeout(checkAvailability, 100));
+                document.addEventListener('DOMContentLoaded', () => setTimeout(reportAvailability, 100));
             }
         })();
         """
     }
 
-    private func generateAvailabilityCheckScript() -> String {
+    /// Runs Readability on a copy of the page and returns a JSON report for
+    /// ``ReaderExtraction/decode(_:sourceURL:)``.
+    private static func extractionScript(readabilitySource: String) -> String {
         """
-        (() => {
-            'use strict';
-            try {
-                if (typeof isProbablyReaderable === 'function') {
-                    const isReaderable = isProbablyReaderable(document, {
-                        minContentLength: 140,
-                        minScore: 20
-                    });
-                    window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                        type: 'availability',
-                        available: isReaderable,
-                        url: location.href
-                    });
-                }
-            } catch (e) {}
-        })();
-        """
-    }
-
-    private func generateExtractionScript() async -> String {
-        guard let readabilityURL = Bundle.main.url(forResource: "Readability", withExtension: "js") else {
-            Logger.error("Failed to load Readability.js", category: Logger.tabs)
-            return ""
-        }
-
-        // Load script file on background thread to avoid blocking main thread
-        let readabilitySource: String? = await Task.detached(priority: .userInitiated) {
-            try? String(contentsOf: readabilityURL, encoding: .utf8)
-        }.value
-
-        guard let readabilitySource else {
-            Logger.error("Failed to load Readability.js", category: Logger.tabs)
-            return ""
-        }
-
-        return """
         (() => {
             'use strict';
         
             // Readability.js
             \(readabilitySource)
         
+            const maxElements = \(Limits.maxElements);
             try {
-                // Clone document to avoid modifying the original
-                const documentClone = document.cloneNode(true);
-                const reader = new Readability(documentClone);
-                const article = reader.parse();
-        
-                if (article) {
-                    window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                        type: 'extracted',
-                        url: location.href,
-                        article: {
-                            title: article.title || '',
-                            byline: article.byline || null,
-                            content: article.content || '',
-                            textContent: article.textContent || '',
-                            excerpt: article.excerpt || null,
-                            siteName: article.siteName || null,
-                            publishedTime: article.publishedTime || null
-                        }
-                    });
-                } else {
-                    window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                        type: 'extracted',
-                        url: location.href,
-                        article: null,
-                        error: 'Extraction returned null'
-                    });
+                if (document.getElementsByTagName('*').length > maxElements) {
+                    return JSON.stringify({ status: 'tooLong' });
                 }
-            } catch (e) {
-                window.webkit.messageHandlers.\(Self.messageHandlerName).postMessage({
-                    type: 'extracted',
-                    url: location.href,
-                    article: null,
-                    error: e.message
+                const reader = new Readability(document.cloneNode(true), { maxElemsToParse: maxElements });
+                const article = reader.parse();
+                if (!article) {
+                    return JSON.stringify({ status: 'failed' });
+                }
+                return JSON.stringify({
+                    status: 'extracted',
+                    article: {
+                        title: article.title || '',
+                        byline: article.byline || null,
+                        content: article.content || '',
+                        textContent: article.textContent || '',
+                        excerpt: article.excerpt || null,
+                        siteName: article.siteName || null,
+                        publishedTime: article.publishedTime || null
+                    }
                 });
+            } catch (e) {
+                // Readability throws "Aborting parsing document; N elements found" past maxElemsToParse.
+                const tooLong = String(e && e.message).startsWith('Aborting parsing document');
+                return JSON.stringify({ status: tooLong ? 'tooLong' : 'failed' });
             }
         })();
         """
@@ -464,35 +478,28 @@ final class ReaderModeManager {
         case let .availability(urlString, available):
             guard let url = URL(string: urlString) else { return }
             availabilityCache[url] = available
-
-            // Resume any pending availability check
-            if let continuation = pendingAvailabilityChecks.removeValue(forKey: url) {
-                continuation.resume(returning: available)
-            }
-
-        case let .extracted(urlString, articleJSON):
-            guard let url = URL(string: urlString) else { return }
-
-            var article: ExtractedArticle?
-            if let json = articleJSON {
-                article = ExtractedArticle.from(json: json, sourceURL: url)
-            }
-
-            if let article {
-                articleCache[url] = article
-            }
-
-            // Resume any pending extraction
-            if let continuation = pendingExtractions.removeValue(forKey: url) {
-                continuation.resume(returning: article)
-            }
-
-        case let .error(urlString, message):
-            Logger.error(
-                "Reader Mode error for \(urlString): \(message)",
-                category: Logger.tabs,
-            )
         }
+    }
+}
+
+// MARK: - First Finisher
+
+/// Resumes a continuation with the first of several racing results and drops the rest.
+private final class FirstFinisher<Value: Sendable> {
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    /// The timeout task, cancelled once a result arrives.
+    var timer: Task<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) {
+        self.continuation = continuation
+    }
+
+    func finish(with value: Value) {
+        guard let continuation else { return }
+        self.continuation = nil
+        timer?.cancel()
+        continuation.resume(returning: value)
     }
 }
 
@@ -500,8 +507,6 @@ final class ReaderModeManager {
 
 enum ReaderModeEvent {
     case availability(url: String, available: Bool)
-    case extracted(url: String, article: [String: Any]?)
-    case error(url: String, message: String)
 }
 
 // MARK: - Message Parsing
@@ -509,17 +514,7 @@ enum ReaderModeEvent {
 extension ReaderModeEvent {
     /// Parses a message from the reader-mode scripts. Returns `nil` for malformed or unknown messages.
     init?(_ body: ScriptValue) {
-        guard let type = body["type"]?.stringValue, let url = body["url"]?.stringValue else { return nil }
-
-        switch type {
-        case "availability":
-            self = .availability(url: url, available: body["available"]?.boolValue ?? false)
-        case "extracted":
-            self = .extracted(url: url, article: body["article"]?.foundationValue as? [String: Any])
-        case "error":
-            self = .error(url: url, message: body["error"]?.stringValue ?? "Unknown error")
-        default:
-            return nil
-        }
+        guard body["type"]?.stringValue == "availability", let url = body["url"]?.stringValue else { return nil }
+        self = .availability(url: url, available: body["available"]?.boolValue ?? false)
     }
 }

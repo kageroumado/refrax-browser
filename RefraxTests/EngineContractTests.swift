@@ -620,15 +620,13 @@ struct EngineScriptTests {
 
     @Test("Reader mode messages parse from script values", arguments: [
         (ScriptValue.object(["type": .string("availability"), "url": .string("https://a.example"), "available": .bool(true)]), "availability:true"),
-        (.object(["type": .string("error"), "url": .string("https://a.example")]), "error:Unknown error"),
+        (.object(["type": .string("error"), "url": .string("https://a.example")]), "nil"),
         (.object(["type": .string("availability")]), "nil"),
         (.object(["type": .string("other"), "url": .string("https://a.example")]), "nil"),
     ])
     func readerMessages(body: ScriptValue, expected: String) {
         let description = switch ReaderModeEvent(body) {
         case let .availability(_, available): "availability:\(available)"
-        case let .error(_, message): "error:\(message)"
-        case .extracted: "extracted"
         case nil: "nil"
         }
         #expect(description == expected)
