@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single word in the Speed Reader stream with its associated pause multiplier.
-struct SpeedReaderWord: Sendable {
+nonisolated struct SpeedReaderWord: Sendable, Equatable {
     let text: String
 
     /// Pause multiplier applied after displaying this word.
@@ -29,7 +29,7 @@ struct SpeedReaderWord: Sendable {
 /// Handles tokenization, punctuation detection, and pause timing. The processor
 /// normalizes whitespace, preserves hyphenated words, and assigns appropriate
 /// pause multipliers based on punctuation and word length.
-enum SpeedReaderProcessor {
+nonisolated enum SpeedReaderProcessor {
     // MARK: - Pause Multipliers
 
     private enum Pause {
@@ -43,6 +43,15 @@ enum SpeedReaderProcessor {
     private static let longWordThreshold = 12
 
     // MARK: - Processing
+
+    /// Processes plain text into Speed Reader words on the concurrent pool.
+    ///
+    /// - Parameter content: Plain text content (typically from ExtractedArticle.textContent)
+    /// - Returns: Array of words with pause multipliers for RSVP display
+    @concurrent
+    static func words(in content: String) async -> [SpeedReaderWord] {
+        process(content)
+    }
 
     /// Processes plain text content into Speed Reader words.
     ///

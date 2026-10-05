@@ -15,24 +15,47 @@ final class SpeedReaderWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Initialization
 
-    /// Creates a Speed Reader panel for the given article.
+    /// Creates a Speed Reader panel for the given article, splitting its text
+    /// into words on the concurrent pool first.
     ///
     /// - Parameters:
     ///   - article: The extracted article to display.
     ///   - settings: Browser settings for WPM persistence (optional).
     ///   - startIndex: Optional starting word index for resume functionality.
     ///   - parentWindow: The window to attach to (stays on top of this window only).
-    init(
+    static func make(
         article: ExtractedArticle,
         settings: BrowserSettings? = nil,
         startIndex: Int = 0,
         parentWindow: NSWindow? = nil,
+    ) async -> SpeedReaderWindowController {
+        let words = await SpeedReaderProcessor.words(in: article.textContent)
+        return SpeedReaderWindowController(
+            article: article,
+            words: words,
+            settings: settings,
+            startIndex: startIndex,
+            parentWindow: parentWindow,
+        )
+    }
+
+    private init(
+        article: ExtractedArticle,
+        words: [SpeedReaderWord],
+        settings: BrowserSettings?,
+        startIndex: Int,
+        parentWindow: NSWindow?,
     ) {
         self.article = article
         self.settings = settings
         self.parentWindow = parentWindow
         let initialWPM = settings?.speedReaderWPM ?? 250
-        self.speedReaderState = SpeedReaderState(article: article, startIndex: startIndex, initialWPM: initialWPM)
+        self.speedReaderState = SpeedReaderState(
+            words: words,
+            article: article,
+            startIndex: startIndex,
+            initialWPM: initialWPM,
+        )
 
         let panel = SpeedReaderPanel(onClose: {})
         super.init(window: panel)
@@ -194,7 +217,9 @@ final class SpeedReaderPanel: NSPanel {
         vibrancyView = vibrancy
     }
 
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool {
+        true
+    }
 }
 
 // MARK: - Speed Reader State
@@ -273,8 +298,8 @@ final class SpeedReaderState {
 
     // MARK: - Initialization
 
-    init(article: ExtractedArticle, startIndex: Int = 0, initialWPM: Int = 250) {
-        self.words = SpeedReaderProcessor.process(article.textContent)
+    init(words: [SpeedReaderWord], article: ExtractedArticle, startIndex: Int = 0, initialWPM: Int = 250) {
+        self.words = words
         self.articleTitle = article.title
         self.articleURL = article.sourceURL
         self.currentIndex = min(startIndex, max(0, words.count - 1))

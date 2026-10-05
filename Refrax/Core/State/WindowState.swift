@@ -720,6 +720,10 @@ final class WindowState {
     @ObservationIgnored
     private var speedReaderWindowController: SpeedReaderWindowController?
 
+    /// The speed reader panel still splitting its words; a newer request cancels it.
+    @ObservationIgnored
+    private var speedReaderOpening: Task<Void, Never>?
+
     /// Shows the speed reader panel for the given selected text.
     ///
     /// Creates a minimal `ExtractedArticle` from the text and opens the speed reader panel
@@ -743,13 +747,18 @@ final class WindowState {
         )
 
         // Create and show the speed reader panel
-        let controller = SpeedReaderWindowController(
-            article: article,
-            settings: settings,
-            parentWindow: NSApp.keyWindow,
-        )
-        controller.showCentered()
-        speedReaderWindowController = controller
+        let parentWindow = NSApp.keyWindow
+        speedReaderOpening?.cancel()
+        speedReaderOpening = Task(name: "Open Speed Reader for selection") { [weak self] in
+            let controller = await SpeedReaderWindowController.make(
+                article: article,
+                settings: self?.settings,
+                parentWindow: parentWindow,
+            )
+            guard let self, !Task.isCancelled else { return }
+            controller.showCentered()
+            speedReaderWindowController = controller
+        }
     }
 
     // MARK: - Page Search Bar State

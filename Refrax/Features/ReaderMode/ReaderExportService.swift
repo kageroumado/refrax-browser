@@ -14,19 +14,33 @@ import UniformTypeIdentifiers
 /// ```swift
 /// let service = ReaderExportService(article: article)
 ///
-/// // Export to markdown file
-/// if let markdown = service.exportAsMarkdown() {
-///     try markdown.write(to: url, atomically: true, encoding: .utf8)
-/// }
+/// // Convert off the main actor
+/// let markdown = await service.markdown()
 ///
 /// // Share to Notes
 /// let items = service.createShareItems()
 /// NSSharingServicePicker(items: items).show(...)
 /// ```
-struct ReaderExportService {
+nonisolated struct ReaderExportService: Sendable {
     let article: ExtractedArticle
 
     // MARK: - Markdown Export
+
+    /// The article as Markdown, converted on the concurrent pool.
+    ///
+    /// Conversion runs a regular expression pass per tag over the whole
+    /// article, which takes long enough on a large page to stall the UI.
+    @concurrent
+    func markdown() async -> String {
+        exportAsMarkdown()
+    }
+
+    /// Writes the article as Markdown to `url`, converting and writing on the
+    /// concurrent pool.
+    @concurrent
+    func writeMarkdown(to url: URL) async throws {
+        try exportAsMarkdown().write(to: url, atomically: true, encoding: .utf8)
+    }
 
     /// Exports the article as a Markdown string.
     ///
@@ -34,7 +48,7 @@ struct ReaderExportService {
     /// - Title as H1
     /// - Source URL, author, and date in a blockquote header
     /// - Full article content converted from HTML to Markdown
-    func exportAsMarkdown() -> String {
+    private func exportAsMarkdown() -> String {
         var md = "# \(article.title)\n\n"
 
         // Build metadata block
@@ -84,6 +98,10 @@ struct ReaderExportService {
     /// - Attributed string (rich text for Notes)
     /// - Plain text fallback
     /// - Source URL
+    ///
+    /// Runs on the main actor: the rich text comes from `NSAttributedString`'s
+    /// HTML importer, which WebKit requires on the main thread.
+    @MainActor
     func createShareItems() -> [Any] {
         var items: [Any] = []
 
@@ -159,9 +177,8 @@ struct ReaderExportService {
 
         guard response == .OK, let url = panel.url else { return }
 
-        let markdown = exportAsMarkdown()
         do {
-            try markdown.write(to: url, atomically: true, encoding: .utf8)
+            try await writeMarkdown(to: url)
         } catch {
             Logger.error("Failed to save markdown: \(error)", category: Logger.tabs)
         }
@@ -270,27 +287,11 @@ struct ReaderExportService {
             return string
         }
 
-        var result = string
-        let nsString = string as NSString
-        let matches = regex.matches(in: string, range: NSRange(location: 0, length: nsString.length))
-
-        // Process matches in reverse order to preserve indices
-        for match in matches.reversed() {
-            guard match.numberOfRanges >= 2 else { continue }
-            let fullRange = match.range
+        return string.replacingMatches(of: regex) { match, source in
             let contentRange = match.range(at: 1)
-
-            guard fullRange.location != NSNotFound, contentRange.location != NSNotFound else { continue }
-
-            let content = nsString.substring(with: contentRange)
-            let replacementText = replacement(content)
-
-            let startIndex = result.index(result.startIndex, offsetBy: fullRange.location)
-            let endIndex = result.index(startIndex, offsetBy: fullRange.length)
-            result.replaceSubrange(startIndex ..< endIndex, with: replacementText)
+            guard contentRange.location != NSNotFound else { return nil }
+            return replacement(source.substring(with: contentRange))
         }
-
-        return result
     }
 
     private func convertLists(_ html: String) -> String {
@@ -338,8 +339,9 @@ struct ReaderExportService {
     private func decodeHTMLEntities(_ string: String) -> String {
         var result = string
 
-        let entities: [String: String] = [
-            "&amp;": "&",
+        // `&amp;` is decoded last, so an escaped entity such as `&amp;lt;`
+        // decodes once, to `&lt;`.
+        let entities: KeyValuePairs<String, String> = [
             "&lt;": "<",
             "&gt;": ">",
             "&quot;": "\"",
@@ -365,24 +367,17 @@ struct ReaderExportService {
         // Numeric entities
         let numericPattern = "&#([0-9]+);"
         if let regex = try? NSRegularExpression(pattern: numericPattern) {
-            let nsString = result as NSString
-            let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsString.length))
-
-            for match in matches.reversed() {
+            result = result.replacingMatches(of: regex) { match, source in
                 let codeRange = match.range(at: 1)
-                guard codeRange.location != NSNotFound else { continue }
-
-                let codeString = nsString.substring(with: codeRange)
-                if let code = Int(codeString), let scalar = Unicode.Scalar(code) {
-                    let char = String(Character(scalar))
-                    let startIndex = result.index(result.startIndex, offsetBy: match.range.location)
-                    let endIndex = result.index(startIndex, offsetBy: match.range.length)
-                    result.replaceSubrange(startIndex ..< endIndex, with: char)
-                }
+                guard codeRange.location != NSNotFound,
+                      let code = Int(source.substring(with: codeRange)),
+                      let scalar = Unicode.Scalar(code)
+                else { return nil }
+                return String(Character(scalar))
             }
         }
 
-        return result
+        return result.replacingOccurrences(of: "&amp;", with: "&")
     }
 
     // MARK: - HTML to Attributed String
@@ -419,25 +414,34 @@ struct ReaderExportService {
 
 // MARK: - String Extension for Block Replacement
 
-private extension String {
+private nonisolated extension String {
     func replacingOccurrences(of pattern: String, with replacement: (String) -> String) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
             return self
         }
-
-        var result = self
-        let nsString = self as NSString
-        let matches = regex.matches(in: self, range: NSRange(location: 0, length: nsString.length))
-
-        for match in matches.reversed() {
-            let matchString = nsString.substring(with: match.range)
-            let replacementText = replacement(matchString)
-
-            let startIndex = result.index(result.startIndex, offsetBy: match.range.location)
-            let endIndex = result.index(startIndex, offsetBy: match.range.length)
-            result.replaceSubrange(startIndex ..< endIndex, with: replacementText)
+        return replacingMatches(of: regex) { match, source in
+            replacement(source.substring(with: match.range))
         }
+    }
 
-        return result
+    /// Replaces each match of `regex` with what `replacement` returns for it,
+    /// leaving a match unchanged when it returns `nil`.
+    ///
+    /// Works on `NSString` throughout, so the UTF-16 ranges the regular
+    /// expression reports index the text they came from. Matches are replaced
+    /// last to first, which keeps the earlier ranges valid.
+    func replacingMatches(
+        of regex: NSRegularExpression,
+        with replacement: (NSTextCheckingResult, NSString) -> String?,
+    ) -> String {
+        let source = self as NSString
+        let result = NSMutableString(string: source)
+        let matches = regex.matches(in: self, range: NSRange(location: 0, length: source.length))
+        for match in matches.reversed() where match.range.location != NSNotFound {
+            if let text = replacement(match, source) {
+                result.replaceCharacters(in: match.range, with: text)
+            }
+        }
+        return result as String
     }
 }

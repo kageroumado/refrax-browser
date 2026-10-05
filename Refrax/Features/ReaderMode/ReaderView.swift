@@ -60,6 +60,7 @@ struct ReaderView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsPreferences = false
     @State private var speedReaderWindow: SpeedReaderWindowController?
+    @State private var speedReaderOpening: Task<Void, Never>?
     @State private var scrollProgress: Double = 0
 
     // MARK: - Layout Constants
@@ -264,10 +265,12 @@ struct ReaderView: View {
 
     private func copyMarkdownToClipboard() {
         let service = ReaderExportService(article: article)
-        let markdown = service.exportAsMarkdown()
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(markdown, forType: .string)
-        windowState.showToast("Copied to clipboard")
+        Task(name: "Copy article as Markdown") {
+            let markdown = await service.markdown()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(markdown, forType: .string)
+            windowState.showToast("Copied to clipboard")
+        }
     }
 
     // MARK: - Speed Reader
@@ -278,16 +281,21 @@ struct ReaderView: View {
 
         // Get resume position from settings (if any)
         let startIndex = settings.speedReaderResumePosition(for: article.sourceURL) ?? 0
+        let parentWindow = NSApp.keyWindow
 
-        // Create and show new Speed Reader panel attached to current window
-        let controller = SpeedReaderWindowController(
-            article: article,
-            settings: settings,
-            startIndex: startIndex,
-            parentWindow: NSApp.keyWindow,
-        )
-        controller.showCentered()
-        speedReaderWindow = controller
+        // A newer request replaces one still splitting its words
+        speedReaderOpening?.cancel()
+        speedReaderOpening = Task(name: "Open Speed Reader") {
+            let controller = await SpeedReaderWindowController.make(
+                article: article,
+                settings: settings,
+                startIndex: startIndex,
+                parentWindow: parentWindow,
+            )
+            guard !Task.isCancelled else { return }
+            controller.showCentered()
+            speedReaderWindow = controller
+        }
     }
 
     // MARK: - Content
