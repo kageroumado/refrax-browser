@@ -297,8 +297,11 @@ struct PrivacySettingsView: View {
             // MARK: - Telemetry
 
             Section {
-                TelemetryTierPicker(tier: $settings.telemetryTier)
-                    .highlightable(id: "privacy.telemetry", highlightedItemId: highlightedItemId)
+                VStack(alignment: .leading, spacing: 8) {
+                    TelemetryTierPicker(tier: $settings.telemetryTier)
+                    TelemetryStatusLine(tier: settings.telemetryTier)
+                }
+                .highlightable(id: "privacy.telemetry", highlightedItemId: highlightedItemId)
 
                 TelemetryDisclosureView(tier: settings.telemetryTier)
             } header: {

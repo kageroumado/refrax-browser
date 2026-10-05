@@ -4,7 +4,6 @@ import Foundation
 nonisolated enum HTTPClientError: Error, LocalizedError {
     case invalidResponse
     case httpError(statusCode: Int, body: Data?)
-    case encodingFailed(any Error)
     case decodingFailed(any Error)
 
     var errorDescription: String? {
@@ -13,8 +12,6 @@ nonisolated enum HTTPClientError: Error, LocalizedError {
             "Server returned an invalid response"
         case let .httpError(statusCode, _):
             "HTTP \(statusCode)"
-        case let .encodingFailed(error):
-            "Failed to encode request body: \(error.localizedDescription)"
         case let .decodingFailed(error):
             "Failed to decode response: \(error.localizedDescription)"
         }
@@ -42,12 +39,6 @@ nonisolated enum HTTPClient: Sendable {
         return decoder
     }()
 
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }()
-
     /// Performs a GET request and decodes the JSON response.
     ///
     /// - Parameters:
@@ -67,29 +58,6 @@ nonisolated enum HTTPClient: Sendable {
         } catch {
             throw HTTPClientError.decodingFailed(error)
         }
-    }
-
-    /// Performs a POST request with a JSON-encoded body.
-    ///
-    /// - Parameters:
-    ///   - url: The endpoint URL.
-    ///   - body: The request body to encode as JSON.
-    /// - Returns: The raw response data.
-    @discardableResult
-    static func post(_ url: URL, body: some Encodable) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            request.httpBody = try encoder.encode(body)
-        } catch {
-            throw HTTPClientError.encodingFailed(error)
-        }
-
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response, data: data)
-        return data
     }
 
     /// Performs a multipart/form-data upload.

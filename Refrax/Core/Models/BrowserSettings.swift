@@ -675,11 +675,6 @@ final class BrowserSettings {
         TelemetryTier.needsPrompt(hasCompletedOnboarding: hasCompletedOnboarding, chosenTier: telemetryTierRaw)
     }
 
-    /// Timestamp of the last heartbeat ping sent to the server.
-    ///
-    /// Used to throttle heartbeats to once per 24 hours.
-    var lastHeartbeatDate: Date?
-
     // MARK: - Feature Flags
 
     /// JSON-encoded dictionary of user feature flag overrides.
@@ -793,7 +788,6 @@ final class BrowserSettings {
         self.checkForUpdatesAutomatically = true
         self.hasCompletedOnboarding = false
         self.hasRunOnboardingMigration = false
-        self.lastHeartbeatDate = nil
         self.featureFlagOverridesJSON = "{}"
         self.iCloudSyncEnabled = false
     }
@@ -1193,7 +1187,6 @@ final class BrowserSettings {
         feedbackEmail = ""
         verboseLoggingEnabled = false
         checkForUpdatesAutomatically = true
-        lastHeartbeatDate = nil
         featureFlagOverridesJSON = "{}"
         iCloudSyncEnabled = false
 

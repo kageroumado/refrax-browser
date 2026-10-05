@@ -42,19 +42,6 @@ nonisolated extension RendererTerminationReason {
         }
     }
 
-    /// Stable slug for the crash telemetry endpoint — the server aggregates by
-    /// exact string, so these must not change between releases.
-    var telemetryReason: String {
-        switch self {
-        case .exceededMemoryLimit: "oom"
-        case .exceededCPULimit: "cpu_limit"
-        case .requestedByBrowser: "requested_by_client"
-        case .crashed: "crash"
-        case .sharedProcessCrashed: "shared_process_crash_limit"
-        case .unknown: "unknown"
-        }
-    }
-
     /// Completes "<page> … and was reloaded" in the recovery toast.
     var userDescription: String {
         switch self {

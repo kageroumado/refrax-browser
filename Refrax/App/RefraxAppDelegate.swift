@@ -96,6 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Installed rendering engines; system WebKit plus any engine bundles.
     let engineRegistry = EngineRegistry(applicationSupport: Directories.appStorage)
 
+    /// Anonymous usage counting and crash reports, at the tier the user chose.
+    lazy var telemetry = TelemetryReporter(registry: engineRegistry)
+
     // Other managers
     let windowManager: WindowManager
     let menuBarManager: MenuBarManager
@@ -179,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             customSearchEngineManager: customSearchEngineManager,
             passwordsManager: passwordsManager,
             engineRegistry: engineRegistry,
+            telemetry: telemetry,
         ),
     )
 
@@ -244,6 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// How long after deferred maintenance starts the telemetry prompt appears.
     private static let telemetryPromptDelay: TimeInterval = 2
+
+    /// The most `.ips` logs one crash report carries; Digoxin takes four files,
+    /// and the exception log takes the last.
+    private static let crashReportLogLimit = 3
 
     /// URLs and files from other applications, held until spaces and windows exist.
     private var pendingExternalURLs = PendingExternalURLs()
@@ -594,7 +602,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         CrashMonitor.markLaunched()
-        LaunchHistory.recordLaunch()
         logStorageMode()
         setupMenuBar()
         registerURLHandler()
@@ -607,6 +614,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         migrateCredentialsToSharedGroup()
 
         engineRegistry.verifyInstalledEngines()
+        telemetry.start(settings: browserState.settings)
 
         // Clean up any stale aria2 daemon from a previous crash
         Task(priority: .utility) {
@@ -645,8 +653,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
         }
-
-        UsageLogStore.recordUse(tier: browserState.settings.telemetryTier)
 
         // UI Test mode: Skip normal initialization and create test data
         if UITestSetup.isUITestMode {
@@ -826,9 +832,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await PersistentLogWriter.shared.pruneOldLogs()
         }
         // A day spent in Refrax without switching away still counts as a day of use.
-        scheduledTasksManager.registerTask { @MainActor [settings] in
+        let telemetry = telemetry
+        scheduledTasksManager.registerTask { @MainActor in
             if NSApp.isActive {
-                UsageLogStore.recordUse(tier: settings.telemetryTier)
+                telemetry.recordUse()
             }
         }
 
@@ -848,27 +855,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DatabaseBackupService.pruneOldBackups()
         }
 
-        // Crash detection — auto-submit crash report if previous session crashed
-        // and the user shares crash reports
-        if settings.telemetryTier.sendsCrashReports, CrashMonitor.didCrashPreviously() {
-            let crashReports = CrashMonitor.collectCrashReports()
-
-            if !crashReports.isEmpty {
-                Logger.warning(
-                    "Previous session terminated abnormally — sending crash report (\(crashReports.count) report(s))",
-                    category: Logger.system,
-                )
-                let attachments = crashReports + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
-                let context = CrashContext.collect(crashReports: crashReports, registry: engineRegistry)
-                Task.detached(priority: .utility) { [appUpdateManager] in
-                    await FeedbackSubmissionService.submitAutomaticCrashReport(crashReports: attachments, context: context)
-                    CrashMonitor.markReportsSent(crashReports)
-                    await MainActor.run {
-                        appUpdateManager.crashReportSent = true
-                    }
-                }
-            }
-        }
+        submitCrashReportIfNeeded()
 
         scheduledTasksManager.start()
 
@@ -925,14 +912,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refreshCLIHelperInstall()
         }
         showTelemetryPromptIfNeeded()
-        TelemetryService.sendHeartbeatIfNeeded(settings: settings)
 
         observeControlAccessMode()
     }
 
     /// Counts today as a day Refrax was used.
     func applicationDidBecomeActive(_: Notification) {
-        UsageLogStore.recordUse(tier: settings.telemetryTier)
+        telemetry.recordUse()
+    }
+
+    /// Hands the previous session's crash logs to telemetry when that session
+    /// ended abnormally and the user shares crash reports.
+    ///
+    /// Logs are marked sent once queued; the client keeps them on disk and
+    /// retries until the server takes them.
+    private func submitCrashReportIfNeeded() {
+        guard settings.telemetryTier.sendsCrashReports, CrashMonitor.didCrashPreviously() else { return }
+        let crashReports = CrashMonitor.collectCrashReports()
+        guard !crashReports.isEmpty else { return }
+        Logger.warning(
+            "Previous session terminated abnormally — sending crash report (\(crashReports.count) report(s))",
+            category: Logger.system,
+        )
+        let files = crashReports.prefix(Self.crashReportLogLimit)
+            + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
+        Task(name: "Crash report") { [telemetry, appUpdateManager] in
+            await telemetry.submitCrashReport(files: Array(files))
+            CrashMonitor.markReportsSent(crashReports)
+            appUpdateManager.crashReportSent = true
+        }
     }
 
     /// Returns `false` to keep the app running when all windows close.

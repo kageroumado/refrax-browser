@@ -204,7 +204,6 @@ extension BrowserSettings: Syncable {
 
         record["hasCompletedOnboarding"] = hasCompletedOnboarding as NSNumber
         record["hasRunOnboardingMigration"] = hasRunOnboardingMigration as NSNumber
-        record["lastHeartbeatDate"] = lastHeartbeatDate as NSDate?
 
         // PrivacyProtectionSettings is synced independently — not followed here.
     }
@@ -427,7 +426,6 @@ extension BrowserSettings: Syncable {
 
         settings.hasCompletedOnboarding = (record["hasCompletedOnboarding"] as? Bool) ?? false
         settings.hasRunOnboardingMigration = (record["hasRunOnboardingMigration"] as? Bool) ?? false
-        settings.lastHeartbeatDate = record["lastHeartbeatDate"] as? Date
 
         return settings
     }

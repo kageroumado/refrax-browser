@@ -1,3 +1,4 @@
+import Digoxin
 import SwiftUI
 
 /// The three telemetry tiers as radio rows, each with its one-sentence summary.
@@ -82,5 +83,66 @@ struct TelemetryDisclosureView: View {
                 .accessibilityElement(children: .combine)
             }
         }
+    }
+}
+
+/// One quiet line under the tier picker saying where telemetry stands, such
+/// as "Counting · verified" or "Waiting to send".
+///
+/// Reads ``TelemetryReporter/status`` and refreshes it every few seconds
+/// while visible, since sends finish in the background.
+struct TelemetryStatusLine: View {
+    let tier: TelemetryTier
+
+    @Environment(TelemetryReporter.self) private var telemetry
+
+    private static let refreshInterval: Duration = .seconds(2)
+
+    var body: some View {
+        Group {
+            if let text = Self.text(for: telemetry.status, tier: tier) {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(Self.detail(for: telemetry.status) ?? "")
+            }
+        }
+        .task(id: tier) {
+            while !Task.isCancelled {
+                await telemetry.refreshStatus()
+                try? await Task.sleep(for: Self.refreshInterval)
+            }
+        }
+    }
+
+    /// The line for `status` at `tier`; `nil` when telemetry is off and nothing is pending.
+    static func text(for status: DigoxinStatus, tier: TelemetryTier) -> String? {
+        switch status {
+        case .off:
+            nil
+        case .deletionPending:
+            "Deleting your data\u{2026}"
+        case .secureEnclaveUnavailable:
+            "Not sent: this Mac has no Secure Enclave"
+        case .waiting:
+            "Waiting to send"
+        case let .registered(trust):
+            trust == "unverified" ? tierName(tier) : "\(tierName(tier)) \u{00B7} verified"
+        case .failing:
+            "Not sent yet; Refrax will retry"
+        }
+    }
+
+    /// The reason behind a failing send, for the line's tooltip.
+    static func detail(for status: DigoxinStatus) -> String? {
+        if case let .failing(reason) = status {
+            reason
+        } else {
+            nil
+        }
+    }
+
+    private static func tierName(_ tier: TelemetryTier) -> String {
+        tier == .crashReports ? "Counting and crash reports" : "Counting"
     }
 }

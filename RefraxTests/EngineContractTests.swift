@@ -354,18 +354,6 @@ struct EngineBundleTests {
 
 @Suite("Renderer termination policy", .tags(.engines))
 struct RendererTerminationPolicyTests {
-    @Test("Telemetry slugs never change")
-    func telemetrySlugs() {
-        let slugs = Dictionary(uniqueKeysWithValues: [
-            RendererTerminationReason.exceededMemoryLimit, .exceededCPULimit, .requestedByBrowser, .crashed,
-            .sharedProcessCrashed, .unknown,
-        ].map { ($0, $0.telemetryReason) })
-        #expect(slugs == [
-            .exceededMemoryLimit: "oom", .exceededCPULimit: "cpu_limit", .requestedByBrowser: "requested_by_client",
-            .crashed: "crash", .sharedProcessCrashed: "shared_process_crash_limit", .unknown: "unknown",
-        ])
-    }
-
     @Test("Intentional terminations stay unloaded; crashes recover and count")
     func recoverability() {
         #expect(!RendererTerminationReason.requestedByBrowser.isRecoverable)

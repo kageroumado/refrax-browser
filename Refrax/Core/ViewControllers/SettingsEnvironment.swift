@@ -25,6 +25,7 @@ struct SettingsEnvironment {
     let customSearchEngineManager: CustomSearchEngineManager
     let passwordsManager: PasswordsManager
     let engineRegistry: EngineRegistry
+    let telemetry: TelemetryReporter
 }
 
 /// A view modifier that injects all Settings environment dependencies.
@@ -51,6 +52,7 @@ struct SettingsEnvironmentModifier: ViewModifier {
             .environment(environment.customSearchEngineManager)
             .environment(environment.passwordsManager)
             .environment(environment.engineRegistry)
+            .environment(environment.telemetry)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)
     }

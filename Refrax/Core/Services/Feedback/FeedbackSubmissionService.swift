@@ -82,84 +82,15 @@ nonisolated enum FeedbackSubmissionService: Sendable {
         }
     }
 
-    /// Metadata of an automatic crash report: fixed form fields, plus the
-    /// Mac's basics and the ``CrashContext`` flattened into `systemInfo`.
-    private struct AutomaticCrashReport: Encodable {
-        struct Info: Encodable {
-            let refraxVersion: String
-            let refraxBuild: String
-            let macOSVersion: String
-            let hardwareModel: String
-            let memoryGB: Int
-            let locale: String
-            let context: CrashContext
-
-            private enum CodingKeys: String, CodingKey {
-                case refraxVersion, refraxBuild, macOSVersion, hardwareModel, memoryGB, locale
-            }
-
-            func encode(to encoder: any Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(refraxVersion, forKey: .refraxVersion)
-                try container.encode(refraxBuild, forKey: .refraxBuild)
-                try container.encode(macOSVersion, forKey: .macOSVersion)
-                try container.encode(hardwareModel, forKey: .hardwareModel)
-                try container.encode(memoryGB, forKey: .memoryGB)
-                try container.encode(locale, forKey: .locale)
-                try context.encode(to: encoder)
-            }
-        }
-
-        let name = "Automatic Report"
-        let email = ""
-        let subject = "Automatic Crash Report"
-        let body = "This crash report was sent automatically on relaunch."
-        let category = "crash"
-        let systemInfo: Info
-    }
-
-    /// Submits crash reports automatically on relaunch.
-    ///
-    /// Uses the same feedback endpoint with fixed metadata fields.
-    /// Fire-and-forget — network failures are silently ignored
-    /// (same pattern as telemetry heartbeats).
-    static func submitAutomaticCrashReport(crashReports: [URL], context: CrashContext) async {
-        let processInfo = ProcessInfo.processInfo
-        let osVersion = processInfo.operatingSystemVersion
-        let report = AutomaticCrashReport(systemInfo: AutomaticCrashReport.Info(
-            refraxVersion: Constants.App.version,
-            refraxBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown",
-            macOSVersion: "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)",
-            hardwareModel: SystemInfo.hardwareModel(),
-            memoryGB: Int(processInfo.physicalMemory / (1_024 * 1_024 * 1_024)),
-            locale: Locale.current.identifier,
-            context: context,
-        ))
-
-        do {
-            try await submitRemotely(metadata: report, attachmentURLs: crashReports)
-            Logger.info("Automatic crash report submitted with \(crashReports.count) report(s)", category: Logger.system)
-        } catch {
-            Logger.warning(
-                "Automatic crash report submission failed: \(error.localizedDescription)",
-                category: Logger.network
-            )
-        }
-    }
-
     // MARK: - Remote Submission
 
     private static func submitRemotely(_ payload: FeedbackPayload) async throws {
-        try await submitRemotely(metadata: payload, attachmentURLs: payload.attachmentURLs)
-    }
-
-    private static func submitRemotely(metadata: some Encodable, attachmentURLs: [URL]) async throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
 
         var parts: [MultipartPart] = []
 
-        let metadataJSON = try encoder.encode(metadata)
+        let metadataJSON = try encoder.encode(payload)
         parts.append(MultipartPart(
             name: "metadata",
             filename: "metadata.json",
@@ -167,7 +98,7 @@ nonisolated enum FeedbackSubmissionService: Sendable {
             data: metadataJSON,
         ))
 
-        for url in attachmentURLs {
+        for url in payload.attachmentURLs {
             guard let data = try? Data(contentsOf: url) else { continue }
             parts.append(MultipartPart(
                 name: "attachment",

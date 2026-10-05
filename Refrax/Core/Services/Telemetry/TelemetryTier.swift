@@ -15,7 +15,7 @@ nonisolated enum TelemetryTier: String, CaseIterable, Codable, Sendable {
     /// The tier preselected in onboarding.
     static let recommended: TelemetryTier = .crashReports
 
-    /// Whether the daily check-in and web-process crash pings are sent.
+    /// Whether the daily check-in is sent.
     var sendsCounting: Bool {
         self != .off
     }
