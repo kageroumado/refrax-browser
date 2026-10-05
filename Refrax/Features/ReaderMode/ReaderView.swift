@@ -17,48 +17,30 @@ private struct ReaderToolbarButtonStyle: ButtonStyle {
     }
 }
 
-/// ViewModifier that applies glass effect styling with hover background and optional union grouping.
-private struct ReaderToolbarGlassModifier: ViewModifier {
-    let tintColor: Color
-    let tintOpacity: Double
-    let unionID: String?
-    let namespace: Namespace.ID?
+/// Hover highlight for a reader toolbar button, clipped to a circle.
+private struct ReaderToolbarHoverModifier: ViewModifier {
+    let inset: CGFloat
 
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
-        Group {
-            if let unionID, let namespace {
-                content
-                    .background(isHovered ? Color.secondary.opacity(0.1) : Color.clear)
-                    .onHover { isHovered = $0 }
-                    .clipShape(Circle().inset(by: 4))
-                    .glassEffect(.regular.tint(tintColor.opacity(tintOpacity)))
-                    .glassEffectUnion(id: unionID, namespace: namespace)
-            } else {
-                content
-                    .background(isHovered ? Color.secondary.opacity(0.1) : Color.clear)
-                    .clipShape(Circle())
-                    .onHover { isHovered = $0 }
-                    .glassEffect(.regular.tint(tintColor.opacity(tintOpacity)))
-            }
-        }
+        content
+            .background(isHovered ? Color.secondary.opacity(0.1) : Color.clear)
+            .onHover { isHovered = $0 }
+            .clipShape(Circle().inset(by: inset))
     }
 }
 
 private extension View {
-    func readerToolbarGlass(
-        tintColor: Color,
-        tintOpacity: Double,
-        unionID: String? = nil,
-        namespace: Namespace.ID? = nil,
-    ) -> some View {
-        modifier(ReaderToolbarGlassModifier(
-            tintColor: tintColor,
-            tintOpacity: tintOpacity,
-            unionID: unionID,
-            namespace: namespace,
-        ))
+    /// A standalone reader toolbar button: hover highlight inside its own glass circle.
+    func readerToolbarGlass(tintColor: Color, tintOpacity: Double) -> some View {
+        modifier(ReaderToolbarHoverModifier(inset: 0))
+            .glassEffect(.regular.tint(tintColor.opacity(tintOpacity)))
+    }
+
+    /// A button inside a shared glass capsule; the capsule carries the glass.
+    func readerToolbarGroupedButton() -> some View {
+        modifier(ReaderToolbarHoverModifier(inset: 4))
     }
 }
 
@@ -79,8 +61,6 @@ struct ReaderView: View {
     @State private var showsPreferences = false
     @State private var speedReaderWindow: SpeedReaderWindowController?
     @State private var scrollProgress: Double = 0
-
-    @Namespace private var glassNamespace
 
     // MARK: - Layout Constants
 
@@ -155,11 +135,7 @@ struct ReaderView: View {
                     
                     preferencesButton
                     
-                    HStack(spacing: Layout.buttonSpacing) {
-                        shareButton
-                        copyMarkdownButton
-                        saveButton
-                    }
+                    exportButtons
                 }
             }
         }
@@ -205,18 +181,28 @@ struct ReaderView: View {
         readerManager.deactivateReader(for: tabID)
     }
 
+    /// Share, copy, and save in one glass capsule.
+    ///
+    /// One `glassEffect` on the stack, never `glassEffectUnion` across the buttons: unioned
+    /// glass around several buttons inside a `GlassEffectContainer` sends SwiftUI's key view
+    /// loop rebuild (`FocusBridge.updateDefaultKeyViewLoop`) into a walk that pins the main
+    /// thread at 100% with no recovery the moment Reader opens (macOS 27).
+    private var exportButtons: some View {
+        HStack(spacing: Layout.buttonSpacing) {
+            shareButton
+            copyMarkdownButton
+            saveButton
+        }
+        .glassEffect(.regular.tint(tintColor.opacity(tintOpacity)))
+    }
+
     private var shareButton: some View {
         Button(action: showShareSheet) {
             Image(systemName: "square.and.arrow.up")
         }
         .buttonStyle(ReaderToolbarButtonStyle())
         .help("Share Article")
-        .readerToolbarGlass(
-            tintColor: tintColor,
-            tintOpacity: tintOpacity,
-            unionID: "export",
-            namespace: glassNamespace,
-        )
+        .readerToolbarGroupedButton()
     }
 
     private var copyMarkdownButton: some View {
@@ -225,12 +211,7 @@ struct ReaderView: View {
         }
         .buttonStyle(ReaderToolbarButtonStyle())
         .help("Copy as Markdown")
-        .readerToolbarGlass(
-            tintColor: tintColor,
-            tintOpacity: tintOpacity,
-            unionID: "export",
-            namespace: glassNamespace,
-        )
+        .readerToolbarGroupedButton()
     }
 
     private var saveButton: some View {
@@ -239,12 +220,7 @@ struct ReaderView: View {
         }
         .buttonStyle(ReaderToolbarButtonStyle())
         .help("Save as Markdown")
-        .readerToolbarGlass(
-            tintColor: tintColor,
-            tintOpacity: tintOpacity,
-            unionID: "export",
-            namespace: glassNamespace,
-        )
+        .readerToolbarGroupedButton()
     }
 
     private var speedReadButton: some View {
