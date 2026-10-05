@@ -1,6 +1,15 @@
 {
-  "originHash" : "4298f0f3c6acdc7c78923b2c5614f46c9d98efb8bf41e6ea622b8e58255857b3",
+  "originHash" : "62de61627d7e12b711baa832ee9994025d1de20048658faef46bd30b75cd112a",
   "pins" : [
+    {
+      "identity" : "digoxin",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kageroumado/digoxin",
+      "state" : {
+        "revision" : "94fbce24d0259b36b3d344dea23d5969c76b44e2",
+        "version" : "0.1.0"
+      }
+    },
     {
       "identity" : "swift-algorithms",
       "kind" : "remoteSourceControl",

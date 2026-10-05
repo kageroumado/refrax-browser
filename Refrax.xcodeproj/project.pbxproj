@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BD160A32F70000000584C0B /* Digoxin in Frameworks */ = {isa = PBXBuildFile; productRef = 0BD160A22F70000000584C0B /* Digoxin */; };
 		0B2DACC02EDAE4C700584C0B /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 0B2DACBF2EDAE4C700584C0B /* Algorithms */; };
 		0B2DACFC2EE0EA5300584C0B /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 0B2DACFB2EE0EA5300584C0B /* Collections */; };
 		0B46D1132EAC14400018F45B /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B46D1122EAC14400018F45B /* WebKit.framework */; };
@@ -174,6 +175,7 @@
 				0B2DACC02EDAE4C700584C0B /* Algorithms in Frameworks */,
 				0B46D1172EAC144D0018F45B /* Security.framework in Frameworks */,
 				0B2DACFC2EE0EA5300584C0B /* Collections in Frameworks */,
+				0BD160A32F70000000584C0B /* Digoxin in Frameworks */,
 				0BFAA0012F44000000584C0B /* RefraxProtocol in Frameworks */,
 				0B46D1152EAC14470018F45B /* UniformTypeIdentifiers.framework in Frameworks */,
 				0B46D1132EAC14400018F45B /* WebKit.framework in Frameworks */,
@@ -276,6 +278,7 @@
 				0B2DACBF2EDAE4C700584C0B /* Algorithms */,
 				0B2DACFB2EE0EA5300584C0B /* Collections */,
 				0BFAA0032F44000000584C0B /* RefraxProtocol */,
+				0BD160A22F70000000584C0B /* Digoxin */,
 			);
 			productName = Refrax;
 			productReference = 0B46D0FC2EAC10FF0018F45B /* Refrax.app */;
@@ -402,6 +405,7 @@
 				0B2DACFA2EE0EA5300584C0B /* XCRemoteSwiftPackageReference "swift-collections" */,
 				0BFAA0022F44000000584C0B /* XCLocalSwiftPackageReference "Packages/refrax-protocol" */,
 				0BA40BDF2F5B96E4006575D1 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+				0BD160A12F70000000584C0B /* XCRemoteSwiftPackageReference "digoxin" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 0B46D0FD2EAC10FF0018F45B /* Products */;
@@ -1033,6 +1037,14 @@
 				minimumVersion = 1.7.0;
 			};
 		};
+		0BD160A12F70000000584C0B /* XCRemoteSwiftPackageReference "digoxin" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kageroumado/digoxin";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1059,6 +1071,11 @@
 		0BFAA0032F44000000584C0B /* RefraxProtocol */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RefraxProtocol;
+		};
+		0BD160A22F70000000584C0B /* Digoxin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0BD160A12F70000000584C0B /* XCRemoteSwiftPackageReference "digoxin" */;
+			productName = Digoxin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
