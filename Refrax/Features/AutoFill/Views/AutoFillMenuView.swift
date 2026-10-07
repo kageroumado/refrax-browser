@@ -7,7 +7,7 @@ import SwiftUI
 /// - Glass effect background
 /// - 8px inner padding with concentric corner radii
 /// - Credential rows from local storage with key icon
-/// - "Other Passwords for [domain]..." when more credentials exist than displayed
+/// - "Other Passwords for [domain]..." when more credentials exist than displayed, expanding the list in place
 /// - "Passwords..." option to open the system Passwords app
 struct AutoFillMenuView: View {
     @Environment(AutoFillState.self) private var autoFillState
@@ -21,12 +21,21 @@ struct AutoFillMenuView: View {
     /// Credentials are gated behind inline Touch ID until this is set.
     @State private var isAutoFillAuthenticated = false
 
+    /// Whether every saved credential is listed, rather than the first few.
+    ///
+    /// Set by "Other Passwords for [domain]…"; cleared when focus moves to another field.
+    @State private var showsAllCredentials = false
+
     private var menuShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: Constants.outerCornerRadius)
     }
 
     private var hasMoreCredentials: Bool {
         context.credentials.count > Constants.maxVisibleCredentials
+    }
+
+    private var visibleCredentials: ArraySlice<PasswordsManager.StoredCredential> {
+        showsAllCredentials ? context.credentials[...] : context.credentials.prefix(Constants.maxVisibleCredentials)
     }
 
     var body: some View {
@@ -53,6 +62,8 @@ struct AutoFillMenuView: View {
             }
         }
         .glassEffect(in: menuShape)
+        .onChange(of: context.fieldId) { showsAllCredentials = false }
+        .onChange(of: context.url) { showsAllCredentials = false }
         .overlay {
             menuShape
                 .stroke(.secondary.opacity(0.7), lineWidth: 1)
@@ -90,25 +101,42 @@ struct AutoFillMenuView: View {
                     // Gate: show inline Touch ID before revealing credentials
                     autoFillAuthGate
                 } else {
-                    ForEach(context.credentials.prefix(Constants.maxVisibleCredentials)) { credential in
-                        AutoFillCredentialItemView(
-                            credential: credential,
-                            showTouchIDIcon: false,
-                        ) {
-                            selectCredential(credential)
-                        }
-                    }
+                    credentialList
                 }
 
                 // Show "Other Passwords for [domain]..." only if there are more credentials
-                if hasMoreCredentials {
+                if hasMoreCredentials, !showsAllCredentials {
                     AutoFillTextItemView(title: otherPasswordsTitle) {
-                        // TODO: Expand to show full list of credentials
+                        showsAllCredentials = true
                     }
                 }
 
                 // Show option to use system Passwords app ONLY on login forms
                 passwordsAppRow
+            }
+        }
+    }
+
+    /// Saved credential rows. The expanded list scrolls once it outgrows the height cap.
+    private var credentialList: some View {
+        ViewThatFits(in: .vertical) {
+            credentialRows
+            ScrollView {
+                credentialRows
+            }
+        }
+        .frame(maxHeight: Constants.credentialListMaxHeight)
+    }
+
+    private var credentialRows: some View {
+        VStack(spacing: Constants.itemSpacing) {
+            ForEach(visibleCredentials) { credential in
+                AutoFillCredentialItemView(
+                    credential: credential,
+                    showTouchIDIcon: false,
+                ) {
+                    selectCredential(credential)
+                }
             }
         }
     }
@@ -246,6 +274,8 @@ struct AutoFillMenuView: View {
     private enum Constants {
         static let menuWidth: CGFloat = 300
         static let maxVisibleCredentials = 3
+        /// About six credential rows.
+        static let credentialListMaxHeight: CGFloat = 276
         static let outerCornerRadius: CGFloat = 14
         static let contentPadding: CGFloat = 8
         static let itemSpacing: CGFloat = 2
