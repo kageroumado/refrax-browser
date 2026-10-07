@@ -109,6 +109,27 @@ final class Space {
     /// `nil` means use the global default.
     var lockTimeoutOverride: Int?
 
+    // MARK: - Control Server Access
+
+    /// Whether command-line tools may read this space's cookies, including HttpOnly
+    /// cookies and cookie values, over the control server.
+    ///
+    /// Set only from the space settings sheet; no control request can change it, so an
+    /// authorized client cannot open the gate for itself. Use ``exposesCookiesToControlServer``
+    /// to check it: shared-store spaces never expose their cookies.
+    var exposesCookiesToControl: Bool = false
+
+    /// When a command-line tool last read this space's gated cookie data.
+    var lastCookieControlAccess: Date?
+
+    /// Whether control-server clients may read this space's HttpOnly cookies and cookie values.
+    ///
+    /// A shared-store (`.global`) space never does: its store is the one every other shared
+    /// space uses, so exposing it would expose the user's ordinary browsing.
+    var exposesCookiesToControlServer: Bool {
+        if case .global = dataStoreMode { false } else { exposesCookiesToControl }
+    }
+
     // MARK: - Relationships
 
     /// All tabs in this space.

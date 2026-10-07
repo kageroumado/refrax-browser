@@ -278,21 +278,35 @@ struct DevCommand: AsyncParsableCommand {
     struct Cookies: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "cookies",
-            abstract: "View page cookies",
+            abstract: "View a space's cookies",
             discussion: """
-            Lists cookies for the current page, optionally filtered by domain.
+            Lists cookies from the cookie store of the tab's space, or of --space. \
+            Without --domain, lists cookies for the tab's site. --domain example.com \
+            matches example.com, .example.com, and its subdomains.
+            
+            Values are redacted unless --reveal is passed. HttpOnly cookies and \
+            --reveal need the space's "Allow command-line tools to read this space's \
+            cookies" setting, which only an isolated or private space offers. \
+            Without it you see names and metadata of the cookies page scripts can see.
             
             Examples:
               refrax-ctl dev cookies
               refrax-ctl dev cookies --domain example.com
+              refrax-ctl dev cookies --space Tools --domain example.com --reveal
               refrax-ctl dev cookies --tab ABC123
               refrax-ctl dev cookies --page DEF456
               refrax-ctl dev cookies --json
             """,
         )
 
-        @Option(name: .long, help: "Filter by domain")
+        @Option(name: .long, help: "Filter by domain (matches subdomains)")
         var domain: String?
+
+        @Option(name: .long, help: "Space name or ID (default: the tab's space)")
+        var space: String?
+
+        @Flag(name: .long, help: "Print cookie values")
+        var reveal = false
 
         @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
         var tab: String?
@@ -305,7 +319,7 @@ struct DevCommand: AsyncParsableCommand {
 
         func run() async throws {
             try sendAndHandle(
-                .devCookies(.init(domain: domain, tabID: tab, pageID: page)),
+                .devCookies(.init(domain: domain, tabID: tab, pageID: page, spaceID: space, reveal: reveal ? true : nil)),
                 json: json,
             )
         }

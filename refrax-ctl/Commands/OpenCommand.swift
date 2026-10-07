@@ -19,7 +19,7 @@ struct OpenCommand: AsyncParsableCommand {
     @Argument(help: "URL to open")
     var url: String
 
-    @Option(name: .long, help: "Space ID to open the tab in")
+    @Option(name: .long, help: "Space name or ID to open the tab in")
     var space: String?
 
     @Flag(name: .long, help: "Activate the new tab")

@@ -30,7 +30,7 @@ struct GroupCommand: AsyncParsableCommand {
             """,
         )
 
-        @Option(name: .long, help: "Filter by space ID")
+        @Option(name: .long, help: "Filter by space name or ID")
         var space: String?
 
         @Flag(name: .long, help: "Output raw JSON")
@@ -68,7 +68,7 @@ struct GroupCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Group icon name")
         var icon: String?
 
-        @Option(name: .long, help: "Space ID to create group in")
+        @Option(name: .long, help: "Space name or ID to create group in")
         var space: String?
 
         func run() async throws {

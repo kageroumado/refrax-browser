@@ -21,6 +21,9 @@ struct EditSpaceSheet: View {
     /// Whether lock was originally enabled when the sheet opened.
     private let wasLockEnabledOriginally: Bool
 
+    // Command-line access
+    @State private var exposesCookiesToControl: Bool
+
     init(space: Space) {
         self.space = space
         _spaceName = State(initialValue: space.name)
@@ -31,6 +34,7 @@ struct EditSpaceSheet: View {
         _isLockEnabled = State(initialValue: space.isLockEnabled)
         _lockTimeout = State(initialValue: LockTimeout(seconds: space.lockTimeoutOverride))
         self.wasLockEnabledOriginally = space.isLockEnabled
+        _exposesCookiesToControl = State(initialValue: space.exposesCookiesToControl)
     }
 
     private var isValid: Bool {
@@ -56,6 +60,9 @@ struct EditSpaceSheet: View {
                     SpaceAppearanceSection(icon: $iconName, color: $selectedColor)
                     SpaceDataStorageInfoSection(dataStoreMode: space.dataStoreMode)
                     securitySection
+                    if !space.dataStoreMode.isGlobal {
+                        commandLineAccessSection
+                    }
                     SpaceDownloadsSection(
                         customDownloadPath: $customDownloadPath,
                         downloadColorTag: $downloadColorTag,
@@ -137,6 +144,44 @@ struct EditSpaceSheet: View {
         }
     }
 
+    // MARK: - Command-Line Access Section
+
+    /// Turning cookie access on requires Touch ID or the password, so a control-server
+    /// client driving this sheet through accessibility cannot grant itself access.
+    private var exposesCookiesBinding: Binding<Bool> {
+        Binding(
+            get: { exposesCookiesToControl },
+            set: { newValue in
+                guard newValue else {
+                    exposesCookiesToControl = false
+                    return
+                }
+                Task {
+                    let result = await browserState.spaceLockManager.authenticateToExposeCookies(for: space)
+                    if case .success = result {
+                        exposesCookiesToControl = true
+                    }
+                }
+            },
+        )
+    }
+
+    private var commandLineAccessSection: some View {
+        SpaceSectionContainer(header: "Command-Line Access") {
+            Toggle("Allow command-line tools to read this space's cookies", isOn: exposesCookiesBinding)
+
+            SpaceSectionFooter {
+                Text("Tools using refrax-ctl can read this space's cookies, including HttpOnly session cookies, and export them to the Keychain.")
+
+                if let lastAccess = space.lastCookieControlAccess {
+                    Text("Last read \(lastAccess, format: .relative(presentation: .named)).")
+                } else if exposesCookiesToControl {
+                    Text("No tool has read them yet.")
+                }
+            }
+        }
+    }
+
     // MARK: - Actions
 
     private func saveSpace() {
@@ -157,6 +202,8 @@ struct EditSpaceSheet: View {
         // Update security settings
         space.isLockEnabled = isLockEnabled
         space.lockTimeoutOverride = lockTimeout.isDefault ? nil : lockTimeout.rawValue
+
+        space.exposesCookiesToControl = exposesCookiesToControl
 
         dismiss()
     }

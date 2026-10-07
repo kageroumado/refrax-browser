@@ -55,7 +55,7 @@ struct TabCommand: AsyncParsableCommand {
             """,
         )
 
-        @Option(name: .long, help: "Filter by space ID")
+        @Option(name: .long, help: "Filter by space name or ID")
         var space: String?
 
         @Flag(name: .long, help: "Output raw JSON")
@@ -124,7 +124,7 @@ struct TabCommand: AsyncParsableCommand {
         @Argument(help: "URL to open")
         var url: String
 
-        @Option(name: .long, help: "Space ID to open the tab in")
+        @Option(name: .long, help: "Space name or ID to open the tab in")
         var space: String?
 
         @Flag(name: .long, help: "Activate the new tab")
@@ -538,7 +538,7 @@ struct TabCommand: AsyncParsableCommand {
         @Argument(help: "Tab ref (ID, index, title, URL, or: active/first/last/next/prev)")
         var id: String
 
-        @Option(name: .long, help: "Destination space ID")
+        @Option(name: .long, help: "Destination space name or ID")
         var space: String?
 
         @Option(name: .long, help: "Destination group ID")

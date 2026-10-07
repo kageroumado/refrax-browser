@@ -193,9 +193,15 @@ func printTab(_ tab: CTL.TabInfo) {
 }
 
 func printSpaces(_ spaces: [CTL.SpaceInfo]) {
+    let modeWidth = spaces.map { ($0.dataStoreMode ?? "").count }.max() ?? 0
     for space in spaces {
-        let activeMarker = space.isActive ? " [active]" : ""
-        print("\(space.id)  \(space.name) (\(space.tabCount) tabs)\(activeMarker)")
+        var markers: [String] = []
+        if space.isActive { markers.append("active") }
+        if space.isLocked == true { markers.append("locked") }
+        if space.exposesCookies == true { markers.append("cookies exposed") }
+        let markerText = markers.isEmpty ? "" : " [\(markers.joined(separator: ", "))]"
+        let mode = (space.dataStoreMode ?? "").padding(toLength: modeWidth, withPad: " ", startingAt: 0)
+        print("\(space.id)  \(mode)  \(space.name) (\(space.tabCount) tabs)\(markerText)")
     }
 }
 
@@ -351,8 +357,8 @@ func printCookies(_ cookies: [CTL.CookieInfo]) {
         var flags: [String] = []
         if cookie.isSecure { flags.append("secure") }
         if cookie.isHTTPOnly { flags.append("httpOnly") }
-        let flagStr = flags.isEmpty ? "" : " [\(flags.joined(separator: ", "))]"
-        print("\(cookie.name)=\(cookie.value) (\(cookie.domain)\(cookie.path))\(flagStr)")
+        flags.append(cookie.expiresDate.map { "expires \($0)" } ?? "session")
+        print("\(cookie.name)=\(cookie.value ?? "•••") (\(cookie.domain)\(cookie.path)) [\(flags.joined(separator: ", "))]")
     }
 }
 

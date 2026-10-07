@@ -60,6 +60,7 @@ struct RefraxCTL: AsyncParsableCommand {
             VisualCommand.self,
             ExecCommand.self,
             DismissCookiesCommand.self,
+            CookiesCommand.self,
         ],
     )
 

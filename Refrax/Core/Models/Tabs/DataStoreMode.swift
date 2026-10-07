@@ -23,6 +23,11 @@ enum DataStoreMode: String, Codable, CaseIterable, Sendable {
     /// is closed or the app quits. History entries are also not recorded.
     case `private`
 
+    /// Parses the `--data` argument of `refrax-ctl space create`, case-insensitively.
+    init?(controlArgument: String) {
+        self.init(rawValue: controlArgument.lowercased())
+    }
+
     /// Whether this mode uses a non-persistent (ephemeral) data store.
     var isPrivate: Bool {
         self == .private

@@ -5,17 +5,17 @@ Complete CLI command reference. The main skill file covers the essentials — lo
 ## Fetching & Navigation
 
 ```bash
-refrax-ctl fetch URL [--scope S] [--timeout N]          # Headless page read (no tab created)
-refrax-ctl navigate URL [--read] [--wait] [--activate] [--space ID]  # Open in new tab
+refrax-ctl fetch URL [--scope S] [--timeout N] [--space S]  # Headless page read (no tab created); --space uses that space's session
+refrax-ctl navigate URL [--read] [--wait] [--activate] [--space S]  # Open in new tab
 refrax-ctl tab navigate URL [--tab ID] [--page ID] [--read] [--wait] [--timeout N]  # Navigate existing tab
 refrax-ctl read [--tab ID] [--page ID] [--scope S]      # Read current tab (alias: page-content)
-refrax-ctl open URL [--activate] [--space ID]            # Open new tab (alias: tab open)
+refrax-ctl open URL [--activate] [--space S]            # Open new tab (alias: tab open)
 ```
 
 ## Tab Operations
 
 ```bash
-refrax-ctl tab list [--space ID] [--json]      # List tabs
+refrax-ctl tab list [--space S] [--json]      # List tabs
 refrax-ctl tab get ID [--json]                 # Basic tab info
 refrax-ctl tab detail [ID] [--json]            # Extended info (pages, pinned, group, etc.)
 refrax-ctl tab open URL [--activate]           # Open new tab
@@ -33,7 +33,7 @@ refrax-ctl tab previous                        # Select previous tab
 refrax-ctl tab close-others ID                 # Close all other tabs
 refrax-ctl tab reopen                          # Reopen last closed tab
 refrax-ctl tab recently-closed [--json]        # List recently closed tabs
-refrax-ctl tab move ID --space SID             # Move to space
+refrax-ctl tab move ID --space S             # Move to space
 refrax-ctl tab move ID --group GID             # Move to group
 refrax-ctl tab ungroup ID                      # Remove from group
 refrax-ctl tab to-refpane ID                   # Move to reference pane
@@ -94,8 +94,8 @@ refrax-ctl screenshot [window|visible|full] [--tab ID] [--page ID] [--output PAT
 ## Tab Groups
 
 ```bash
-refrax-ctl group list [--space ID] [--json]
-refrax-ctl group create NAME [--color C] [--icon I] [--space ID]
+refrax-ctl group list [--space S] [--json]
+refrax-ctl group create NAME [--color C] [--icon I] [--space S]
 refrax-ctl group delete ID [--close-tabs]
 refrax-ctl group rename ID NAME
 refrax-ctl group color ID COLOR
@@ -106,12 +106,27 @@ refrax-ctl group collapse ID                   # Toggle collapsed state
 ## Space Operations
 
 ```bash
-refrax-ctl space list [--json]
-refrax-ctl space switch ID
-refrax-ctl space create NAME [--color C] [--icon I]
-refrax-ctl space update ID [--name N] [--color C]
-refrax-ctl space delete ID [--move-tabs-to SID]
+refrax-ctl space list [--json]                  # Data mode, locked, cookies exposed
+refrax-ctl space switch S
+refrax-ctl space create NAME [--color C] [--icon I] [--description D] [--data global|separate|private]
+refrax-ctl space update S [--name N] [--color C]
+refrax-ctl space delete S [--move-tabs-to S]
 ```
+
+Every `--space`/space argument takes a UUID or an exact, case-insensitive name. A shared name
+returns `ambiguous` with the candidate IDs. `--data` is fixed at creation: `separate` gives the
+space its own persistent cookie jar, which is what a scripted login should live in.
+
+```bash
+refrax-ctl cookies export --space S --domain D --names a,b --keychain PREFIX
+# → Keychain items PREFIX-a, PREFIX-b (account D); read with: security find-generic-password -s PREFIX-a -w
+```
+
+Reading HttpOnly cookies, `dev cookies --reveal`, and `cookies export` all need the user to turn
+on "Allow command-line tools to read this space's cookies" in the space's settings. Only an
+isolated or private space has it, and no command can turn it on. A locked space refuses every
+cookie read and every `fetch --space` (`space_locked`). Never print a value you only need to pass
+on: export it to the Keychain.
 
 ## Reference Pane
 
@@ -175,7 +190,7 @@ refrax-ctl dev resources [--tab ID] [--page ID]
 refrax-ctl dev profiling [--tab ID] [--page ID]
 refrax-ctl dev element-selection [--tab ID] [--page ID]
 refrax-ctl dev empty-caches
-refrax-ctl dev cookies [--domain D] [--tab ID] [--page ID] [--json]
+refrax-ctl dev cookies [--domain D] [--space S] [--reveal] [--tab ID] [--page ID] [--json]  # Values redacted unless --reveal
 refrax-ctl dev storage [--local|--session] [--tab ID] [--page ID] [--json]
 refrax-ctl dev storage set KEY VALUE [--tab ID] [--page ID]
 refrax-ctl dev storage delete KEY [--tab ID] [--page ID]

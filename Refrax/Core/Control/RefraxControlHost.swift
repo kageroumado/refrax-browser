@@ -357,7 +357,7 @@ actor RefraxControlHost {
             return
         }
 
-        let responseData = await server.decodeAndHandle(requestData)
+        let responseData = await server.decodeAndHandle(requestData, client: identity)
 
         if !writeAll(fd: clientFD, data: responseData) {
             os_log("Failed to write response", log: Self.logger, type: .error)

@@ -19,8 +19,12 @@ struct FetchCommand: AsyncParsableCommand {
           text      Plain text (document.body.innerText)
           html      Raw HTML source
 
+        --space fetches with that space's cookies and website data, so a space \
+        holding a login fetches as that session. A locked space refuses.
+
         Examples:
           refrax-ctl fetch "https://example.com"
+          refrax-ctl fetch "https://example.com/account" --space Tools
           refrax-ctl fetch "https://example.com" --scope text
           refrax-ctl fetch "https://news.ycombinator.com" --scope full
         """,
@@ -35,6 +39,9 @@ struct FetchCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Timeout in seconds (default: 30)")
     var timeout: Int?
 
+    @Option(name: .long, help: "Space name or ID whose cookies and website data to use")
+    var space: String?
+
     func run() async throws {
         let scopeValue = scope == "main" ? "mainContent" : scope
         guard let contentScope = ControlRequest.PageContentParams.Scope(rawValue: scopeValue) else {
@@ -43,7 +50,7 @@ struct FetchCommand: AsyncParsableCommand {
         }
 
         try sendAndHandle(
-            .fetch(.init(url: url, scope: contentScope, timeout: timeout)),
+            .fetch(.init(url: url, scope: contentScope, timeout: timeout, spaceID: space)),
         )
     }
 }

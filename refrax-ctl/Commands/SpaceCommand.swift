@@ -19,7 +19,8 @@ struct SpaceCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "List all spaces",
             discussion: """
-            Lists all spaces with their tab counts and active status.
+            Lists all spaces with their data mode, tab counts, and status.
+            Data modes: shared (global), isolated (separate), private.
             
             Examples:
               refrax-ctl space list
@@ -43,11 +44,12 @@ struct SpaceCommand: AsyncParsableCommand {
             Activates the specified space.
             
             Examples:
+              refrax-ctl space switch Work
               refrax-ctl space switch ABC123
             """,
         )
 
-        @Argument(help: "Space ID to switch to")
+        @Argument(help: "Space name or ID to switch to")
         var id: String
 
         func run() async throws {
@@ -64,9 +66,16 @@ struct SpaceCommand: AsyncParsableCommand {
             discussion: """
             Creates a new space with the given name and optional color/icon.
             
+            --data sets where the space keeps cookies and website data, and \
+            can't be changed later:
+              global    shared with every other global space (default)
+              separate  its own persistent store, isolated from other spaces
+              private   memory only, discarded when Refrax quits
+            
             Examples:
               refrax-ctl space create "Work"
               refrax-ctl space create "Personal" --color blue --icon globe
+              refrax-ctl space create "Tools" --data separate
             """,
         )
 
@@ -79,9 +88,15 @@ struct SpaceCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Space icon name")
         var icon: String?
 
+        @Option(name: .long, help: "Space description")
+        var description: String?
+
+        @Option(name: .long, help: "Website data mode: global, separate, or private (default: global)")
+        var data: String?
+
         func run() async throws {
             try sendAndHandle(
-                .spaceCreate(.init(name: name, color: color, icon: icon)),
+                .spaceCreate(.init(name: name, color: color, icon: icon, description: description, dataStoreMode: data)),
             )
         }
     }
@@ -100,7 +115,7 @@ struct SpaceCommand: AsyncParsableCommand {
             """,
         )
 
-        @Argument(help: "Space ID to update")
+        @Argument(help: "Space name or ID to update")
         var id: String
 
         @Option(name: .long, help: "New name")
@@ -129,10 +144,10 @@ struct SpaceCommand: AsyncParsableCommand {
             """,
         )
 
-        @Argument(help: "Space ID to delete")
+        @Argument(help: "Space name or ID to delete")
         var id: String
 
-        @Option(name: .long, help: "Space ID to move tabs to before deletion")
+        @Option(name: .long, help: "Space name or ID to move tabs to before deletion")
         var moveTabsTo: String?
 
         func run() async throws {

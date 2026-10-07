@@ -5,6 +5,10 @@ import Foundation
 
 public enum ControlProtocolVersion: Int, Codable, Sendable {
     case v1 = 1
+    /// Spaces by name, space data modes, space-scoped fetch, and the cookie store.
+    case v2 = 2
+
+    public static let current: Self = .v2
 }
 
 // MARK: - Request
@@ -135,6 +139,10 @@ public enum ControlRequest: Sendable {
     case spaceCreate(SpaceCreateParams)
     case spaceUpdate(SpaceUpdateParams)
     case spaceDelete(SpaceDeleteParams)
+
+    /// Returns revealed values of named cookies from a space that exposes its cookies.
+    /// The CLI writes them to the Keychain; it never prints them.
+    case cookiesExport(CookiesExportParams)
 
     // Tier 2D: Window Extended
     case windowKeepOnTop
@@ -868,15 +876,30 @@ public extension ControlRequest {
         public var name: String
         public var color: String?
         public var icon: String?
+        public var description: String?
+        /// `global`, `separate`, or `private`; `nil` means `global`.
+        public var dataStoreMode: String?
 
-        public init(name: String, color: String? = nil, icon: String? = nil) {
+        public init(
+            name: String,
+            color: String? = nil,
+            icon: String? = nil,
+            description: String? = nil,
+            dataStoreMode: String? = nil,
+        ) {
             self.name = name
             self.color = color
             self.icon = icon
+            self.description = description
+            self.dataStoreMode = dataStoreMode
         }
     }
 
     struct SpaceUpdateParams: Codable, Sendable {
+        /// Keys a client may never send. Cookie exposure is granted in the app's UI only,
+        /// so that an authorized client cannot open the gate for itself.
+        public static let forbiddenKeys: Set<String> = ["exposesCookiesToControl"]
+
         public var id: String
         public var name: String?
         public var color: String?
@@ -885,6 +908,38 @@ public extension ControlRequest {
             self.id = id
             self.name = name
             self.color = color
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+            if let forbidden = raw.allKeys.first(where: { Self.forbiddenKeys.contains($0.stringValue) }) {
+                throw DecodingError.dataCorruptedError(
+                    forKey: forbidden,
+                    in: raw,
+                    debugDescription: "'\(forbidden.stringValue)' can only be changed in Refrax's space settings.",
+                )
+            }
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.id = try container.decode(String.self, forKey: .id)
+            self.name = try container.decodeIfPresent(String.self, forKey: .name)
+            self.color = try container.decodeIfPresent(String.self, forKey: .color)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name, color
+        }
+    }
+
+    struct CookiesExportParams: Codable, Sendable {
+        /// Space name or ID.
+        public var spaceID: String
+        public var domain: String
+        public var names: [String]
+
+        public init(spaceID: String, domain: String, names: [String]) {
+            self.spaceID = spaceID
+            self.domain = domain
+            self.names = names
         }
     }
 
@@ -976,11 +1031,23 @@ public extension ControlRequest {
         public var domain: String?
         public var tabID: String?
         public var pageID: String?
+        /// Space name or ID. Takes precedence over the tab's space.
+        public var spaceID: String?
+        /// Include cookie values. Requires the space to expose its cookies.
+        public var reveal: Bool?
 
-        public init(domain: String? = nil, tabID: String? = nil, pageID: String? = nil) {
+        public init(
+            domain: String? = nil,
+            tabID: String? = nil,
+            pageID: String? = nil,
+            spaceID: String? = nil,
+            reveal: Bool? = nil,
+        ) {
             self.domain = domain
             self.tabID = tabID
             self.pageID = pageID
+            self.spaceID = spaceID
+            self.reveal = reveal
         }
     }
 
@@ -1220,11 +1287,14 @@ public extension ControlRequest {
         public let url: String
         public let scope: PageContentParams.Scope?
         public let timeout: Int?
+        /// Space name or ID whose website data the fetch uses; `nil` means the shared store.
+        public let spaceID: String?
 
-        public init(url: String, scope: PageContentParams.Scope? = nil, timeout: Int? = nil) {
+        public init(url: String, scope: PageContentParams.Scope? = nil, timeout: Int? = nil, spaceID: String? = nil) {
             self.url = url
             self.scope = scope
             self.timeout = timeout
+            self.spaceID = spaceID
         }
     }
 
@@ -1455,6 +1525,7 @@ extension ControlRequest: Codable {
         case spaceCreate
         case spaceUpdate
         case spaceDelete
+        case cookiesExport
 
         // Tier 2D
         case windowKeepOnTop
@@ -1641,6 +1712,7 @@ extension ControlRequest: Codable {
         case .spaceCreate: self = try .spaceCreate(SpaceCreateParams(from: decoder))
         case .spaceUpdate: self = try .spaceUpdate(SpaceUpdateParams(from: decoder))
         case .spaceDelete: self = try .spaceDelete(SpaceDeleteParams(from: decoder))
+        case .cookiesExport: self = try .cookiesExport(CookiesExportParams(from: decoder))
         // Tier 2D
         case .windowKeepOnTop: self = .windowKeepOnTop
         case .windowAllDesktops: self = .windowAllDesktops
@@ -1974,6 +2046,9 @@ extension ControlRequest: Codable {
         case let .spaceDelete(params):
             try container.encode("spaceDelete", forKey: .type)
             try params.encode(to: encoder)
+        case let .cookiesExport(params):
+            try container.encode("cookiesExport", forKey: .type)
+            try params.encode(to: encoder)
         // Tier 2D
         case .windowKeepOnTop:
             try container.encode("windowKeepOnTop", forKey: .type)
@@ -2166,12 +2241,29 @@ public enum CTL {
         public let name: String
         public let tabCount: Int
         public let isActive: Bool
+        /// `global`, `separate`, or `private`. Absent from v1 servers.
+        public let dataStoreMode: String?
+        /// Whether the space is lock-enabled and not currently unlocked.
+        public let isLocked: Bool?
+        /// Whether the user allowed command-line tools to read this space's cookies.
+        public let exposesCookies: Bool?
 
-        public init(id: String, name: String, tabCount: Int, isActive: Bool) {
+        public init(
+            id: String,
+            name: String,
+            tabCount: Int,
+            isActive: Bool,
+            dataStoreMode: String? = nil,
+            isLocked: Bool? = nil,
+            exposesCookies: Bool? = nil,
+        ) {
             self.id = id
             self.name = name
             self.tabCount = tabCount
             self.isActive = isActive
+            self.dataStoreMode = dataStoreMode
+            self.isLocked = isLocked
+            self.exposesCookies = exposesCookies
         }
     }
 
@@ -2426,14 +2518,16 @@ public enum CTL {
 
     public struct CookieInfo: Codable, Sendable {
         public let name: String
-        public let value: String
+        /// The cookie's value, or `nil` when redacted. Encoded as an explicit `null`.
+        public let value: String?
         public let domain: String
         public let path: String
         public let isSecure: Bool
         public let isHTTPOnly: Bool
+        /// ISO 8601 expiry, or `nil` for a session cookie.
         public let expiresDate: String?
 
-        public init(name: String, value: String, domain: String, path: String, isSecure: Bool, isHTTPOnly: Bool, expiresDate: String?) {
+        public init(name: String, value: String?, domain: String, path: String, isSecure: Bool, isHTTPOnly: Bool, expiresDate: String?) {
             self.name = name
             self.value = value
             self.domain = domain
@@ -2441,6 +2535,21 @@ public enum CTL {
             self.isSecure = isSecure
             self.isHTTPOnly = isHTTPOnly
             self.expiresDate = expiresDate
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            try container.encode(value, forKey: .value)
+            try container.encode(domain, forKey: .domain)
+            try container.encode(path, forKey: .path)
+            try container.encode(isSecure, forKey: .isSecure)
+            try container.encode(isHTTPOnly, forKey: .isHTTPOnly)
+            try container.encode(expiresDate, forKey: .expiresDate)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case name, value, domain, path, isSecure, isHTTPOnly, expiresDate
         }
     }
 
@@ -2793,5 +2902,21 @@ extension ControlResponse: Codable {
         case tab
         case spaces
         case data
+    }
+}
+
+// MARK: - Coding Helpers
+
+/// A coding key for any string, used to inspect every key a payload carries.
+struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int? = nil
+
+    init(stringValue: String) {
+        self.stringValue = stringValue
+    }
+
+    init?(intValue _: Int) {
+        nil
     }
 }

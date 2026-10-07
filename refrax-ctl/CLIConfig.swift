@@ -23,7 +23,7 @@ enum CLIConfig {
 
         // --version (print and exit immediately)
         if args.contains("--version") {
-            let v = ControlProtocolVersion.v1.rawValue
+            let v = ControlProtocolVersion.current.rawValue
             print("refrax-ctl v\(v) (protocol: \(v))")
             _Exit(0)
         }

@@ -510,7 +510,25 @@ final class SpaceManager {
     }
     
     // MARK: - Queries
-    
+
+    /// Resolves a space from a UUID string or a name.
+    ///
+    /// A UUID string matches by ID first. Otherwise the reference matches names
+    /// case-insensitively and exactly, and must match exactly one space.
+    ///
+    /// - Throws: ``SpaceReferenceError`` when nothing matches or several spaces share the name.
+    func findSpace(byReference reference: String) throws(SpaceReferenceError) -> Space {
+        if let space = state.spaces.first(where: { reference.caseInsensitiveCompare($0.id.uuidString) == .orderedSame }) {
+            return space
+        }
+        let matches = state.spaces.filter { $0.name.caseInsensitiveCompare(reference) == .orderedSame }
+        switch matches.count {
+        case 1: return matches[0]
+        case 0: throw .notFound(reference)
+        default: throw .ambiguous(reference, candidateIDs: matches.map(\.id))
+        }
+    }
+
     /// Number of spaces.
     var spaceCount: Int {
         state.spaces.count
@@ -520,4 +538,12 @@ final class SpaceManager {
     var spaces: [Space] {
         state.spaces
     }
+}
+
+// MARK: - Space References
+
+/// Why a space reference failed to resolve.
+enum SpaceReferenceError: Error, Equatable {
+    case notFound(String)
+    case ambiguous(String, candidateIDs: [UUID])
 }

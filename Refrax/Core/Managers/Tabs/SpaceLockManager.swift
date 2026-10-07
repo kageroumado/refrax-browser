@@ -227,6 +227,20 @@ final class SpaceLockManager {
     /// - Parameter space: The space requiring authentication.
     /// - Returns: The authentication result.
     func authenticateToModifyLockSettings(for space: Space) async -> AuthenticationResult {
+        await authenticateDeviceOwner(localizedReason: "Disable lock for \(Self.displayName(of: space))")
+    }
+
+    /// Authenticates before allowing command-line tools to read a space's cookies.
+    ///
+    /// Required so that a control-server client driving Refrax's own UI cannot turn
+    /// the gate on for itself.
+    func authenticateToExposeCookies(for space: Space) async -> AuthenticationResult {
+        await authenticateDeviceOwner(
+            localizedReason: "allow command-line tools to read cookies from \(Self.displayName(of: space))",
+        )
+    }
+
+    private func authenticateDeviceOwner(localizedReason: String) async -> AuthenticationResult {
         let context = laContextFactory()
         var error: NSError?
 
@@ -235,9 +249,6 @@ final class SpaceLockManager {
             Logger.error("LAContext unavailable: \(reason)", category: Logger.security)
             return .unavailable(reason: reason)
         }
-
-        let spaceName = space.name.isEmpty ? "this space" : "\"\(space.name)\""
-        let localizedReason = "Disable lock for \(spaceName)"
 
         do {
             let success = try await context.evaluatePolicy(
@@ -251,6 +262,10 @@ final class SpaceLockManager {
             Logger.error("Unexpected auth error: \(error)", category: Logger.security)
             return .failed
         }
+    }
+
+    private static func displayName(of space: Space) -> String {
+        space.name.isEmpty ? "this space" : "\"\(space.name)\""
     }
 
     /// Handles LAError cases and maps them to AuthenticationResult.

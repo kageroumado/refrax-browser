@@ -39,7 +39,7 @@ struct NavigateCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Timeout in seconds for --wait/--read (default: 30)")
     var timeout: Int?
 
-    @Option(name: .long, help: "Space ID to open the tab in")
+    @Option(name: .long, help: "Space name or ID to open the tab in")
     var space: String?
 
     func run() async throws {

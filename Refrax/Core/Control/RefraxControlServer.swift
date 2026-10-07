@@ -86,13 +86,13 @@ final class RefraxControlServer {
     ///
     /// Called from ``RefraxControlHost``'s background socket threads. The call
     /// automatically hops to `@MainActor` since this class is main-actor-isolated.
-    func decodeAndHandle(_ data: Data) async -> Data {
+    func decodeAndHandle(_ data: Data, client: ClientIdentity) async -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
         do {
             let request = try JSONDecoder().decode(ControlRequest.self, from: data)
-            let response = await route(request)
+            let response = await route(request, client: client)
             return (try? encoder.encode(response))
                 ?? encodeError(encoder: encoder, code: "encode_failed", message: "Failed to encode response")
         } catch {
@@ -107,9 +107,13 @@ final class RefraxControlServer {
 
     // MARK: - Routing
 
-    func route(_ request: ControlRequest) async -> ControlResponse {
+    /// Routes a request.
+    ///
+    /// - Parameter client: The connected process, named in logs and notices for gated
+    ///   cookie reads. `nil` for requests issued inside Refrax, such as agent programs.
+    func route(_ request: ControlRequest, client: ClientIdentity? = nil) async -> ControlResponse {
         do {
-            return try await routeThrows(request)
+            return try await routeThrows(request, client: client)
         } catch let error as ControlError {
             return .error(CTL.ErrorInfo(code: error.errorCode, message: error.localizedDescription))
         } catch {
@@ -117,7 +121,7 @@ final class RefraxControlServer {
         }
     }
 
-    private func routeThrows(_ request: ControlRequest) async throws -> ControlResponse {
+    private func routeThrows(_ request: ControlRequest, client: ClientIdentity?) async throws -> ControlResponse {
         switch request {
         case .ping:
             handlePing()
@@ -140,11 +144,11 @@ final class RefraxControlServer {
         case let .navigateAndWait(params):
             try await handleNavigateAndWait(params)
         case let .tabList(params):
-            handleTabList(params)
+            try handleTabList(params)
         case let .tabGet(params):
             try handleTabGet(params)
         case let .tabOpen(params):
-            handleTabOpen(params)
+            try handleTabOpen(params)
         case let .tabClose(params):
             try handleTabClose(params)
         case let .tabActivate(params):
@@ -152,7 +156,7 @@ final class RefraxControlServer {
         case .spaceList:
             handleSpaceList()
         case let .spaceSwitch(params):
-            handleSpaceSwitch(params)
+            try handleSpaceSwitch(params)
         case let .windowResize(params):
             handleWindowResize(params)
         case let .windowMove(params):
@@ -235,7 +239,7 @@ final class RefraxControlServer {
             try await handleTabWaitLoaded(params)
         // Tier 1B: Tab Group CRUD
         case let .groupList(params):
-            handleGroupList(params)
+            try handleGroupList(params)
         case let .groupCreate(params):
             try handleGroupCreate(params)
         case let .groupDelete(params):
@@ -321,9 +325,11 @@ final class RefraxControlServer {
         case let .spaceCreate(params):
             handleSpaceCreate(params)
         case let .spaceUpdate(params):
-            handleSpaceUpdate(params)
+            try handleSpaceUpdate(params)
         case let .spaceDelete(params):
-            handleSpaceDelete(params)
+            try handleSpaceDelete(params)
+        case let .cookiesExport(params):
+            try await handleCookiesExport(params, client: client)
         // Tier 2D: Window Extended
         case .windowKeepOnTop:
             handleWindowKeepOnTop()
@@ -360,7 +366,7 @@ final class RefraxControlServer {
         case let .devNetworkLog(params):
             handleDevNetworkLog(params)
         case let .devCookies(params):
-            try await handleDevCookies(params)
+            try await handleDevCookies(params, client: client)
         case let .devStorage(params):
             try await handleDevStorage(params)
         // Tier 3: Interaction Enhancements
@@ -431,7 +437,7 @@ final class RefraxControlServer {
     private func handlePing() -> ControlResponse {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         return .ping(CTL.PingInfo(
-            protocolVersion: ControlProtocolVersion.v1.rawValue,
+            protocolVersion: ControlProtocolVersion.current.rawValue,
             appVersion: appVersion,
         ))
     }
@@ -457,7 +463,7 @@ final class RefraxControlServer {
 
         return .health(CTL.HealthInfo(
             appVersion: appVersion,
-            protocolVersion: ControlProtocolVersion.v1.rawValue,
+            protocolVersion: ControlProtocolVersion.current.rawValue,
             tabCount: tabCount,
             windowCount: windowCount,
             spaceCount: spaceCount,
@@ -1117,14 +1123,12 @@ final class RefraxControlServer {
 
     // MARK: - Tab Operations
 
-    private func handleTabList(_ params: ControlRequest.TabListParams) -> ControlResponse {
+    private func handleTabList(_ params: ControlRequest.TabListParams) throws -> ControlResponse {
         let activeTabID = windowManager.activeWindowController?.windowState.activeTabID
         var tabs: [CTL.TabInfo] = []
 
-        if let spaceIDString = params.spaceID {
-            guard let space = findSpace(byID: spaceIDString) else {
-                return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(spaceIDString)"))
-            }
+        if let spaceReference = params.spaceID {
+            let space = try resolveSpace(spaceReference)
             tabs = space.tabs.map { buildTabInfo($0, activeTabID: activeTabID) }
         } else {
             tabs = browserState.spaces.flatMap { space in
@@ -1141,17 +1145,14 @@ final class RefraxControlServer {
         return .tab(buildTabInfo(tab, activeTabID: activeTabID))
     }
 
-    private func handleTabOpen(_ params: ControlRequest.TabOpenParams) -> ControlResponse {
+    private func handleTabOpen(_ params: ControlRequest.TabOpenParams) throws -> ControlResponse {
         guard let url = URL(string: params.url) else {
             return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
         }
 
         let space: Space?
-        if let spaceIDString = params.spaceID {
-            space = findSpace(byID: spaceIDString)
-            if space == nil {
-                return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(spaceIDString)"))
-            }
+        if let spaceReference = params.spaceID {
+            space = try resolveSpace(spaceReference)
         } else {
             space = windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
@@ -1189,10 +1190,8 @@ final class RefraxControlServer {
         return .spaces(spaces)
     }
 
-    private func handleSpaceSwitch(_ params: ControlRequest.SpaceSwitchParams) -> ControlResponse {
-        guard let space = findSpace(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(params.id)"))
-        }
+    private func handleSpaceSwitch(_ params: ControlRequest.SpaceSwitchParams) throws -> ControlResponse {
+        let space = try resolveSpace(params.id)
         guard let windowState = windowManager.activeWindowController?.windowState else {
             return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
         }
@@ -1719,9 +1718,7 @@ final class RefraxControlServer {
 
     private func handleTabMoveToSpace(_ params: ControlRequest.TabMoveToSpaceParams) throws -> ControlResponse {
         let tab = try resolveTabRef(params.id)
-        guard let targetSpace = findSpace(byID: params.spaceID) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(params.spaceID)"))
-        }
+        let targetSpace = try resolveSpace(params.spaceID)
         tabManager.moveTabs([tab], to: targetSpace)
         return .ok("Tab moved to space '\(targetSpace.name)'")
     }
@@ -1836,12 +1833,10 @@ final class RefraxControlServer {
 
     // MARK: - Tier 1B: Tab Group CRUD
 
-    private func handleGroupList(_ params: ControlRequest.GroupListParams) -> ControlResponse {
+    private func handleGroupList(_ params: ControlRequest.GroupListParams) throws -> ControlResponse {
         let groups: [TabGroup]
-        if let spaceIDString = params.spaceID {
-            guard let space = findSpace(byID: spaceIDString) else {
-                return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(spaceIDString)"))
-            }
+        if let spaceReference = params.spaceID {
+            let space = try resolveSpace(spaceReference)
             groups = groupManager.groups(in: space, spaceID: space.id)
         } else {
             groups = browserState.spaces.flatMap { space in
@@ -1855,11 +1850,8 @@ final class RefraxControlServer {
 
     private func handleGroupCreate(_ params: ControlRequest.GroupCreateParams) throws -> ControlResponse {
         let space: Space
-        if let spaceIDString = params.spaceID {
-            guard let found = findSpace(byID: spaceIDString) else {
-                return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(spaceIDString)"))
-            }
-            space = found
+        if let spaceReference = params.spaceID {
+            space = try resolveSpace(spaceReference)
         } else {
             guard let activeSpace = windowManager.activeWindowController?.windowState.activeSpace else {
                 return .error(CTL.ErrorInfo(code: "no_space", message: "No active space"))
@@ -2430,29 +2422,39 @@ final class RefraxControlServer {
     // MARK: - Tier 2C: Space CRUD
 
     private func handleSpaceCreate(_ params: ControlRequest.SpaceCreateParams) -> ControlResponse {
+        var dataStoreMode = DataStoreMode.global
+        if let requestedMode = params.dataStoreMode {
+            guard let mode = DataStoreMode(controlArgument: requestedMode) else {
+                let validModes = DataStoreMode.allCases.map(\.rawValue).joined(separator: ", ")
+                return .error(CTL.ErrorInfo(
+                    code: "invalid_argument",
+                    message: "Unknown data mode '\(requestedMode)'. Use one of: \(validModes)",
+                ))
+            }
+            dataStoreMode = mode
+        }
+
         let color = parseColor(params.color)
         let space = spaceManager.createSpace(
             name: params.name,
             color: color,
             iconName: params.icon ?? "folder.fill",
+            description: params.description,
+            dataStoreMode: dataStoreMode,
         )
         let activeSpaceID = windowManager.activeWindowController?.windowState.activeSpaceID
         return .spaces([buildSpaceInfo(space, activeSpaceID: activeSpaceID)])
     }
 
-    private func handleSpaceUpdate(_ params: ControlRequest.SpaceUpdateParams) -> ControlResponse {
-        guard let space = findSpace(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(params.id)"))
-        }
+    private func handleSpaceUpdate(_ params: ControlRequest.SpaceUpdateParams) throws -> ControlResponse {
+        let space = try resolveSpace(params.id)
         let color: Color? = params.color != nil ? parseColor(params.color) : nil
         spaceManager.updateSpace(space, name: params.name, color: color)
         return .ok("Space updated")
     }
 
-    private func handleSpaceDelete(_ params: ControlRequest.SpaceDeleteParams) -> ControlResponse {
-        guard let space = findSpace(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(params.id)"))
-        }
+    private func handleSpaceDelete(_ params: ControlRequest.SpaceDeleteParams) throws -> ControlResponse {
+        let space = try resolveSpace(params.id)
         guard browserState.spaces.count > 1 else {
             return .error(CTL.ErrorInfo(code: "last_space", message: "Cannot delete the last space"))
         }
@@ -2617,30 +2619,104 @@ final class RefraxControlServer {
         .ok("Not yet implemented: network log capture requires WebKit inspector integration")
     }
 
-    private func handleDevCookies(_ params: ControlRequest.DevCookiesParams) async throws -> ControlResponse {
-        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-        let result = try await webPage.callJavaScript("return document.cookie")
-        let cookieString = result as? String ?? ""
-
-        guard !cookieString.isEmpty else {
-            return .cookies([])
+    private func handleDevCookies(
+        _ params: ControlRequest.DevCookiesParams,
+        client: ClientIdentity?,
+    ) async throws -> ControlResponse {
+        let (space, pageHost) = try resolveCookieSpace(params)
+        let grant: ControlCookieAccess.Grant
+        do {
+            grant = try ControlCookieAccess.authorizeRead(reveal: params.reveal ?? false, gate: cookieGate(for: space))
+        } catch {
+            throw controlError(for: error, space: space)
         }
 
-        let cookies = cookieString.split(separator: ";").map { pair in
-            let parts = pair.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
-            let name = String(parts.first ?? "")
-            let value = parts.count > 1 ? String(parts[1]) : ""
-            return CTL.CookieInfo(
-                name: name,
-                value: value,
-                domain: webPage.url?.host ?? "",
-                path: "/",
-                isSecure: false,
-                isHTTPOnly: false,
-                expiresDate: nil,
-            )
+        // The whole store spans every site the space has visited; without the user's
+        // opt-in a read stays scoped to one domain, as document.cookie would be.
+        guard let domainFilter = params.domain ?? pageHost ?? (grant.includesHTTPOnly ? "" : nil) else {
+            throw ControlError.invalidParams("Pass --domain to read cookies from space '\(space.name)'")
         }
-        return .cookies(cookies)
+
+        let store = spaceManager.dataStoreManager.dataStore(for: space)
+        let allCookies = await store.httpCookieStore.allCookies()
+        let cookies = ControlCookieAccess.visibleCookies(allCookies, domain: domainFilter, grant: grant)
+
+        if grant.isGated, !cookies.isEmpty {
+            recordGatedCookieAccess(space: space, cookieNames: cookies.map(\.name), client: client)
+        }
+        return .cookies(cookies.map { ControlCookieAccess.cookieInfo($0, revealValue: grant.revealsValues) })
+    }
+
+    private func handleCookiesExport(
+        _ params: ControlRequest.CookiesExportParams,
+        client: ClientIdentity?,
+    ) async throws -> ControlResponse {
+        let space = try resolveSpace(params.spaceID)
+        do {
+            try ControlCookieAccess.authorizeExport(gate: cookieGate(for: space))
+        } catch {
+            throw controlError(for: error, space: space)
+        }
+        guard !params.names.isEmpty else {
+            throw ControlError.invalidParams("Name at least one cookie to export")
+        }
+
+        let store = spaceManager.dataStoreManager.dataStore(for: space)
+        let allCookies = await store.httpCookieStore.allCookies()
+        let (selected, missing) = ControlCookieAccess.exportSelection(allCookies, domain: params.domain, names: params.names)
+        guard missing.isEmpty else {
+            throw ControlError.cookiesMissing(names: missing, space: space.name)
+        }
+
+        recordGatedCookieAccess(space: space, cookieNames: selected.map(\.name), client: client)
+        return .cookies(selected.map { ControlCookieAccess.cookieInfo($0, revealValue: true) })
+    }
+
+    /// Resolves the space a `dev cookies` read targets, plus the page host when the
+    /// space came from a tab: `--space` first, then `--page`, then the tab.
+    private func resolveCookieSpace(_ params: ControlRequest.DevCookiesParams) throws -> (Space, pageHost: String?) {
+        if let spaceReference = params.spaceID {
+            return (try resolveSpace(spaceReference), nil)
+        }
+        if let pageID = params.pageID {
+            guard let page = findTabPage(byID: pageID), let space = page.tab?.space else {
+                throw ControlError.pageNotFound(pageID)
+            }
+            return (space, page.url.host)
+        }
+        let tab = try resolveTab(tabID: params.tabID)
+        guard let space = tab.space else {
+            throw ControlError.noTabs
+        }
+        return (space, tab.activePage.url.host)
+    }
+
+    private func cookieGate(for space: Space) -> ControlCookieAccess.Gate {
+        ControlCookieAccess.Gate(
+            isLocked: browserState.spaceLockManager.requiresAuth(for: space),
+            exposesCookies: space.exposesCookiesToControlServer,
+        )
+    }
+
+    private func controlError(for refusal: ControlCookieAccess.Refusal, space: Space) -> ControlError {
+        switch refusal {
+        case .locked: .spaceLocked(space.name)
+        case .notExposed: .cookiesNotExposed(space.name)
+        }
+    }
+
+    /// Logs, announces, and timestamps a read of cookie data the user opted into.
+    /// Names cookies, never their values.
+    private func recordGatedCookieAccess(space: Space, cookieNames: [String], client: ClientIdentity?) {
+        let clientName = client?.displayName ?? "Refrax"
+        Logger.info(
+            "\(clientName) (pid \(client.map { "\($0.pid)" } ?? "-"), \(client?.path ?? "in-app")) read cookies "
+                + "[\(cookieNames.joined(separator: ", "))] from space '\(space.name)' (\(space.id))",
+            category: Logger.control,
+        )
+        space.lastCookieControlAccess = .now
+        browserState.scheduleSave()
+        windowManager.activeWindowController?.windowState.showToast("\(clientName) read cookies from \(space.name)")
     }
 
     private func handleDevStorage(_ params: ControlRequest.DevStorageParams) async throws -> ControlResponse {
@@ -2869,6 +2945,9 @@ final class RefraxControlServer {
             name: space.name,
             tabCount: space.tabs.count,
             isActive: space.id == activeSpaceID,
+            dataStoreMode: space.dataStoreMode.rawValue,
+            isLocked: browserState.spaceLockManager.requiresAuth(for: space),
+            exposesCookies: space.exposesCookiesToControlServer,
         )
     }
 
@@ -3028,9 +3107,18 @@ final class RefraxControlServer {
         return nil
     }
 
-    /// Finds a space by its string ID representation.
-    private func findSpace(byID stringID: String) -> Space? {
-        browserState.spaces.first { stringID == "\($0.id)" }
+    /// Resolves a space from a UUID or a name. See ``SpaceManager/findSpace(byReference:)``.
+    private func resolveSpace(_ reference: String) throws(ControlError) -> Space {
+        do {
+            return try spaceManager.findSpace(byReference: reference)
+        } catch {
+            switch error {
+            case let .notFound(reference):
+                throw .spaceNotFound(reference)
+            case let .ambiguous(reference, candidateIDs):
+                throw .ambiguousSpace(ref: reference, candidateIDs: candidateIDs.map(\.uuidString))
+            }
+        }
     }
 
     /// Finds a tab group by its string ID representation across all spaces.
@@ -3405,11 +3493,20 @@ extension RefraxControlServer {
         let timeout = params.timeout ?? 30
         let scope = params.scope ?? .viewport
 
+        var configuration = browserState.webPageConfiguration
+        if let spaceReference = params.spaceID {
+            let space = try resolveSpace(spaceReference)
+            guard !browserState.spaceLockManager.requiresAuth(for: space) else {
+                throw ControlError.spaceLocked(space.name)
+            }
+            configuration.websiteDataStore = spaceManager.dataStoreManager.dataStore(for: space)
+        }
+
         let content = try await HeadlessFetcher.fetch(
             url: url,
             scope: scope,
             timeoutSeconds: timeout,
-            configuration: browserState.webPageConfiguration
+            configuration: configuration
         )
 
         return .pageContent(content)
@@ -3421,11 +3518,8 @@ extension RefraxControlServer {
         }
 
         let space: Space?
-        if let spaceIDString = params.spaceID {
-            space = findSpace(byID: spaceIDString)
-            if space == nil {
-                return .error(CTL.ErrorInfo(code: "not_found", message: "Space not found: \(spaceIDString)"))
-            }
+        if let spaceReference = params.spaceID {
+            space = try resolveSpace(spaceReference)
         } else {
             space = windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
@@ -3668,6 +3762,11 @@ extension RefraxControlServer {
         case fieldNotFound(index: Int, ref: String, message: String)
         case fuzzyNotFound(String)
         case fuzzyAmbiguous(text: String, candidates: [(ref: String, text: String)])
+        case spaceNotFound(String)
+        case ambiguousSpace(ref: String, candidateIDs: [String])
+        case spaceLocked(String)
+        case cookiesNotExposed(String)
+        case cookiesMissing(names: [String], space: String)
 
         var errorDescription: String? {
             switch self {
@@ -3691,6 +3790,16 @@ extension RefraxControlServer {
             case let .fuzzyAmbiguous(text, candidates):
                 "'\(text)' matches \(candidates.count) elements. Be more specific:\n" +
                     candidates.map { "  \($0.ref) — \"\($0.text)\"" }.joined(separator: "\n")
+            case let .spaceNotFound(ref): "Space not found: \(ref)"
+            case let .ambiguousSpace(ref, candidateIDs):
+                "'\(ref)' matches \(candidateIDs.count) spaces. Use an ID:\n" +
+                    candidateIDs.map { "  \($0)" }.joined(separator: "\n")
+            case let .spaceLocked(name): "Space '\(name)' is locked. Unlock it in Refrax first."
+            case let .cookiesNotExposed(name):
+                "Space '\(name)' does not allow command-line tools to read its cookies. " +
+                    "Turn it on in the space's settings in Refrax."
+            case let .cookiesMissing(names, space):
+                "No cookie named \(names.map { "'\($0)'" }.joined(separator: ", ")) in space '\(space)' for that domain"
             }
         }
 
@@ -3710,6 +3819,11 @@ extension RefraxControlServer {
             case .fieldNotFound: "not_found"
             case .fuzzyNotFound: "not_found"
             case .fuzzyAmbiguous: "ambiguous_ref"
+            case .spaceNotFound: "not_found"
+            case .ambiguousSpace: "ambiguous"
+            case .spaceLocked: "space_locked"
+            case .cookiesNotExposed: "cookies_not_exposed"
+            case .cookiesMissing: "not_found"
             }
         }
     }
