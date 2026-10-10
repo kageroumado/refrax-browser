@@ -159,6 +159,20 @@ struct CanvasPhysicsTests {
         #expect(Self.desk.contains(CGPoint(x: frame.midX, y: frame.midY)))
     }
 
+    @Test("A tile left hanging over an edge comes to rest wholly on the desk")
+    func restingTileIsDrawnOntoDesk() {
+        var world = CanvasPhysics(desk: Self.desk)
+        let id = UUID()
+        // Center on the desk, most of the tile and its title above the top edge.
+        world.place(id, frame: Self.tile(at: 665, -120))
+
+        let events = Self.runToRest(&world)
+
+        let frame = try! #require(world.bodies[id]).frame
+        #expect(Self.desk.contains(CanvasPhysics.collisionBox(frame)))
+        #expect(events.contains { if case .settled(id, _, _) = $0 { true } else { false } })
+    }
+
     @Test("A tile with no room left falls off")
     func noRoomDropsATile() {
         var world = CanvasPhysics(desk: Self.desk)

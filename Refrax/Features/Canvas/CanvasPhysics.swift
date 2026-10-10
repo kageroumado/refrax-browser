@@ -66,9 +66,6 @@ struct CanvasPhysics {
         /// Overlap this small counts as touching-but-apart, so rounding noise cannot
         /// keep two tiles that were just separated awake.
         static let slop: CGFloat = 1
-        /// How far inside the far edges a stopped center is kept; `CGRect.contains`
-        /// counts the max edges as outside.
-        static let edgeMargin: CGFloat = 1
         /// A held tile moving at least this fast parts what it meets; slower, it pushes.
         static let partingSpeed: CGFloat = 30
         /// How fast a parted tile slides aside, as a multiple of the hand's speed.
@@ -208,21 +205,19 @@ struct CanvasPhysics {
         }
     }
 
-    /// Stops a knocked tile whose center reached the desk's edge. Only a tile the user
+    /// Stops a knocked tile whose footprint reached the desk's edge. Only a tile the user
     /// let go of slides off by its own speed; one set moving by a collision never does.
     private func stopAtEdge(_ body: inout Body) {
-        let center = CGPoint(x: body.frame.midX, y: body.frame.midY)
-        let clamped = CGPoint(
-            x: min(max(center.x, desk.minX), desk.maxX - Constants.edgeMargin),
-            y: min(max(center.y, desk.minY), desk.maxY - Constants.edgeMargin),
-        )
-        if clamped.x != center.x {
-            body.frame.origin.x += clamped.x - center.x
+        let onDesk = Self.keepingOnDesk(body.frame, desk: desk)
+        if onDesk.minX != body.frame.minX {
             body.velocity.x = 0
         }
-        if clamped.y != center.y {
-            body.frame.origin.y += clamped.y - center.y
+        if onDesk.minY != body.frame.minY {
             body.velocity.y = 0
+        }
+        if onDesk != body.frame {
+            body.frame = onDesk
+            body.hasMoved = true
         }
     }
 
@@ -303,10 +298,8 @@ struct CanvasPhysics {
         }
         func staysOnDesk(toward side: CGFloat) -> Bool {
             let shift = side * clearance(toward: side)
-            let center = movesAlongX
-                ? CGPoint(x: free.frame.midX, y: free.frame.midY + shift)
-                : CGPoint(x: free.frame.midX + shift, y: free.frame.midY)
-            return desk.contains(center)
+            let moved = movesAlongX ? free.frame.offsetBy(dx: 0, dy: shift) : free.frame.offsetBy(dx: shift, dy: 0)
+            return desk.contains(Self.collisionBox(moved))
         }
         var side: CGFloat = movesAlongX
             ? (freeBox.midY >= handBox.midY ? 1 : -1)
@@ -333,8 +326,8 @@ struct CanvasPhysics {
         let alongY = CGPoint(x: 0, y: (freeBox.midY >= handBox.midY ? 1 : -1) * remaining.height)
         var shift = remaining.width < remaining.height ? alongX : alongY
         let other = remaining.width < remaining.height ? alongY : alongX
-        if !desk.contains(CGPoint(x: free.frame.midX + shift.x, y: free.frame.midY + shift.y)),
-           desk.contains(CGPoint(x: free.frame.midX + other.x, y: free.frame.midY + other.y)) {
+        if !desk.contains(Self.collisionBox(free.frame.offsetBy(dx: shift.x, dy: shift.y))),
+           desk.contains(Self.collisionBox(free.frame.offsetBy(dx: other.x, dy: other.y))) {
             shift = other
         }
         free.frame.origin.x += shift.x
@@ -357,16 +350,17 @@ struct CanvasPhysics {
 
         // Normal from a to b on the axis of least penetration. Coincident centers
         // break the tie toward +x so stacked tiles still come apart. When that axis
-        // would push a free tile's center off the desk and the other would not, the
-        // other is taken: a tile falls to a collision only when it has no room.
+        // would push a free tile partly off the desk and the other would not, the
+        // other is taken: a tile leaves the desk in a collision only when it has no room.
         let alongX = (normal: CGPoint(x: boxB.midX >= boxA.midX ? 1 : -1, y: 0), depth: overlapX)
         let alongY = (normal: CGPoint(x: 0, y: boxB.midY >= boxA.midY ? 1 : -1), depth: overlapY)
         func dropsATile(_ axis: (normal: CGPoint, depth: CGFloat)) -> Bool {
             let shareA = axis.depth * inverseMassA / totalInverseMass
             let shareB = axis.depth * inverseMassB / totalInverseMass
-            let centerA = CGPoint(x: a.frame.midX - axis.normal.x * shareA, y: a.frame.midY - axis.normal.y * shareA)
-            let centerB = CGPoint(x: b.frame.midX + axis.normal.x * shareB, y: b.frame.midY + axis.normal.y * shareB)
-            return (inverseMassA > 0 && !desk.contains(centerA)) || (inverseMassB > 0 && !desk.contains(centerB))
+            let movedA = a.frame.offsetBy(dx: -axis.normal.x * shareA, dy: -axis.normal.y * shareA)
+            let movedB = b.frame.offsetBy(dx: axis.normal.x * shareB, dy: axis.normal.y * shareB)
+            return (inverseMassA > 0 && !desk.contains(Self.collisionBox(movedA)))
+                || (inverseMassB > 0 && !desk.contains(Self.collisionBox(movedB)))
         }
         var (normal, depth) = overlapX < overlapY ? alongX : alongY
         let other = overlapX < overlapY ? alongY : alongX
@@ -423,6 +417,17 @@ struct CanvasPhysics {
                 bodies[id] = body
                 continue
             }
+            // A tile rests wholly on the desk: one that came to a stop hanging over an
+            // edge is drawn back in, and stays awake a step to clear anything it now meets.
+            let onDesk = Self.keepingOnDesk(body.frame, desk: desk)
+            if onDesk != body.frame {
+                body.frame = onDesk
+                body.hasMoved = true
+                if !isStuck {
+                    bodies[id] = body
+                    continue
+                }
+            }
             body.velocity = .zero
             body.isAwake = false
             if body.hasMoved {
@@ -434,6 +439,15 @@ struct CanvasPhysics {
             bodies[id] = body
         }
         return events
+    }
+
+    /// `frame` moved the least distance that puts its collision box inside `desk`.
+    static func keepingOnDesk(_ frame: CGRect, desk: CGRect) -> CGRect {
+        let box = collisionBox(frame)
+        guard box.width <= desk.width, box.height <= desk.height else { return frame }
+        let dx = max(desk.minX - box.minX, 0) + min(desk.maxX - box.maxX, 0)
+        let dy = max(desk.minY - box.minY, 0) + min(desk.maxY - box.maxY, 0)
+        return frame.offsetBy(dx: dx, dy: dy)
     }
 
     /// The space a tile claims: itself, its title above it, and half the gap all round.
