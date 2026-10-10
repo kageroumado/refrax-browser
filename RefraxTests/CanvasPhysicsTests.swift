@@ -178,6 +178,22 @@ struct CanvasPhysicsTests {
         #expect(events.contains(.fell(cornered)))
     }
 
+    @Test("Opening a desk with more tiles than fit closes nothing and comes to rest")
+    func overfullDeskSettlesWithoutFalls() {
+        var world = CanvasPhysics(desk: Self.desk)
+        // Twelve columns by ten rows fill the desk; the rest stack on the last row,
+        // the way tiles for new tabs are placed.
+        for index in 0 ..< 200 {
+            let row = min(index / 12, 9)
+            world.place(UUID(), frame: Self.tile(at: 120 + CGFloat(index % 12) * 368, 120 + CGFloat(row) * 272))
+        }
+
+        let events = Self.runToRest(&world)
+
+        #expect(!events.contains { if case .fell = $0 { true } else { false } })
+        #expect(world.bodies.count == 200)
+    }
+
     @Test("A crowd dropped on one spot spreads out without overlaps")
     func crowdSpreads() {
         var world = CanvasPhysics(desk: Self.desk)

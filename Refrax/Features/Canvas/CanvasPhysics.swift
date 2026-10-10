@@ -34,6 +34,8 @@ struct CanvasPhysics {
         var wasDropped = false
         /// Seconds since a held body was last moved by its hand.
         var heldIdle: CGFloat = 0
+        /// Seconds awake without the user acting on the desk.
+        var unattendedTime: CGFloat = 0
     }
 
     /// What happened during a step.
@@ -76,6 +78,9 @@ struct CanvasPhysics {
         /// Time constant of a held body's measured speed: it is smoothed over pointer
         /// events and fades when the pointer stops, so a still hand pushes nothing.
         static let heldVelocityTimeConstant: CGFloat = 0.05
+        /// Longest a tile keeps working its way free with nobody acting on the desk.
+        /// A desk holding more tiles than fit leaves the rest overlapping after this.
+        static let unattendedSettleTime: CGFloat = 2
         /// A hand unmoved for longer than this has stopped; pointer events arrive at
         /// least this often while it moves.
         static let heldIdleThreshold: CGFloat = 1.0 / 30
@@ -110,6 +115,7 @@ struct CanvasPhysics {
             body.frame = frame
             body.velocity = .zero
             body.isAwake = true
+            body.unattendedTime = 0
             bodies[id] = body
         } else {
             bodies[id] = Body(frame: frame)
@@ -172,7 +178,7 @@ struct CanvasPhysics {
         for _ in 0 ..< Constants.iterations {
             touching.formUnion(separate())
         }
-        return finish(touching: touching)
+        return finish(touching: touching, dt: dt)
     }
 
     private mutating func integrate(_ dt: CGFloat) {
@@ -392,15 +398,30 @@ struct CanvasPhysics {
     }
 
     /// Drops bodies that left the desk and puts slow, untouched ones to rest.
-    private mutating func finish(touching: Set<Tab.ID>) -> [Event] {
+    ///
+    /// Falling closes a tab, so it happens only while the user is acting on the desk:
+    /// a tile is held, or one they let go of is still moving. When the desk settles
+    /// on its own (opening the canvas, tiles placed for new tabs), a tile with no room
+    /// stops at the edge, and tiles still pressing on each other after
+    /// ``Constants/unattendedSettleTime`` rest where they are.
+    private mutating func finish(touching: Set<Tab.ID>, dt: CGFloat) -> [Event] {
+        let userIsActing = bodies.values.contains { $0.isHeld || ($0.isAwake && $0.wasDropped) }
         var events: [Event] = []
         for (id, var body) in bodies where body.isAwake && !body.isHeld {
             if !desk.contains(CGPoint(x: body.frame.midX, y: body.frame.midY)) {
-                bodies[id] = nil
-                events.append(.fell(id))
+                if userIsActing {
+                    bodies[id] = nil
+                    events.append(.fell(id))
+                    continue
+                }
+                stopAtEdge(&body)
+            }
+            body.unattendedTime = userIsActing ? 0 : body.unattendedTime + dt
+            let isStuck = body.unattendedTime >= Constants.unattendedSettleTime
+            guard isStuck || (!touching.contains(id) && hypot(body.velocity.x, body.velocity.y) < Constants.restSpeed) else {
+                bodies[id] = body
                 continue
             }
-            guard !touching.contains(id), hypot(body.velocity.x, body.velocity.y) < Constants.restSpeed else { continue }
             body.velocity = .zero
             body.isAwake = false
             if body.hasMoved {

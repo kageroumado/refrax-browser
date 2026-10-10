@@ -100,3 +100,28 @@ verbose = true
 scenario("diag", index: 0, to: CGPoint(x: 2000, y: 1500), seconds: 1.0, fling: false)
 scenario("row", index: 0, to: CGPoint(x: 2000, y: 120), seconds: 1.0, fling: false)
 scenario("fling", index: 0, to: CGPoint(x: 700, y: 120), seconds: 0.2, fling: true)
+
+/// Opens a space of `count` tabs laid out the way TabCanvasManager.placeUnplacedTabs
+/// does, with nobody touching the desk, and reports what the settle did to it.
+func opening(_ count: Int) {
+    var world = CanvasPhysics(desk: desk)
+    let step = CGSize(width: size.width + 48, height: size.height + 72)
+    let columns = Int((desk.width - 240 + 48) / step.width)
+    let rows = Int((desk.height - 240 + 48) / step.height)
+    for index in 0 ..< count {
+        let row = min(index / columns, rows - 1)
+        world.place(UUID(), frame: CGRect(x: 120 + CGFloat(index % columns) * step.width, y: 120 + CGFloat(row) * step.height, width: size.width, height: size.height))
+    }
+    var fell = 0
+    var elapsed: CGFloat = 0
+    while world.isRunning, elapsed < 30 {
+        fell += world.step(dt).count { if case .fell = $0 { true } else { false } }
+        elapsed += dt
+    }
+    print(String(format: "open %3d  fell %3d  still moving %@  after %.1fs  overlaps %d", count, fell, world.isRunning ? "yes" : "no", elapsed, overlaps(world)))
+}
+
+print("— opening, untouched")
+for count in [120, 150, 200] {
+    opening(count)
+}
