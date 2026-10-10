@@ -30,6 +30,7 @@ enum Logger: @unchecked Sendable {
     nonisolated static let engines = OSLog(subsystem: Constants.App.bundleID, category: "engines")
     nonisolated static let notifications = OSLog(subsystem: Constants.App.bundleID, category: "notifications")
     nonisolated static let control = OSLog(subsystem: Constants.App.bundleID, category: "control")
+    nonisolated static let canvas = OSLog(subsystem: Constants.App.bundleID, category: "canvas")
 
     // MARK: - Logging Methods
 

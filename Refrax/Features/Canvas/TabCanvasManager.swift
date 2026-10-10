@@ -39,14 +39,24 @@ protocol CanvasBoardDriver: AnyObject {
     func beginPanning(focusedTile: CGRect?)
     /// Slides the desk by `delta` screen points.
     func pan(by delta: CGPoint)
-    /// Settles into the tile nearest the middle of the window.
-    func enterNearestTile()
+    /// Settles into a tile, and the page takes over.
+    func settle(on place: CanvasPanSettle)
     /// Completes the opening, or takes it back to the page and closes the canvas.
     func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
     /// through the same hold-and-release path the pointer uses. With `fling` the tile
     /// is let go at full speed and slides on.
     func drag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async
+}
+
+/// Where a desk brought up from a page settles.
+enum CanvasPanSettle: Equatable {
+    /// The tile nearest the middle of the window.
+    case nearest
+    /// The tile at a point in window coordinates, or the nearest one to it.
+    case tile(atWindowPoint: CGPoint)
+    /// The tab the desk came up from.
+    case origin
 }
 
 /// A hint about getting into or out of the canvas, shown once ever.
@@ -309,12 +319,12 @@ final class TabCanvasManager {
         }
     }
 
-    /// ⌃ was released: the desk settles into the tile nearest the middle.
-    func endPan() {
+    /// The desk brought up from a page settles into a tile and the page takes over.
+    func endPan(settlingOn place: CanvasPanSettle) {
         guard isPanningFromPage else { return }
         isPanningFromPage = false
         if let board {
-            board.enterNearestTile()
+            board.settle(on: place)
         } else {
             dismiss(activating: nil)
         }

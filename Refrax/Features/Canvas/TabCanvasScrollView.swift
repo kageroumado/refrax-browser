@@ -43,7 +43,7 @@ final class TabCanvasScrollView: NSScrollView {
         static let revealSpan: CGFloat = 0.12
         /// How hard a pinch drives the opening: the camera zooms out this many times
         /// faster than the fingers close.
-        static let pinchGain: CGFloat = 2.5
+        static let pinchGain: CGFloat = 1.6
         /// How far ⌃ zooms out from the page, enough to see it is one tile among others.
         static let peekZoomOut: CGFloat = 1.15
         static let peekDuration: TimeInterval = 0.18
@@ -119,6 +119,7 @@ final class TabCanvasScrollView: NSScrollView {
         if contentView.frame.width > 0, pendingLayoutActions.isEmpty {
             action()
         } else {
+            Logger.debug("queued until layout (\(pendingLayoutActions.count) waiting)", category: Logger.canvas)
             pendingLayoutActions.append(action)
             needsLayout = true
         }
@@ -156,9 +157,11 @@ final class TabCanvasScrollView: NSScrollView {
     /// Follows a pinch: the page shrinks exactly as much as the fingers close.
     func setOpeningScale(_ scale: CGFloat) {
         guard let path = openingPath, scale > 0 else {
+            Logger.debug("opening scale \(scale) queued: no path yet", category: Logger.canvas)
             pendingOpeningScale = scale
             return
         }
+        Logger.debug("opening scale \(scale) flight \(flight != nil)", category: Logger.canvas)
         let ratio = path.to.width / path.from.width
         guard ratio > 1 else { return setOpeningProgress(1) }
         setOpeningProgress(min(1, max(0, Constants.pinchGain * log(1 / scale) / log(ratio))))
@@ -213,12 +216,29 @@ final class TabCanvasScrollView: NSScrollView {
         }
     }
 
-    /// Settles into the tile nearest the middle of the window.
-    func enterNearestTile() {
+    /// Settles into a tile, and the page takes over.
+    func settle(on place: CanvasPanSettle) {
         whenLaidOut { [weak self] in
             guard let self else { return }
-            let visible = contentView.bounds
-            guard let (tab, frame) = board.tile(near: CGPoint(x: visible.midX, y: visible.midY)) else {
+            flight?.cancel()
+            flight = nil
+            alphaValue = 1
+            let point: CGPoint
+            switch place {
+            case .origin:
+                if let focusedTileFrame {
+                    enter(focusedTileFrame, tab: nil, fading: false)
+                } else {
+                    onDismiss?()
+                }
+                return
+            case .nearest:
+                let visible = contentView.bounds
+                point = CGPoint(x: visible.midX, y: visible.midY)
+            case let .tile(windowPoint):
+                point = board.convert(windowPoint, from: nil)
+            }
+            guard let (tab, frame) = board.tile(near: point) else {
                 onDismiss?()
                 return
             }
@@ -236,6 +256,7 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// Completes the opening from wherever it is, or takes it back to the page and closes.
     func finishOpening(commit: Bool) {
+        Logger.debug("finish opening commit \(commit) at \(openingProgress)", category: Logger.canvas)
         whenLaidOut { [weak self] in
             guard let self, openingPath != nil else { return }
             let target: CGFloat = commit ? 1 : 0
