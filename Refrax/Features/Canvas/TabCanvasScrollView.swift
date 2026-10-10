@@ -40,7 +40,13 @@ final class TabCanvasScrollView: NSScrollView {
         /// Shortest flight, for a pinch released close to where it is headed.
         static let minimumFlightDuration: TimeInterval = 0.15
         /// Share of the path over which the canvas fades between transparent and opaque.
-        static let revealSpan: CGFloat = 0.35
+        static let revealSpan: CGFloat = 0.12
+        /// How hard a pinch drives the opening: the camera zooms out this many times
+        /// faster than the fingers close.
+        static let pinchGain: CGFloat = 2.5
+        /// How far ⌃ zooms out from the page, enough to see it is one tile among others.
+        static let peekZoomOut: CGFloat = 1.15
+        static let peekDuration: TimeInterval = 0.18
         /// A pinch released with the tile under the fingers at least this fraction of its
         /// page size enters the tile.
         static let enterThreshold: CGFloat = 0.5
@@ -155,7 +161,7 @@ final class TabCanvasScrollView: NSScrollView {
         }
         let ratio = path.to.width / path.from.width
         guard ratio > 1 else { return setOpeningProgress(1) }
-        setOpeningProgress(min(1, max(0, log(1 / scale) / log(ratio))))
+        setOpeningProgress(min(1, max(0, Constants.pinchGain * log(1 / scale) / log(ratio))))
     }
 
     /// `rect` grown by `factor` about `point`, which stays where it is on screen.
@@ -170,20 +176,36 @@ final class TabCanvasScrollView: NSScrollView {
 
     // MARK: - Panning from a Page
 
-    /// Shows the desk at page size with the focused tile on the page, for ⌃-scrolling.
+    /// Brings the desk up around the page for ⌃: the focused tile starts on the page and
+    /// the camera eases back a little, so the page shows as one tile among others.
     func beginPanning(focusedTile tile: CGRect?) {
         focusedTileFrame = tile
-        alphaValue = 1
+        alphaValue = 0
         whenLaidOut { [weak self] in
-            guard let self, let tile else { return }
-            setVisibleRect(alignedRect(for: tile))
+            guard let self else { return }
+            guard let tile else {
+                alphaValue = 1
+                return
+            }
+            let from = alignedRect(for: tile)
+            let to = Self.scale(from, by: Constants.peekZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
+            setVisibleRect(from)
+            run(from: 0, to: 1, duration: Constants.peekDuration, frame: { [weak self] t in
+                self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
+                self?.alphaValue = Self.reveal(t)
+            }, completion: nil)
         }
     }
 
     /// Slides the desk with the wheel; `delta` is in screen points.
     func pan(by delta: CGPoint) {
         whenLaidOut { [weak self] in
-            guard let self, magnification > 0 else { return }
+            guard let self, magnification > 0, delta != .zero else { return }
+            if flight != nil {
+                flight?.cancel()
+                flight = nil
+                alphaValue = 1
+            }
             var visible = contentView.bounds
             visible.origin.x -= delta.x / magnification
             visible.origin.y -= delta.y / magnification
@@ -348,9 +370,15 @@ final class TabCanvasScrollView: NSScrollView {
     }
 
     /// Animates a progress value, shortening the flight when it has less of the way to go.
-    private func run(from start: CGFloat, to end: CGFloat, frame: @escaping (CGFloat) -> Void, completion: (() -> Void)?) {
+    private func run(
+        from start: CGFloat,
+        to end: CGFloat,
+        duration fixedDuration: TimeInterval? = nil,
+        frame: @escaping (CGFloat) -> Void,
+        completion: (() -> Void)?,
+    ) {
         flight?.cancel()
-        let duration = max(Constants.minimumFlightDuration, Constants.zoomDuration * Double(abs(end - start)))
+        let duration = fixedDuration ?? max(Constants.minimumFlightDuration, Constants.zoomDuration * Double(abs(end - start)))
         let next = ProgressFlight(from: start, to: end, duration: duration)
         flight = next
         next.start(in: contentView, frame: frame) { [weak self] in

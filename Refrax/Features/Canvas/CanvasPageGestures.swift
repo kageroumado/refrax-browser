@@ -11,8 +11,10 @@ import AppKit
 ///   reaches the page untouched. The direction is only known once the fingers move, so
 ///   the gesture's `began` event is held back until then and handed to the page when the
 ///   pinch turns out to be its own.
-/// - **⌃-scroll** on a page brings the desk up at page size and slides it under the wheel;
-///   releasing ⌃ settles into the tile nearest the middle of the window.
+/// - **⌃** held alone over a page for ``Constants/peekDelay`` brings the desk up around the
+///   page, eased back a little so the page shows as a tile; scrolling slides the desk and
+///   releasing ⌃ settles into the tile nearest the middle of the window. A click or key
+///   within the delay is a ⌃-click or shortcut, and the desk stays down.
 @MainActor
 final class CanvasPageGestures {
     private enum PinchState {
@@ -24,11 +26,13 @@ final class CanvasPageGestures {
 
     private enum Constants {
         /// A pinch released at or below this scale completes the opening.
-        static let commitScale: CGFloat = 0.85
+        static let commitScale: CGFloat = 0.93
         /// A last step closing at least this fast completes the opening from anywhere.
-        static let flickStep: CGFloat = -0.02
+        static let flickStep: CGFloat = -0.012
         /// Smallest scale tracked; the opening ends long before.
         static let minimumScale: CGFloat = 0.05
+        /// How long ⌃ is held alone before the desk comes up.
+        static let peekDelay: TimeInterval = 0.12
     }
 
     private weak var window: NSWindow?
@@ -36,6 +40,7 @@ final class CanvasPageGestures {
     private let isEligible: (NSEvent) -> Bool
     private var pinch = PinchState.idle
     private var monitor: Any?
+    private var pendingPeek: DispatchWorkItem?
 
     /// - Parameter isEligible: Whether a gesture starting with this event may reach the
     ///   canvas: the window's state allows it and the pointer is over the page.
@@ -43,7 +48,7 @@ final class CanvasPageGestures {
         self.window = window
         self.canvas = canvas
         self.isEligible = isEligible
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged]) { [weak self] event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             self?.handle(event) ?? event
         }
     }
@@ -61,7 +66,9 @@ final class CanvasPageGestures {
         case .magnify: return handlePinch(event)
         case .scrollWheel: return handleScroll(event)
         case .flagsChanged: return handleFlags(event)
-        default: return event
+        default:
+            cancelPeek()
+            return event
         }
     }
 
@@ -75,16 +82,45 @@ final class CanvasPageGestures {
         guard event.modifierFlags.contains(.control), !canvas.isActive,
               event.phase == .began || event.phase == [], isEligible(event)
         else { return event }
+        cancelPeek()
         canvas.beginPan()
         canvas.pan(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
         return nil
     }
 
     private func handleFlags(_ event: NSEvent) -> NSEvent? {
-        if canvas.isPanningFromPage, !event.modifierFlags.contains(.control) {
-            canvas.endPan()
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if canvas.isPanningFromPage {
+            if !modifiers.contains(.control) {
+                canvas.endPan()
+            }
+            return event
+        }
+        if modifiers == .control, !canvas.isActive, isEligible(event) {
+            schedulePeek()
+        } else {
+            cancelPeek()
         }
         return event
+    }
+
+    private func schedulePeek() {
+        cancelPeek()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            pendingPeek = nil
+            guard NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
+                  !canvas.isActive
+            else { return }
+            canvas.beginPan()
+        }
+        pendingPeek = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.peekDelay, execute: work)
+    }
+
+    private func cancelPeek() {
+        pendingPeek?.cancel()
+        pendingPeek = nil
     }
 
     // MARK: - Pinch
