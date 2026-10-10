@@ -48,6 +48,10 @@ final class TabCanvasScrollView: NSScrollView {
         /// How far ⌃ zooms out from the page, enough to see it is one tile among others.
         static let peekZoomOut: CGFloat = 1.15
         static let peekDuration: TimeInterval = 0.18
+        /// Zoom per line of mouse wheel.
+        static let wheelZoomStep: CGFloat = 1.1
+        /// How far out the wheel zooms, relative to the view fitting every tile.
+        static let maximumZoomOut: CGFloat = 1.5
         /// A pinch released with the tile under the fingers at least this fraction of its
         /// page size enters the tile.
         static let enterThreshold: CGFloat = 0.5
@@ -220,6 +224,35 @@ final class TabCanvasScrollView: NSScrollView {
             visible.origin.x -= delta.x / magnification
             visible.origin.y -= delta.y / magnification
             setVisibleRect(canvasClip.keepingCenterNearTiles(visible))
+        }
+    }
+
+    /// Zooms by `factor` about a point in window coordinates, the way a mouse wheel does.
+    /// Zooming out stops a little past the view fitting every tile; a tile under the
+    /// pointer grown to its page size is entered.
+    func zoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint) {
+        whenLaidOut { [weak self] in
+            guard let self, !isTransitioning, openingPath == nil, factor > 0, factor.isFinite else { return }
+            if flight != nil {
+                flight?.abandon()
+                flight = nil
+                alphaValue = 1
+            }
+            let anchor = board.convert(windowPoint, from: nil)
+            let visible = contentView.bounds
+            var width = visible.width / factor
+            if let tiles = board.tilesBounds {
+                let fit = fittedRect(for: tiles, insets: Constants.fitInsets)
+                width = min(width, fit.width * Constants.maximumZoomOut)
+            }
+            let zoomed = Self.scale(visible, by: width / visible.width, about: anchor)
+            setVisibleRect(canvasClip.keepingCenterNearTiles(zoomed))
+
+            guard factor > 1, let page = pageRectInClip,
+                  let (tab, frame) = board.tile(near: anchor), frame.contains(anchor), frame.width > 0,
+                  magnification >= page.width / frame.width
+            else { return }
+            enter(frame, tab: tab)
         }
     }
 
@@ -449,7 +482,12 @@ final class TabCanvasScrollView: NSScrollView {
     // MARK: - Input
 
     /// User input takes over from an in-flight camera move, except while leaving or opening.
+    /// A trackpad scrolls the desk; a mouse wheel, which has no precise deltas, zooms it.
     override func scrollWheel(with event: NSEvent) {
+        if !event.hasPreciseScrollingDeltas {
+            zoom(by: pow(Constants.wheelZoomStep, event.scrollingDeltaY), aboutWindowPoint: event.locationInWindow)
+            return
+        }
         if !isTransitioning, openingPath == nil { flight?.cancel() }
         super.scrollWheel(with: event)
     }

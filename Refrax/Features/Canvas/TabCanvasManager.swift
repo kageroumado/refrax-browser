@@ -41,6 +41,8 @@ protocol CanvasBoardDriver: AnyObject {
     func pan(by delta: CGPoint)
     /// Settles into a tile, and the page takes over.
     func settle(on place: CanvasPanSettle)
+    /// Zooms by `factor` about a point in window coordinates.
+    func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint)
     /// Completes the opening, or takes it back to the page and closes the canvas.
     func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
@@ -330,6 +332,12 @@ final class TabCanvasManager {
         }
     }
 
+    /// A mouse wheel zooms the desk brought up from a page, about the pointer.
+    func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint) {
+        guard isPanningFromPage else { return }
+        board?.zoom(by: factor, aboutWindowPoint: point)
+    }
+
     /// The desk brought up from a page settles into a tile and the page takes over.
     func endPan(settlingOn place: CanvasPanSettle) {
         guard isPanningFromPage else { return }
@@ -410,6 +418,8 @@ final class TabCanvasManager {
         snapshotTask = nil
         selectedTabIDs = []
         openingScale = 1
+        isPanningFromPage = false
+        isOpeningInteractively = false
         isActive = false
     }
 

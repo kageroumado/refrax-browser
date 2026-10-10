@@ -16,10 +16,11 @@ import AppKit
 ///   tile nearest the middle of the window. A click or key within the delay is a ⌃-click
 ///   or shortcut, and the desk stays down.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
-///   held, scrolling and dragging move the camera at full trackpad precision, and a click
-///   enters the tile under it. One more tap of ⌃ settles into the nearest tile; Esc goes
-///   back to the tab it started from. ⌃ is let go for this because macOS turns ⌃-click into
-///   a right click and ⌃-scroll into coarse, accelerated wheel steps.
+///   held, scrolling and dragging move the camera at full trackpad precision, a click
+///   enters the tile under it, and a mouse wheel zooms about the pointer. One more tap of
+///   ⌃ settles into the nearest tile; Esc goes back to the tab it started from. ⌃ is let
+///   go for this because macOS turns ⌃-click into a right click and ⌃-scroll into coarse,
+///   accelerated wheel steps.
 @MainActor
 final class CanvasPageGestures {
     private enum PinchState {
@@ -48,6 +49,8 @@ final class CanvasPageGestures {
         /// Pointer travel that turns a click in move mode into a drag.
         static let dragThreshold: CGFloat = 3
         static let escapeKeyCode: UInt16 = 53
+        /// Zoom per line of mouse wheel in move mode.
+        static let wheelZoomStep: CGFloat = 1.1
     }
 
     private weak var window: NSWindow?
@@ -134,7 +137,11 @@ final class CanvasPageGestures {
 
     private func handleScroll(_ event: NSEvent) -> NSEvent? {
         if canvas.isPanningFromPage {
-            canvas.pan(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
+            if isMoveMode, !event.hasPreciseScrollingDeltas {
+                canvas.zoom(by: pow(Constants.wheelZoomStep, event.scrollingDeltaY), aboutWindowPoint: event.locationInWindow)
+            } else {
+                canvas.pan(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
+            }
             return nil
         }
         interruptControl()
