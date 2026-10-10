@@ -23,6 +23,7 @@ final class TabCanvasScrollView: NSScrollView {
     var onClearSelection: (() -> Void)?
 
     private let board: TabCanvasBoardView
+    private let canvasClip = CanvasClipView()
     private var isTransitioning = false
     private var focusedTileFrame: CGRect?
     private var flight: ProgressFlight?
@@ -70,12 +71,13 @@ final class TabCanvasScrollView: NSScrollView {
         allowsMagnification = true
         minMagnification = Constants.minMagnification
         maxMagnification = Constants.maxMagnification
-        contentView = CanvasClipView()
+        contentView = canvasClip
         documentView = board
         automaticallyAdjustsContentInsets = false
         contentInsets = NSEdgeInsetsZero
 
         board.onActivate = { [weak self] tab, frame in self?.enter(frame, tab: tab) }
+        canvasClip.centerRegion = { [weak board] in board?.tilesBounds }
         board.onDismiss = { [weak self] in self?.dismissZoomingIntoFocusedTile() }
         board.onSettle = { [weak self] frames in self?.onSettle?(frames) }
         board.onTileDropped = { [weak self] tabID in self?.onTileDropped?(tabID) }
@@ -116,7 +118,12 @@ final class TabCanvasScrollView: NSScrollView {
     /// Runs `action` once the clip view has a size, in the order requested; camera math
     /// needs the size.
     private func whenLaidOut(_ action: @escaping () -> Void) {
-        if contentView.frame.width > 0, pendingLayoutActions.isEmpty {
+        if contentView.frame.width > 0 {
+            let waiting = pendingLayoutActions
+            pendingLayoutActions = []
+            for earlier in waiting {
+                earlier()
+            }
             action()
         } else {
             Logger.debug("queued until layout (\(pendingLayoutActions.count) waiting)", category: Logger.canvas)
@@ -203,24 +210,25 @@ final class TabCanvasScrollView: NSScrollView {
     /// Slides the desk with the wheel; `delta` is in screen points.
     func pan(by delta: CGPoint) {
         whenLaidOut { [weak self] in
-            guard let self, magnification > 0, delta != .zero else { return }
+            guard let self, !isTransitioning, magnification > 0, delta != .zero else { return }
             if flight != nil {
-                flight?.cancel()
+                flight?.abandon()
                 flight = nil
                 alphaValue = 1
             }
             var visible = contentView.bounds
             visible.origin.x -= delta.x / magnification
             visible.origin.y -= delta.y / magnification
-            setVisibleRect(visible)
+            setVisibleRect(canvasClip.keepingCenterNearTiles(visible))
         }
     }
 
     /// Settles into a tile, and the page takes over.
     func settle(on place: CanvasPanSettle) {
         whenLaidOut { [weak self] in
-            guard let self else { return }
-            flight?.cancel()
+            guard let self, !isTransitioning else { return }
+            Logger.debug("settle on \(place)", category: Logger.canvas)
+            flight?.abandon()
             flight = nil
             alphaValue = 1
             let point: CGPoint
@@ -303,6 +311,7 @@ final class TabCanvasScrollView: NSScrollView {
     /// Flies until `tile` is aligned on the live page, fading the canvas out as it lands.
     /// With a `tab`, that tab becomes the active one first, so its page is the one revealed.
     private func enter(_ tile: CGRect, tab: Tab?, fading: Bool = true) {
+        Logger.debug("enter tile \(tile) transitioning \(isTransitioning)", category: Logger.canvas)
         guard !isTransitioning else { return }
         isTransitioning = true
         board.isInteractionEnabled = false
@@ -317,6 +326,7 @@ final class TabCanvasScrollView: NSScrollView {
                 self?.alphaValue = Self.reveal(1 - t)
             }
         }, completion: { [weak self] in
+            Logger.debug("entered tile", category: Logger.canvas)
             self?.isTransitioning = false
             self?.onDismiss?()
         })
@@ -382,13 +392,17 @@ final class TabCanvasScrollView: NSScrollView {
     }
 
     /// Shows exactly `visible` (a rectangle in document coordinates) in the clip view.
+    /// The camera goes where it is placed; only the user's own scrolling is kept near tiles.
     private func setVisibleRect(_ visible: CGRect) {
         let clip = contentView.frame.size
         guard clip.width > 0, visible.isUsableCamera else { return }
+        canvasClip.isPlacingCamera = true
+        defer { canvasClip.isPlacingCamera = false }
         magnification = clip.width / visible.width
         contentView.setBoundsOrigin(visible.origin)
         reflectScrolledClipView(contentView)
     }
+
 
     /// Animates a progress value, shortening the flight when it has less of the way to go.
     private func run(
@@ -398,7 +412,8 @@ final class TabCanvasScrollView: NSScrollView {
         frame: @escaping (CGFloat) -> Void,
         completion: (() -> Void)?,
     ) {
-        flight?.cancel()
+        // A replaced flight still finishes its work, so no transition is left half done.
+        flight?.abandon()
         let duration = fixedDuration ?? max(Constants.minimumFlightDuration, Constants.zoomDuration * Double(abs(end - start)))
         let next = ProgressFlight(from: start, to: end, duration: duration)
         flight = next
@@ -454,11 +469,29 @@ final class TabCanvasScrollView: NSScrollView {
 /// A clip view whose camera may show beyond the desk's edges. The default clamps the
 /// visible rectangle to the document, which pins a fitted or aligned camera against the
 /// desk's corner instead of where it was placed.
+///
+/// When the user scrolls or zooms, the middle of the view stays within the tiles, so at
+/// most half a screen of empty desk shows past the outermost ones.
 private final class CanvasClipView: NSClipView {
-    /// Any finite camera is allowed; a non-finite one, which AppKit traps on, keeps the
-    /// current bounds.
+    /// The region holding every tile; nil leaves the camera free.
+    var centerRegion: (() -> CGRect?)?
+    /// The camera is being placed by a flight or alignment rather than moved by the user.
+    var isPlacingCamera = false
+
+    /// A non-finite camera, which AppKit traps on, keeps the current bounds.
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        proposedBounds.isUsableCamera ? proposedBounds : bounds
+        guard proposedBounds.isUsableCamera else { return bounds }
+        return isPlacingCamera ? proposedBounds : keepingCenterNearTiles(proposedBounds)
+    }
+
+    /// `visible` moved so its middle lies within the tiles.
+    func keepingCenterNearTiles(_ visible: CGRect) -> CGRect {
+        guard let region = centerRegion?() else { return visible }
+        let center = CGPoint(
+            x: min(max(visible.midX, region.minX), region.maxX),
+            y: min(max(visible.midY, region.minY), region.maxY),
+        )
+        return visible.offsetBy(dx: center.x - visible.midX, dy: center.y - visible.midY)
     }
 }
 
@@ -502,6 +535,13 @@ private final class ProgressFlight {
         displayLink = nil
         frame = nil
         completion = nil
+    }
+
+    /// Stops moving and runs the completion now, leaving the camera where it is.
+    func abandon() {
+        let done = completion
+        cancel()
+        done?()
     }
 
     @objc

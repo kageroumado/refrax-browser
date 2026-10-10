@@ -212,6 +212,13 @@ final class TabCanvasBoardView: NSView {
         }
     }
 
+    /// The smallest rectangle holding every tile, or nil on an empty desk.
+    var tilesBounds: CGRect? {
+        let frames = tiles.values.map(\.frame)
+        guard let first = frames.first else { return nil }
+        return frames.dropFirst().reduce(first) { $0.union($1) }
+    }
+
     /// The tile under `point`, or else the one whose edge is nearest to it.
     func tile(near point: CGPoint) -> (tab: Tab, frame: CGRect)? {
         func distance(_ frame: CGRect) -> CGFloat {

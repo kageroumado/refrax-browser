@@ -226,6 +226,8 @@ final class TabCanvasManager {
         static let zoneHeaderHeight: CGFloat = 36
         /// Room above a tile for its title.
         static let tileTitleHeight: CGFloat = 24
+        /// How long a close may take before the canvas closes without the board.
+        static let closeFallbackDelay: Duration = .milliseconds(1500)
         /// How long a one-time hint stays on screen.
         static let hintDuration: Duration = .seconds(4)
         /// Smallest ring a magnet lays its members on.
@@ -262,7 +264,16 @@ final class TabCanvasManager {
     /// opened from, and that page takes over.
     func close() {
         guard isActive else { return }
-        closeRequest = (closeRequest ?? 0) + 1
+        let request = (closeRequest ?? 0) + 1
+        closeRequest = request
+        // The board normally closes the canvas when its flight lands; if it cannot, the
+        // canvas closes anyway rather than trapping the window on the desk.
+        Task(name: "Canvas close fallback") { [weak self] in
+            try? await Task.sleep(for: Layout.closeFallbackDelay)
+            guard let self, isActive, closeRequest == request else { return }
+            Logger.debug("close fallback after a board that never landed", category: Logger.canvas)
+            dismiss(activating: nil)
+        }
     }
 
     // MARK: - Hints
