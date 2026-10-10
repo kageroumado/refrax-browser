@@ -506,12 +506,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// Page gestures reach the canvas only over a page at its normal size, with no lens up.
     private func setupCanvasPageGestures(window: NSWindow) {
-        canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager) { [unowned self] event in
+        canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager) { [unowned self] point in
             guard !windowState.showsCommandLens, !windowState.showsAddressLens,
                   tabCanvasManager.isLivePageAtNormalSize,
                   let pageFrame = tabCanvasManager.currentLivePageFrame()
             else { return false }
-            return pageFrame.contains(event.locationInWindow)
+            return pageFrame.contains(point)
         }
     }
 

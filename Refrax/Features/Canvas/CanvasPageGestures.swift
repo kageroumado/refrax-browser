@@ -31,7 +31,7 @@ final class CanvasPageGestures {
 
     private enum Constants {
         /// A pinch released at or below this scale completes the opening.
-        static let commitScale: CGFloat = 0.9
+        static let commitScale: CGFloat = 0.96
         /// A pinch still closing at least this fast when released completes the opening
         /// from anywhere.
         static let flickTrend: CGFloat = -0.01
@@ -52,7 +52,7 @@ final class CanvasPageGestures {
 
     private weak var window: NSWindow?
     private unowned let canvas: TabCanvasManager
-    private let isEligible: (NSEvent) -> Bool
+    private let isEligible: (CGPoint) -> Bool
     private var pinch = PinchState.idle
     private var monitor: Any?
     private var pendingPeek: DispatchWorkItem?
@@ -66,9 +66,10 @@ final class CanvasPageGestures {
     /// How far the pointer has moved since the mouse went down in move mode.
     private var dragTravel: CGFloat = 0
 
-    /// - Parameter isEligible: Whether a gesture starting with this event may reach the
-    ///   canvas: the window's state allows it and the pointer is over the page.
-    init(window: NSWindow, canvas: TabCanvasManager, isEligible: @escaping (NSEvent) -> Bool) {
+    /// - Parameter isEligible: Whether a gesture with the pointer at this point (window
+    ///   coordinates) may reach the canvas: the window's state allows it and the point is
+    ///   over the page.
+    init(window: NSWindow, canvas: TabCanvasManager, isEligible: @escaping (CGPoint) -> Bool) {
         self.window = window
         self.canvas = canvas
         self.isEligible = isEligible
@@ -147,9 +148,21 @@ final class CanvasPageGestures {
 
     // MARK: - ⌃
 
+    /// Where the pointer is for `event`, in window coordinates. Key and modifier events
+    /// carry no pointer location of their own, so for those the window is asked.
+    private func pointer(for event: NSEvent) -> CGPoint {
+        switch event.type {
+        case .flagsChanged, .keyDown, .keyUp:
+            window?.mouseLocationOutsideOfEventStream ?? .zero
+        default:
+            event.locationInWindow
+        }
+    }
+
     private func handleFlags(_ event: NSEvent) -> NSEvent? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let now = Date()
+        Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
 
         if modifiers == .control {
             controlDownAt = now
@@ -157,14 +170,14 @@ final class CanvasPageGestures {
                 return event
             }
             if let lastTap = lastControlTap, now.timeIntervalSince(lastTap) <= Constants.doubleTapInterval,
-               !canvas.isActive, isEligible(event) {
+               !canvas.isActive, isEligible(pointer(for: event)) {
                 lastControlTap = nil
                 cancelPeek()
                 isMoveMode = true
                 canvas.beginPan()
                 return event
             }
-            if !canvas.isActive, isEligible(event) {
+            if !canvas.isActive, isEligible(pointer(for: event)) {
                 schedulePeek()
             }
             return event
@@ -221,7 +234,7 @@ final class CanvasPageGestures {
         Logger.debug("pinch phase \(event.phase.rawValue) magnification \(event.magnification) state \(pinch)", category: Logger.canvas)
         switch event.phase {
         case .began:
-            if !canvas.isActive, isEligible(event) {
+            if !canvas.isActive, isEligible(pointer(for: event)) {
                 pinch = .undecided(began: event)
                 return nil
             }
