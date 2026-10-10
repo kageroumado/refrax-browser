@@ -1,7 +1,57 @@
 import AppKit
 import SwiftUI
 
-/// The tab canvas overlay: covers the content area while `TabCanvasManager.isActive`.
+/// The window-wide layer the canvas appears in, above the browser and below Command Lens.
+///
+/// While the canvas is open it fills the whole window, sidebar included, and the
+/// toolbar's buttons are hidden: only the traffic lights and the tabs remain. The
+/// buttons are hidden rather than the toolbar, which would change the titlebar's height
+/// and resize the page underneath.
+struct TabCanvasLayer: View {
+    @Environment(TabCanvasManager.self) private var manager
+    @Environment(WindowState.self) private var windowState
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if manager.isActive {
+                TabCanvasView()
+            }
+            if let hint = manager.hint {
+                CanvasHintLabel(text: hint.text)
+                    .padding(.bottom, manager.isActive ? Layout.hintAboveToolbar : Layout.hintBottomPadding)
+                    .allowsHitTesting(false)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: manager.hint)
+        .ignoresSafeArea()
+        .onChange(of: manager.isActive) { _, isActive in
+            for item in windowState.window?.toolbar?.items ?? [] {
+                item.isHidden = isActive
+            }
+        }
+    }
+
+    private enum Layout {
+        static let hintBottomPadding: CGFloat = 28
+        static let hintAboveToolbar: CGFloat = 84
+    }
+}
+
+/// A one-time hint floating above the bottom edge.
+private struct CanvasHintLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: Capsule())
+    }
+}
+
+/// The tab canvas: the desk, and the floating controls over it.
 struct TabCanvasView: View {
     @Environment(TabCanvasManager.self) private var manager
 
@@ -15,12 +65,15 @@ struct TabCanvasView: View {
                 magnets: manager.magnets,
                 selectedTabIDs: manager.selectedTabIDs,
                 zoomRequest: manager.zoomRequest,
+                closeRequest: manager.closeRequest,
                 tileSize: manager.tileSize,
                 deskSize: manager.deskSize,
             )
 
             CanvasToolbar()
                 .padding(.bottom, Layout.toolbarBottomPadding)
+                .opacity(manager.isOpeningInteractively ? 0 : 1)
+                .animation(.easeOut(duration: 0.2), value: manager.isOpeningInteractively)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -38,6 +91,10 @@ private struct CanvasToolbar: View {
 
     var body: some View {
         HStack(spacing: Layout.spacing) {
+            toolbarButton("Back to Tab", systemImage: "arrow.down.right.and.arrow.up.left") { manager.close() }
+
+            Divider().frame(height: Layout.dividerHeight)
+
             if !manager.selectedTabIDs.isEmpty {
                 Text("\(manager.selectedTabIDs.count) selected")
                     .font(.callout.weight(.medium))
@@ -96,12 +153,13 @@ private struct TabCanvasBoard: NSViewRepresentable {
     let magnets: [CanvasMagnet]
     let selectedTabIDs: Set<Tab.ID>
     let zoomRequest: CanvasZoomRequest?
+    let closeRequest: Int?
     let tileSize: CGSize
     let deskSize: CGSize
 
     func makeNSView(context: Context) -> TabCanvasScrollView {
         let view = TabCanvasScrollView(deskSize: manager.deskSize)
-        view.onActivate = { [weak manager] tab in manager?.dismiss(activating: tab) }
+        view.onWillEnter = { [weak manager] tab in manager?.prepareToEnter(tab) }
         view.onDismiss = { [weak manager] in manager?.dismiss(activating: nil) }
         view.onSettle = { [weak manager] frames in manager?.settleTiles(frames) }
         view.onTileDropped = { [weak manager] tabID in manager?.finishTileDrag(tabID) }
@@ -114,7 +172,13 @@ private struct TabCanvasBoard: NSViewRepresentable {
         manager.board = view
         reload(view)
         context.coordinator.lastZoomSerial = zoomRequest?.serial
-        view.zoomOutFromFocusedTile(manager.focusedTileFrame, toFit: manager.tilesBounds)
+        context.coordinator.lastCloseRequest = closeRequest
+        view.livePageFrameInWindow = manager.livePageFrame
+        view.beginOpening(focusedTile: manager.focusedTileFrame, everything: manager.tilesBounds)
+        view.setOpeningProgress(manager.openingProgress)
+        if !manager.isOpeningInteractively {
+            view.finishOpening(commit: true)
+        }
         return view
     }
 
@@ -123,6 +187,10 @@ private struct TabCanvasBoard: NSViewRepresentable {
         if let zoomRequest, zoomRequest.serial != context.coordinator.lastZoomSerial {
             context.coordinator.lastZoomSerial = zoomRequest.serial
             view.fly(toFit: zoomRequest.rect)
+        }
+        if closeRequest != context.coordinator.lastCloseRequest {
+            context.coordinator.lastCloseRequest = closeRequest
+            view.dismissZoomingIntoFocusedTile()
         }
     }
 
@@ -145,6 +213,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
 
     final class Coordinator {
         var lastZoomSerial: Int?
+        var lastCloseRequest: Int?
     }
 }
 

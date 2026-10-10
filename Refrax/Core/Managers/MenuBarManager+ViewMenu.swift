@@ -216,13 +216,14 @@ extension MenuBarManager {
         splitViewItem.target = self
         viewMenu.addItem(splitViewItem)
 
+        // ⌘⇧\ is Safari's Show All Tabs, so Mac users reach for it already.
         let canvasItem = NSMenuItem(
             title: "Tab Canvas",
             action: #selector(toggleTabCanvas(_:)),
-            keyEquivalent: "c",
+            keyEquivalent: "\\",
         )
-        canvasItem.keyEquivalentModifierMask = [.command, .control]
-        canvasItem.image = NSImage(systemSymbolName: "square.grid.3x3.topleft.filled", accessibilityDescription: nil)
+        canvasItem.keyEquivalentModifierMask = [.command, .shift]
+        canvasItem.image = NSImage(systemSymbolName: TabCanvasManager.symbolName, accessibilityDescription: nil)
         canvasItem.target = self
         viewMenu.addItem(canvasItem)
 

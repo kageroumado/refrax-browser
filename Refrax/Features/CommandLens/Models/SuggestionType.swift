@@ -96,6 +96,9 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Open the Local Devices window.
     case openLocalDevices
+
+    /// Show or hide the tab canvas in this window.
+    case toggleTabCanvas
 }
 
 /// Scope of a setting (global or per-site).

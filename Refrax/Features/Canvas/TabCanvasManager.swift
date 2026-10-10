@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import SwiftUI
+import WebKit
 
 /// A group drawn on the tab canvas as a zone that holds its member tiles.
 struct CanvasZone: Identifiable, Equatable {
@@ -30,10 +31,33 @@ struct CanvasMagnet: Identifiable, Equatable {
 protocol CanvasBoardDriver: AnyObject {
     /// Tiles are moving under the physics simulation.
     var isSimulating: Bool { get }
+    /// Moves the opening to `progress`, 0 on the page and 1 on the whole desk.
+    func setOpeningProgress(_ progress: CGFloat)
+    /// Completes the opening, or takes it back to the page and closes the canvas.
+    func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
     /// through the same hold-and-release path the pointer uses. With `fling` the tile
     /// is let go at full speed and slides on.
     func drag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async
+}
+
+/// A hint about getting into or out of the canvas, shown once ever.
+enum CanvasHint: String {
+    /// Shown the first time a page is pinched, while it zooms.
+    case enteringCanvas
+    /// Shown the first time the canvas opens.
+    case leavingCanvas
+
+    var text: String {
+        switch self {
+        case .enteringCanvas: "Pinch in to see all your tabs"
+        case .leavingCanvas: "Pinch out on a tab to open it · Esc to go back"
+        }
+    }
+
+    var seenKey: String {
+        "canvas.hint.\(rawValue).seen"
+    }
 }
 
 /// A one-shot request for the board to fly its camera to a rectangle.
@@ -103,6 +127,27 @@ final class TabCanvasManager {
     /// The latest camera request; the board flies there once per serial.
     private(set) var zoomRequest: CanvasZoomRequest?
 
+    /// Bumped by ``close()``; the board zooms back into the focused tile once per value.
+    private(set) var closeRequest: Int?
+
+    /// A pinch on the page is opening the canvas and has not been released.
+    private(set) var isOpeningInteractively = false
+
+    /// How far an interactive opening has come, 0 on the page and 1 on the whole desk.
+    @ObservationIgnored
+    private(set) var openingProgress: CGFloat = 0
+
+    /// A one-time hint on screen, if any.
+    private(set) var hint: CanvasHint?
+
+    @ObservationIgnored
+    private var hintTask: Task<Void, Never>?
+
+    /// Where the live page sat when the canvas opened, in window coordinates. Tiles
+    /// align to it, so the focused tile starts exactly over the page it shows.
+    @ObservationIgnored
+    private(set) var livePageFrame: CGRect?
+
     /// The tab the board zooms out from on show and back into on dismiss.
     private(set) var focusedTabID: Tab.ID?
 
@@ -127,6 +172,9 @@ final class TabCanvasManager {
     private var previousActiveTabID: Tab.ID?
 
     // MARK: - Constants
+
+    /// The canvas's symbol, shared by the menu item, toolbar button, and Command Lens.
+    static let symbolName = "square.grid.3x3.topleft.filled"
 
     enum Layout {
         /// The smallest desk; a space with more tabs gets a proportionally larger one.
@@ -153,6 +201,8 @@ final class TabCanvasManager {
         static let zoneHeaderHeight: CGFloat = 36
         /// Room above a tile for its title.
         static let tileTitleHeight: CGFloat = 24
+        /// How long a one-time hint stays on screen.
+        static let hintDuration: Duration = .seconds(4)
         /// Smallest ring a magnet lays its members on.
         static let magnetMinimumRadius: CGFloat = 260
     }
@@ -177,21 +227,103 @@ final class TabCanvasManager {
 
     func toggle() {
         if isActive {
-            dismiss(activating: nil)
+            close()
         } else {
             show()
         }
     }
+
+    /// Leaves the canvas the way it was entered: the board zooms back into the tab it
+    /// opened from, and that page takes over.
+    func close() {
+        guard isActive else { return }
+        closeRequest = (closeRequest ?? 0) + 1
+    }
+
+    // MARK: - Hints
+
+    /// Shows `hint` once ever, for a few seconds.
+    func offerHint(_ hint: CanvasHint) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: hint.seenKey) else { return }
+        defaults.set(true, forKey: hint.seenKey)
+        self.hint = hint
+        hintTask?.cancel()
+        hintTask = Task(name: "Canvas hint") { [weak self] in
+            try? await Task.sleep(for: Layout.hintDuration)
+            guard !Task.isCancelled else { return }
+            self?.hint = nil
+        }
+    }
+
+    // MARK: - Interactive Opening
+
+    /// A pinch on the page starts opening the canvas under the fingers.
+    func beginInteractiveOpen() {
+        guard !isActive else { return }
+        openingProgress = 0
+        isOpeningInteractively = true
+        show()
+    }
+
+    /// The pinch moved: `progress` is 0 on the page and 1 on the whole desk.
+    func updateInteractiveOpen(_ progress: CGFloat) {
+        guard isOpeningInteractively else { return }
+        openingProgress = progress
+        board?.setOpeningProgress(progress)
+    }
+
+    /// The pinch was released: the canvas finishes opening, or goes back to the page.
+    func endInteractiveOpen(commit: Bool) {
+        guard isOpeningInteractively else { return }
+        isOpeningInteractively = false
+        if let board {
+            board.finishOpening(commit: commit)
+        } else if !commit {
+            dismiss(activating: nil)
+        }
+    }
+
+    /// The live page's frame in window coordinates, while it is on screen.
+    func currentLivePageFrame() -> CGRect? {
+        guard let tab = windowState.activeTab,
+              let view = pagePool.existingPage(for: tab.activePage)?.contentView,
+              view.window != nil, !view.isHiddenOrHasHiddenAncestor
+        else { return nil }
+        return view.convert(view.bounds, to: nil)
+    }
+
+    /// Whether the live page is at its normal size, so a closing pinch belongs to the
+    /// canvas. A WebKit page zoomed in with a pinch zooms back out first.
+    var isLivePageAtNormalSize: Bool {
+        guard let tab = windowState.activeTab,
+              let webView = pagePool.existingPage(for: tab.activePage)?.contentView as? WKWebView
+        else { return true }
+        return webView.magnification <= 1.001
+    }
+
+    /// A tile is being entered: its tab becomes the active one beneath the canvas, so
+    /// the page revealed as the canvas fades is that tab's.
+    func prepareToEnter(_ tab: Tab) {
+        focusedTabID = tab.id
+        if windowState.activeTab?.id != tab.id {
+            tabManager.setActiveTab(tab, in: windowState)
+        }
+    }
+
+    // MARK: - Showing
 
     /// Opens the canvas for the active space.
     func show() {
         guard !isActive else { return }
 
         focusedTabID = windowState.activeTab?.id
+        livePageFrame = currentLivePageFrame()
         tileSize = contentAspectTileSize()
         selectedTabIDs = []
         reloadTabs()
         isActive = true
+        offerHint(.leavingCanvas)
 
         snapshotTask = Task(name: "Canvas snapshots") {
             await loadStoredSnapshots()

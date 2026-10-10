@@ -57,7 +57,12 @@ enum CanvasScenario: String, CaseIterable, Sendable {
 
         func makeTab(topic: String, number: Int, colorIndex: Int, frame: CGRect?, load: Bool = true) -> Tab {
             let url = labPageURL(topic: topic, number: number, color: Palette.colors[colorIndex % Palette.colors.count])
-            let tab = tabManager.createTab(url: url, in: space, makeActive: false, loadImmediately: load, insertionStrategy: .append)
+            let tab = tabManager.createTab(url: url, in: space, makeActive: false, loadImmediately: false, insertionStrategy: .append)
+            // Lab pages are `data:` URLs, which Chromium refuses as a top-level navigation.
+            tab.activePage.engineID = EngineID.systemWebKit.rawValue
+            if load {
+                tabManager.pagePool.page(for: tab.activePage)
+            }
             tab.boardFrame = frame
             return tab
         }

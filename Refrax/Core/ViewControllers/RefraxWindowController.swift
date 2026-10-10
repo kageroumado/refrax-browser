@@ -211,11 +211,14 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// The toolbar item identifiers that should move with the sidebar.
     let sidebarToolbarItemIdentifiers: Set<NSToolbarItem.Identifier> = [
-        .toggleSidebarGrouped, .toggleLayoutMode, .toggleInspector,
+        .toggleSidebarGrouped, .toggleTabCanvas, .toggleInspector,
     ]
 
     /// Tracks whether we're in fullscreen mode for proper edge reveal behavior
     var isInFullscreen = false
+
+    /// Opens the tab canvas from a pinch on the page.
+    private var canvasPinchRecognizer: CanvasPinchRecognizer?
 
     // MARK: - Undo/Redo
 
@@ -372,6 +375,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupDetailTrayContainer(contentView: contentView)
         setupSidebarOverlayContainer(contentView: contentView)
         setupEdgeExtensionBackground(contentView: contentView)
+        setupTabCanvasLayer(contentView: contentView)
+        setupCanvasPinch(window: window)
         setupOverlayView(contentView: contentView)
         setupSidebarTrackingRegion(contentView: contentView)
         setupToolbar(window: window)
@@ -479,6 +484,32 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         backgroundView.autoresizingMask = [.width, .height]
 
         contentView.addSubview(backgroundView, positioned: .below, relativeTo: nil)
+    }
+
+    /// The tab canvas covers the whole window, above the sidebar and below Command Lens.
+    private func setupTabCanvasLayer(contentView: NSView) {
+        let canvasView = TransparentHostingView(rootView: TabCanvasLayer().refraxEnvironment(environment)) { [unowned self] in
+            !tabCanvasManager.isActive
+        }
+        contentView.addSubview(canvasView)
+        canvasView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            canvasView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            canvasView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            canvasView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            canvasView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+    }
+
+    /// A closing pinch over a page at its normal size opens the canvas, unless a lens is up.
+    private func setupCanvasPinch(window: NSWindow) {
+        canvasPinchRecognizer = CanvasPinchRecognizer(window: window, canvas: tabCanvasManager) { [unowned self] event in
+            guard !windowState.showsCommandLens, !windowState.showsAddressLens,
+                  tabCanvasManager.isLivePageAtNormalSize,
+                  let pageFrame = tabCanvasManager.currentLivePageFrame()
+            else { return false }
+            return pageFrame.contains(event.locationInWindow)
+        }
     }
 
     private func setupOverlayView(contentView: NSView) {
@@ -1046,21 +1077,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             NSApplication.shared.typedDelegate.undoRedoManager.undoManager.canUndo
         case #selector(browserRedo(_:)):
             NSApplication.shared.typedDelegate.undoRedoManager.undoManager.canRedo
-        case #selector(toggleLayoutMode(_:)):
-            canEnterLayoutMode
         default:
             true
         }
-    }
-
-    /// Whether layout mode can be entered with the current active tab.
-    ///
-    /// Layout mode is disabled when:
-    /// - No tab is active
-    /// - The active tab is a live favorite (favorites have special display rules)
-    var canEnterLayoutMode: Bool {
-        guard let activeTab = windowState.activeTab else { return false }
-        return !activeTab.isLiveFavorite
     }
 
     // MARK: - Undo/Redo

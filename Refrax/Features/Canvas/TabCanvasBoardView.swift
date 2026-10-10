@@ -212,6 +212,18 @@ final class TabCanvasBoardView: NSView {
         }
     }
 
+    /// The tile under `point`, or else the one whose edge is nearest to it.
+    func tile(near point: CGPoint) -> (tab: Tab, frame: CGRect)? {
+        func distance(_ frame: CGRect) -> CGFloat {
+            let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
+            let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
+            return hypot(dx, dy)
+        }
+        return tiles.values
+            .min { distance($0.frame) < distance($1.frame) }
+            .map { ($0.tab, $0.frame) }
+    }
+
     // MARK: - Factories
 
     private func makeTile(for tab: Tab) -> CanvasTileView {

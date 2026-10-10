@@ -11,7 +11,7 @@ extension RefraxWindowController: NSToolbarDelegate {
         [
             .flexibleSpace,
             .toggleSidebarGrouped,
-            .toggleLayoutMode,
+            .toggleTabCanvas,
             .toggleInspector,
             .sidebarTrackingSeparator,
             .flexibleSpace,
@@ -51,13 +51,13 @@ extension RefraxWindowController: NSToolbarDelegate {
             configureSidebarTracking(for: item)
             return item
 
-        case .toggleLayoutMode:
-            let item = NSToolbarItem(itemIdentifier: .toggleLayoutMode)
-            item.label = "Layout"
-            item.paletteLabel = "Layout Mode"
-            item.toolTip = "Enable Layout Mode"
-            item.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
-            item.action = #selector(toggleLayoutMode(_:))
+        case .toggleTabCanvas:
+            let item = NSToolbarItem(itemIdentifier: .toggleTabCanvas)
+            item.label = "Canvas"
+            item.paletteLabel = "Tab Canvas"
+            item.toolTip = "Show All Tabs on the Canvas (⌘⇧\\)"
+            item.image = NSImage(systemSymbolName: TabCanvasManager.symbolName, accessibilityDescription: nil)
+            item.action = #selector(toggleTabCanvas(_:))
             item.target = self
             item.isBordered = true
             configureSidebarTracking(for: item)
@@ -82,12 +82,8 @@ extension RefraxWindowController: NSToolbarDelegate {
     }
 
     @objc
-    func toggleLayoutMode(_: Any?) {
-        if windowState.isInLayoutMode {
-            windowState.exitLayoutMode()
-        } else {
-            windowState.enterLayoutMode()
-        }
+    func toggleTabCanvas(_: Any?) {
+        tabCanvasManager.toggle()
     }
 }
 
@@ -182,7 +178,7 @@ extension NSToolbarItem.Identifier {
     /// The sidebar toggle under an identifier AppKit does not single out; see the delegate.
     static let toggleSidebarGrouped = NSToolbarItem.Identifier("ToggleSidebar")
     static let toggleInspector = NSToolbarItem.Identifier("ToggleInspector")
-    static let toggleLayoutMode = NSToolbarItem.Identifier("ToggleLayoutMode")
+    static let toggleTabCanvas = NSToolbarItem.Identifier("ToggleTabCanvas")
 }
 
 extension NSToolbar {

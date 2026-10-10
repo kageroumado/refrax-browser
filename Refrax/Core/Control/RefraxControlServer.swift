@@ -279,7 +279,7 @@ final class RefraxControlServer {
         case .canvasShow:
             try await handleCanvasShow()
         case .canvasHide:
-            try handleCanvasHide()
+            try await handleCanvasHide()
         case .canvasState:
             try canvasStateResponse()
         case let .canvasDrag(params):
@@ -2586,9 +2586,15 @@ final class RefraxControlServer {
         return try canvasStateResponse()
     }
 
-    private func handleCanvasHide() throws -> ControlResponse {
-        try canvasManager().dismiss(activating: nil)
-        return .ok("Canvas closed")
+    private func handleCanvasHide() async throws -> ControlResponse {
+        let canvas = try canvasManager()
+        canvas.close()
+        // The board zooms back into the tab before the canvas goes away.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while canvas.isActive, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return .ok(canvas.isActive ? "Canvas still closing" : "Canvas closed")
     }
 
     private func handleCanvasDrag(_ params: ControlRequest.CanvasDragParams) async throws -> ControlResponse {

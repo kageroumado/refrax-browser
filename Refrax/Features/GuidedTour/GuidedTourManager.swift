@@ -12,8 +12,8 @@ final class GuidedTourManager {
         case openCommandLens
         case createFirstTab
         case createSecondTab
-        case enterLayoutMode
         case openReferencePane
+        case openTabCanvas
         case completed
     }
 
@@ -53,10 +53,10 @@ extension GuidedTourManager.Step {
             "Type a URL or search term, then press \(Text("Return").bold())"
         case .createSecondTab:
             "Open another tab with \(Text("⌘T").bold())"
-        case .enterLayoutMode:
-            "Click the split view button in the toolbar"
         case .openReferencePane:
             "Click the reference pane button in the toolbar"
+        case .openTabCanvas:
+            "Pinch in on the page to see all your tabs, or press \(Text("⌘⇧\\").bold())"
         case .completed:
             "You're all set! Enjoy browsing with Refrax."
         }
@@ -68,8 +68,8 @@ extension GuidedTourManager.Step {
         case .openCommandLens: "sparkle.magnifyingglass"
         case .createFirstTab: "globe"
         case .createSecondTab: "plus.square.on.square"
-        case .enterLayoutMode: "rectangle.split.2x1"
         case .openReferencePane: "sidebar.right"
+        case .openTabCanvas: TabCanvasManager.symbolName
         case .completed: "checkmark.circle.fill"
         }
     }

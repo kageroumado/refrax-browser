@@ -4,7 +4,6 @@ struct MainContentView: View {
     @Environment(BrowserSettings.self) private var settings
     @Environment(ClipboardMonitor.self) private var clipboardMonitor
     @Environment(WindowState.self) private var windowState
-    @Environment(TabCanvasManager.self) private var tabCanvasManager
 
     @State private var showClipboardToast = false
 
@@ -44,10 +43,6 @@ struct MainContentView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             contentRouter
-
-            if tabCanvasManager.isActive {
-                TabCanvasView()
-            }
 
             AutoFillOverlayView()
             AgentCursorOverlay()

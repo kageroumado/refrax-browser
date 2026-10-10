@@ -73,6 +73,24 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
+        // Tab Canvas
+        let canvasTerms = [
+            "canvas", "tab canvas", "desk", "all tabs", "show all tabs", "tab overview",
+            "overview", "board", "spatial", "zoom out", "see all tabs",
+        ]
+        if FuzzyMatcher.match(query: query, against: canvasTerms) >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.toggleTabCanvas),
+                text: "Tab Canvas",
+                description: "Every tab of this space on one desk  ⌘⇧\\",
+                iconName: TabCanvasManager.symbolName,
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
+
         // Import from Another Browser
         let importTerms = [
             "import", "import browser", "import bookmarks", "import passwords",

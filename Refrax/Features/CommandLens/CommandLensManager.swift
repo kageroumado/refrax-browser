@@ -1536,6 +1536,8 @@ final class CommandLensManager {
                 NSApp.typedDelegate.passwordsWindowController.showWindow()
             case .openLocalDevices:
                 NSApp.typedDelegate.localDevicesWindowController.showWindow()
+            case .toggleTabCanvas:
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggle()
             }
             closeCurrentLens()
             reset()

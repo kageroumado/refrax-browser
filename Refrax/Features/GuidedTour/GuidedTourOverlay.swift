@@ -10,6 +10,7 @@ struct GuidedTourOverlay: View {
     @Environment(GuidedTourManager.self) private var tourManager
     @Environment(WindowState.self) private var windowState
     @Environment(BrowserState.self) private var browserState
+    @Environment(TabCanvasManager.self) private var tabCanvasManager
 
     /// Tab count at the time each step is entered, used to detect new tab creation.
     @State private var tabCountAtStepStart = 0
@@ -32,8 +33,8 @@ struct GuidedTourOverlay: View {
             .onChange(of: browserState.tabListVersion) { _, _ in
                 handleTabListChange()
             }
-            .onChange(of: windowState.isInLayoutMode) { _, isInLayout in
-                if isInLayout, tourManager.currentStep == .enterLayoutMode {
+            .onChange(of: tabCanvasManager.isActive) { _, isActive in
+                if isActive, tourManager.currentStep == .openTabCanvas {
                     tourManager.advance()
                 }
             }
