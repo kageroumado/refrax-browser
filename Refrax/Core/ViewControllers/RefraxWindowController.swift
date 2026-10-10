@@ -491,6 +491,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         let canvasView = TransparentHostingView(rootView: TabCanvasLayer().refraxEnvironment(environment)) { [unowned self] in
             !tabCanvasManager.isActive
         }
+        // The layer follows the window's size and must never set it: by default a
+        // hosting view pins the window to its content, which is empty while closed.
+        canvasView.sizingOptions = []
         contentView.addSubview(canvasView)
         canvasView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

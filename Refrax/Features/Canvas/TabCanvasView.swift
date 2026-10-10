@@ -24,6 +24,7 @@ struct TabCanvasLayer: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: manager.hint)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onChange(of: manager.isActive) { _, isActive in
             for item in windowState.window?.toolbar?.items ?? [] {

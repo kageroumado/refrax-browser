@@ -675,7 +675,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Nothing is sent until a tier is chosen; closing the prompt chooses
     /// ``TelemetryTier/off``.
+    ///
+    /// Debug builds ask only when `REFRAX_DIGOXIN_URL` points them at a test server;
+    /// otherwise their tier stays unchosen and they send nothing.
     private func showTelemetryPromptIfNeeded() {
+        #if DEBUG
+            guard ProcessInfo.processInfo.environment["REFRAX_DIGOXIN_URL"] != nil else { return }
+        #endif
         guard settings.needsTelemetryPrompt else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.telemetryPromptDelay) { [self] in
             guard settings.needsTelemetryPrompt, telemetryPromptWindowController == nil else { return }
