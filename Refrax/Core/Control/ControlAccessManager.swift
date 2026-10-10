@@ -236,7 +236,7 @@ final class ControlAccessManager {
 
         let knownPaths = [
             helpersPath,
-            "/usr/local/bin/refrax-ctl",
+            RefraxControlHost.cliHelperDestination,
             appSupportBinPath,
             "\(NSHomeDirectory())/Developer/Refrax/refrax-ctl/.build/release/refrax-ctl",
             "\(NSHomeDirectory())/Developer/Refrax/refrax-ctl/.build/debug/refrax-ctl",

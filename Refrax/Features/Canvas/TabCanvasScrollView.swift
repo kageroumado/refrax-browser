@@ -264,7 +264,7 @@ final class TabCanvasScrollView: NSScrollView {
     /// Shows exactly `visible` (a rectangle in document coordinates) in the clip view.
     private func setVisibleRect(_ visible: CGRect) {
         let clip = contentView.frame.size
-        guard clip.width > 0, visible.width > 0 else { return }
+        guard clip.width > 0, visible.isUsableCamera else { return }
         magnification = clip.width / visible.width
         contentView.setBoundsOrigin(visible.origin)
         reflectScrolledClipView(contentView)
@@ -287,6 +287,9 @@ final class TabCanvasScrollView: NSScrollView {
     /// toward the middle of the screen. Interpolating magnification and origin separately
     /// zooms about the current center first and slides afterwards, which reads as two moves.
     private static func interpolate(from start: CGRect, to end: CGRect, t: CGFloat) -> CGRect {
+        guard start.isUsableCamera, end.isUsableCamera else {
+            return end.isUsableCamera ? end : start
+        }
         let width = start.width * pow(end.width / start.width, t)
         let height = width * end.height / end.width
         let center = CGPoint(
@@ -326,8 +329,18 @@ final class TabCanvasScrollView: NSScrollView {
 /// visible rectangle to the document, which pins a fitted or aligned camera against the
 /// desk's corner instead of where it was placed.
 private final class CanvasClipView: NSClipView {
+    /// Any finite camera is allowed; a non-finite one, which AppKit traps on, keeps the
+    /// current bounds.
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        proposedBounds
+        proposedBounds.isUsableCamera ? proposedBounds : bounds
+    }
+}
+
+private extension CGRect {
+    /// Finite, with a positive size: something the camera can show.
+    var isUsableCamera: Bool {
+        origin.x.isFinite && origin.y.isFinite && size.width.isFinite && size.height.isFinite
+            && size.width > 0 && size.height > 0
     }
 }
 

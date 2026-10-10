@@ -134,7 +134,13 @@ actor RefraxControlHost {
     // MARK: - CLI Helper Installation
 
     /// Absolute path where the CLI helper is installed for PATH access.
-    nonisolated static let cliHelperDestination = "/usr/local/bin/refrax-ctl"
+    /// Where the CLI helper is installed. A debug build installs its own helper beside the
+    /// release one, because a debug helper drives only the debug app.
+    #if DEBUG
+        nonisolated static let cliHelperDestination = "/usr/local/bin/refrax-ctl-debug"
+    #else
+        nonisolated static let cliHelperDestination = "/usr/local/bin/refrax-ctl"
+    #endif
 
     /// Serializes install-path checks and mutations across concurrent callers,
     /// so two install attempts can't race between checking and copying.
@@ -463,9 +469,9 @@ actor RefraxControlHost {
 /// Installation state of the `refrax-ctl` binary on PATH relative to the
 /// copy bundled with the running build.
 nonisolated enum CLIHelperStatus: Equatable {
-    /// `/usr/local/bin/refrax-ctl` byte-matches the bundled helper.
+    /// The installed helper (``RefraxControlHost/cliHelperDestination``) byte-matches the bundled one.
     case upToDate
-    /// Nothing is installed at `/usr/local/bin/refrax-ctl`.
+    /// Nothing is installed at ``RefraxControlHost/cliHelperDestination``.
     case notInstalled
     /// An installed binary exists but differs from the bundled helper.
     case outdated

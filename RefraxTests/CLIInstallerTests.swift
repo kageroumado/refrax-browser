@@ -435,13 +435,13 @@ private struct ControlAccessTestEnvironment {
 @Suite("ControlAccessManager Auto-Allow", .tags(.cliInstaller), .serialized)
 @MainActor
 struct ControlAccessManagerAutoAllowTests {
-    @Test("Includes /usr/local/bin/refrax-ctl in auto-allow list")
+    @Test("Includes this build's installed helper in auto-allow list")
     func includesGlobalBinPath() throws {
         let env = try ControlAccessTestEnvironment()
         env.manager.autoAllowRefraxCTL()
 
         let paths = env.manager.allowedClients.map(\.path)
-        #expect(paths.contains("/usr/local/bin/refrax-ctl"))
+        #expect(paths.contains(RefraxControlHost.cliHelperDestination))
     }
 
     @Test("Includes App Support bin path in auto-allow list")
