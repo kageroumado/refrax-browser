@@ -43,6 +43,8 @@ protocol CanvasBoardDriver: AnyObject {
     func settle(on place: CanvasPanSettle)
     /// Zooms by `factor` about a point in window coordinates.
     func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint)
+    /// Moves the desk for a trackpad scroll of `delta` points.
+    func scroll(by delta: CGPoint)
     /// Completes the opening, or takes it back to the page and closes the canvas.
     func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
@@ -330,6 +332,12 @@ final class TabCanvasManager {
             pendingPan.x += delta.x
             pendingPan.y += delta.y
         }
+    }
+
+    /// A trackpad scroll moves the desk brought up from a page.
+    func scroll(by delta: CGPoint) {
+        guard isPanningFromPage else { return }
+        board?.scroll(by: delta)
     }
 
     /// A mouse wheel zooms the desk brought up from a page, about the pointer.

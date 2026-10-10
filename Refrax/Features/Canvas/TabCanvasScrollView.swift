@@ -48,6 +48,9 @@ final class TabCanvasScrollView: NSScrollView {
         /// How far ⌃ zooms out from the page, enough to see it is one tile among others.
         static let peekZoomOut: CGFloat = 1.15
         static let peekDuration: TimeInterval = 0.18
+        /// How much faster than the fingers a trackpad scroll moves the desk; a desk is many
+        /// screens wide, so following the fingers exactly crawls. Drags stay under the pointer.
+        static let scrollGain: CGFloat = 2
         /// Zoom per line of mouse wheel.
         static let wheelZoomStep: CGFloat = 1.1
         /// How far out the wheel zooms, relative to the view fitting every tile.
@@ -255,6 +258,11 @@ final class TabCanvasScrollView: NSScrollView {
             else { return }
             enter(frame, tab: tab)
         }
+    }
+
+    /// Moves the desk for a trackpad scroll of `delta` points, faster than the fingers.
+    func scroll(by delta: CGPoint) {
+        pan(by: CGPoint(x: delta.x * Constants.scrollGain, y: delta.y * Constants.scrollGain))
     }
 
     /// Settles into a tile, and the page takes over.
@@ -489,8 +497,7 @@ final class TabCanvasScrollView: NSScrollView {
             zoom(by: pow(Constants.wheelZoomStep, event.scrollingDeltaY), aboutWindowPoint: event.locationInWindow)
             return
         }
-        if !isTransitioning, openingPath == nil { flight?.cancel() }
-        super.scrollWheel(with: event)
+        scroll(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
     }
 
     override func magnify(with event: NSEvent) {

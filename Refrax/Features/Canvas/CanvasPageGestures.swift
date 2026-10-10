@@ -140,7 +140,7 @@ final class CanvasPageGestures {
             if isMoveMode, !event.hasPreciseScrollingDeltas {
                 canvas.zoom(by: pow(Constants.wheelZoomStep, event.scrollingDeltaY), aboutWindowPoint: event.locationInWindow)
             } else {
-                canvas.pan(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
+                canvas.scroll(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
             }
             return nil
         }
