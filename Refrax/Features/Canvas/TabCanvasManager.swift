@@ -24,6 +24,18 @@ struct CanvasMagnet: Identifiable, Equatable {
     let memberTabIDs: [Tab.ID]
 }
 
+/// The board as seen by its manager: something that can run a gesture and report
+/// whether its tiles are still moving.
+@MainActor
+protocol CanvasBoardDriver: AnyObject {
+    /// Tiles are moving under the physics simulation.
+    var isSimulating: Bool { get }
+    /// Drags a tile along an eased path until its top-left corner reaches `origin`,
+    /// through the same hold-and-release path the pointer uses. With `fling` the tile
+    /// is let go at full speed and slides on.
+    func drag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async
+}
+
 /// A one-shot request for the board to fly its camera to a rectangle.
 struct CanvasZoomRequest: Equatable {
     let serial: Int
@@ -97,6 +109,10 @@ final class TabCanvasManager {
     /// Tile size, matching the content area's aspect ratio so a zoomed tile lands
     /// exactly on the live page.
     private(set) var tileSize = Layout.defaultTileSize
+
+    /// The board on screen while the canvas is open.
+    @ObservationIgnored
+    weak var board: (any CanvasBoardDriver)?
 
     @ObservationIgnored
     private var snapshotTask: Task<Void, Never>?
@@ -250,6 +266,42 @@ final class TabCanvasManager {
         }
         let union = frames.dropFirst().reduce(first) { $0.union($1) }
         return union.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset)
+    }
+
+    /// Tiles are still moving; ``tileFrames`` holds where they last came to rest.
+    var isSettling: Bool {
+        board?.isSimulating ?? false
+    }
+
+    /// Pairs of tiles whose collision boxes overlap. Zero on a settled desk.
+    var overlappingPairCount: Int {
+        let boxes = tabs.compactMap { tileFrames[$0.id] }
+            .map { CanvasPhysics.collisionBox($0).insetBy(dx: CanvasPhysics.Constants.slop, dy: CanvasPhysics.Constants.slop) }
+        var count = 0
+        for i in boxes.indices {
+            for j in (i + 1) ..< boxes.count where boxes[i].intersects(boxes[j]) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    /// Drags a tile as a pointer would, then waits for the desk to come to rest.
+    /// Returns false when the canvas is not on screen or the desk never settled.
+    func performDrag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async -> Bool {
+        guard isActive, let board else { return false }
+        await board.drag(tabID, to: origin, duration: duration, fling: fling)
+        return await waitUntilSettled()
+    }
+
+    /// Waits for the physics to stop moving tiles, up to `timeout`.
+    func waitUntilSettled(timeout: Duration = .seconds(10)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while isSettling {
+            guard ContinuousClock.now < deadline else { return false }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return true
     }
 
     // MARK: - Selection

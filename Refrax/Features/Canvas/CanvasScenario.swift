@@ -42,6 +42,8 @@ enum CanvasScenario: String, CaseIterable, Sendable {
         windowState: WindowState,
         canvas: TabCanvasManager,
     ) {
+        // The board shows one space; it reopens on the new one below.
+        canvas.dismiss(activating: nil)
         let space = spaceManager.createSpace(name: "Lab · \(scenario.title)", iconName: "flask")
         spaceManager.switchToSpaceSync(space, for: windowState)
 

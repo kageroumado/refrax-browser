@@ -103,6 +103,20 @@ refrax-ctl group icon ID ICON
 refrax-ctl group collapse ID                   # Toggle collapsed state
 ```
 
+## Tab Canvas
+
+Works with Refrax in the background. Positions are desk points, origin top-left;
+commands that change the desk wait for tiles to come to rest, then print the state.
+
+```bash
+refrax-ctl canvas show [--json]                # Open the canvas, print tiles
+refrax-ctl canvas hide
+refrax-ctl canvas state [--json]               # Tiles, zones, magnets, overlappingPairs
+refrax-ctl canvas drag TAB --to X,Y [--duration S] [--fling]   # As the pointer would; pushes what it meets
+refrax-ctl canvas drag TAB --to=-400,300 --fling              # Negative X needs --to=; off the edge closes the tab
+refrax-ctl canvas lab grid|overlap|zone|topics|crowd          # Debug builds: fresh space in a preset layout
+```
+
 ## Space Operations
 
 ```bash

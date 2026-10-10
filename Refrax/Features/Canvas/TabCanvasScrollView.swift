@@ -222,3 +222,15 @@ private final class ZoomFlight {
         t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
     }
 }
+
+// MARK: - Driver
+
+extension TabCanvasScrollView: CanvasBoardDriver {
+    var isSimulating: Bool {
+        board.isSimulating
+    }
+
+    func drag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async {
+        await board.drag(tabID, to: origin, duration: duration, fling: fling)
+    }
+}

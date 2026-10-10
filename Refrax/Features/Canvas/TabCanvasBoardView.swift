@@ -44,6 +44,7 @@ final class TabCanvasBoardView: NSView {
     private var displayLink: CADisplayLink?
     private var lastStepTime: CFTimeInterval = 0
     private var lastDragTimes: [Tab.ID: CFTimeInterval] = [:]
+    private var scriptedDrag: ScriptedDrag?
 
     private enum Constants {
         static let deskCornerRadius: CGFloat = 40
@@ -284,6 +285,50 @@ final class TabCanvasBoardView: NSView {
         startSimulationIfNeeded()
     }
 
+    /// Tiles are moving, or a scripted drag is under way.
+    var isSimulating: Bool {
+        displayLink != nil
+    }
+
+    /// Drags a tile along an eased path, holding it each frame as the pointer would.
+    /// A plain drag eases in and out and lets go at rest; a fling only eases in and
+    /// lets go at full speed.
+    func drag(_ tabID: Tab.ID, to origin: CGPoint, duration: TimeInterval, fling: Bool) async {
+        guard let tile = tiles[tabID] else { return }
+        scriptedDrag?.finish()
+        await withCheckedContinuation { continuation in
+            scriptedDrag = ScriptedDrag(
+                tabID: tabID,
+                start: tile.frame,
+                end: CGPoint(x: origin.x, y: origin.y),
+                startTime: CACurrentMediaTime(),
+                duration: max(duration, 0.05),
+                fling: fling,
+                continuation: continuation,
+            )
+            hold(tabID, at: tile.frame)
+        }
+    }
+
+    /// Moves the scripted tile to where its path is at `now`, and lets go at the end.
+    private func advanceScriptedDrag(at now: CFTimeInterval) {
+        guard let drag = scriptedDrag else { return }
+        guard let tile = tiles[drag.tabID] else {
+            scriptedDrag = nil
+            drag.finish()
+            return
+        }
+        let progress = min(1, (now - drag.startTime) / drag.duration)
+        tile.frame = drag.frame(at: progress)
+        hold(drag.tabID, at: tile.frame)
+        guard progress >= 1 else { return }
+
+        scriptedDrag = nil
+        let velocity = drag.fling ? drag.endVelocity : .zero
+        release([drag.tabID], velocity: velocity, dropped: true)
+        drag.finish()
+    }
+
     private func startSimulationIfNeeded() {
         guard displayLink == nil, physics.isRunning else { return }
         lastStepTime = CACurrentMediaTime()
@@ -295,6 +340,7 @@ final class TabCanvasBoardView: NSView {
     @objc
     private func stepSimulation() {
         let now = CACurrentMediaTime()
+        advanceScriptedDrag(at: now)
         let events = physics.step(CGFloat(now - lastStepTime))
         lastStepTime = now
 
@@ -326,7 +372,7 @@ final class TabCanvasBoardView: NSView {
             onTileDropped?(tabID)
         }
 
-        if !physics.isRunning {
+        if !physics.isRunning, scriptedDrag == nil {
             displayLink?.invalidate()
             displayLink = nil
         }
@@ -423,5 +469,52 @@ private final class CanvasPlaneView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
+    }
+}
+
+// MARK: - Scripted Drag
+
+/// A drag performed on the pointer's behalf, for agents and tests.
+private final class ScriptedDrag {
+    let tabID: Tab.ID
+    let start: CGRect
+    let end: CGPoint
+    let startTime: CFTimeInterval
+    let duration: TimeInterval
+    let fling: Bool
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(tabID: Tab.ID, start: CGRect, end: CGPoint, startTime: CFTimeInterval, duration: TimeInterval, fling: Bool, continuation: CheckedContinuation<Void, Never>) {
+        self.tabID = tabID
+        self.start = start
+        self.end = end
+        self.startTime = startTime
+        self.duration = duration
+        self.fling = fling
+        self.continuation = continuation
+    }
+
+    /// The tile's frame at `progress` along the path, from 0 to 1.
+    func frame(at progress: Double) -> CGRect {
+        let eased = CGFloat(fling ? progress * progress : progress * progress * (3 - 2 * progress))
+        return CGRect(
+            x: start.minX + (end.x - start.minX) * eased,
+            y: start.minY + (end.y - start.minY) * eased,
+            width: start.width,
+            height: start.height,
+        )
+    }
+
+    /// Speed at the end of a fling's ease-in path: the derivative of t² is 2t, so 2 × distance / duration.
+    var endVelocity: CGPoint {
+        CGPoint(
+            x: 2 * (end.x - start.minX) / duration,
+            y: 2 * (end.y - start.minY) / duration,
+        )
+    }
+
+    func finish() {
+        continuation?.resume()
+        continuation = nil
     }
 }

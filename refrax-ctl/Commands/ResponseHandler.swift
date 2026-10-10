@@ -113,6 +113,8 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         print("pong (protocol: v\(info.protocolVersion), app: \(info.appVersion))")
     case let .humanRequested(info):
         printHumanRequest(info)
+    case let .canvas(info):
+        printCanvas(info)
     }
 }
 
@@ -448,6 +450,22 @@ func printFoundElements(_ elements: [CTL.FoundElementInfo]) {
             line += " [type=\(inputType)]"
         }
         print("  \(line)")
+    }
+}
+
+func printCanvas(_ info: CTL.CanvasInfo) {
+    let status = info.isActive ? (info.isSettling ? "open, settling" : "open") : "closed"
+    print("Canvas: \(status) · desk \(Int(info.deskWidth))×\(Int(info.deskHeight)) · \(info.tiles.count) tiles · \(info.overlappingPairs) overlapping pairs")
+    for tile in info.tiles {
+        let marker = tile.isSelected ? "* " : "  "
+        let title = tile.title.isEmpty ? "(untitled)" : tile.title
+        print("\(marker)\(Int(tile.x)),\(Int(tile.y))  \(Int(tile.width))×\(Int(tile.height))  \(title)  [\(tile.tabID)]")
+    }
+    for zone in info.zones {
+        print("zone \(zone.name): \(Int(zone.x)),\(Int(zone.y))  \(Int(zone.width))×\(Int(zone.height))  \(zone.memberCount) tiles")
+    }
+    for magnet in info.magnets {
+        print("magnet \(magnet.name): \(Int(magnet.x)),\(Int(magnet.y))  \(magnet.memberCount) tiles")
     }
 }
 

@@ -7,8 +7,10 @@ public enum ControlProtocolVersion: Int, Codable, Sendable {
     case v1 = 1
     /// Spaces by name, space data modes, space-scoped fetch, and the cookie store.
     case v2 = 2
+    /// The tab canvas: show, hide, state, scripted drags, and lab scenarios.
+    case v3 = 3
 
-    public static let current: Self = .v2
+    public static let current: Self = .v3
 }
 
 // MARK: - Request
@@ -105,6 +107,13 @@ public enum ControlRequest: Sendable {
     case pageSource(OptionalTabIDParams)
     case pageVideoViewer(PageVideoViewerParams)
     case pagePiP(PagePiPParams)
+
+    // Tab Canvas
+    case canvasShow
+    case canvasHide
+    case canvasState
+    case canvasDrag(CanvasDragParams)
+    case canvasLab(CanvasLabParams)
 
     // Tier 1D: Reference Pane Extended
     case refPaneAddTab(RefPaneAddTabParams)
@@ -674,6 +683,35 @@ public extension ControlRequest {
             self.action = action
             self.tabID = tabID
             self.pageID = pageID
+        }
+    }
+
+    struct CanvasDragParams: Codable, Sendable {
+        /// Tab ref (ID, index, title, URL, active/first/last/next/prev).
+        public var tab: String
+        /// Where the tile's top-left corner ends up, in desk points.
+        public var x: Double
+        public var y: Double
+        /// Seconds the drag takes; the path eases in and out.
+        public var duration: Double?
+        /// Let go while still moving, so the tile keeps its speed and slides on.
+        public var fling: Bool?
+
+        public init(tab: String, x: Double, y: Double, duration: Double? = nil, fling: Bool? = nil) {
+            self.tab = tab
+            self.x = x
+            self.y = y
+            self.duration = duration
+            self.fling = fling
+        }
+    }
+
+    struct CanvasLabParams: Codable, Sendable {
+        /// Scenario name, such as `grid`, `overlap`, `zone`, `topics`, or `crowd`.
+        public var scenario: String
+
+        public init(scenario: String) {
+            self.scenario = scenario
         }
     }
 
@@ -1492,6 +1530,13 @@ extension ControlRequest: Codable {
         case pageVideoViewer
         case pagePiP
 
+        // Tab Canvas
+        case canvasShow
+        case canvasHide
+        case canvasState
+        case canvasDrag
+        case canvasLab
+
         // Tier 1D
         case refPaneAddTab
         case refPaneCloseTab
@@ -1683,6 +1728,12 @@ extension ControlRequest: Codable {
         case .pageSource: self = try .pageSource(OptionalTabIDParams(from: decoder))
         case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
         case .pagePiP: self = try .pagePiP(PagePiPParams(from: decoder))
+        // Tab Canvas
+        case .canvasShow: self = .canvasShow
+        case .canvasHide: self = .canvasHide
+        case .canvasState: self = .canvasState
+        case .canvasDrag: self = try .canvasDrag(CanvasDragParams(from: decoder))
+        case .canvasLab: self = try .canvasLab(CanvasLabParams(from: decoder))
         // Tier 1D
         case .refPaneAddTab: self = try .refPaneAddTab(RefPaneAddTabParams(from: decoder))
         case .refPaneCloseTab: self = try .refPaneCloseTab(RefPaneCloseTabParams(from: decoder))
@@ -1972,6 +2023,19 @@ extension ControlRequest: Codable {
         case let .pagePiP(params):
             try container.encode("pagePiP", forKey: .type)
             try params.encode(to: encoder)
+        // Tab Canvas
+        case .canvasShow:
+            try container.encode("canvasShow", forKey: .type)
+        case .canvasHide:
+            try container.encode("canvasHide", forKey: .type)
+        case .canvasState:
+            try container.encode("canvasState", forKey: .type)
+        case let .canvasDrag(params):
+            try container.encode("canvasDrag", forKey: .type)
+            try params.encode(to: encoder)
+        case let .canvasLab(params):
+            try container.encode("canvasLab", forKey: .type)
+            try params.encode(to: encoder)
         // Tier 1D
         case let .refPaneAddTab(params):
             try container.encode("refPaneAddTab", forKey: .type)
@@ -2202,6 +2266,7 @@ public enum ControlResponse: Sendable {
     case execResult(CTL.ExecResultInfo)
     case ping(CTL.PingInfo)
     case humanRequested(CTL.HumanRequestInfo)
+    case canvas(CTL.CanvasInfo)
 }
 
 // MARK: - Response Data Types
@@ -2603,6 +2668,103 @@ public enum CTL {
         }
     }
 
+    /// The tab canvas of a window: its desk, tiles, zones, and magnets.
+    public struct CanvasInfo: Codable, Sendable {
+        public let isActive: Bool
+        /// Tiles are still moving; positions are where they were last at rest.
+        public let isSettling: Bool
+        public let deskWidth: Double
+        public let deskHeight: Double
+        public let tiles: [CanvasTileInfo]
+        public let zones: [CanvasZoneInfo]
+        public let magnets: [CanvasMagnetInfo]
+        /// Pairs of tiles whose collision boxes (tile, title strip, and gap) overlap.
+        /// Zero once the desk has settled.
+        public let overlappingPairs: Int
+        /// Lab scenarios this build can load; empty in release builds.
+        public let scenarios: [String]
+
+        public init(
+            isActive: Bool,
+            isSettling: Bool,
+            deskWidth: Double,
+            deskHeight: Double,
+            tiles: [CanvasTileInfo],
+            zones: [CanvasZoneInfo],
+            magnets: [CanvasMagnetInfo],
+            overlappingPairs: Int,
+            scenarios: [String],
+        ) {
+            self.isActive = isActive
+            self.isSettling = isSettling
+            self.deskWidth = deskWidth
+            self.deskHeight = deskHeight
+            self.tiles = tiles
+            self.zones = zones
+            self.magnets = magnets
+            self.overlappingPairs = overlappingPairs
+            self.scenarios = scenarios
+        }
+    }
+
+    public struct CanvasTileInfo: Codable, Sendable {
+        public let tabID: String
+        public let title: String
+        public let x: Double
+        public let y: Double
+        public let width: Double
+        public let height: Double
+        public let groupID: String?
+        public let isSelected: Bool
+
+        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double, groupID: String?, isSelected: Bool) {
+            self.tabID = tabID
+            self.title = title
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.groupID = groupID
+            self.isSelected = isSelected
+        }
+    }
+
+    public struct CanvasZoneInfo: Codable, Sendable {
+        public let id: String
+        public let name: String
+        public let x: Double
+        public let y: Double
+        public let width: Double
+        public let height: Double
+        public let memberCount: Int
+
+        public init(id: String, name: String, x: Double, y: Double, width: Double, height: Double, memberCount: Int) {
+            self.id = id
+            self.name = name
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.memberCount = memberCount
+        }
+    }
+
+    public struct CanvasMagnetInfo: Codable, Sendable {
+        public let id: String
+        public let name: String
+        public let x: Double
+        public let y: Double
+        public let memberCount: Int
+
+        public init(id: String, name: String, x: Double, y: Double, memberCount: Int) {
+            self.id = id
+            self.name = name
+            self.x = x
+            self.y = y
+            self.memberCount = memberCount
+        }
+    }
+
     public struct HealthInfo: Codable, Sendable {
         public let appVersion: String
         public let protocolVersion: Int
@@ -2722,6 +2884,7 @@ extension ControlResponse: Codable {
         case execResult = "exec_result"
         case ping
         case humanRequested = "human_requested"
+        case canvas
     }
 
     private struct TypeContainer: Decodable {
@@ -2793,6 +2956,8 @@ extension ControlResponse: Codable {
             self = try .ping(c.decode(CTL.PingInfo.self, forKey: .data))
         case .humanRequested:
             self = try .humanRequested(c.decode(CTL.HumanRequestInfo.self, forKey: .data))
+        case .canvas:
+            self = try .canvas(c.decode(CTL.CanvasInfo.self, forKey: .data))
         }
     }
 
@@ -2889,6 +3054,9 @@ extension ControlResponse: Codable {
             try container.encode(info, forKey: .data)
         case let .humanRequested(info):
             try container.encode("human_requested", forKey: .type)
+            try container.encode(info, forKey: .data)
+        case let .canvas(info):
+            try container.encode("canvas", forKey: .type)
             try container.encode(info, forKey: .data)
         }
     }

@@ -275,6 +275,17 @@ final class RefraxControlServer {
             try await handlePageVideoViewer(params)
         case let .pagePiP(params):
             try await handlePagePiP(params)
+        // Tab Canvas
+        case .canvasShow:
+            try await handleCanvasShow()
+        case .canvasHide:
+            try handleCanvasHide()
+        case .canvasState:
+            try canvasStateResponse()
+        case let .canvasDrag(params):
+            try await handleCanvasDrag(params)
+        case let .canvasLab(params):
+            try await handleCanvasLab(params)
         // Tier 1D: Reference Pane Extended
         case let .refPaneAddTab(params):
             handleRefPaneAddTab(params)
@@ -2557,6 +2568,133 @@ final class RefraxControlServer {
     }
 
     // MARK: - Tier 2F: Developer Tools
+
+    // MARK: - Tab Canvas
+
+    private func canvasManager() throws -> TabCanvasManager {
+        guard let controller = windowManager.activeWindowController else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return controller.tabCanvasManager
+    }
+
+    private func handleCanvasShow() async throws -> ControlResponse {
+        let canvas = try canvasManager()
+        canvas.show()
+        // Tiles placed on open may overlap; the board pushes them apart first.
+        _ = await canvas.waitUntilSettled()
+        return try canvasStateResponse()
+    }
+
+    private func handleCanvasHide() throws -> ControlResponse {
+        try canvasManager().dismiss(activating: nil)
+        return .ok("Canvas closed")
+    }
+
+    private func handleCanvasDrag(_ params: ControlRequest.CanvasDragParams) async throws -> ControlResponse {
+        let canvas = try canvasManager()
+        guard canvas.isActive else {
+            throw ControlError.invalidParams("The canvas is not open; run `refrax-ctl canvas show` first")
+        }
+        let tab = try resolveTabRef(params.tab)
+        guard canvas.tileFrames[tab.id] != nil else {
+            throw ControlError.invalidParams("Tab \(tab.id) has no tile on this canvas")
+        }
+        let settled = await canvas.performDrag(
+            tab.id,
+            to: CGPoint(x: params.x, y: params.y),
+            duration: params.duration ?? Self.canvasDragDuration,
+            fling: params.fling ?? false,
+        )
+        guard settled else {
+            throw ControlError.timeout("The desk was still moving 10 s after the drag")
+        }
+        return try canvasStateResponse()
+    }
+
+    private static let canvasDragDuration: TimeInterval = 0.6
+
+    private func handleCanvasLab(_ params: ControlRequest.CanvasLabParams) async throws -> ControlResponse {
+        #if DEBUG
+        guard let controller = windowManager.activeWindowController,
+              let scenario = CanvasScenario(rawValue: params.scenario.lowercased())
+        else {
+            let names = CanvasScenario.allCases.map(\.rawValue).joined(separator: ", ")
+            throw ControlError.invalidParams("Unknown scenario '\(params.scenario)'. Scenarios: \(names)")
+        }
+        let appDelegate = NSApplication.shared.typedDelegate
+        CanvasScenario.load(
+            scenario,
+            tabManager: appDelegate.tabManager,
+            spaceManager: appDelegate.spaceManager,
+            groupManager: appDelegate.groupManager,
+            windowState: controller.windowState,
+            canvas: controller.tabCanvasManager,
+        )
+        // The scenario opens the canvas once its pages have had a moment to render.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !controller.tabCanvasManager.isActive, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        _ = await controller.tabCanvasManager.waitUntilSettled()
+        return try canvasStateResponse()
+        #else
+        throw ControlError.invalidParams("Canvas lab scenarios exist only in debug builds")
+        #endif
+    }
+
+    private func canvasStateResponse() throws -> ControlResponse {
+        let canvas = try canvasManager()
+        let tiles = canvas.tabs.compactMap { tab -> CTL.CanvasTileInfo? in
+            guard let frame = canvas.tileFrames[tab.id] else { return nil }
+            return CTL.CanvasTileInfo(
+                tabID: tab.id.uuidString,
+                title: tab.displayTitle,
+                x: frame.minX,
+                y: frame.minY,
+                width: frame.width,
+                height: frame.height,
+                groupID: tab.group?.id.uuidString,
+                isSelected: canvas.selectedTabIDs.contains(tab.id),
+            )
+        }
+        let zones = canvas.zones.map { zone in
+            CTL.CanvasZoneInfo(
+                id: zone.id.uuidString,
+                name: zone.name,
+                x: zone.frame.minX,
+                y: zone.frame.minY,
+                width: zone.frame.width,
+                height: zone.frame.height,
+                memberCount: zone.memberTabIDs.count,
+            )
+        }
+        let magnets = canvas.magnets.map { magnet in
+            CTL.CanvasMagnetInfo(
+                id: magnet.id.uuidString,
+                name: magnet.name,
+                x: magnet.anchor.x,
+                y: magnet.anchor.y,
+                memberCount: magnet.memberTabIDs.count,
+            )
+        }
+        #if DEBUG
+        let scenarios = CanvasScenario.allCases.map(\.rawValue)
+        #else
+        let scenarios: [String] = []
+        #endif
+        return .canvas(CTL.CanvasInfo(
+            isActive: canvas.isActive,
+            isSettling: canvas.isSettling,
+            deskWidth: TabCanvasManager.Layout.deskSize.width,
+            deskHeight: TabCanvasManager.Layout.deskSize.height,
+            tiles: tiles,
+            zones: zones,
+            magnets: magnets,
+            overlappingPairs: canvas.overlappingPairCount,
+            scenarios: scenarios,
+        ))
+    }
 
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)

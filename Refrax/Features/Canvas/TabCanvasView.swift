@@ -109,6 +109,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
         view.onMagnetActivated = { [weak manager] groupID in manager?.attract(groupID) }
         view.onLasso = { [weak manager] tabIDs in manager?.select(tabIDs) }
         view.onClearSelection = { [weak manager] in manager?.clearSelection() }
+        manager.board = view
         reload(view)
         context.coordinator.lastZoomSerial = zoomRequest?.serial
         view.zoomOutFromFocusedTile(manager.focusedTileFrame, toFit: manager.tilesBounds)
