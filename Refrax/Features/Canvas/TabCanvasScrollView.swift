@@ -82,6 +82,7 @@ final class TabCanvasScrollView: NSScrollView {
 
         board.onActivate = { [weak self] tab, frame in self?.enter(frame, tab: tab) }
         canvasClip.centerRegion = { [weak board] in board?.tilesBounds }
+        board.onPanCamera = { [weak self] delta in self?.pan(by: delta) }
         board.onDismiss = { [weak self] in self?.dismissZoomingIntoFocusedTile() }
         board.onSettle = { [weak self] frames in self?.onSettle?(frames) }
         board.onTileDropped = { [weak self] tabID in self?.onTileDropped?(tabID) }

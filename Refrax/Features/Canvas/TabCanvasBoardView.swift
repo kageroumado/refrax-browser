@@ -8,8 +8,9 @@ import AppKit
 ///
 /// Planes stack bottom to top: desk surface, zones, tiles, magnets, then an overlay
 /// for the lasso and the selection outline. A tile is always grabbed before the zone
-/// under it, and the empty part of a zone drags the zone. Dragging on the bare desk
-/// draws a lasso; a plain click on it leaves the canvas.
+/// under it, and the empty part of a zone drags the zone. Dragging the bare desk moves the
+/// camera, the way a map does, and ⇧-dragging draws a lasso; a plain click on it leaves
+/// the canvas.
 final class TabCanvasBoardView: NSView {
     var onActivate: ((Tab, CGRect) -> Void)?
     var onDismiss: (() -> Void)?
@@ -22,6 +23,8 @@ final class TabCanvasBoardView: NSView {
     var onMagnetActivated: ((UUID) -> Void)?
     var onLasso: ((Set<Tab.ID>) -> Void)?
     var onClearSelection: (() -> Void)?
+    /// The bare desk was dragged by `delta` screen points.
+    var onPanCamera: ((CGPoint) -> Void)?
     var isInteractionEnabled = true
 
     private var deskSize: CGSize
@@ -40,6 +43,9 @@ final class TabCanvasBoardView: NSView {
 
     private var lassoPoints: [CGPoint] = []
     private var isLassoing = false
+    /// The current drag on the bare desk moves the camera rather than drawing a lasso.
+    private var isPanningCamera = false
+    private var didDrag = false
     private var physics: CanvasPhysics
     private var displayLink: CADisplayLink?
     private var lastStepTime: CFTimeInterval = 0
@@ -425,10 +431,18 @@ final class TabCanvasBoardView: NSView {
         guard isInteractionEnabled else { return }
         lassoPoints = [convert(event.locationInWindow, from: nil)]
         isLassoing = false
+        didDrag = false
+        isPanningCamera = !event.modifierFlags.contains(.shift)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isInteractionEnabled, let start = lassoPoints.first else { return }
+        guard isInteractionEnabled else { return }
+        if isPanningCamera {
+            didDrag = didDrag || hypot(event.deltaX, event.deltaY) > 0
+            onPanCamera?(CGPoint(x: event.deltaX, y: event.deltaY))
+            return
+        }
+        guard let start = lassoPoints.first else { return }
         let point = convert(event.locationInWindow, from: nil)
         if !isLassoing {
             guard hypot(point.x - start.x, point.y - start.y) >= Constants.lassoThreshold else { return }
@@ -449,7 +463,11 @@ final class TabCanvasBoardView: NSView {
         defer {
             lassoPoints = []
             isLassoing = false
+            isPanningCamera = false
             lassoLayer.isHidden = true
+        }
+        if isPanningCamera, didDrag {
+            return
         }
         guard isLassoing, lassoPoints.count > 2 else {
             if hasSelection {
