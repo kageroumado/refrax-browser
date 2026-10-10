@@ -172,6 +172,9 @@ final class CanvasPageGestures {
             if let lastTap = lastControlTap, now.timeIntervalSince(lastTap) <= Constants.doubleTapInterval,
                !canvas.isActive, isEligible(pointer(for: event)) {
                 lastControlTap = nil
+                // The release of this second tap belongs to the double tap; only a later
+                // tap settles.
+                controlDownAt = nil
                 cancelPeek()
                 isMoveMode = true
                 canvas.beginPan()
