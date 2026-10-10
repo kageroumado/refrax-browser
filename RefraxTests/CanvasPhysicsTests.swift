@@ -65,24 +65,51 @@ struct CanvasPhysicsTests {
         #expect(settled == [a, b])
     }
 
-    @Test("A held tile pushes a resting one out of its path and is not pushed back")
-    func heldTilePushes() {
+    @Test("A hand pressing slowly pushes a resting tile ahead and is not pushed back")
+    func slowHandPushes() {
         var world = CanvasPhysics(desk: Self.desk)
         let held = UUID(), resting = UUID()
-        world.place(held, frame: Self.tile(at: 600, 1000))
-        world.place(resting, frame: Self.tile(at: 1000, 1000))
+        world.place(held, frame: Self.tile(at: 980, 1000))
+        world.place(resting, frame: Self.tile(at: 1320, 1000))
         _ = Self.runToRest(&world)
 
-        var frame = Self.tile(at: 600, 1000)
-        for _ in 0 ..< 30 {
-            frame.origin.x += 20
+        // 0.3 pt per frame is 18 pt/s, below the speed at which a hand parts tiles.
+        var frame = Self.tile(at: 980, 1000)
+        for _ in 0 ..< 120 {
+            frame.origin.x += 0.3
             world.drag(held, to: frame, elapsed: 1.0 / 60)
             _ = world.step(1.0 / 60)
         }
 
         #expect(world.bodies[held]?.frame == frame)
         let pushed = try! #require(world.bodies[resting]).frame
+        #expect(pushed.minY == 1000)
         #expect(pushed.minX >= frame.maxX + CanvasPhysics.Constants.gap - 1)
+    }
+
+    @Test("A moving hand parts a tile in its path sideways instead of plowing it ahead")
+    func movingHandPartsTiles() {
+        var world = CanvasPhysics(desk: Self.desk)
+        let held = UUID(), inPath = UUID()
+        world.place(held, frame: Self.tile(at: 400, 1000))
+        world.place(inPath, frame: Self.tile(at: 1000, 1000))
+        _ = Self.runToRest(&world)
+
+        var frame = Self.tile(at: 400, 1000)
+        for _ in 0 ..< 60 {
+            frame.origin.x += 20
+            world.drag(held, to: frame, elapsed: 1.0 / 60)
+            _ = world.step(1.0 / 60)
+        }
+        world.release(held, velocity: .zero, dropped: true)
+        _ = Self.runToRest(&world)
+
+        let parted = try! #require(world.bodies[inPath]).frame
+        let forward = parted.minX - 1000
+        let sideways = abs(parted.minY - 1000)
+        #expect(sideways >= Self.tileSize.height)
+        #expect(forward < 300, "plowed \(forward) pt ahead of the hand")
+        #expect(Self.overlappingPairs(world) == 0)
     }
 
     @Test("A released tile with speed slides, then reports a drop")
@@ -118,27 +145,37 @@ struct CanvasPhysicsTests {
         #expect(world.bodies[id] == nil)
     }
 
-    @Test("Pushing a row against the edge drops the outermost tile")
-    func crowdedEdgeShedsTiles() {
+    @Test("A knocked tile stops at the edge instead of sliding off")
+    func knockedTileStopsAtEdge() {
         var world = CanvasPhysics(desk: Self.desk)
-        let held = UUID()
-        let row = (0 ..< 4).map { _ in UUID() }
-        world.place(held, frame: Self.tile(at: 2800, 1000))
-        for (index, id) in row.enumerated() {
-            world.place(id, frame: Self.tile(at: 3200 + CGFloat(index) * 360, 1000))
-        }
-        _ = Self.runToRest(&world)
+        let id = UUID()
+        world.place(id, frame: Self.tile(at: 1000, 200))
+        world.release(id, velocity: CGPoint(x: 0, y: -4000), dropped: false)
 
-        var frame = Self.tile(at: 2800, 1000)
+        let events = Self.runToRest(&world)
+
+        #expect(!events.contains(.fell(id)))
+        let frame = try! #require(world.bodies[id]).frame
+        #expect(Self.desk.contains(CGPoint(x: frame.midX, y: frame.midY)))
+    }
+
+    @Test("A tile with no room left falls off")
+    func noRoomDropsATile() {
+        var world = CanvasPhysics(desk: Self.desk)
+        let held = UUID(), cornered = UUID()
+        // The cornered tile's center sits 10 pt inside the bottom-right corner, so any
+        // push along either axis carries it off.
+        world.place(cornered, frame: CGRect(x: Self.desk.maxX - 170, y: Self.desk.maxY - 110, width: 320, height: 200))
+        _ = Self.runToRest(&world)
+        world.place(held, frame: Self.tile(at: Self.desk.maxX - 400, Self.desk.maxY - 300))
+        world.drag(held, to: Self.tile(at: Self.desk.maxX - 400, Self.desk.maxY - 300), elapsed: 0)
+
         var events: [CanvasPhysics.Event] = []
-        for _ in 0 ..< 120 {
-            frame.origin.x += 10
-            world.drag(held, to: frame, elapsed: 1.0 / 60)
+        for _ in 0 ..< 30 {
             events += world.step(1.0 / 60)
         }
 
-        #expect(events.contains(.fell(row.last!)))
-        #expect(!events.contains(.fell(row.first!)))
+        #expect(events.contains(.fell(cornered)))
     }
 
     @Test("A crowd dropped on one spot spreads out without overlaps")

@@ -32,6 +32,8 @@ struct CanvasPhysics {
         var hasMoved = false
         /// Let go by the user, so its resting place is a drop.
         var wasDropped = false
+        /// Seconds since a held body was last moved by its hand.
+        var heldIdle: CGFloat = 0
     }
 
     /// What happened during a step.
@@ -61,10 +63,22 @@ struct CanvasPhysics {
         static let gap: CGFloat = 16
         /// Overlap this small counts as touching-but-apart, so rounding noise cannot
         /// keep two tiles that were just separated awake.
-        static let slop: CGFloat = 0.25
+        static let slop: CGFloat = 1
+        /// How far inside the far edges a stopped center is kept; `CGRect.contains`
+        /// counts the max edges as outside.
+        static let edgeMargin: CGFloat = 1
+        /// A held tile moving at least this fast parts what it meets; slower, it pushes.
+        static let partingSpeed: CGFloat = 30
+        /// How fast a parted tile slides aside, as a multiple of the hand's speed.
+        static let partingRatio: CGFloat = 2
+        /// Sideways speed a parted tile keeps, as a fraction of the hand's speed.
+        static let partingGlide: CGFloat = 0.1
         /// Time constant of a held body's measured speed: it is smoothed over pointer
         /// events and fades when the pointer stops, so a still hand pushes nothing.
         static let heldVelocityTimeConstant: CGFloat = 0.05
+        /// A hand unmoved for longer than this has stopped; pointer events arrive at
+        /// least this often while it moves.
+        static let heldIdleThreshold: CGFloat = 1.0 / 30
     }
 
     let desk: CGRect
@@ -123,6 +137,7 @@ struct CanvasPhysics {
         body.frame = frame
         body.isHeld = true
         body.isAwake = true
+        body.heldIdle = 0
         bodies[id] = body
     }
 
@@ -164,13 +179,19 @@ struct CanvasPhysics {
         let decay = exp(-Constants.friction * dt)
         let heldDecay = exp(-dt / Constants.heldVelocityTimeConstant)
         for (id, var body) in bodies where body.isHeld {
-            body.velocity.x *= heldDecay
-            body.velocity.y *= heldDecay
+            body.heldIdle += dt
+            if body.heldIdle > Constants.heldIdleThreshold {
+                body.velocity.x *= heldDecay
+                body.velocity.y *= heldDecay
+            }
             bodies[id] = body
         }
         for (id, var body) in bodies where body.isAwake && !body.isHeld {
             body.frame.origin.x += body.velocity.x * dt
             body.frame.origin.y += body.velocity.y * dt
+            if !body.wasDropped {
+                stopAtEdge(&body)
+            }
             body.velocity.x *= decay
             body.velocity.y *= decay
             if body.velocity != .zero {
@@ -180,12 +201,30 @@ struct CanvasPhysics {
         }
     }
 
+    /// Stops a knocked tile whose center reached the desk's edge. Only a tile the user
+    /// let go of slides off by its own speed; one set moving by a collision never does.
+    private func stopAtEdge(_ body: inout Body) {
+        let center = CGPoint(x: body.frame.midX, y: body.frame.midY)
+        let clamped = CGPoint(
+            x: min(max(center.x, desk.minX), desk.maxX - Constants.edgeMargin),
+            y: min(max(center.y, desk.minY), desk.maxY - Constants.edgeMargin),
+        )
+        if clamped.x != center.x {
+            body.frame.origin.x += clamped.x - center.x
+            body.velocity.x = 0
+        }
+        if clamped.y != center.y {
+            body.frame.origin.y += clamped.y - center.y
+            body.velocity.y = 0
+        }
+    }
+
     /// One pass of pairwise separation. Returns the bodies that touched something.
     private mutating func separate() -> Set<Tab.ID> {
         // Sweep along x: after sorting by the boxes' left edges, a body can only
         // overlap those that start before it ends.
         let order = bodies.map { (id: $0.key, box: Self.collisionBox($0.value.frame)) }
-            .sorted { $0.box.minX < $1.box.minX }
+            .sorted { ($0.box.minX, $0.id.uuidString) < ($1.box.minX, $1.id.uuidString) }
         var touching = Set<Tab.ID>()
 
         for i in order.indices {
@@ -205,30 +244,127 @@ struct CanvasPhysics {
         return touching
     }
 
-    /// Pushes two overlapping bodies apart along the axis they overlap least on, and
-    /// removes their closing speed along it. Returns false when they do not overlap.
+    /// Separates two overlapping bodies. Returns false when they do not overlap.
     private func resolve(_ a: inout Body, _ b: inout Body) -> Bool {
-        let boxA = Self.collisionBox(a.frame)
-        let boxB = Self.collisionBox(b.frame)
+        guard Self.overlap(a.frame, b.frame) != nil else { return false }
+        if a.isHeld, !b.isHeld, Self.speed(a.velocity) >= Constants.partingSpeed {
+            part(&b, around: a)
+        } else if b.isHeld, !a.isHeld, Self.speed(b.velocity) >= Constants.partingSpeed {
+            part(&a, around: b)
+        } else {
+            collide(&a, &b)
+        }
+        Self.nudge(&a)
+        Self.nudge(&b)
+        return true
+    }
+
+    /// Overlap of two tiles' collision boxes on each axis, or nil when they are apart.
+    private static func overlap(_ a: CGRect, _ b: CGRect) -> CGSize? {
+        let boxA = collisionBox(a)
+        let boxB = collisionBox(b)
         let overlapX = min(boxA.maxX, boxB.maxX) - max(boxA.minX, boxB.minX)
         let overlapY = min(boxA.maxY, boxB.maxY) - max(boxA.minY, boxB.minY)
-        guard overlapX > Constants.slop, overlapY > Constants.slop else { return false }
+        guard overlapX > Constants.slop, overlapY > Constants.slop else { return nil }
+        return CGSize(width: overlapX, height: overlapY)
+    }
+
+    private static func speed(_ velocity: CGPoint) -> CGFloat {
+        hypot(velocity.x, velocity.y)
+    }
+
+    /// A moving hand parts what it meets, the way a hand sweeps through paper: the
+    /// free tile slides sideways out of the hand's path at a rate tied to the hand's
+    /// speed, and is plowed forward only as far as it must be to stay clear. Pushing
+    /// straight ahead instead would bulldoze every tile in line before the hand.
+    private func part(_ free: inout Body, around hand: Body) {
+        let handBox = Self.collisionBox(hand.frame)
+        let freeBox = Self.collisionBox(free.frame)
+        let handSpeed = Self.speed(hand.velocity)
+        let movesAlongX = abs(hand.velocity.x) >= abs(hand.velocity.y)
+
+        // Sideways is perpendicular to the hand's motion, toward the side of the hand's
+        // centerline the free tile is on; dead center breaks toward +. Parting never
+        // drops a tile: when that side would carry its center off the desk, it goes the
+        // other way. Falling off takes a push straight at the edge.
+        func clearance(toward side: CGFloat) -> CGFloat {
+            if movesAlongX {
+                side > 0 ? handBox.maxY - freeBox.minY : freeBox.maxY - handBox.minY
+            } else {
+                side > 0 ? handBox.maxX - freeBox.minX : freeBox.maxX - handBox.minX
+            }
+        }
+        func staysOnDesk(toward side: CGFloat) -> Bool {
+            let shift = side * clearance(toward: side)
+            let center = movesAlongX
+                ? CGPoint(x: free.frame.midX, y: free.frame.midY + shift)
+                : CGPoint(x: free.frame.midX + shift, y: free.frame.midY)
+            return desk.contains(center)
+        }
+        var side: CGFloat = movesAlongX
+            ? (freeBox.midY >= handBox.midY ? 1 : -1)
+            : (freeBox.midX >= handBox.midX ? 1 : -1)
+        if !staysOnDesk(toward: side), staysOnDesk(toward: -side) {
+            side = -side
+        }
+        let clearance = clearance(toward: side)
+        // Per substep: the forward plow below clears the contact in the first pass, so
+        // later passes of the same substep never see it.
+        let step = min(clearance, Constants.partingRatio * handSpeed * Constants.substep)
+        if movesAlongX {
+            free.frame.origin.y += side * step
+            free.velocity.y = side * max(side * free.velocity.y, Constants.partingGlide * handSpeed)
+        } else {
+            free.frame.origin.x += side * step
+            free.velocity.x = side * max(side * free.velocity.x, Constants.partingGlide * handSpeed)
+        }
+
+        // Whatever still overlaps is plowed out along the shallower axis, by position
+        // alone, so the tile carries no forward speed once the hand has passed.
+        guard let remaining = Self.overlap(free.frame, hand.frame) else { return }
+        let alongX = CGPoint(x: (freeBox.midX >= handBox.midX ? 1 : -1) * remaining.width, y: 0)
+        let alongY = CGPoint(x: 0, y: (freeBox.midY >= handBox.midY ? 1 : -1) * remaining.height)
+        var shift = remaining.width < remaining.height ? alongX : alongY
+        let other = remaining.width < remaining.height ? alongY : alongX
+        if !desk.contains(CGPoint(x: free.frame.midX + shift.x, y: free.frame.midY + shift.y)),
+           desk.contains(CGPoint(x: free.frame.midX + other.x, y: free.frame.midY + other.y)) {
+            shift = other
+        }
+        free.frame.origin.x += shift.x
+        free.frame.origin.y += shift.y
+    }
+
+    /// Pushes two overlapping bodies apart along the axis they overlap least on, and
+    /// removes their closing speed along it.
+    private func collide(_ a: inout Body, _ b: inout Body) {
+        let boxA = Self.collisionBox(a.frame)
+        let boxB = Self.collisionBox(b.frame)
+        guard let overlap = Self.overlap(a.frame, b.frame) else { return }
+        let overlapX = overlap.width
+        let overlapY = overlap.height
 
         let inverseMassA: CGFloat = a.isHeld ? 0 : 1
         let inverseMassB: CGFloat = b.isHeld ? 0 : 1
         let totalInverseMass = inverseMassA + inverseMassB
-        guard totalInverseMass > 0 else { return false }
+        guard totalInverseMass > 0 else { return }
 
         // Normal from a to b on the axis of least penetration. Coincident centers
-        // break the tie toward +x so stacked tiles still come apart.
-        let normal: CGPoint
-        let depth: CGFloat
-        if overlapX < overlapY {
-            normal = CGPoint(x: boxB.midX >= boxA.midX ? 1 : -1, y: 0)
-            depth = overlapX
-        } else {
-            normal = CGPoint(x: 0, y: boxB.midY >= boxA.midY ? 1 : -1)
-            depth = overlapY
+        // break the tie toward +x so stacked tiles still come apart. When that axis
+        // would push a free tile's center off the desk and the other would not, the
+        // other is taken: a tile falls to a collision only when it has no room.
+        let alongX = (normal: CGPoint(x: boxB.midX >= boxA.midX ? 1 : -1, y: 0), depth: overlapX)
+        let alongY = (normal: CGPoint(x: 0, y: boxB.midY >= boxA.midY ? 1 : -1), depth: overlapY)
+        func dropsATile(_ axis: (normal: CGPoint, depth: CGFloat)) -> Bool {
+            let shareA = axis.depth * inverseMassA / totalInverseMass
+            let shareB = axis.depth * inverseMassB / totalInverseMass
+            let centerA = CGPoint(x: a.frame.midX - axis.normal.x * shareA, y: a.frame.midY - axis.normal.y * shareA)
+            let centerB = CGPoint(x: b.frame.midX + axis.normal.x * shareB, y: b.frame.midY + axis.normal.y * shareB)
+            return (inverseMassA > 0 && !desk.contains(centerA)) || (inverseMassB > 0 && !desk.contains(centerB))
+        }
+        var (normal, depth) = overlapX < overlapY ? alongX : alongY
+        let other = overlapX < overlapY ? alongY : alongX
+        if dropsATile((normal, depth)), !dropsATile(other) {
+            (normal, depth) = other
         }
 
         let shareA = depth * inverseMassA / totalInverseMass
@@ -246,10 +382,6 @@ struct CanvasPhysics {
             b.velocity.x += impulse * inverseMassB * normal.x
             b.velocity.y += impulse * inverseMassB * normal.y
         }
-
-        Self.nudge(&a)
-        Self.nudge(&b)
-        return true
     }
 
     /// Wakes a body that was pushed, so it is simulated and reports where it rests.
