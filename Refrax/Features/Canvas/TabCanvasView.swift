@@ -16,6 +16,7 @@ struct TabCanvasView: View {
                 selectedTabIDs: manager.selectedTabIDs,
                 zoomRequest: manager.zoomRequest,
                 tileSize: manager.tileSize,
+                deskSize: manager.deskSize,
             )
 
             CanvasToolbar()
@@ -96,9 +97,10 @@ private struct TabCanvasBoard: NSViewRepresentable {
     let selectedTabIDs: Set<Tab.ID>
     let zoomRequest: CanvasZoomRequest?
     let tileSize: CGSize
+    let deskSize: CGSize
 
     func makeNSView(context: Context) -> TabCanvasScrollView {
-        let view = TabCanvasScrollView(deskSize: TabCanvasManager.Layout.deskSize)
+        let view = TabCanvasScrollView(deskSize: manager.deskSize)
         view.onActivate = { [weak manager] tab in manager?.dismiss(activating: tab) }
         view.onDismiss = { [weak manager] in manager?.dismiss(activating: nil) }
         view.onSettle = { [weak manager] frames in manager?.settleTiles(frames) }
@@ -133,6 +135,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
             magnets: magnets,
             selectedTabIDs: selectedTabIDs,
             tileSize: tileSize,
+            deskSize: deskSize,
         ))
     }
 
@@ -154,4 +157,5 @@ struct CanvasBoardContent {
     let magnets: [CanvasMagnet]
     let selectedTabIDs: Set<Tab.ID>
     let tileSize: CGSize
+    let deskSize: CGSize
 }

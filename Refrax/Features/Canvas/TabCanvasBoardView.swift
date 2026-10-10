@@ -24,7 +24,7 @@ final class TabCanvasBoardView: NSView {
     var onClearSelection: (() -> Void)?
     var isInteractionEnabled = true
 
-    private let deskSize: CGSize
+    private var deskSize: CGSize
     private let deskLayer = CALayer()
     private let zonePlane = CanvasPlaneView()
     private let tilePlane = CanvasPlaneView()
@@ -117,6 +117,12 @@ final class TabCanvasBoardView: NSView {
     // MARK: - Content
 
     func reload(_ content: CanvasBoardContent) {
+        if content.deskSize != deskSize {
+            deskSize = content.deskSize
+            physics.desk = CGRect(origin: .zero, size: deskSize)
+            setFrameSize(deskSize)
+            needsLayout = true
+        }
         reloadTiles(content)
         reloadZones(content.zones)
         reloadMagnets(content.magnets)

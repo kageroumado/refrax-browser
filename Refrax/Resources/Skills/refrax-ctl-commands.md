@@ -114,7 +114,7 @@ refrax-ctl canvas hide
 refrax-ctl canvas state [--json]               # Tiles, zones, magnets, overlappingPairs
 refrax-ctl canvas drag TAB --to X,Y [--duration S] [--fling]   # As the pointer would; pushes what it meets
 refrax-ctl canvas drag TAB --to=-400,300 --fling              # Negative X needs --to=; off the edge closes the tab
-refrax-ctl canvas lab grid|overlap|zone|topics|crowd          # Debug builds: fresh space in a preset layout
+refrax-ctl canvas lab grid|overlap|zone|topics|crowd|unplaced          # Debug builds: fresh space in a preset layout
 ```
 
 ## Space Operations

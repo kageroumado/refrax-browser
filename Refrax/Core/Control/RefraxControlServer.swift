@@ -2686,8 +2686,8 @@ final class RefraxControlServer {
         return .canvas(CTL.CanvasInfo(
             isActive: canvas.isActive,
             isSettling: canvas.isSettling,
-            deskWidth: TabCanvasManager.Layout.deskSize.width,
-            deskHeight: TabCanvasManager.Layout.deskSize.height,
+            deskWidth: canvas.deskSize.width,
+            deskHeight: canvas.deskSize.height,
             tiles: tiles,
             zones: zones,
             magnets: magnets,

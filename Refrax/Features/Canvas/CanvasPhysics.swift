@@ -86,7 +86,8 @@ struct CanvasPhysics {
         static let heldIdleThreshold: CGFloat = 1.0 / 30
     }
 
-    let desk: CGRect
+    /// The desk; it only ever grows under the tiles on it.
+    var desk: CGRect
     private(set) var bodies: [Tab.ID: Body] = [:]
     private var accumulator: CGFloat = 0
 

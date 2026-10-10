@@ -106,6 +106,9 @@ final class TabCanvasManager {
     /// The tab the board zooms out from on show and back into on dismiss.
     private(set) var focusedTabID: Tab.ID?
 
+    /// The desk for the space on screen. Tiles that leave it fall off.
+    private(set) var deskSize = Layout.minimumDeskSize
+
     /// Tile size, matching the content area's aspect ratio so a zoomed tile lands
     /// exactly on the live page.
     private(set) var tileSize = Layout.defaultTileSize
@@ -126,8 +129,13 @@ final class TabCanvasManager {
     // MARK: - Constants
 
     enum Layout {
-        /// The desk. Tiles that leave it fall off.
-        static let deskSize = CGSize(width: 4800, height: 3000)
+        /// The smallest desk; a space with more tabs gets a proportionally larger one.
+        static let minimumDeskSize = CGSize(width: 4800, height: 3000)
+        /// Free slots in the desk's starting grid per tab, so a space opens with room to
+        /// move tiles around rather than packed edge to edge.
+        static let slotsPerTab: CGFloat = 1.5
+        /// Step by which the desk is scaled up until it holds the space.
+        static let deskGrowthStep: CGFloat = 0.1
         static let defaultTileSize = CGSize(width: 320, height: 200)
         static let tileWidth: CGFloat = 320
         static let gap: CGFloat = 48
@@ -208,8 +216,41 @@ final class TabCanvasManager {
     private func reloadTabs() {
         tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
         loadTileFrames()
+        // The desk is sized when the canvas opens and only grows while it is open, so
+        // no tile is ever left beyond its edge.
+        let fitted = fittedDeskSize()
+        deskSize = isActive
+            ? CGSize(width: max(deskSize.width, fitted.width), height: max(deskSize.height, fitted.height))
+            : fitted
         placeUnplacedTabs()
         rebuildGroups()
+    }
+
+    /// The smallest desk, in the minimum desk's proportions, whose starting grid has
+    /// ``Layout/slotsPerTab`` slots for every tab and that reaches past every placed tile.
+    private func fittedDeskSize() -> CGSize {
+        let needed = Int((CGFloat(tabs.count) * Layout.slotsPerTab).rounded(.up))
+        var scale: CGFloat = 1
+        var size = Layout.minimumDeskSize
+        while gridSlots(on: size).columns * gridSlots(on: size).rows < needed {
+            scale += Layout.deskGrowthStep
+            size = CGSize(width: (Layout.minimumDeskSize.width * scale).rounded(), height: (Layout.minimumDeskSize.height * scale).rounded())
+        }
+        let placed = tabs.compactMap { tileFrames[$0.id] }
+        if let first = placed.first {
+            let extent = placed.dropFirst().reduce(first) { $0.union($1) }
+            size.width = max(size.width, extent.maxX + Layout.deskInset)
+            size.height = max(size.height, extent.maxY + Layout.deskInset)
+        }
+        return size
+    }
+
+    /// Columns and rows of the grid new tiles are placed on.
+    private func gridSlots(on desk: CGSize) -> (columns: Int, rows: Int, step: CGSize) {
+        let step = CGSize(width: tileSize.width + Layout.gap, height: tileSize.height + Layout.gap * 1.5)
+        let columns = max(1, Int((desk.width - Layout.deskInset * 2 + Layout.gap) / step.width))
+        let rows = max(1, Int((desk.height - Layout.deskInset * 2 + Layout.gap) / step.height))
+        return (columns, rows, step)
     }
 
     // MARK: - Tiles
@@ -502,15 +543,13 @@ final class TabCanvasManager {
         tileFrames = frames
     }
 
-    /// Places tabs that have no tile yet in reading order across the desk, after
-    /// the last placed one. Past the desk's last row they pile up on it.
+    /// Places tabs that have no tile yet in reading order across the desk's grid, after
+    /// the last placed one. ``fittedDeskSize()`` sizes the desk so the grid has room.
     private func placeUnplacedTabs() {
         let unplaced = tabs.filter { tileFrames[$0.id] == nil }
         guard !unplaced.isEmpty else { return }
 
-        let step = CGSize(width: tileSize.width + Layout.gap, height: tileSize.height + Layout.gap * 1.5)
-        let columns = max(1, Int((Layout.deskSize.width - Layout.deskInset * 2 + Layout.gap) / step.width))
-        let rows = max(1, Int((Layout.deskSize.height - Layout.deskInset * 2 + Layout.gap) / step.height))
+        let (columns, rows, step) = gridSlots(on: deskSize)
         var index = tabs.count - unplaced.count
         for tab in unplaced {
             let column = index % columns

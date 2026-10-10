@@ -108,7 +108,7 @@ struct CanvasCommand: AsyncParsableCommand {
             abstract: "Load a lab scenario into a new space (debug builds)",
             discussion: """
             Builds a fresh space of lab pages laid out to a preset and opens the \
-            canvas on it. Scenarios: grid, overlap, zone, topics, crowd.
+            canvas on it. Scenarios: grid, overlap, zone, topics, crowd, unplaced.
             
             Examples:
               refrax-ctl canvas lab crowd
@@ -116,7 +116,7 @@ struct CanvasCommand: AsyncParsableCommand {
             """,
         )
 
-        @Argument(help: "Scenario: grid, overlap, zone, topics, crowd")
+        @Argument(help: "Scenario: grid, overlap, zone, topics, crowd, unplaced")
         var scenario: String
 
         @Flag(name: .long, help: "Output raw JSON")
