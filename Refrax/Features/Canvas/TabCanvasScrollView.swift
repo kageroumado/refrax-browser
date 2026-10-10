@@ -30,6 +30,7 @@ final class TabCanvasScrollView: NSScrollView {
     /// The opening's path, from the focused tile aligned on the page to the whole desk.
     private var openingPath: (from: CGRect, to: CGRect)?
     private var openingProgress: CGFloat = 0
+    private var pendingOpeningScale: CGFloat?
 
     /// Where the live page sits, in window coordinates; tiles align to it.
     var livePageFrameInWindow: CGRect?
@@ -46,6 +47,9 @@ final class TabCanvasScrollView: NSScrollView {
         /// Room kept clear when fitting tiles: the traffic lights above, the floating
         /// controls below.
         static let fitInsets = NSEdgeInsets(top: 56, left: 24, bottom: 84, right: 24)
+        /// How far the opening zooms out from the page: the neighborhood around the tab,
+        /// or the whole desk when that is closer.
+        static let overviewZoomOut: CGFloat = 3
         static let minMagnification: CGFloat = 0.05
         static let maxMagnification: CGFloat = 4
     }
@@ -118,14 +122,85 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// Places the camera at the start of the opening: `tile` aligned on the live page, or
     /// the whole desk when there is no tile, with the canvas still transparent.
+    ///
+    /// The opening ends on the neighborhood around the tile, zoomed out about the tile so it
+    /// stays under the fingers, or on the whole desk when that is closer.
     func beginOpening(focusedTile tile: CGRect?, everything: CGRect) {
         focusedTileFrame = tile
         alphaValue = 0
         whenLaidOut { [weak self] in
             guard let self else { return }
-            let to = fittedRect(for: everything, insets: Constants.fitInsets)
-            openingPath = (from: tile.map(alignedRect(for:)) ?? to, to: to)
+            let fit = fittedRect(for: everything, insets: Constants.fitInsets)
+            guard let tile else {
+                openingPath = (from: fit, to: fit)
+                applyOpening(openingProgress)
+                return
+            }
+            let aligned = alignedRect(for: tile)
+            let neighborhood = Self.scale(aligned, by: Constants.overviewZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
+            openingPath = (from: aligned, to: fit.width < neighborhood.width ? fit : neighborhood)
+            if let scale = pendingOpeningScale {
+                pendingOpeningScale = nil
+                setOpeningScale(scale)
+            }
             applyOpening(openingProgress)
+        }
+    }
+
+    /// Follows a pinch: the page shrinks exactly as much as the fingers close.
+    func setOpeningScale(_ scale: CGFloat) {
+        guard let path = openingPath, scale > 0 else {
+            pendingOpeningScale = scale
+            return
+        }
+        let ratio = path.to.width / path.from.width
+        guard ratio > 1 else { return setOpeningProgress(1) }
+        setOpeningProgress(min(1, max(0, log(1 / scale) / log(ratio))))
+    }
+
+    /// `rect` grown by `factor` about `point`, which stays where it is on screen.
+    private static func scale(_ rect: CGRect, by factor: CGFloat, about point: CGPoint) -> CGRect {
+        CGRect(
+            x: point.x - (point.x - rect.minX) * factor,
+            y: point.y - (point.y - rect.minY) * factor,
+            width: rect.width * factor,
+            height: rect.height * factor,
+        )
+    }
+
+    // MARK: - Panning from a Page
+
+    /// Shows the desk at page size with the focused tile on the page, for ⌃-scrolling.
+    func beginPanning(focusedTile tile: CGRect?) {
+        focusedTileFrame = tile
+        alphaValue = 1
+        whenLaidOut { [weak self] in
+            guard let self, let tile else { return }
+            setVisibleRect(alignedRect(for: tile))
+        }
+    }
+
+    /// Slides the desk with the wheel; `delta` is in screen points.
+    func pan(by delta: CGPoint) {
+        whenLaidOut { [weak self] in
+            guard let self, magnification > 0 else { return }
+            var visible = contentView.bounds
+            visible.origin.x -= delta.x / magnification
+            visible.origin.y -= delta.y / magnification
+            setVisibleRect(visible)
+        }
+    }
+
+    /// Settles into the tile nearest the middle of the window.
+    func enterNearestTile() {
+        whenLaidOut { [weak self] in
+            guard let self else { return }
+            let visible = contentView.bounds
+            guard let (tab, frame) = board.tile(near: CGPoint(x: visible.midX, y: visible.midY)) else {
+                onDismiss?()
+                return
+            }
+            enter(frame, tab: tab, fading: false)
         }
     }
 
@@ -184,7 +259,7 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// Flies until `tile` is aligned on the live page, fading the canvas out as it lands.
     /// With a `tab`, that tab becomes the active one first, so its page is the one revealed.
-    private func enter(_ tile: CGRect, tab: Tab?) {
+    private func enter(_ tile: CGRect, tab: Tab?, fading: Bool = true) {
         guard !isTransitioning else { return }
         isTransitioning = true
         board.isInteractionEnabled = false
@@ -195,7 +270,9 @@ final class TabCanvasScrollView: NSScrollView {
         let to = alignedRect(for: tile)
         run(from: 0, to: 1, frame: { [weak self] t in
             self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
-            self?.alphaValue = Self.reveal(1 - t)
+            if fading {
+                self?.alphaValue = Self.reveal(1 - t)
+            }
         }, completion: { [weak self] in
             self?.isTransitioning = false
             self?.onDismiss?()

@@ -73,8 +73,8 @@ struct TabCanvasView: View {
 
             CanvasToolbar()
                 .padding(.bottom, Layout.toolbarBottomPadding)
-                .opacity(manager.isOpeningInteractively ? 0 : 1)
-                .animation(.easeOut(duration: 0.2), value: manager.isOpeningInteractively)
+                .opacity(manager.isOpeningInteractively || manager.isPanningFromPage ? 0 : 1)
+                .animation(.easeOut(duration: 0.2), value: manager.isOpeningInteractively || manager.isPanningFromPage)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -175,10 +175,15 @@ private struct TabCanvasBoard: NSViewRepresentable {
         context.coordinator.lastZoomSerial = zoomRequest?.serial
         context.coordinator.lastCloseRequest = closeRequest
         view.livePageFrameInWindow = manager.livePageFrame
-        view.beginOpening(focusedTile: manager.focusedTileFrame, everything: manager.tilesBounds)
-        view.setOpeningProgress(manager.openingProgress)
-        if !manager.isOpeningInteractively {
-            view.finishOpening(commit: true)
+        if manager.isPanningFromPage {
+            view.beginPanning(focusedTile: manager.focusedTileFrame)
+            view.pan(by: manager.pendingPan)
+        } else {
+            view.beginOpening(focusedTile: manager.focusedTileFrame, everything: manager.tilesBounds)
+            view.setOpeningScale(manager.openingScale)
+            if !manager.isOpeningInteractively {
+                view.finishOpening(commit: true)
+            }
         }
         return view
     }

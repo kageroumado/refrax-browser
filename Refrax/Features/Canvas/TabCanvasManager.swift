@@ -31,8 +31,16 @@ struct CanvasMagnet: Identifiable, Equatable {
 protocol CanvasBoardDriver: AnyObject {
     /// Tiles are moving under the physics simulation.
     var isSimulating: Bool { get }
-    /// Moves the opening to `progress`, 0 on the page and 1 on the whole desk.
+    /// Moves the opening to `progress`, 0 on the page and 1 at its end.
     func setOpeningProgress(_ progress: CGFloat)
+    /// Follows a pinch at `scale` (1 at its start, smaller as the fingers close).
+    func setOpeningScale(_ scale: CGFloat)
+    /// Shows the desk at page size with the focused tile on the page.
+    func beginPanning(focusedTile: CGRect?)
+    /// Slides the desk by `delta` screen points.
+    func pan(by delta: CGPoint)
+    /// Settles into the tile nearest the middle of the window.
+    func enterNearestTile()
     /// Completes the opening, or takes it back to the page and closes the canvas.
     func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
@@ -133,9 +141,16 @@ final class TabCanvasManager {
     /// A pinch on the page is opening the canvas and has not been released.
     private(set) var isOpeningInteractively = false
 
-    /// How far an interactive opening has come, 0 on the page and 1 on the whole desk.
+    /// The pinch scale of an interactive opening: 1 at its start, smaller as the fingers close.
     @ObservationIgnored
-    private(set) var openingProgress: CGFloat = 0
+    private(set) var openingScale: CGFloat = 1
+
+    /// ⌃-scrolling on a page is sliding the desk under it.
+    private(set) var isPanningFromPage = false
+
+    /// Wheel movement that arrived before the board was on screen.
+    @ObservationIgnored
+    private(set) var pendingPan: CGPoint = .zero
 
     /// A one-time hint on screen, if any.
     private(set) var hint: CanvasHint?
@@ -261,16 +276,48 @@ final class TabCanvasManager {
     /// A pinch on the page starts opening the canvas under the fingers.
     func beginInteractiveOpen() {
         guard !isActive else { return }
-        openingProgress = 0
+        openingScale = 1
         isOpeningInteractively = true
         show()
     }
 
-    /// The pinch moved: `progress` is 0 on the page and 1 on the whole desk.
-    func updateInteractiveOpen(_ progress: CGFloat) {
+    /// The pinch moved to `scale`: 1 at its start, smaller as the fingers close.
+    func updateInteractiveOpen(scale: CGFloat) {
         guard isOpeningInteractively else { return }
-        openingProgress = progress
-        board?.setOpeningProgress(progress)
+        openingScale = scale
+        board?.setOpeningScale(scale)
+    }
+
+    // MARK: - Panning from a Page
+
+    /// ⌃-scrolling on a page brings the desk up at page size, to slide under the wheel.
+    func beginPan() {
+        guard !isActive else { return }
+        pendingPan = .zero
+        isPanningFromPage = true
+        show()
+    }
+
+    /// The wheel moved by `delta` screen points.
+    func pan(by delta: CGPoint) {
+        guard isPanningFromPage else { return }
+        if let board {
+            board.pan(by: delta)
+        } else {
+            pendingPan.x += delta.x
+            pendingPan.y += delta.y
+        }
+    }
+
+    /// ⌃ was released: the desk settles into the tile nearest the middle.
+    func endPan() {
+        guard isPanningFromPage else { return }
+        isPanningFromPage = false
+        if let board {
+            board.enterNearestTile()
+        } else {
+            dismiss(activating: nil)
+        }
     }
 
     /// The pinch was released: the canvas finishes opening, or goes back to the page.
@@ -341,6 +388,7 @@ final class TabCanvasManager {
         snapshotTask?.cancel()
         snapshotTask = nil
         selectedTabIDs = []
+        openingScale = 1
         isActive = false
     }
 

@@ -217,8 +217,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     /// Tracks whether we're in fullscreen mode for proper edge reveal behavior
     var isInFullscreen = false
 
-    /// Opens the tab canvas from a pinch on the page.
-    private var canvasPinchRecognizer: CanvasPinchRecognizer?
+    /// Opens the tab canvas from a pinch or ⌃-scroll on the page.
+    private var canvasPageGestures: CanvasPageGestures?
 
     // MARK: - Undo/Redo
 
@@ -376,7 +376,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupSidebarOverlayContainer(contentView: contentView)
         setupEdgeExtensionBackground(contentView: contentView)
         setupTabCanvasLayer(contentView: contentView)
-        setupCanvasPinch(window: window)
+        setupCanvasPageGestures(window: window)
         setupOverlayView(contentView: contentView)
         setupSidebarTrackingRegion(contentView: contentView)
         setupToolbar(window: window)
@@ -504,9 +504,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         ])
     }
 
-    /// A closing pinch over a page at its normal size opens the canvas, unless a lens is up.
-    private func setupCanvasPinch(window: NSWindow) {
-        canvasPinchRecognizer = CanvasPinchRecognizer(window: window, canvas: tabCanvasManager) { [unowned self] event in
+    /// Page gestures reach the canvas only over a page at its normal size, with no lens up.
+    private func setupCanvasPageGestures(window: NSWindow) {
+        canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager) { [unowned self] event in
             guard !windowState.showsCommandLens, !windowState.showsAddressLens,
                   tabCanvasManager.isLivePageAtNormalSize,
                   let pageFrame = tabCanvasManager.currentLivePageFrame()
