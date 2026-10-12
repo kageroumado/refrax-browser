@@ -2,16 +2,25 @@ import Foundation
 
 /// The configurable actions and groups available in the control rail.
 nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable {
-    case windowControls, navigation, address, commandLens, floatingTabs, recentTabs, desk, spaces, favoriteTabs
-    case reload, favorites, history, downloads, bookmarks, settings
+    case windowControls, navigation, commandLens, floatingTabs, recentTabs, desk, spaces, favoriteTabs
+    case reload, copyLink, favorites, history, downloads, bookmarks, settings
+    /// The current page's icon, which unfolds the page card. Stored under its original name.
+    case page = "address"
 
     var id: String { rawValue }
+
+    /// The rail's order before anyone customizes it.
+    static let defaultOrder: [ControlIslandItem] = [
+        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .recentTabs, .desk, .spaces, .favoriteTabs,
+        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings,
+    ]
 
     var title: String {
         switch self {
         case .windowControls: "Window controls"
         case .navigation: "Back and Forward"
-        case .address: "Address"
+        case .page: "Current page"
+        case .copyLink: "Copy Link"
         case .commandLens: "Command Lens"
         case .floatingTabs: "Floating tabs"
         case .recentTabs: "Recent tabs"
@@ -31,7 +40,8 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         switch self {
         case .windowControls: "ellipsis.circle"
         case .navigation: "chevron.left.forwardslash.chevron.right"
-        case .address: "link"
+        case .page: "globe"
+        case .copyLink: "link"
         case .commandLens: "sparkle.magnifyingglass"
         case .floatingTabs: "square.on.square"
         case .recentTabs: "clock.arrow.circlepath"
@@ -51,7 +61,8 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         switch self {
         case .windowControls: "Close, minimize, and full screen"
         case .navigation: "One row; Forward appears when available"
-        case .address: "Edit the address or reveal page controls"
+        case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
+        case .copyLink: "Copy the page address"
         case .commandLens: "Search pages, tabs, and commands · ⌘T"
         case .floatingTabs: "Reveal your tabs · Hold Control to peek"
         case .recentTabs: "Switch between recent tabs · ⌃Tab"
@@ -73,7 +84,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     var isDefault: Bool {
         switch self {
-        case .reload, .favorites, .history, .downloads, .bookmarks, .settings: false
+        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings: false
         default: true
         }
     }

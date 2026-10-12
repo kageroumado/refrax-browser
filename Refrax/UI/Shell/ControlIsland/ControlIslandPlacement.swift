@@ -16,6 +16,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let cornerRadius: CGFloat = 24
     static let maximumVisibleSpaces = 4
     static let spaceRowHeight = contentWidth
+    static let pageIconSize: CGFloat = 18
     static let pageBranchWidth: CGFloat = 416
     static let pageBranchHeight: CGFloat = 44
     static let adjacentGap: CGFloat = 8
@@ -24,7 +25,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let hoverSettle: TimeInterval = 0.45
     /// Symbol presence while the controls rest: present enough to find, faint enough to read through.
     static let restingOpacity: Double = 0.42
-    static let spaceTintOpacity: Double = 0.14
+    static let spaceTintOpacity: Double = 0.18
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)

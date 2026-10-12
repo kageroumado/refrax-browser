@@ -18,14 +18,14 @@ struct ControlIslandTests {
         var history = items.remove(at: historyIndex)
         history.isVisible = true
         items.insert(history, at: 0)
-        let addressIndex = try #require(items.firstIndex(where: { $0.item == .address }))
+        let addressIndex = try #require(items.firstIndex(where: { $0.item == .page }))
         items[addressIndex].isVisible = false
         configuration.apply(items, optionDragTarget: .window)
 
         let restored = ControlIslandConfiguration(defaults: defaults)
         #expect(restored.items == items)
         #expect(restored.visibleItems.first == .history)
-        #expect(!restored.visibleItems.contains(.address))
+        #expect(!restored.visibleItems.contains(.page))
         #expect(restored.optionDragTarget == .window)
         #expect(restored.optionDragTarget.backgroundTarget == .panel)
     }
@@ -63,7 +63,7 @@ struct ControlIslandTests {
         first.showsCustomization = false
         #expect(!first.isEngaged)
         configuration.apply(ControlIslandConfiguration.defaultItems)
-        #expect(second.configuration.visibleItems.contains(.address))
+        #expect(second.configuration.visibleItems.contains(.page))
     }
 
     @Test(arguments: [CGPoint(x: -800, y: -700), CGPoint(x: 8_000, y: 5_000), CGPoint(x: 600, y: 300)])

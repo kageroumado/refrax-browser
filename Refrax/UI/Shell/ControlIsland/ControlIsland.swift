@@ -13,6 +13,7 @@ struct ControlIsland: View {
     @Environment(TabSwitcherManager.self) private var tabSwitcher
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(SpaceManager.self) private var spaces
+    @Environment(TabManager.self) private var tabManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -43,6 +44,7 @@ struct ControlIsland: View {
             switch item {
             case .spaces: !spaces.spaces.isEmpty
             case .favoriteTabs: !favorites.isEmpty
+            case .page: windowState.activePage != nil
             default: true
             }
         }
@@ -94,10 +96,13 @@ struct ControlIsland: View {
             && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut
     }
 
-    private var glass: Glass {
-        guard !isResting || reduceTransparency else { return .identity }
-        guard state.configuration.tintsWithSpaceColor, let color = windowState.activeSpace?.color else { return .regular }
-        return .regular.tint(color.opacity(Layout.spaceTintOpacity))
+    private var glass: Glass { isResting && !reduceTransparency ? .identity : .regular }
+
+    /// The space color is drawn as the rail's own layer under the symbols, so it can fade with
+    /// the glass: a tint inside the glass would drop to white the moment the glass starts to clear.
+    private var spaceTint: Color {
+        guard state.configuration.tintsWithSpaceColor, let color = windowState.activeSpace?.color else { return .clear }
+        return color.opacity(Layout.spaceTintOpacity)
     }
     private var restAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.4) }
     private var recentFrame: CGRect {
@@ -115,13 +120,15 @@ struct ControlIsland: View {
                 controls
                     .frame(width: frame.width, height: frame.height)
                     .opacity(isResting ? Layout.restingOpacity : 1)
+                    .background(spaceTint.opacity(isResting ? 0 : 1), in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffectID("rail", in: glassNamespace)
                     .offset(x: frame.minX, y: frame.minY)
                 if showsPageBranch, !canvas.recentIsOpen {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                     .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
-                    .glassEffect(glass, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                    .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                    .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                     .glassEffectID("pageBranch", in: glassNamespace)
                     .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
                     .transition(.opacity)
@@ -129,7 +136,8 @@ struct ControlIsland: View {
                 if canvas.recentIsOpen {
                     FloatingRecentTabs(area: area)
                         .frame(width: recentFrame.width, height: recentFrame.height)
-                        .glassEffect(glass, in: .rect(cornerRadius: 20))
+                        .background(spaceTint, in: .rect(cornerRadius: 20))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
                         .glassEffectID("recent", in: glassNamespace)
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
                         .transition(.opacity)
@@ -140,7 +148,8 @@ struct ControlIsland: View {
                             .frame(width: shortcutFrame.width, height: shortcutFrame.height)
                             .contentShape(Rectangle())
                     }
-                    .glassEffect(glass, in: .rect(cornerRadius: 7))
+                    .background(spaceTint, in: .rect(cornerRadius: 7))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 7))
                     .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
                     .transition(.opacity)
@@ -184,14 +193,15 @@ struct ControlIsland: View {
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
-            focusedControl = visibleItems.contains(.address) ? "Address" : "More"
+            focusedControl = visibleItems.contains(.page) ? "Page" : "More"
         }
         .onChange(of: state.configuration.items) {
             focusedControl = nil
-            if !visibleItems.contains(.address) {
+            if !visibleItems.contains(.page) {
                 state.showsAddress = false
             }
         }
+        .onChange(of: pageBranchFrame, initial: true) { windowState.addressBarFrame = pageBranchFrame }
         .sheet(isPresented: $state.showsCustomization) {
             ControlIslandCustomizationSheet(configuration: state.configuration)
         }
@@ -288,8 +298,15 @@ struct ControlIsland: View {
             ControlIslandWindowButtons().frame(height: Layout.rowHeight * 3)
         case .navigation:
             navigationControls
-        case .address:
-            addressButton
+        case .page:
+            pageRow
+        case .copyLink:
+            control(item.title, symbol: item.symbol, enabled: windowState.activeTab != nil) {
+                guard let tab = windowState.activeTab else { return }
+                ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).copyLink()
+                windowState.showToast("Address copied")
+            }
+            .help(item.detail)
         case .commandLens:
             control(item.title, symbol: item.symbol) {
                 tabSwitcher.cancel()
@@ -441,38 +458,36 @@ struct ControlIsland: View {
         }
     }
 
-    private var addressButton: some View {
+    /// The current page's icon is the card's trigger: hover unfolds the card, a click keeps it open.
+    private var pageRow: some View {
         Button {
             tabSwitcher.cancel()
-            if windowState.activePage == nil {
-                windowState.openCommandLens()
-            } else {
-                state.showsAddress = true
-                windowState.addressBarFrame = pageBranchFrame
-                windowState.openAddressLens()
-            }
+            if state.tabInfo.isLatched { state.tabInfo.dismiss() } else { state.tabInfo.show() }
         } label: {
             ControlIslandRow {
                 ZStack {
-                    Image(systemName: "link")
+                    if let page = windowState.activePage {
+                        FaviconView(data: page.faviconData, url: page.url, size: Layout.pageIconSize)
+                            .saturation(appearsActive ? 1 : 0)
+                    }
                     if windowState.activeWebPage?.isLoading == true {
                         ProgressView(value: windowState.activeWebPage?.estimatedProgress ?? 0)
                             .progressViewStyle(.circular)
-                            .frame(width: 26, height: 26)
+                            .frame(width: Layout.pageIconSize + 8, height: Layout.pageIconSize + 8)
                     }
                 }
             }
         }
         .focusable()
-        .focused($focusedControl, equals: "Address")
+        .focused($focusedControl, equals: "Page")
         .focusEffectDisabled()
         .onHover { hovering in
             if hovering, windowState.activePage != nil {
                 state.showsAddress = true
             }
         }
-        .help("Edit address · ⌘L · Hover for page controls")
-        .accessibilityLabel("Edit address")
+        .help("Current page · Hover for its card · ⌘L edits the address")
+        .accessibilityLabel("Current page")
         .accessibilityValue(windowState.activeWebPage?.isLoading == true ? "Loading" : (windowState.activePage?.url.safeDisplayDomain ?? "Ready"))
     }
 

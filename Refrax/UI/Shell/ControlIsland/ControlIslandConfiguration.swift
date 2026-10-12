@@ -21,7 +21,7 @@ final class ControlIslandConfiguration {
     @ObservationIgnored private let defaults: UserDefaults?
 
     static var defaultItems: [ControlIslandItemPreference] {
-        ControlIslandItem.allCases.map { .init(item: $0, isVisible: $0.isDefault) }
+        ControlIslandItem.defaultOrder.map { .init(item: $0, isVisible: $0.isDefault) }
     }
 
     init(defaults: UserDefaults?) {

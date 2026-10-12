@@ -471,6 +471,9 @@ final class WindowState {
     /// Used to position the address lens overlay aligned with the address bar.
     var addressBarFrame: CGRect = .zero
 
+    /// The empty page hosts Command Lens itself; each request refocuses that lens.
+    var startPageLensRequest = 0
+
     // MARK: - Split View State
 
     /// Floating tabs provide the primary tab interface. An explicit sidebar command opens the sidebar.
@@ -899,6 +902,10 @@ final class WindowState {
 
     /// Opens the command lens (no animation by default)
     func openCommandLens() {
+        if usesFloatingTabs, activeTab == nil {
+            startPageLensRequest &+= 1
+            return
+        }
         webViewsShouldIgnoreAllEvents = true
         focusedLens = .command
     }
