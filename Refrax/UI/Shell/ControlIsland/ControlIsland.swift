@@ -96,7 +96,8 @@ struct ControlIsland: View {
             && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut
     }
 
-    private var glass: Glass { isResting && !reduceTransparency ? .identity : .regular }
+    /// At rest the glass is clear rather than frosted; the symbols stay opaque and step back one shade.
+    private var glass: Glass { isResting && !reduceTransparency ? .clear : .regular }
 
     /// The space color is drawn as the rail's own layer under the symbols, so it can fade with
     /// the glass: a tint inside the glass would drop to white the moment the glass starts to clear.
@@ -119,7 +120,7 @@ struct ControlIsland: View {
             ZStack(alignment: .topLeading) {
                 controls
                     .frame(width: frame.width, height: frame.height)
-                    .opacity(isResting ? Layout.restingOpacity : 1)
+                    .environment(\.controlIslandIsResting, isResting)
                     .background(spaceTint.opacity(isResting ? 0 : 1), in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffectID("rail", in: glassNamespace)

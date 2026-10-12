@@ -23,8 +23,6 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let magnetDistance: CGFloat = 24
     /// A pointer must rest on the rail this long before the page card unfolds.
     static let hoverSettle: TimeInterval = 0.45
-    /// Symbol presence while the controls rest: present enough to find, faint enough to read through.
-    static let restingOpacity: Double = 0.42
     static let spaceTintOpacity: Double = 0.18
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {

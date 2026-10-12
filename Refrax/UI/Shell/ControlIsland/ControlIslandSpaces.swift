@@ -10,6 +10,7 @@ struct ControlIslandSpaces: View {
     @Environment(TabSwitcherManager.self) private var tabSwitcher
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.controlIslandIsResting) private var isResting
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @Namespace private var selectionAnimation
@@ -81,7 +82,7 @@ struct ControlIslandSpaces: View {
     }
 
     private func iconColor(selected: Bool) -> Color {
-        if appearsActive {
+        if appearsActive, !isResting {
             return Color(nsColor: selected ? .labelColor : .secondaryLabelColor)
         }
         return Color(nsColor: selected ? .secondaryLabelColor : .tertiaryLabelColor)
@@ -101,7 +102,7 @@ struct ControlIslandSpaces: View {
         } label: {
             Group {
                 if space.isEmoji {
-                    if selected && appearsActive {
+                    if selected && appearsActive && !isResting {
                         Text(space.iconName)
                     } else {
                         Text(space.iconName).hidden()

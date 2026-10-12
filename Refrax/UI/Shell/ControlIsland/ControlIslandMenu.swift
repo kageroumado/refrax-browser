@@ -7,6 +7,7 @@ struct ControlIslandMenu: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.controlIslandIsResting) private var isResting
 
     var body: some View {
         Menu {
@@ -36,7 +37,7 @@ struct ControlIslandMenu: View {
         .menuStyle(.button)
         .buttonStyle(ControlIslandButtonStyle())
         .menuIndicator(.hidden)
-        .foregroundStyle(appearsActive ? Color.primary : Color.secondary)
+        .foregroundStyle(appearsActive && !isResting ? Color.primary : Color.secondary)
         .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
         .help("Favorites and browser tools")

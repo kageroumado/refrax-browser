@@ -45,7 +45,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .commandLens: "sparkle.magnifyingglass"
         case .floatingTabs: "square.on.square"
         case .recentTabs: "clock.arrow.circlepath"
-        case .desk: "square.grid.3x3.topleft.filled"
+        case .desk: "rectangle.3.group"
         case .spaces: "square.stack"
         case .favoriteTabs: "star.square.on.square"
         case .reload: "arrow.clockwise"

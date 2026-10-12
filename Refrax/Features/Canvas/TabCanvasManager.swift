@@ -415,7 +415,7 @@ final class TabCanvasManager {
     // MARK: - Constants
 
     /// The canvas's symbol, shared by the menu item, toolbar button, and Command Lens.
-    static let symbolName = "square.grid.3x3.topleft.filled"
+    static let symbolName = "rectangle.3.group"
 
     enum Layout {
         /// The smallest desk; a space with more tabs gets a proportionally larger one.
