@@ -12,6 +12,14 @@ import Testing
 @Suite("WindowState Regression", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateRegressionTests {
+    @Test("Windows start with floating tabs and a full-width page")
+    func floatingTabsArePrimary() throws {
+        let env = try TabManagerTestEnvironment()
+        let windowState = env.makeWindowState()
+        #expect(windowState.usesFloatingTabs)
+        #expect(windowState.isSidebarCollapsed)
+    }
+
     // MARK: - Active Space Tests
 
     @Test("WindowState starts with no active space")

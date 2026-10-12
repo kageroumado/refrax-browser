@@ -20,6 +20,16 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         let query = context.input.lowercased()
         var results: [CommandLensSuggestion] = []
 
+        let pageActions: [(String, String, String, AppAction)] = [
+            ("favorite current page", "Favorite Current Page", "star", .favoriteCurrentPage),
+            ("return look go back activity", "Return to Activity", "arrow.uturn.backward", .returnFromLook),
+            ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
+        ]
+        for (terms, title, icon, action) in pageActions where FuzzyMatcher.match(query: query, against: [terms]) >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(type: .appAction(action), text: title,
+                description: "Current page", iconName: icon, groupHeader: groupHeader, isRemovable: false, keywordAction: nil, url: nil))
+        }
+
         // Feedback is always shown when user has typed anything
         results.append(CommandLensSuggestion(
             type: .appAction(.feedback),

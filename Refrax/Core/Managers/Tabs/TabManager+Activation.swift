@@ -13,7 +13,7 @@ extension TabManager {
     /// - Parameters:
     ///   - tab: Tab to activate.
     ///   - windowState: The window state to update.
-    func setActiveTab(_ tab: Tab, in windowState: WindowState) {
+    func setActiveTab(_ tab: Tab, in windowState: WindowState, preservingVisit: Bool = false) {
         // Archived tabs are non-activatable - they must be restored first
         guard !tab.isArchived else {
             Logger.warning("Attempted to activate archived tab: \(tab.id)", category: Logger.tabs)
@@ -28,6 +28,8 @@ extension TabManager {
             }
         }
 
+        if !preservingVisit, !windowState.pageVisit.isTransformingIdentity { windowState.pageVisit.end() }
+
         if windowState.isInLayoutMode {
             windowState.exitLayoutMode()
         }
@@ -37,6 +39,11 @@ extension TabManager {
 
         // Favorite previews are anchored to the outgoing active tab
         favoritePreviewManager?.handleActiveTabChange()
+
+        // Full-page activation takes the live surface from its floating preview.
+        if let page = pagePool.existingPage(for: tab.activePage), page.isInFloatingPreview {
+            page.claimOwnership(for: windowState)
+        }
 
         // Update window state (handles both live favorites and space tabs)
         windowState.setActiveTab(tab)
@@ -56,6 +63,11 @@ extension TabManager {
             state.tab(for: previousTabID)
         } else { Tab?.none }
 
+        if let previousTab, previousTab.id != tab.id {
+            state.pipCoordinator.onTabDeactivated(previousTab, in: state)
+        }
+        state.pipCoordinator.onTabActivated(tab, in: state)
+
         if _runSynchronously {
             performPostActivationWork(tab: tab, previousTab: previousTab)
         } else {
@@ -66,13 +78,8 @@ extension TabManager {
         }
     }
 
-    /// Performs post-activation work (PiP, extensions, handoff, context).
+    /// Updates extensions and system handoff after activation.
     private func performPostActivationWork(tab: Tab, previousTab: Tab?) {
-        if let previousTab {
-            state.pipCoordinator.onTabDeactivated(previousTab, in: state)
-        }
-        state.pipCoordinator.onTabActivated(tab, in: state)
-
         state.extensionManager?.dispatchTabActivated(tab, previous: previousTab)
 
         state.handoffManager.updateActivity(for: tab)

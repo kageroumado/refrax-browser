@@ -4,7 +4,7 @@ import AppKit
 ///
 /// Tiles are bodies in a ``CanvasPhysics`` world stepped on the display link while
 /// anything moves: dragged tiles push the others, flung ones slide and collide, and
-/// a tile whose center leaves the desk falls off.
+/// released tiles remain within the desk boundary.
 ///
 /// Planes stack bottom to top: desk surface, zones, tiles, magnets, then an overlay
 /// for the lasso and the selection outline. A tile is always grabbed before the zone
@@ -17,20 +17,27 @@ final class TabCanvasBoardView: NSView {
     /// Tiles that came to rest somewhere new, by tab.
     var onSettle: (([Tab.ID: CGRect]) -> Void)?
     var onTileDropped: ((Tab.ID) -> Void)?
-    var onTileFellOffDesk: ((Tab.ID) -> Void)?
     var onZoneMoved: ((UUID, CGPoint) -> Void)?
     var onMagnetMoved: ((UUID, CGPoint) -> Void)?
     var onMagnetActivated: ((UUID) -> Void)?
     var onLasso: ((Set<Tab.ID>) -> Void)?
     var onClearSelection: (() -> Void)?
+    var onTogglePreview: ((Tab.ID, CGRect) -> Void)?
     /// The bare desk was dragged by `delta` screen points.
     var onPanCamera: ((CGPoint) -> Void)?
+    /// Keyboard focus moved to a tile that should be kept in view.
+    var onRevealTile: ((CGRect) -> Void)?
     var isInteractionEnabled = true
+    var impactSoundsEnabled = false {
+        didSet { impactSound.isEnabled = impactSoundsEnabled }
+    }
 
     private var deskSize: CGSize
-    private let deskLayer = CALayer()
+    private let deskEdgeLayer = CAGradientLayer()
+    private let deskLayer = CAGradientLayer()
     private let zonePlane = CanvasPlaneView()
     private let tilePlane = CanvasPlaneView()
+    private let tileGlassContainer = CanvasGlassPlaneView()
     private let magnetPlane = CanvasPlaneView()
     private let overlayPlane = CanvasPlaneView()
     private let lassoLayer = CAShapeLayer()
@@ -40,6 +47,10 @@ final class TabCanvasBoardView: NSView {
     private var zoneViews: [UUID: CanvasZoneView] = [:]
     private var magnetViews: [UUID: CanvasMagnetView] = [:]
     private var hasSelection = false
+    private var selectedTabIDs: Set<Tab.ID> = []
+    private var orderedTabIDs: [Tab.ID] = []
+    private(set) var navigationTabID: Tab.ID?
+    private(set) var originTabID: Tab.ID?
 
     private var lassoPoints: [CGPoint] = []
     private var isLassoing = false
@@ -47,39 +58,58 @@ final class TabCanvasBoardView: NSView {
     private var isPanningCamera = false
     private var didDrag = false
     private var physics: CanvasPhysics
+    private let impactSound = CanvasImpactSound()
     private var displayLink: CADisplayLink?
     private var lastStepTime: CFTimeInterval = 0
     private var lastDragTimes: [Tab.ID: CFTimeInterval] = [:]
     private var scriptedDrag: ScriptedDrag?
-
     private enum Constants {
         static let deskCornerRadius: CGFloat = 40
+        static let deskThickness: CGFloat = 10
         static let lassoThreshold: CGFloat = 4
         static let lassoDash: [NSNumber] = [8, 6]
         static let selectionInset: CGFloat = 12
         static let selectionCornerRadius: CGFloat = 18
         static let antsPeriod: CFTimeInterval = 0.6
-        static let fallDuration: TimeInterval = 0.25
     }
 
-    override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
+    override var acceptsFirstResponder: Bool {
+        true
+    }
 
     init(deskSize: CGSize) {
         self.deskSize = deskSize
-        physics = CanvasPhysics(desk: CGRect(origin: .zero, size: deskSize))
+        self.physics = CanvasPhysics(desk: CGRect(origin: .zero, size: deskSize))
         super.init(frame: CGRect(origin: .zero, size: deskSize))
         wantsLayer = true
+        clipsToBounds = false
+        layer?.masksToBounds = false
 
+        deskEdgeLayer.cornerRadius = Constants.deskCornerRadius
+        deskEdgeLayer.shadowColor = NSColor.black.cgColor
+        deskEdgeLayer.shadowOpacity = 0.24
+        deskEdgeLayer.shadowRadius = 28
+        deskEdgeLayer.shadowOffset = CGSize(width: 0, height: 14)
+        layer?.addSublayer(deskEdgeLayer)
         deskLayer.cornerRadius = Constants.deskCornerRadius
         deskLayer.borderWidth = 1
+        deskLayer.startPoint = CGPoint(x: 0, y: 0)
+        deskLayer.endPoint = CGPoint(x: 1, y: 1)
         layer?.addSublayer(deskLayer)
 
-        for plane in [zonePlane, tilePlane, magnetPlane, overlayPlane] {
+        tileGlassContainer.contentView = tilePlane
+        tileGlassContainer.spacing = 0
+        for plane in [zonePlane, tileGlassContainer, magnetPlane, overlayPlane] as [NSView] {
+            plane.clipsToBounds = false
             plane.frame = bounds
             plane.autoresizingMask = [.width, .height]
             addSubview(plane)
         }
+        tilePlane.frame = bounds
+        tilePlane.autoresizingMask = [.width, .height]
         overlayPlane.wantsLayer = true
         overlayPlane.layer?.addSublayer(selectionLayer)
         overlayPlane.layer?.addSublayer(lassoLayer)
@@ -105,6 +135,8 @@ final class TabCanvasBoardView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        deskEdgeLayer.frame = bounds.offsetBy(dx: 0, dy: Constants.deskThickness)
+        deskEdgeLayer.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Constants.deskCornerRadius, cornerHeight: Constants.deskCornerRadius, transform: nil)
         deskLayer.frame = bounds
         CATransaction.commit()
     }
@@ -113,8 +145,29 @@ final class TabCanvasBoardView: NSView {
         applyColors()
     }
 
+    override var wantsUpdateLayer: Bool {
+        true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance { applyColors() }
+    }
+
     private func applyColors() {
-        deskLayer.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { updateColors() }
+    }
+
+    private func updateColors() {
+        let base = NSColor.windowBackgroundColor
+        deskLayer.colors = [
+            (base.blended(withFraction: 0.08, of: .controlAccentColor) ?? base).cgColor,
+            (base.blended(withFraction: 0.04, of: .labelColor) ?? base).cgColor,
+        ]
+        deskEdgeLayer.colors = [
+            (base.blended(withFraction: 0.18, of: .labelColor) ?? base).cgColor,
+            (base.blended(withFraction: 0.28, of: .labelColor) ?? base).cgColor,
+        ]
         deskLayer.borderColor = NSColor.separatorColor.cgColor
         lassoLayer.strokeColor = NSColor.controlAccentColor.cgColor
         selectionLayer.strokeColor = NSColor.controlAccentColor.cgColor
@@ -123,6 +176,8 @@ final class TabCanvasBoardView: NSView {
     // MARK: - Content
 
     func reload(_ content: CanvasBoardContent) {
+        orderedTabIDs = content.tabs.map(\.id)
+        originTabID = content.focusedTabID
         if content.deskSize != deskSize {
             deskSize = content.deskSize
             physics.desk = CGRect(origin: .zero, size: deskSize)
@@ -133,12 +188,16 @@ final class TabCanvasBoardView: NSView {
         reloadZones(content.zones)
         reloadMagnets(content.magnets)
         reloadSelection(content)
+        if navigationTabID.flatMap({ tiles[$0] }) == nil {
+            target(originTabID.flatMap { tiles[$0]?.tab.id } ?? orderedTabIDs.first, showingIndicator: false)
+        }
     }
 
     private func reloadTiles(_ content: CanvasBoardContent) {
         let ids = Set(content.tabs.map(\.id))
         for (id, tile) in tiles where !ids.contains(id) {
             physics.remove(id)
+            lastDragTimes[id] = nil
             tile.removeFromSuperview()
             tiles[id] = nil
         }
@@ -194,8 +253,9 @@ final class TabCanvasBoardView: NSView {
     }
 
     private func reloadSelection(_ content: CanvasBoardContent) {
+        selectedTabIDs = content.selectedTabIDs
         hasSelection = !content.selectedTabIDs.isEmpty
-        let frames = content.selectedTabIDs.compactMap { tiles[$0]?.frame }
+        let frames = content.selectedTabIDs.compactMap { tiles[$0]?.frame }.map(CanvasPhysics.collisionBox)
         guard let first = frames.first else {
             selectionLayer.isHidden = true
             selectionLayer.removeAllAnimations()
@@ -208,7 +268,9 @@ final class TabCanvasBoardView: NSView {
         selectionLayer.path = CGPath(roundedRect: union, cornerWidth: Constants.selectionCornerRadius, cornerHeight: Constants.selectionCornerRadius, transform: nil)
         selectionLayer.isHidden = false
         CATransaction.commit()
-        if selectionLayer.animation(forKey: "ants") == nil {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            selectionLayer.removeAllAnimations()
+        } else if selectionLayer.animation(forKey: "ants") == nil {
             let ants = CABasicAnimation(keyPath: "lineDashPhase")
             ants.fromValue = 0
             ants.toValue = Constants.lassoDash.reduce(0) { $0 + $1.doubleValue }
@@ -218,23 +280,62 @@ final class TabCanvasBoardView: NSView {
         }
     }
 
-    /// The smallest rectangle holding every tile, or nil on an empty desk.
-    var tilesBounds: CGRect? {
-        let frames = tiles.values.map(\.frame)
-        guard let first = frames.first else { return nil }
-        return frames.dropFirst().reduce(first) { $0.union($1) }
-    }
-
     /// The tile under `point`, or else the one whose edge is nearest to it.
     func tile(near point: CGPoint) -> (tab: Tab, frame: CGRect)? {
-        func distance(_ frame: CGRect) -> CGFloat {
-            let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
-            let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
-            return hypot(dx, dy)
+        CanvasNavigation.nearest(to: point, in: navigationTiles).flatMap { tile(withID: $0) }
+    }
+
+    func tile(withID id: Tab.ID) -> (tab: Tab, frame: CGRect)? {
+        tiles[id].map { ($0.tab, $0.frame) }
+    }
+
+    func previewFrame(for id: Tab.ID) -> CGRect? {
+        guard let tile = tiles[id] else { return nil }
+        return CanvasTileLayout.previewFrame(for: tile.frame, previewSize: tile.tab.boardFrame?.size ?? tile.frame.size)
+    }
+
+    func revealPreview(of id: Tab.ID, progress: CGFloat) {
+        tiles[id]?.revealPreview(progress)
+    }
+
+    private var navigationTiles: [CanvasNavigation.Tile] {
+        orderedTabIDs.compactMap { id in
+            tiles[id].map { CanvasNavigation.Tile(id: id, frame: CanvasPhysics.collisionBox($0.frame)) }
         }
-        return tiles.values
-            .min { distance($0.frame) < distance($1.frame) }
-            .map { ($0.tab, $0.frame) }
+    }
+
+    /// Marks the destination under the camera, with a stable boundary between neighbors.
+    func target(near point: CGPoint, hysteresis: CGFloat) {
+        target(CanvasNavigation.nearest(to: point, in: navigationTiles, retaining: navigationTabID, hysteresis: hysteresis))
+    }
+
+    func target(_ id: Tab.ID?, showingIndicator: Bool = true) {
+        if id != navigationTabID {
+            if let navigationTabID {
+                tiles[navigationTabID]?.isTargeted = false
+            }
+            navigationTabID = id
+        }
+        if let id, let tile = tiles[id], tile.isTargeted != showingIndicator {
+            tile.isTargeted = showingIndicator
+        }
+    }
+
+    private func moveFocus(_ direction: CanvasNavigation.Direction) {
+        guard let current = navigationTabID ?? originTabID ?? orderedTabIDs.first else { return }
+        let next = CanvasNavigation.neighbor(from: current, toward: direction, in: navigationTiles) ?? current
+        target(next)
+        if let tile = tiles[next] {
+            onRevealTile?(tile.frame)
+            NSAccessibility.post(element: tile, notification: .focusedUIElementChanged)
+        }
+    }
+
+    private func toggleSelection(_ id: Tab.ID) {
+        if !selectedTabIDs.insert(id).inserted {
+            selectedTabIDs.remove(id)
+        }
+        onLasso?(selectedTabIDs)
     }
 
     // MARK: - Factories
@@ -245,11 +346,22 @@ final class TabCanvasBoardView: NSView {
             guard let self, isInteractionEnabled else { return }
             onActivate?(tile.tab, tile.frame)
         }
+        tile.onSelect = { [weak self] tile in
+            guard let self, isInteractionEnabled else { return }
+            window?.makeFirstResponder(self)
+            target(tile.tab.id)
+            toggleSelection(tile.tab.id)
+        }
         tile.onDrag = { [weak self] tile in
             self?.hold(tile.tab.id, at: tile.frame)
         }
         tile.onRelease = { [weak self] tile, velocity in
             self?.release([tile.tab.id], velocity: velocity, dropped: true)
+        }
+        tile.onTogglePreview = { [weak self] tile in
+            guard let self, isInteractionEnabled else { return }
+            physics.remove(tile.tab.id)
+            onTogglePreview?(tile.tab.id, tile.frame)
         }
         tilePlane.addSubview(tile)
         tiles[tab.id] = tile
@@ -301,6 +413,10 @@ final class TabCanvasBoardView: NSView {
     // MARK: - Simulation
 
     private func hold(_ tabID: Tab.ID, at frame: CGRect) {
+        if lastDragTimes[tabID] == nil, let tile = tiles[tabID] {
+            tile.isLifted = true
+            tilePlane.addSubview(tile)
+        }
         let now = CACurrentMediaTime()
         let elapsed = lastDragTimes[tabID].map { CGFloat(now - $0) } ?? 0
         lastDragTimes[tabID] = now
@@ -310,6 +426,7 @@ final class TabCanvasBoardView: NSView {
 
     private func release(_ tabIDs: [Tab.ID], velocity: CGPoint, dropped: Bool) {
         for tabID in tabIDs {
+            tiles[tabID]?.isLifted = false
             lastDragTimes[tabID] = nil
             physics.release(tabID, velocity: velocity, dropped: dropped)
         }
@@ -376,8 +493,10 @@ final class TabCanvasBoardView: NSView {
         lastStepTime = now
 
         for (tabID, body) in physics.bodies {
-            if let tile = tiles[tabID], !tile.isDragging, tile.frame != body.frame {
-                tile.frame = body.frame
+            if let tile = tiles[tabID] {
+                if !tile.isDragging, tile.frame != body.frame {
+                    tile.frame = body.frame
+                }
             }
         }
 
@@ -390,9 +509,15 @@ final class TabCanvasBoardView: NSView {
                 if wasDropped {
                     dropped.append(tabID)
                 }
-            case let .fell(tabID):
-                if let tile = tiles[tabID] {
-                    fall(tile)
+            case let .impact(impact):
+                if isInteractionEnabled {
+                    tiles[impact.first]?.respondToImpact(impact, direction: -1)
+                    tiles[impact.second]?.respondToImpact(impact, direction: 1)
+                    let visible = visibleRect
+                    let pan = (impact.point.x - visible.midX) / max(1, visible.width / 2)
+                    if visible.contains(impact.point) {
+                        impactSound.play(speed: impact.speed, pan: pan, at: now)
+                    }
                 }
             }
         }
@@ -407,22 +532,6 @@ final class TabCanvasBoardView: NSView {
             displayLink?.invalidate()
             displayLink = nil
         }
-    }
-
-    private func fall(_ tile: CanvasTileView) {
-        let tabID = tile.tab.id
-        tiles[tabID] = nil
-        lastDragTimes[tabID] = nil
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = Constants.fallDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            tile.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated {
-                tile.removeFromSuperview()
-            }
-        })
-        onTileFellOffDesk?(tabID)
     }
 
     // MARK: - Lasso
@@ -491,7 +600,16 @@ final class TabCanvasBoardView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { // Escape
+        guard isInteractionEnabled else { return }
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers.isEmpty, let direction = CanvasNavigation.Direction(rawValue: event.keyCode) {
+            moveFocus(direction)
+        } else if modifiers.isEmpty, event.keyCode == 36 || event.keyCode == 76,
+                  let id = navigationTabID, let tile = tiles[id] {
+            onActivate?(tile.tab, tile.frame)
+        } else if modifiers.isEmpty, event.keyCode == 49, let id = navigationTabID {
+            toggleSelection(id)
+        } else if event.keyCode == 53 {
             if hasSelection {
                 onClearSelection?()
             } else {
@@ -501,13 +619,32 @@ final class TabCanvasBoardView: NSView {
             super.keyDown(with: event)
         }
     }
+
+    override func selectAll(_: Any?) {
+        guard isInteractionEnabled else { return }
+        onLasso?(Set(orderedTabIDs))
+    }
 }
 
 // MARK: - Plane
 
 /// A transparent, flipped layer of the board; clicks on its empty parts fall through.
 private final class CanvasPlaneView: NSView {
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
+    }
+}
+
+/// Batches the tiles' glass surfaces and lets empty-desk input reach the board.
+private final class CanvasGlassPlaneView: NSGlassEffectContainerView {
+    override var isFlipped: Bool {
+        true
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)

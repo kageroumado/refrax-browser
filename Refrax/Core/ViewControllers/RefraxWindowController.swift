@@ -94,6 +94,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// Flag to prevent observer reactions during restoration
     var isRestoringState = false
+    var restoredReadingState: WindowReadingState?
 
     /// Flag to prevent frame observer feedback during programmatic inspector updates
     var isUpdatingInspectorProgrammatically = false
@@ -121,9 +122,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// Flag indicating we're doing a smooth overlay-to-sidebar transition.
     var isTransitioningFromOverlay = false
-
-    /// Flag indicating we're handling collapse animation ourselves.
-    var isAnimatingCollapse = false
 
     /// Guards against rapid sidebar toggle presses during in-flight animations.
     ///
@@ -211,7 +209,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// The toolbar item identifiers that should move with the sidebar.
     let sidebarToolbarItemIdentifiers: Set<NSToolbarItem.Identifier> = [
-        .toggleSidebarGrouped, .toggleTabCanvas, .toggleInspector,
+        .toggleSidebarGrouped, .toggleFloatingTabs, .toggleTabCanvas, .toggleInspector,
     ]
 
     /// Tracks whether we're in fullscreen mode for proper edge reveal behavior
@@ -375,9 +373,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupDetailTrayContainer(contentView: contentView)
         setupSidebarOverlayContainer(contentView: contentView)
         setupEdgeExtensionBackground(contentView: contentView)
+        tabCanvasManager.onUseFloatingTabs = { [weak self] in self?.useFloatingTabs() }
+        setupFloatingTabsLayer(contentView: contentView)
         setupTabCanvasLayer(contentView: contentView)
         setupCanvasPageGestures(window: window)
         setupOverlayView(contentView: contentView)
+        setupControlIslandLayer(contentView: contentView)
         setupSidebarTrackingRegion(contentView: contentView)
         setupToolbar(window: window)
         setupSidebarTrackingAdapters()
@@ -469,6 +470,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
         // Start with inspector collapsed to prevent the frame observer from saving
         // an incorrect width before window restoration runs
+        sidebarItem.isCollapsed = true
+        windowState.isSidebarCollapsed = true
         inspectorItem.isCollapsed = true
         windowState.isInspectorCollapsed = true
 
@@ -484,6 +487,47 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         backgroundView.autoresizingMask = [.width, .height]
 
         contentView.addSubview(backgroundView, positioned: .below, relativeTo: nil)
+    }
+
+    private func setupFloatingTabsLayer(contentView: NSView) {
+        let floatingView = FloatingTabsHostingView(rootView: FloatingTabsLayer().refraxEnvironment(environment))
+        floatingView.sizingOptions = []
+        floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState] point in
+            guard let floatingView, let tabCanvasManager, let windowState else { return }
+            if windowState.controlIsland.hitRegions.contains(where: { $0.contains(point) }) { return }
+            if tabCanvasManager.floatingVisibility.isRevealed, tabCanvasManager.floatingGroups.contains(where: {
+                let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
+                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24).contains(point)
+            }) { return }
+            if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds).contains(point) }) {
+                let frame = tabCanvasManager.floatingFrame(for: tab, in: floatingView.bounds)
+                if point.y > frame.minY + FloatingTabPlacement.headerHeight, tab.id != windowState.activeTabID {
+                    windowState.recordInteraction(with: tab.activePage.id)
+                }
+            } else {
+                tabCanvasManager.retainedInputTabID = nil
+                if !windowState.controlIsland.tabInfo.isMenuPresented { tabCanvasManager.dismissFloatingTabs() }
+            }
+        }
+        floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager] in
+            guard let floatingView, let tabCanvasManager else { return [] }
+            if tabCanvasManager.draggedRecentTabID != nil { return [floatingView.bounds] }
+            let groups: [CGRect] = tabCanvasManager.floatingVisibility.isRevealed ? tabCanvasManager.floatingGroups.map {
+                let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
+                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24)
+            } : []
+            return groups + tabCanvasManager.visibleFloatingTabs.map {
+                tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds)
+            }
+        }
+        contentView.addSubview(floatingView)
+        floatingView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            floatingView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            floatingView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            floatingView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            floatingView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
     }
 
     /// The tab canvas covers the whole window, above the sidebar and below Command Lens.
@@ -506,7 +550,28 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// Page gestures reach the canvas only over a page at its normal size, with no lens up.
     private func setupCanvasPageGestures(window: NSWindow) {
-        canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager) { [unowned self] point in
+        canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager, floatingEligible: { [unowned self] in
+            !windowState.showsCommandLens && !windowState.showsAddressLens && !windowState.isSpaceLocked
+                && !tabSwitcherManager.isActive && window.attachedSheet == nil
+        }, floatingContains: { [unowned self] point in
+            guard let content = window.contentView else { return false }
+            let local = content.convert(point, from: nil)
+            let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
+            if tabCanvasManager.showsFloatingControls,
+               windowState.controlIsland.hitRegions.contains(where: { $0.contains(topLeft) }) { return true }
+            return tabCanvasManager.visibleFloatingTabs.contains {
+                tabCanvasManager.floatingFrame(for: $0, in: content.bounds).contains(topLeft)
+            } || (tabCanvasManager.floatingVisibility.isRevealed && tabCanvasManager.floatingGroups.contains {
+                let frame = tabCanvasManager.floatingGroupFrame($0, in: content.bounds)
+                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24).contains(topLeft)
+            })
+        }, floatingHasKeyboardFocus: { [unowned self] in
+            guard let focused = window.firstResponder as? NSView else { return false }
+            return tabCanvasManager.visibleFloatingTabs.contains { tab in
+                guard let page = environment.pagePool.existingPage(for: tab.activePage), page.isInFloatingPreview else { return false }
+                return focused === page.contentView || focused.isDescendant(of: page.contentView)
+            }
+        }) { [unowned self] point in
             guard !windowState.showsCommandLens, !windowState.showsAddressLens,
                   tabCanvasManager.isLivePageAtNormalSize,
                   let pageFrame = tabCanvasManager.currentLivePageFrame()
@@ -519,7 +584,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         overlayView = TransparentHostingView(rootView: OverlayContainer().refraxEnvironment(environment)) { [unowned self] in
             !windowState.showsCommandLens
                 && !windowState.showsAddressLens
-                && !windowState.showsCompactAddressBar
+                && !tabSwitcherManager.isActive
+                && (!windowState.showsCompactAddressBar || windowState.usesFloatingTabs)
                 && windowState.lockedSpaceRequiringAuth == nil
                 && !windowState.isHoveringOverlayNotification
                 && environment.screenshotCoordinator.currentPreview == nil
@@ -823,6 +889,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
         let sidebarItem = splitViewController.splitViewItems[0]
 
+        if !sidebarItem.isCollapsed {
+            useFloatingTabs()
+            return
+        }
+        windowState.usesFloatingTabs = false
+        window?.toolbar?.isVisible = true
         cancelTutorialPeek()
 
         if isSidebarOverlayVisible {
@@ -830,57 +902,15 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             return
         }
 
-        if !sidebarItem.isCollapsed {
-            collapseSidebarWithAnimation()
-        } else {
-            isAnimatingSidebarTransition = true
-
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-
-                sidebarItem.animator().isCollapsed = false
-            } completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.isAnimatingSidebarTransition = false
-                }
-            }
-        }
-    }
-
-    /// Collapses the sidebar with smooth toolbar item animation.
-    private func collapseSidebarWithAnimation() {
-        let sidebarItem = splitViewController.splitViewItems[0]
-
-        let sidebarWidth = sidebarItem.viewController.view.frame.width
-        let dividerPosition = sidebarWidth + sidebarDividerOffset
-
-        if let adapter = splitViewSidebarTrackingAdapter {
-            adapter.overrideDividerPosition = dividerPosition
-        }
-
-        isAnimatingCollapse = true
         isAnimatingSidebarTransition = true
-
-        applyToolbarItemsOffset(forOverlayProgress: 1.0, animated: false)
-        applyTrafficLightVisibility(1.0, animated: false)
-
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             context.allowsImplicitAnimation = true
-
-            sidebarItem.animator().isCollapsed = true
-
-            applyToolbarItemsOffset(forOverlayProgress: 0.0, animated: true)
-            applyTrafficLightVisibility(0.0, animated: true)
+            sidebarItem.animator().isCollapsed = false
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                self?.isAnimatingCollapse = false
                 self?.isAnimatingSidebarTransition = false
-                // Set toolbar items to isHidden to prevent clicks on transparent items
-                self?.hideToolbarItemsInstantly()
             }
         }
     }
@@ -981,12 +1011,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     }
 
     func reloadPage() {
-        _ = windowState.activeWebPage?.reload()
+        _ = windowState.focusedWebPage?.reload()
     }
 
     /// Reloads the active page without using cache.
     func reloadPageFromOrigin() {
-        _ = windowState.activeWebPage?.reload(fromOrigin: true)
+        _ = windowState.focusedWebPage?.reload(fromOrigin: true)
     }
 
     /// Navigates to the next tab in the list

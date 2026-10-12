@@ -247,6 +247,30 @@ final class WindowState {
         activeSpace?.groups ?? []
     }
 
+    var readingState: WindowReadingState {
+        var selected: [Space.ID: Tab.ID] = [:]
+        for space in browserState.spaces where space.dataStoreMode != .private {
+            if let id = activeTabID(for: space.id), let tab = browserState.tab(for: id), !tab.isArchived {
+                selected[space.id] = id
+            }
+        }
+        let main = activeSpace?.dataStoreMode == .private ? nil : activeTabID
+        return WindowReadingState(tabIDsBySpace: selected, mainTabID: main)
+    }
+
+    /// Returns the page eligible for immediate resumption; locked spaces await authentication.
+    func restoreReadingState(_ saved: WindowReadingState) -> Tab? {
+        for (spaceID, tabID) in saved.tabIDsBySpace {
+            guard let tab = browserState.tab(for: tabID), !tab.isArchived,
+                  tab.space?.id == spaceID, tab.space?.dataStoreMode != .private else { continue }
+            setActiveTabID(tabID, for: spaceID, trackPrevious: false)
+        }
+        guard !isSpaceLocked, activeSpace?.dataStoreMode != .private,
+              let id = saved.mainTabID, let tab = browserState.tab(for: id), !tab.isArchived,
+              tab.isLiveFavorite || tab.space?.id == activeSpaceID else { return nil }
+        return tab
+    }
+
     /// Active tab IDs per space (allows remembering position when switching spaces).
     ///
     /// When switching back to a space, the previously active tab is restored.
@@ -449,11 +473,15 @@ final class WindowState {
 
     // MARK: - Split View State
 
-    /// Whether the sidebar (vertical tabs) is collapsed.
-    ///
-    /// When collapsed, only the sidebar overlay appears on hover. When expanded,
-    /// the sidebar is pinned open. Synced with `@SceneStorage` for persistence.
-    var isSidebarCollapsed: Bool = false
+    /// Floating tabs provide the primary tab interface. An explicit sidebar command opens the sidebar.
+    var usesFloatingTabs = true
+
+    let controlIsland = ControlIslandState()
+    let pageVisit = PageVisitState()
+    var floatingPlacements: [Tab.ID: FloatingTabPlacement] = [:]
+
+    /// Mirrors the sidebar split item.
+    var isSidebarCollapsed: Bool = true
 
     /// Whether the inspector (reference pane) is collapsed.
     ///
@@ -1078,6 +1106,7 @@ final class WindowState {
     ///     for new windows that should start without a tab selected.
     func setActiveSpace(_ space: Space, restoreActiveTab _: Bool = true) {
         activeSpaceID = space.id
+        focusedPageID = activePageID
         // Persist as the last-active space so windowless surfaces (a standalone Glimpse)
         // can default to it after every window closes.
         browserState.lastActiveSpaceID = space.id

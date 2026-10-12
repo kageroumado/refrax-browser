@@ -18,6 +18,18 @@ extension RefraxWindowController {
     ///
     /// - Reference tabs → Per-space in SwiftData
     func encodeWindowState(to state: NSCoder) {
+        let controls = [windowState.controlIsland.markPlacement, windowState.controlIsland.favoritePlacement]
+        if let data = try? JSONEncoder().encode(controls) { state.encode(data as NSData, forKey: "spatialControls") }
+        if let data = try? JSONEncoder().encode(windowState.readingState) {
+            state.encode(data as NSData, forKey: "readingState")
+        }
+        let placements = windowState.floatingPlacements.filter { id, _ in
+            guard let tab = tabManager.state.tab(for: id) else { return false }
+            return tab.space?.dataStoreMode != .private
+        }
+        if let data = try? JSONEncoder().encode(placements) { state.encode(data as NSData, forKey: "floatingPlacements") }
+        state.encode(windowState.controlIsland.placement.x as NSNumber, forKey: "controlIslandX")
+        state.encode(windowState.controlIsland.placement.y as NSNumber, forKey: "controlIslandY")
         // Encode window frame for explicit restoration.
         // AppKit's default NSWindow.restoreState doesn't reliably restore frame
         // when the window is created with .zero contentRect via NSWindowRestoration.
@@ -62,6 +74,23 @@ extension RefraxWindowController {
     func decodeWindowState(from state: NSCoder) {
         isRestoringState = true
         defer { isRestoringState = false }
+        if let data = state.decodeObject(of: NSData.self, forKey: "spatialControls") as Data?,
+           let controls = try? JSONDecoder().decode([ControlIslandPlacement].self, from: data), controls.count == 2 {
+            windowState.controlIsland.markPlacement = controls[0]
+            windowState.controlIsland.favoritePlacement = controls[1]
+        }
+        if let data = state.decodeObject(of: NSData.self, forKey: "readingState") as Data? {
+            restoredReadingState = try? JSONDecoder().decode(WindowReadingState.self, from: data)
+        }
+        if let data = state.decodeObject(of: NSData.self, forKey: "floatingPlacements") as Data?,
+           let placements = try? JSONDecoder().decode([Tab.ID: FloatingTabPlacement].self, from: data) {
+            windowState.floatingPlacements = placements
+        }
+
+        if let x = state.decodeObject(of: NSNumber.self, forKey: "controlIslandX")?.doubleValue,
+           let y = state.decodeObject(of: NSNumber.self, forKey: "controlIslandY")?.doubleValue {
+            windowState.controlIsland.placement = ControlIslandPlacement(x: x, y: y)
+        }
 
         // Restore window frame before split view positions, since divider
         // calculations depend on the window's width being correct.
@@ -167,10 +196,10 @@ extension RefraxWindowController {
         let padding = Constants.SidebarAnimation.glassEffectPadding
         sidebarOverlayWidthConstraint?.constant = sidebarWidth + padding
 
-        sidebarItem.isCollapsed = sidebarCollapsed
-        windowState.isSidebarCollapsed = sidebarCollapsed
+        sidebarItem.isCollapsed = windowState.usesFloatingTabs || sidebarCollapsed
+        windowState.isSidebarCollapsed = sidebarItem.isCollapsed
 
-        if !sidebarCollapsed {
+        if !sidebarItem.isCollapsed {
             splitViewController.splitView.setPosition(sidebarWidth, ofDividerAt: 0)
         }
 
@@ -200,6 +229,13 @@ extension RefraxWindowController {
             tabManager.initializeWindow(windowState, with: space)
         } else {
             tabManager.initializeWindow(windowState)
+        }
+
+        if let saved = restoredReadingState {
+            restoredReadingState = nil
+            if let tab = windowState.restoreReadingState(saved) {
+                tabManager.setActiveTab(tab, in: windowState)
+            }
         }
 
         updateWindowBackground()
@@ -239,6 +275,9 @@ extension RefraxWindowController {
         // AppKit shows the traffic lights in its own fullscreen titlebar; drop Refrax's
         // compact platter so it does not linger empty at the top of the dock.
         exitCompactTrafficLightMode(animated: false)
+        if windowState.usesFloatingTabs {
+            applyTrafficLightVisibility(1, animated: false)
+        }
         startFullscreenRevealObserving()
     }
 
@@ -264,6 +303,10 @@ extension RefraxWindowController {
 
         captureTrafficLightOrigins(force: true)
 
+        if windowState.usesFloatingTabs {
+            applyFloatingTabsChrome()
+            return
+        }
         let sidebarItem = splitViewController.splitViewItems[0]
         if sidebarItem.isCollapsed {
             if windowState.effectiveSidebarMode == .compact {

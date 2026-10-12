@@ -44,7 +44,7 @@ struct OverlayContainer: View {
             || windowState.pendingSearchEngineDetection != nil
             || tabSwitcherManager.isActive
             || lockedSpace != nil
-            || windowState.showsCompactAddressBar
+            || (windowState.showsCompactAddressBar && !windowState.usesFloatingTabs)
             || guidedTourManager.isActive
     }
 

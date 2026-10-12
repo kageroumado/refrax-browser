@@ -10,12 +10,16 @@ nonisolated struct BoardFrame: Codable, Equatable, Sendable {
     var y: Double
     var width: Double
     var height: Double
+    var isCompact: Bool?
+    var floating: FloatingTabPlacement?
+    var hasDeskFrame: Bool?
 
-    init(_ rect: CGRect) {
-        x = rect.origin.x
-        y = rect.origin.y
-        width = rect.width
-        height = rect.height
+    init(_ rect: CGRect, isCompact: Bool = false) {
+        self.x = rect.origin.x
+        self.y = rect.origin.y
+        self.width = rect.width
+        self.height = rect.height
+        self.isCompact = isCompact ? true : nil
     }
 
     var rect: CGRect {
@@ -24,12 +28,31 @@ nonisolated struct BoardFrame: Codable, Equatable, Sendable {
 
     static func decode(_ data: Data?) -> CGRect? {
         guard let data else { return nil }
-        return try? JSONDecoder().decode(BoardFrame.self, from: data).rect
+        guard let value = value(data), value.hasDeskFrame != false else { return nil }
+        return value.rect
     }
 
-    static func encode(_ rect: CGRect?) -> Data? {
+    static func isCompact(_ data: Data?) -> Bool {
+        guard let data else { return false }
+        return (try? JSONDecoder().decode(BoardFrame.self, from: data).isCompact) == true
+    }
+
+    static func value(_ data: Data?) -> Self? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(Self.self, from: data)
+    }
+
+    static func updating(frame: CGRect?, isCompact: Bool, floating: FloatingTabPlacement?) -> Data? {
+        guard frame != nil || floating != nil else { return nil }
+        var value = Self(frame ?? .zero, isCompact: isCompact)
+        value.hasDeskFrame = frame == nil ? false : nil
+        value.floating = floating
+        return try? JSONEncoder().encode(value)
+    }
+
+    static func encode(_ rect: CGRect?, isCompact: Bool = false) -> Data? {
         guard let rect else { return nil }
-        return try? JSONEncoder().encode(BoardFrame(rect))
+        return try? JSONEncoder().encode(BoardFrame(rect, isCompact: isCompact))
     }
 }
 
@@ -41,8 +64,8 @@ nonisolated struct BoardPoint: Codable, Equatable, Sendable {
     var y: Double
 
     init(_ point: CGPoint) {
-        x = point.x
-        y = point.y
+        self.x = point.x
+        self.y = point.y
     }
 
     var point: CGPoint {

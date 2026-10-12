@@ -677,6 +677,12 @@ final class BrowserSettings {
 
     // MARK: - Feature Flags
 
+    /// Soft contact sounds when tabs collide on the desk.
+    var canvasImpactSounds: Bool {
+        get { isFeatureFlagEnabled("app.canvasImpactSounds", default: false) }
+        set { setFeatureFlag("app.canvasImpactSounds", enabled: newValue) }
+    }
+
     /// JSON-encoded dictionary of user feature flag overrides.
     ///
     /// Maps feature flag keys (e.g., `"LinkSanitizerEnabled"`) to boolean values.

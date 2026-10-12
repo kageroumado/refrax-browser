@@ -48,8 +48,8 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
            let windowController = keyWindow.windowController as? RefraxWindowController {
             return windowController
         }
-        // Fall back to the last active browser window (e.g., when Web Inspector is focused)
-        return windowManager.lastActiveBrowserWindowController
+        // Resolve the last browser or an open window that has yet to become key.
+        return windowManager.activeWindowController
     }
 
     // MARK: - Initialization

@@ -8,7 +8,7 @@ struct CompactAddressBarOverlay: View {
     @Environment(WindowState.self) private var windowState
 
     var body: some View {
-        if windowState.showsCompactAddressBar {
+        if windowState.showsCompactAddressBar, !windowState.usesFloatingTabs {
             ZStack(alignment: .topLeading) {
                 clickCapture
 

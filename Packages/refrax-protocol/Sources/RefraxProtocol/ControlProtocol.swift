@@ -109,6 +109,7 @@ public enum ControlRequest: Sendable {
     case pagePiP(PagePiPParams)
 
     // Tab Canvas
+    case floatingTabs(FloatingTabsParams)
     case canvasShow
     case canvasHide
     case canvasState
@@ -683,6 +684,28 @@ public extension ControlRequest {
             self.action = action
             self.tabID = tabID
             self.pageID = pageID
+        }
+    }
+
+    struct FloatingTabsParams: Codable, Sendable {
+        public enum Action: String, Codable, Sendable {
+            case show, hide, hold, release, pin, unpin, compact, preview, move, resize
+        }
+        public var action: Action
+        public var tab: String?
+        public var x: Double?
+        public var y: Double?
+
+        public var width: Double?
+        public var height: Double?
+
+        public init(action: Action, tab: String? = nil, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil) {
+            self.action = action
+            self.tab = tab
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
         }
     }
 
@@ -1531,6 +1554,7 @@ extension ControlRequest: Codable {
         case pagePiP
 
         // Tab Canvas
+        case floatingTabs
         case canvasShow
         case canvasHide
         case canvasState
@@ -1729,6 +1753,7 @@ extension ControlRequest: Codable {
         case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
         case .pagePiP: self = try .pagePiP(PagePiPParams(from: decoder))
         // Tab Canvas
+        case .floatingTabs: self = try .floatingTabs(FloatingTabsParams(from: decoder))
         case .canvasShow: self = .canvasShow
         case .canvasHide: self = .canvasHide
         case .canvasState: self = .canvasState
@@ -2024,6 +2049,9 @@ extension ControlRequest: Codable {
             try container.encode("pagePiP", forKey: .type)
             try params.encode(to: encoder)
         // Tab Canvas
+        case let .floatingTabs(params):
+            try container.encode("floatingTabs", forKey: .type)
+            try params.encode(to: encoder)
         case .canvasShow:
             try container.encode("canvasShow", forKey: .type)
         case .canvasHide:
@@ -2671,11 +2699,14 @@ public enum CTL {
     /// The tab canvas of a window: its desk, tiles, zones, and magnets.
     public struct CanvasInfo: Codable, Sendable {
         public let isActive: Bool
+        /// The tile outlined as the keyboard or peek destination.
+        public let navigationTabID: String?
         /// Tiles are still moving; positions are where they were last at rest.
         public let isSettling: Bool
         public let deskWidth: Double
         public let deskHeight: Double
         public let tiles: [CanvasTileInfo]
+        public let floating: FloatingTabsInfo?
         public let zones: [CanvasZoneInfo]
         public let magnets: [CanvasMagnetInfo]
         /// Pairs of tiles whose collision boxes (tile, title strip, and gap) overlap.
@@ -2686,6 +2717,7 @@ public enum CTL {
 
         public init(
             isActive: Bool,
+            navigationTabID: String?,
             isSettling: Bool,
             deskWidth: Double,
             deskHeight: Double,
@@ -2694,8 +2726,10 @@ public enum CTL {
             magnets: [CanvasMagnetInfo],
             overlappingPairs: Int,
             scenarios: [String],
+            floating: FloatingTabsInfo? = nil,
         ) {
             self.isActive = isActive
+            self.navigationTabID = navigationTabID
             self.isSettling = isSettling
             self.deskWidth = deskWidth
             self.deskHeight = deskHeight
@@ -2704,6 +2738,40 @@ public enum CTL {
             self.magnets = magnets
             self.overlappingPairs = overlappingPairs
             self.scenarios = scenarios
+            self.floating = floating
+        }
+    }
+
+    public struct FloatingTabsInfo: Codable, Sendable {
+        public let isRevealed: Bool
+        public let tiles: [FloatingTileInfo]
+        public init(isRevealed: Bool, tiles: [FloatingTileInfo]) {
+            self.isRevealed = isRevealed
+            self.tiles = tiles
+        }
+    }
+
+    public struct FloatingTileInfo: Codable, Sendable {
+        public let tabID: String
+        public let title: String
+        public let x: Double
+        public let y: Double
+        public let width: Double
+        public let height: Double
+        public let isCompact: Bool
+        public let isPinned: Bool
+        public let isVisible: Bool
+        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double,
+                    isCompact: Bool, isPinned: Bool, isVisible: Bool) {
+            self.tabID = tabID
+            self.title = title
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.isCompact = isCompact
+            self.isPinned = isPinned
+            self.isVisible = isVisible
         }
     }
 
@@ -2716,8 +2784,9 @@ public enum CTL {
         public let height: Double
         public let groupID: String?
         public let isSelected: Bool
+        public let isCompact: Bool
 
-        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double, groupID: String?, isSelected: Bool) {
+        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double, groupID: String?, isSelected: Bool, isCompact: Bool) {
             self.tabID = tabID
             self.title = title
             self.x = x
@@ -2726,6 +2795,7 @@ public enum CTL {
             self.height = height
             self.groupID = groupID
             self.isSelected = isSelected
+            self.isCompact = isCompact
         }
     }
 

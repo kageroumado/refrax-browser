@@ -81,12 +81,12 @@ extension MenuBarManager {
 
     @objc
     func goBack(_: Any?) {
-        activeWindowController?.windowState.activeWebPage?.goBack()
+        activeWindowController?.windowState.focusedWebPage?.goBack()
     }
 
     @objc
     func goForward(_: Any?) {
-        activeWindowController?.windowState.activeWebPage?.goForward()
+        activeWindowController?.windowState.focusedWebPage?.goForward()
     }
 
     @objc

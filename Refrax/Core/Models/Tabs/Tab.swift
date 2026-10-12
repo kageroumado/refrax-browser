@@ -123,10 +123,22 @@ final class Tab {
     /// `nil` until the tab has been placed on the board.
     var boardFrameData: Data?
 
-    /// Where this tab's tile sits on the tab canvas, or `nil` if it has never been placed.
+    /// The tab's preview rectangle. Compact presentation keeps its center and remembers this size.
     var boardFrame: CGRect? {
         get { BoardFrame.decode(boardFrameData) }
-        set { boardFrameData = BoardFrame.encode(newValue) }
+        set { boardFrameData = BoardFrame.updating(frame: newValue, isCompact: boardIsCompact, floating: floatingPlacement) }
+    }
+
+    /// Shows the tab as a compact favicon and title on the canvas.
+    var boardIsCompact: Bool {
+        get { BoardFrame.isCompact(boardFrameData) }
+        set { boardFrameData = BoardFrame.updating(frame: boardFrame, isCompact: newValue, floating: floatingPlacement) }
+    }
+
+    /// Position, presentation, and keep-visible choice for the floating tab layer.
+    var floatingPlacement: FloatingTabPlacement? {
+        get { BoardFrame.value(boardFrameData)?.floating }
+        set { boardFrameData = BoardFrame.updating(frame: boardFrame, isCompact: boardIsCompact, floating: newValue) }
     }
 
     /// Cached decoded layout configuration to avoid repeated JSON parsing.

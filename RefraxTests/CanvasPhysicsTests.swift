@@ -132,8 +132,8 @@ struct CanvasPhysicsTests {
         #expect(frame.minX == frame.minX.rounded())
     }
 
-    @Test("A tile flung past the edge falls off and leaves the world")
-    func flingOffEdgeFalls() {
+    @Test("A tile flung past the edge stays reachable")
+    func flingOffEdgeStaysReachable() {
         var world = CanvasPhysics(desk: Self.desk)
         let id = UUID()
         world.place(id, frame: Self.tile(at: 4300, 1000))
@@ -141,8 +141,8 @@ struct CanvasPhysicsTests {
 
         let events = Self.runToRest(&world)
 
-        #expect(events.contains(.fell(id)))
-        #expect(world.bodies[id] == nil)
+        #expect(world.bodies[id] != nil)
+        #expect(Self.desk.contains(CanvasPhysics.collisionBox(world.bodies[id]!.frame)))
     }
 
     @Test("A knocked tile stops at the edge instead of sliding off")
@@ -154,7 +154,6 @@ struct CanvasPhysicsTests {
 
         let events = Self.runToRest(&world)
 
-        #expect(!events.contains(.fell(id)))
         let frame = try! #require(world.bodies[id]).frame
         #expect(Self.desk.contains(CGPoint(x: frame.midX, y: frame.midY)))
     }
@@ -173,8 +172,8 @@ struct CanvasPhysicsTests {
         #expect(events.contains { if case .settled(id, _, _) = $0 { true } else { false } })
     }
 
-    @Test("A tile with no room left falls off")
-    func noRoomDropsATile() {
+    @Test("A tile with no room remains open")
+    func noRoomKeepsTab() {
         var world = CanvasPhysics(desk: Self.desk)
         let held = UUID(), cornered = UUID()
         // The cornered tile's center sits 10 pt inside the bottom-right corner, so any
@@ -189,7 +188,7 @@ struct CanvasPhysicsTests {
             events += world.step(1.0 / 60)
         }
 
-        #expect(events.contains(.fell(cornered)))
+        #expect(world.bodies[cornered] != nil)
     }
 
     @Test("Opening a desk with more tiles than fit closes nothing and comes to rest")
@@ -204,7 +203,6 @@ struct CanvasPhysicsTests {
 
         let events = Self.runToRest(&world)
 
-        #expect(!events.contains { if case .fell = $0 { true } else { false } })
         #expect(world.bodies.count == 200)
     }
 

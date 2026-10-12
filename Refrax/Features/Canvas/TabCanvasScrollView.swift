@@ -15,18 +15,23 @@ final class TabCanvasScrollView: NSScrollView {
     var onDismiss: (() -> Void)?
     var onSettle: (([Tab.ID: CGRect]) -> Void)?
     var onTileDropped: ((Tab.ID) -> Void)?
-    var onTileFellOffDesk: ((Tab.ID) -> Void)?
     var onZoneMoved: ((UUID, CGPoint) -> Void)?
     var onMagnetMoved: ((UUID, CGPoint) -> Void)?
     var onMagnetActivated: ((UUID) -> Void)?
     var onLasso: ((Set<Tab.ID>) -> Void)?
     var onClearSelection: (() -> Void)?
+    var onTogglePreview: ((Tab.ID, CGRect) -> Void)?
+    var impactSoundsEnabled = false {
+        didSet { board.impactSoundsEnabled = impactSoundsEnabled }
+    }
 
     private let board: TabCanvasBoardView
     private let canvasClip = CanvasClipView()
     private var isTransitioning = false
-    private var focusedTileFrame: CGRect?
     private var flight: ProgressFlight?
+    private var isPeeking = false
+    private var pinchIntent: CanvasPinchIntent?
+    private var pinchTargetID: Tab.ID?
     private var pendingLayoutActions: [() -> Void] = []
     /// The opening's path, from the focused tile aligned on the page to the whole desk.
     private var openingPath: (from: CGRect, to: CGRect)?
@@ -47,29 +52,30 @@ final class TabCanvasScrollView: NSScrollView {
         static let pinchGain: CGFloat = 1.6
         /// How far ⌃ zooms out from the page, enough to see it is one tile among others.
         static let peekZoomOut: CGFloat = 1.15
+        static let compactPeekZoomOut: CGFloat = 3
         static let peekDuration: TimeInterval = 0.18
         /// How much faster than the fingers a trackpad scroll moves the desk; a desk is many
         /// screens wide, so following the fingers exactly crawls. Drags stay under the pointer.
         static let scrollGain: CGFloat = 2
         /// Zoom per line of mouse wheel.
         static let wheelZoomStep: CGFloat = 1.1
-        /// How far out the wheel zooms, relative to the view fitting every tile.
-        static let maximumZoomOut: CGFloat = 1.5
+        /// A little room beyond the table at the widest camera position.
+        static let maximumZoomOut: CGFloat = 1.1
         /// A pinch released with the tile under the fingers at least this fraction of its
         /// page size enters the tile.
         static let enterThreshold: CGFloat = 0.5
         /// Room kept clear when fitting tiles: the traffic lights above, the floating
         /// controls below.
-        static let fitInsets = NSEdgeInsets(top: 56, left: 24, bottom: 84, right: 24)
-        /// How far the opening zooms out from the page: the neighborhood around the tab,
-        /// or the whole desk when that is closer.
-        static let overviewZoomOut: CGFloat = 3
+        static let fitInsets = NSEdgeInsets(top: 56, left: 40, bottom: 88, right: 40)
         static let minMagnification: CGFloat = 0.05
         static let maxMagnification: CGFloat = 4
+        static let targetHysteresis: CGFloat = 18
+        static let focusDuration: TimeInterval = 0.18
+        static let reducedMotionDuration: TimeInterval = 0.12
     }
 
     init(deskSize: CGSize) {
-        board = TabCanvasBoardView(deskSize: deskSize)
+        self.board = TabCanvasBoardView(deskSize: deskSize)
         super.init(frame: .zero)
         drawsBackground = true
         backgroundColor = .underPageBackgroundColor
@@ -84,17 +90,18 @@ final class TabCanvasScrollView: NSScrollView {
         contentInsets = NSEdgeInsetsZero
 
         board.onActivate = { [weak self] tab, frame in self?.enter(frame, tab: tab) }
-        canvasClip.centerRegion = { [weak board] in board?.tilesBounds }
+        canvasClip.centerRegion = { [weak board] in board?.bounds }
         board.onPanCamera = { [weak self] delta in self?.pan(by: delta) }
         board.onDismiss = { [weak self] in self?.dismissZoomingIntoFocusedTile() }
         board.onSettle = { [weak self] frames in self?.onSettle?(frames) }
         board.onTileDropped = { [weak self] tabID in self?.onTileDropped?(tabID) }
-        board.onTileFellOffDesk = { [weak self] tabID in self?.onTileFellOffDesk?(tabID) }
         board.onZoneMoved = { [weak self] groupID, delta in self?.onZoneMoved?(groupID, delta) }
         board.onMagnetMoved = { [weak self] groupID, delta in self?.onMagnetMoved?(groupID, delta) }
         board.onMagnetActivated = { [weak self] groupID in self?.onMagnetActivated?(groupID) }
         board.onLasso = { [weak self] tabIDs in self?.onLasso?(tabIDs) }
         board.onClearSelection = { [weak self] in self?.onClearSelection?() }
+        board.onTogglePreview = { [weak self] id, frame in self?.onTogglePreview?(id, frame) }
+        board.onRevealTile = { [weak self] frame in self?.revealTile(frame) }
     }
 
     @available(*, unavailable)
@@ -109,6 +116,10 @@ final class TabCanvasScrollView: NSScrollView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(board)
+        if window == nil {
+            flight?.cancel()
+            flight = nil
+        }
     }
 
     // MARK: - Layout
@@ -145,22 +156,20 @@ final class TabCanvasScrollView: NSScrollView {
     /// Places the camera at the start of the opening: `tile` aligned on the live page, or
     /// the whole desk when there is no tile, with the canvas still transparent.
     ///
-    /// The opening ends on the neighborhood around the tile, zoomed out about the tile so it
-    /// stays under the fingers, or on the whole desk when that is closer.
-    func beginOpening(focusedTile tile: CGRect?, everything: CGRect) {
-        focusedTileFrame = tile
+    /// The opening reveals all four edges of the table, preserving each tile's position.
+    func beginOpening(focusedTile tile: CGRect?, desk: CGRect) {
         alphaValue = 0
         whenLaidOut { [weak self] in
             guard let self else { return }
-            let fit = fittedRect(for: everything, insets: Constants.fitInsets)
+            let fit = fittedRect(for: desk, insets: Constants.fitInsets)
             guard let tile else {
                 openingPath = (from: fit, to: fit)
                 applyOpening(openingProgress)
                 return
             }
-            let aligned = alignedRect(for: tile)
-            let neighborhood = Self.scale(aligned, by: Constants.overviewZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
-            openingPath = (from: aligned, to: fit.width < neighborhood.width ? fit : neighborhood)
+            let preview = board.originTabID.flatMap { board.previewFrame(for: $0) } ?? tile
+            let aligned = alignedRect(for: preview)
+            openingPath = (from: aligned, to: fit)
             if let scale = pendingOpeningScale {
                 pendingOpeningScale = nil
                 setOpeningScale(scale)
@@ -197,7 +206,7 @@ final class TabCanvasScrollView: NSScrollView {
     /// Brings the desk up around the page for ⌃: the focused tile starts on the page and
     /// the camera eases back a little, so the page shows as one tile among others.
     func beginPanning(focusedTile tile: CGRect?) {
-        focusedTileFrame = tile
+        isPeeking = true
         alphaValue = 0
         whenLaidOut { [weak self] in
             guard let self else { return }
@@ -205,11 +214,17 @@ final class TabCanvasScrollView: NSScrollView {
                 alphaValue = 1
                 return
             }
-            let from = alignedRect(for: tile)
-            let to = Self.scale(from, by: Constants.peekZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
+            let preview = board.originTabID.flatMap { board.previewFrame(for: $0) } ?? tile
+            let from = alignedRect(for: preview)
+            let compactOrigin = board.originTabID.flatMap { board.tile(withID: $0)?.tab.boardIsCompact } ?? false
+            let to = Self.scale(from, by: compactOrigin ? Constants.compactPeekZoomOut : Constants.peekZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
             setVisibleRect(from)
+            let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             run(from: 0, to: 1, duration: Constants.peekDuration, frame: { [weak self] t in
-                self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
+                self?.setVisibleRect(reducedMotion ? to : Self.interpolate(from: from, to: to, t: t))
+                if let self, let id = board.originTabID {
+                    board.revealPreview(of: id, progress: reducedMotion ? 0 : 1 - t)
+                }
                 self?.alphaValue = Self.reveal(t)
             }, completion: nil)
         }
@@ -220,41 +235,39 @@ final class TabCanvasScrollView: NSScrollView {
         whenLaidOut { [weak self] in
             guard let self, !isTransitioning, magnification > 0, delta != .zero else { return }
             if flight != nil {
-                flight?.abandon()
-                flight = nil
-                alphaValue = 1
+                finishCameraFlight()
             }
             var visible = contentView.bounds
             visible.origin.x -= delta.x / magnification
             visible.origin.y -= delta.y / magnification
-            setVisibleRect(canvasClip.keepingCenterNearTiles(visible))
+            setVisibleRect(canvasClip.keepingCenterNearDesk(visible))
         }
     }
 
     /// Zooms by `factor` about a point in window coordinates, the way a mouse wheel does.
-    /// Zooming out stops a little past the view fitting every tile; a tile under the
+    /// Zooming out stops a little past the view fitting the table; a tile under the
     /// pointer grown to its page size is entered.
     func zoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint) {
+        applyZoom(by: factor, aboutWindowPoint: windowPoint, enteringAtPageSize: true)
+    }
+
+    private func applyZoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint, enteringAtPageSize: Bool) {
         whenLaidOut { [weak self] in
             guard let self, !isTransitioning, openingPath == nil, factor > 0, factor.isFinite else { return }
             if flight != nil {
-                flight?.abandon()
-                flight = nil
-                alphaValue = 1
+                finishCameraFlight()
             }
             let anchor = board.convert(windowPoint, from: nil)
             let visible = contentView.bounds
             var width = visible.width / factor
-            if let tiles = board.tilesBounds {
-                let fit = fittedRect(for: tiles, insets: Constants.fitInsets)
-                width = min(width, fit.width * Constants.maximumZoomOut)
-            }
+            let fit = fittedRect(for: board.bounds, insets: Constants.fitInsets)
+            width = min(width, fit.width * Constants.maximumZoomOut)
             let zoomed = Self.scale(visible, by: width / visible.width, about: anchor)
-            setVisibleRect(canvasClip.keepingCenterNearTiles(zoomed))
+            setVisibleRect(canvasClip.keepingCenterNearDesk(zoomed))
 
-            guard factor > 1, let page = pageRectInClip,
-                  let (tab, frame) = board.tile(near: anchor), frame.contains(anchor), frame.width > 0,
-                  magnification >= page.width / frame.width
+            guard enteringAtPageSize, factor > 1, let page = pageRectInClip,
+                  let (tab, frame) = board.tile(near: anchor), CanvasPhysics.collisionBox(frame).contains(anchor), frame.width > 0,
+                  magnification >= page.width / (board.previewFrame(for: tab.id)?.width ?? frame.width)
             else { return }
             enter(frame, tab: tab)
         }
@@ -270,19 +283,18 @@ final class TabCanvasScrollView: NSScrollView {
         whenLaidOut { [weak self] in
             guard let self, !isTransitioning else { return }
             Logger.debug("settle on \(place)", category: Logger.canvas)
-            flight?.abandon()
-            flight = nil
-            alphaValue = 1
+            finishCameraFlight()
             let point: CGPoint
             switch place {
             case .origin:
-                if let focusedTileFrame {
-                    enter(focusedTileFrame, tab: nil, fading: false)
-                } else {
-                    onDismiss?()
-                }
+                dismissZoomingIntoFocusedTile()
                 return
             case .nearest:
+                updatePeekTarget()
+                if let id = board.navigationTabID, let tile = board.tile(withID: id) {
+                    enter(tile.frame, tab: tile.tab)
+                    return
+                }
                 let visible = contentView.bounds
                 point = CGPoint(x: visible.midX, y: visible.midY)
             case let .tile(windowPoint):
@@ -292,7 +304,7 @@ final class TabCanvasScrollView: NSScrollView {
                 onDismiss?()
                 return
             }
-            enter(frame, tab: tab, fading: false)
+            enter(frame, tab: tab)
         }
     }
 
@@ -325,7 +337,11 @@ final class TabCanvasScrollView: NSScrollView {
 
     private func applyOpening(_ t: CGFloat) {
         guard let path = openingPath else { return }
-        setVisibleRect(Self.interpolate(from: path.from, to: path.to, t: t))
+        let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let id = board.originTabID {
+            board.revealPreview(of: id, progress: reducedMotion ? 0 : 1 - t)
+        }
+        setVisibleRect(reducedMotion ? path.to : Self.interpolate(from: path.from, to: path.to, t: t))
         alphaValue = Self.reveal(t)
     }
 
@@ -334,8 +350,13 @@ final class TabCanvasScrollView: NSScrollView {
     /// Flies the camera so `rect` fits, without leaving the canvas.
     func fly(toFit rect: CGRect) {
         guard !isTransitioning else { return }
+        finishCameraFlight()
         let from = contentView.bounds
         let to = fittedRect(for: rect, insets: Constants.fitInsets)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            setVisibleRect(to)
+            return
+        }
         run(from: 0, to: 1, frame: { [weak self] t in
             self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
         }, completion: nil)
@@ -343,8 +364,8 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// Goes back into the tab the canvas was opened from.
     func dismissZoomingIntoFocusedTile() {
-        if let focusedTileFrame {
-            enter(focusedTileFrame, tab: nil)
+        if let id = board.originTabID, let tile = board.tile(withID: id) {
+            enter(tile.frame, tab: tile.tab)
         } else {
             onDismiss?()
         }
@@ -352,21 +373,28 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// Flies until `tile` is aligned on the live page, fading the canvas out as it lands.
     /// With a `tab`, that tab becomes the active one first, so its page is the one revealed.
-    private func enter(_ tile: CGRect, tab: Tab?, fading: Bool = true) {
+    private func enter(_ tile: CGRect, tab: Tab?) {
         Logger.debug("enter tile \(tile) transitioning \(isTransitioning)", category: Logger.canvas)
         guard !isTransitioning else { return }
+        finishCameraFlight()
         isTransitioning = true
+        isPeeking = false
         board.isInteractionEnabled = false
         if let tab {
             onWillEnter?(tab)
         }
         let from = contentView.bounds
-        let to = alignedRect(for: tile)
+        let preview = tab.flatMap { board.previewFrame(for: $0.id) } ?? tile
+        let to = alignedRect(for: preview)
+        let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         run(from: 0, to: 1, frame: { [weak self] t in
-            self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
-            if fading {
-                self?.alphaValue = Self.reveal(1 - t)
+            if let tab {
+                self?.board.revealPreview(of: tab.id, progress: reducedMotion ? 0 : t)
             }
+            if !reducedMotion {
+                self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
+            }
+            self?.alphaValue = reducedMotion ? 1 - t : Self.reveal(1 - t)
         }, completion: { [weak self] in
             Logger.debug("entered tile", category: Logger.canvas)
             self?.isTransitioning = false
@@ -375,11 +403,11 @@ final class TabCanvasScrollView: NSScrollView {
     }
 
     /// A pinch released with a tile near its page size enters that tile.
-    private func enterIfZoomedIn(at event: NSEvent) {
-        guard !isTransitioning, openingPath == nil, let page = pageRectInClip else { return }
-        let point = board.convert(event.locationInWindow, from: nil)
-        guard let (tab, frame) = board.tile(near: point), frame.width > 0 else { return }
-        let alignedMagnification = page.width / frame.width
+    private func enterIfZoomedIn() {
+        guard !isTransitioning, openingPath == nil, let page = pageRectInClip,
+              pinchIntent?.shouldEnter == true, let id = pinchTargetID,
+              let (tab, frame) = board.tile(withID: id), frame.width > 0 else { return }
+        let alignedMagnification = page.width / (board.previewFrame(for: id)?.width ?? frame.width)
         if magnification >= alignedMagnification * Constants.enterThreshold {
             enter(frame, tab: tab)
         }
@@ -443,8 +471,60 @@ final class TabCanvasScrollView: NSScrollView {
         magnification = clip.width / visible.width
         contentView.setBoundsOrigin(visible.origin)
         reflectScrolledClipView(contentView)
+        updatePeekTarget()
     }
 
+    private func updatePeekTarget() {
+        guard isPeeking, magnification > 0 else { return }
+        let visible = contentView.bounds
+        board.target(near: CGPoint(x: visible.midX, y: visible.midY), hysteresis: Constants.targetHysteresis / magnification)
+    }
+
+    /// Keeps keyboard navigation at the current scale, moving only far enough to reveal the tile.
+    private func revealTile(_ tile: CGRect) {
+        guard !isTransitioning else { return }
+        finishCameraFlight()
+        isPeeking = false
+        let from = contentView.bounds
+        let inset = Constants.fitInsets
+        let safe = CGRect(
+            x: from.minX + inset.left / magnification,
+            y: from.minY + inset.top / magnification,
+            width: from.width - (inset.left + inset.right) / magnification,
+            height: from.height - (inset.top + inset.bottom) / magnification,
+        )
+        let footprint = tile.insetBy(dx: -12, dy: -TabCanvasManager.Layout.tileTitleHeight)
+        func shift(_ low: CGFloat, _ high: CGFloat, _ safeLow: CGFloat, _ safeHigh: CGFloat) -> CGFloat {
+            if high - low > safeHigh - safeLow {
+                return (low + high - safeLow - safeHigh) / 2
+            }
+            if low < safeLow {
+                return low - safeLow
+            }
+            return max(0, high - safeHigh)
+        }
+        let to = from.offsetBy(
+            dx: shift(footprint.minX, footprint.maxX, safe.minX, safe.maxX),
+            dy: shift(footprint.minY, footprint.maxY, safe.minY, safe.maxY),
+        )
+        guard from != to else { return }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            setVisibleRect(to)
+        } else {
+            run(from: 0, to: 1, duration: Constants.focusDuration, frame: { [weak self] t in
+                self?.setVisibleRect(Self.interpolate(from: from, to: to, t: t))
+            }, completion: nil)
+        }
+    }
+
+    private func finishCameraFlight() {
+        flight?.abandon()
+        flight = nil
+        alphaValue = 1
+        if let id = board.originTabID {
+            board.revealPreview(of: id, progress: 0)
+        }
+    }
 
     /// Animates a progress value, shortening the flight when it has less of the way to go.
     private func run(
@@ -456,7 +536,9 @@ final class TabCanvasScrollView: NSScrollView {
     ) {
         // A replaced flight still finishes its work, so no transition is left half done.
         flight?.abandon()
-        let duration = fixedDuration ?? max(Constants.minimumFlightDuration, Constants.zoomDuration * Double(abs(end - start)))
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? Constants.reducedMotionDuration
+            : fixedDuration ?? max(Constants.minimumFlightDuration, Constants.zoomDuration * Double(abs(end - start)))
         let next = ProgressFlight(from: start, to: end, duration: duration)
         flight = next
         next.start(in: contentView, frame: frame) { [weak self] in
@@ -502,10 +584,25 @@ final class TabCanvasScrollView: NSScrollView {
 
     override func magnify(with event: NSEvent) {
         guard !isTransitioning, openingPath == nil else { return }
-        flight?.cancel()
-        super.magnify(with: event)
+        finishCameraFlight()
+        if event.phase == .began || pinchIntent == nil {
+            pinchIntent = CanvasPinchIntent()
+            let point = board.convert(event.locationInWindow, from: nil)
+            pinchTargetID = board.tile(near: point).flatMap { CanvasPhysics.collisionBox($0.frame).contains(point) ? $0.tab.id : nil }
+            if let pinchTargetID {
+                board.target(pinchTargetID)
+            }
+        }
+        if event.phase != .ended, event.phase != .cancelled {
+            pinchIntent?.update(by: event.magnification)
+            applyZoom(by: max(0.05, 1 + event.magnification), aboutWindowPoint: event.locationInWindow, enteringAtPageSize: false)
+        }
         if event.phase == .ended {
-            enterIfZoomedIn(at: event)
+            enterIfZoomedIn()
+        }
+        if event.phase == .ended || event.phase == .cancelled {
+            pinchIntent = nil
+            pinchTargetID = nil
         }
     }
 }
@@ -516,10 +613,9 @@ final class TabCanvasScrollView: NSScrollView {
 /// visible rectangle to the document, which pins a fitted or aligned camera against the
 /// desk's corner instead of where it was placed.
 ///
-/// When the user scrolls or zooms, the middle of the view stays within the tiles, so at
-/// most half a screen of empty desk shows past the outermost ones.
+/// When the user scrolls or zooms, the middle of the view stays within the table.
 private final class CanvasClipView: NSClipView {
-    /// The region holding every tile; nil leaves the camera free.
+    /// The table surface; nil leaves the camera free.
     var centerRegion: (() -> CGRect?)?
     /// The camera is being placed by a flight or alignment rather than moved by the user.
     var isPlacingCamera = false
@@ -527,11 +623,11 @@ private final class CanvasClipView: NSClipView {
     /// A non-finite camera, which AppKit traps on, keeps the current bounds.
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         guard proposedBounds.isUsableCamera else { return bounds }
-        return isPlacingCamera ? proposedBounds : keepingCenterNearTiles(proposedBounds)
+        return isPlacingCamera ? proposedBounds : keepingCenterNearDesk(proposedBounds)
     }
 
-    /// `visible` moved so its middle lies within the tiles.
-    func keepingCenterNearTiles(_ visible: CGRect) -> CGRect {
+    /// `visible` moved so its middle lies within the table.
+    func keepingCenterNearDesk(_ visible: CGRect) -> CGRect {
         guard let region = centerRegion?() else { return visible }
         let center = CGPoint(
             x: min(max(visible.midX, region.minX), region.maxX),
@@ -562,8 +658,8 @@ private final class ProgressFlight {
     private var completion: (() -> Void)?
 
     init(from start: CGFloat, to end: CGFloat, duration: TimeInterval) {
-        startValue = start
-        endValue = end
+        self.startValue = start
+        self.endValue = end
         self.duration = duration
     }
 
@@ -611,6 +707,9 @@ private final class ProgressFlight {
 // MARK: - Driver
 
 extension TabCanvasScrollView: CanvasBoardDriver {
+    var navigationTabID: Tab.ID? {
+        board.navigationTabID
+    }
     var isSimulating: Bool {
         board.isSimulating
     }

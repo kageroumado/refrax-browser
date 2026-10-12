@@ -99,6 +99,9 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Show or hide the tab canvas in this window.
     case toggleTabCanvas
+    case favoriteCurrentPage
+    case returnFromLook
+    case keepPartVisible
 }
 
 /// Scope of a setting (global or per-site).

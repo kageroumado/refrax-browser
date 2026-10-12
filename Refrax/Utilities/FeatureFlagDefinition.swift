@@ -164,6 +164,13 @@ extension FeatureFlagDefinition {
 
     static let browser: [FeatureFlagDefinition] = [
         FeatureFlagDefinition(
+            key: "app.canvasImpactSounds",
+            name: "Tab Collision Sounds",
+            description: "Play soft clicks when tabs touch on the desk.",
+            category: .browser,
+            defaultValue: false
+        ),
+        FeatureFlagDefinition(
             key: "app.realPopupWebViews",
             name: "Real Popup Web Views",
             description: "Use real WKWebView instances for popups to preserve window.opener semantics. Disabling returns nil for window.open() calls.",

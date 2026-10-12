@@ -276,6 +276,8 @@ final class RefraxControlServer {
         case let .pagePiP(params):
             try await handlePagePiP(params)
         // Tab Canvas
+        case let .floatingTabs(params):
+            try handleFloatingTabs(params)
         case .canvasShow:
             try await handleCanvasShow()
         case .canvasHide:
@@ -2578,6 +2580,48 @@ final class RefraxControlServer {
         return controller.tabCanvasManager
     }
 
+    private func handleFloatingTabs(_ params: ControlRequest.FloatingTabsParams) throws -> ControlResponse {
+        let canvas = try canvasManager()
+        switch params.action {
+        case .show:
+            if !canvas.floatingVisibility.isLatched { canvas.toggleFloatingTabs() }
+        case .hide: canvas.dismissFloatingTabs()
+        case .hold: canvas.revealFloatingTabs()
+        case .release: canvas.releaseFloatingTabs()
+        case .pin, .unpin, .compact, .preview, .move, .resize:
+            guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
+            let tab = try resolveTabRef(ref)
+            guard canvas.floatingTabs.contains(where: { $0.id == tab.id }) else {
+                throw ControlError.invalidParams("The tab must belong to the active space")
+            }
+            guard let bounds = windowManager.activeWindowController?.window?.contentView?.bounds else {
+                throw ControlError.invalidParams("A browser window is required")
+            }
+            var placement = canvas.floatingPlacement(for: tab)
+            switch params.action {
+            case .pin: placement.isPinned = true; placement.setCompact(false, in: bounds)
+            case .unpin: placement.isPinned = false
+            case .compact: placement.setCompact(true, in: bounds)
+            case .preview: placement.setCompact(false, in: bounds)
+            case .move:
+                guard let x = params.x, let y = params.y, x.isFinite, y.isFinite else {
+                    throw ControlError.invalidParams("Move requires finite x and y coordinates")
+                }
+                placement.move(to: CGPoint(x: x, y: y), in: bounds)
+            case .resize:
+                guard let width = params.width, let height = params.height,
+                      width.isFinite, height.isFinite, width > 0, height > 0 else {
+                    throw ControlError.invalidParams("Resize requires positive finite width and height")
+                }
+                placement.setCompact(false, in: bounds)
+                placement.resize(to: CGSize(width: width, height: height), in: bounds)
+            default: break
+            }
+            canvas.updateFloatingPlacement(placement, for: tab)
+        }
+        return try canvasStateResponse()
+    }
+
     private func handleCanvasShow() async throws -> ControlResponse {
         let canvas = try canvasManager()
         canvas.show()
@@ -2662,6 +2706,7 @@ final class RefraxControlServer {
                 height: frame.height,
                 groupID: tab.group?.id.uuidString,
                 isSelected: canvas.selectedTabIDs.contains(tab.id),
+                isCompact: tab.boardIsCompact,
             )
         }
         let zones = canvas.zones.map { zone in
@@ -2691,6 +2736,7 @@ final class RefraxControlServer {
         #endif
         return .canvas(CTL.CanvasInfo(
             isActive: canvas.isActive,
+            navigationTabID: canvas.navigationTabID?.uuidString,
             isSettling: canvas.isSettling,
             deskWidth: canvas.deskSize.width,
             deskHeight: canvas.deskSize.height,
@@ -2699,7 +2745,20 @@ final class RefraxControlServer {
             magnets: magnets,
             overlappingPairs: canvas.overlappingPairCount,
             scenarios: scenarios,
+            floating: floatingState(canvas),
         ))
+    }
+
+    private func floatingState(_ canvas: TabCanvasManager) -> CTL.FloatingTabsInfo {
+        let bounds = windowManager.activeWindowController?.window?.contentView?.bounds ?? .zero
+        let visible = Set(canvas.visibleFloatingTabs.map(\.id))
+        return .init(isRevealed: canvas.floatingVisibility.isRevealed, tiles: canvas.floatingTabs.map { tab in
+            let placement = canvas.floatingPlacement(for: tab)
+            let frame = placement.frame(in: bounds)
+            return .init(tabID: tab.id.uuidString, title: tab.displayTitle,
+                         x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
+                         isCompact: placement.isCompact, isPinned: placement.isPinned, isVisible: visible.contains(tab.id))
+        })
     }
 
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {

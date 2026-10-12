@@ -11,6 +11,7 @@ extension RefraxWindowController: NSToolbarDelegate {
         [
             .flexibleSpace,
             .toggleSidebarGrouped,
+            .toggleFloatingTabs,
             .toggleTabCanvas,
             .toggleInspector,
             .sidebarTrackingSeparator,
@@ -51,6 +52,18 @@ extension RefraxWindowController: NSToolbarDelegate {
             configureSidebarTracking(for: item)
             return item
 
+        case .toggleFloatingTabs:
+            let item = NSToolbarItem(itemIdentifier: .toggleFloatingTabs)
+            item.label = "Floating Tabs"
+            item.paletteLabel = "Floating Tabs"
+            item.toolTip = "Show Floating Tabs · Hold Control to peek"
+            item.image = NSImage(systemSymbolName: "square.on.square", accessibilityDescription: nil)
+            item.action = #selector(toggleFloatingTabs(_:))
+            item.target = self
+            item.isBordered = true
+            configureSidebarTracking(for: item)
+            return item
+
         case .toggleTabCanvas:
             let item = NSToolbarItem(itemIdentifier: .toggleTabCanvas)
             item.label = "Canvas"
@@ -72,13 +85,18 @@ extension RefraxWindowController: NSToolbarDelegate {
         item.trackedSplitView = splitViewController.splitView
         item.trackedSplitViewDividerIndex = 0
         if let adapter = splitViewSidebarTrackingAdapter {
-            item.setValue(adapter, forKey: "_partitionAdapter")
+            item._setPartitionAdapter(adapter)
         }
     }
 
     @objc
     private func toggleInspectorAction(_: Any?) {
         toggleInspector()
+    }
+
+    @objc
+    func toggleFloatingTabs(_: Any?) {
+        tabCanvasManager.toggleFloatingTabs()
     }
 
     @objc
@@ -178,6 +196,7 @@ extension NSToolbarItem.Identifier {
     /// The sidebar toggle under an identifier AppKit does not single out; see the delegate.
     static let toggleSidebarGrouped = NSToolbarItem.Identifier("ToggleSidebar")
     static let toggleInspector = NSToolbarItem.Identifier("ToggleInspector")
+    static let toggleFloatingTabs = NSToolbarItem.Identifier("ToggleFloatingTabs")
     static let toggleTabCanvas = NSToolbarItem.Identifier("ToggleTabCanvas")
 }
 

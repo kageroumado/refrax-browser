@@ -85,6 +85,13 @@ extension RefraxWindowController {
     ///   - progress: Overlay progress (0 = buttons hidden, 1 = buttons visible)
     ///   - animated: Whether to use animator (for spring/linear animations)
     func applyTrafficLightVisibility(_ progress: CGFloat, animated: Bool = false) {
+        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            window?.standardWindowButton(type)?.isHidden = windowState.usesFloatingTabs && windowState.controlIsland.mode != .marks
+        }
+        if windowState.usesFloatingTabs {
+            themeFrame?.buttonRevealAmount = windowState.controlIsland.mode == .marks ? 1 : 0
+            return
+        }
         guard let themeFrame else { return }
 
         if isInFullscreen { return }
@@ -304,6 +311,10 @@ extension RefraxWindowController {
     /// Used both for non-animated restoration and after animated sidebar expansion
     /// to clean up any residual transform state.
     func showToolbarItemsInstantly() {
+        guard !windowState.usesFloatingTabs else {
+            hideToolbarItemsInstantly()
+            return
+        }
         guard let toolbar = window?.toolbar else { return }
 
         for item in toolbar.items where sidebarToolbarItemIdentifiers.contains(item.itemIdentifier) {

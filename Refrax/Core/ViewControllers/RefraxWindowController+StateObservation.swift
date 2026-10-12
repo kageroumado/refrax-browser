@@ -26,29 +26,6 @@ extension RefraxWindowController {
                         windowState.sidebarThickness = currentWidth
                     }
 
-                    if isAnimatingCollapse {
-                        // Handle based on sidebar mode
-                        let mode = windowState.effectiveSidebarMode
-                        switch mode {
-                        case .overlay:
-                            trackingViewWidthConstraint?.constant = Constants.SidebarAnimation.activationWidth
-                            updateTrackingAreaImmediately()
-                            showTutorialPeek()
-                        case .compact:
-                            // Compact mode: disable tracking, animate compact sidebar in after collapse
-                            trackingViewWidthConstraint?.constant = 0
-                            updateTrackingAreaImmediately()
-                            // Schedule compact overlay appearance after collapse animation
-                            Task { @MainActor [weak self] in
-                                try? await Task.sleep(for: .milliseconds(250))
-                                self?.enterCompactSidebarMode(animated: true)
-                            }
-                        }
-                        // Move detail tray to edge position when sidebar collapses via animation
-                        animateDetailTrayToOverlayProgress(0.0, duration: Constants.DetailTray.repositionDuration)
-                        return
-                    }
-
                     enterCollapsedSidebarState(animated: true)
                 } else {
                     if isTransitioningFromOverlay {
@@ -171,6 +148,7 @@ extension RefraxWindowController {
         let activeTabTask = Task { @MainActor [weak self] in
             for await _ in activeTabChanges {
                 self?.window?.toolbar?.validateVisibleItems()
+                self?.window?.invalidateRestorableState()
             }
         }
         observationTasks.append(activeTabTask)
@@ -271,6 +249,8 @@ extension RefraxWindowController {
             isAnimatingToVisible = false
             isOverlayTriggered = false
             sidebarTrackingView?.isOverlayTriggered = false
+        } else if windowState.usesFloatingTabs {
+            applyFloatingTabsChrome()
         } else {
             // Restore state when unlocked
             let sidebarItem = splitViewController.splitViewItems[0]
@@ -358,6 +338,7 @@ extension RefraxWindowController {
     /// - **Overlay → Compact**: Hide current overlay, disable tracking, animate compact in
     /// - **Compact → Overlay**: Animate compact out, enable tracking, show peek if needed
     func updateSidebarOverlayForMode() {
+        guard !windowState.usesFloatingTabs else { return }
         let sidebarItem = splitViewController.splitViewItems[0]
         let isCollapsed = sidebarItem.isCollapsed
 
@@ -460,6 +441,7 @@ extension RefraxWindowController {
     ///
     /// - Parameter animated: Whether to animate the compact sidebar appearance.
     func enterCompactSidebarMode(animated: Bool) {
+        guard !windowState.usesFloatingTabs else { return }
         let padding = Constants.SidebarAnimation.glassEffectPadding
         let compactContainerWidth = Constants.SidebarAnimation.compactWidth + padding
         sidebarOverlayWidthConstraint?.constant = compactContainerWidth
@@ -641,6 +623,10 @@ extension RefraxWindowController {
     /// - Parameter animated: Whether to animate the window chrome hiding.
     ///   Use `false` during restoration for instant state setup.
     func enterCollapsedSidebarState(animated: Bool) {
+        if windowState.usesFloatingTabs {
+            applyFloatingTabsChrome()
+            return
+        }
         overlayAnimationGeneration &+= 1
 
         let mode = windowState.effectiveSidebarMode

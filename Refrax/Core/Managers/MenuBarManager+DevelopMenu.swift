@@ -117,37 +117,37 @@ extension MenuBarManager {
 
     @objc
     func toggleWebInspector(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleWebInspector()
     }
 
     @objc
     func showJavaScriptConsole(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showJavaScriptConsole()
     }
 
     @objc
     func showPageSource(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showPageSource()
     }
 
     @objc
     func showPageResources(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showPageResources()
     }
 
     @objc
     func toggleTimelineRecording(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleTimelineRecording()
     }
 
     @objc
     func toggleElementSelection(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleElementSelection()
     }
 
@@ -187,7 +187,7 @@ extension MenuBarManager {
 
     @objc
     func emptyCaches(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.emptyCaches()
     }
 
@@ -195,7 +195,7 @@ extension MenuBarManager {
         guard menu.title == "Develop" else { return }
 
         guard let controller = activeWindowController else { return }
-        let activeWebPage = controller.windowState.activeWebPage
+        let activeWebPage = controller.windowState.focusedWebPage
 
         for item in menu.items {
             item.isEnabled = true

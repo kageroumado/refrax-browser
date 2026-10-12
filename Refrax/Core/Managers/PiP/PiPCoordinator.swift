@@ -28,6 +28,11 @@ final class PiPCoordinator {
     /// Whether the current PiP was triggered automatically (vs manually by user).
     private(set) var isAutoPiP: Bool = false
 
+    /// The outgoing tab whose eligibility or entry request is still in flight.
+    private(set) var pendingSourceTabID: UUID?
+    private var entryTask: Task<Void, Never>?
+    private var entryRequestID: UUID?
+
     // MARK: - Initialization
 
     /// Creates a new PiP coordinator.
@@ -36,6 +41,8 @@ final class PiPCoordinator {
     init(settings: BrowserSettings?) {
         self.settings = settings
     }
+
+    isolated deinit { entryTask?.cancel() }
 
     // MARK: - Tab Activation
 
@@ -48,6 +55,7 @@ final class PiPCoordinator {
     ///   - tab: The tab being activated.
     ///   - browserState: The browser state to access WebPage instances.
     func onTabActivated(_ tab: Tab, in browserState: BrowserState) {
+        if pendingSourceTabID == tab.id { cancelPendingEntry() }
         // Check if this is the tab that triggered auto-PiP
         guard let sourceID = activePiPSourceTabID,
               sourceID == tab.id,
@@ -111,15 +119,31 @@ final class PiPCoordinator {
         // The native canTogglePiP is advisory only (false-negatives whenever
         // the playback-controls session is absent). We don't check
         // isPlayingAudio because videos may be muted or have no audio track.
-        // The floating video window keeps its video visible across tab
-        // switches — auto-PiP would fight it.
-        guard !webPage.isWebViewInVideoWindow else { return }
+        // A kept-visible preview or video window already presents the playing page.
+        guard !webPage.isWebViewInVideoWindow, !webPage.isInFloatingPreview,
+              tab.floatingPlacement?.isPinned != true else { return }
 
-        Task(name: "Auto-PiP enter") { [weak self] in
+        cancelPendingEntry()
+        let requestID = UUID()
+        entryRequestID = requestID
+        pendingSourceTabID = tab.id
+        entryTask = Task(name: "Auto-PiP enter") { [weak self] in
+            defer {
+                if self?.entryRequestID == requestID {
+                    self?.entryTask = nil
+                    self?.entryRequestID = nil
+                    self?.pendingSourceTabID = nil
+                }
+            }
             let state = await webPage.pipState()
-            guard state.playing, state.eligible, !state.active else { return }
+            guard !Task.isCancelled, state.playing, state.eligible, !state.active,
+                  !webPage.isInFloatingPreview, tab.floatingPlacement?.isPinned != true else { return }
 
             await webPage.enterPiP()
+            if Task.isCancelled {
+                await webPage.exitPiP()
+                return
+            }
             guard let self else { return }
             self.activePiPSourceTabID = tab.id
             self.isAutoPiP = true
@@ -147,6 +171,7 @@ final class PiPCoordinator {
     ///
     /// If the closed tab was the source of auto-PiP, clears the state.
     func onTabClosed(_ tabID: UUID) {
+        if pendingSourceTabID == tabID { cancelPendingEntry() }
         if activePiPSourceTabID == tabID {
             clearPiPState()
         }
@@ -155,7 +180,15 @@ final class PiPCoordinator {
     // MARK: - Private
 
     private func clearPiPState() {
+        cancelPendingEntry()
         activePiPSourceTabID = nil
         isAutoPiP = false
+    }
+
+    private func cancelPendingEntry() {
+        entryTask?.cancel()
+        entryTask = nil
+        entryRequestID = nil
+        pendingSourceTabID = nil
     }
 }

@@ -773,9 +773,9 @@ final class CommandLensManager {
         SuggestionContext(
             input: inputText,
             settings: browserSettings,
-            currentTabID: windowState.activeWebPage?.id,
+            currentTabID: windowState.focusedWebPage?.id,
             selectedSearchEngine: selectedSearchEngine,
-            currentURL: windowState.activePage?.url,
+            currentURL: windowState.focusedPage?.url,
         )
     }
 
@@ -1420,6 +1420,31 @@ final class CommandLensManager {
         }
     }
 
+    func showPlace(of suggestion: CommandLensSuggestion) {
+        guard case let .openTab(id) = suggestion.type, let tab = tabManager.state.tab(for: id),
+              let controller = windowState.window?.windowController as? RefraxWindowController else { return }
+        closeCurrentLens()
+        reset()
+        Task.immediate(name: "Reveal tab location") {
+            if let space = tab.space, space.id != windowState.activeSpaceID {
+                await tabManager.spaceManager.switchToSpace(space, for: windowState)
+            }
+            guard tab.isLiveFavorite || tab.space?.id == windowState.activeSpaceID else { return }
+            controller.tabCanvasManager.showFloatingPlace(of: tab)
+        }
+    }
+
+    func look(at suggestion: CommandLensSuggestion) {
+        switch suggestion.type {
+        case let .openTab(id):
+            if let tab = tabManager.state.tab(for: id) { tabManager.look(at: tab, in: windowState) }
+        default:
+            if let url = suggestion.url { tabManager.look(at: url, in: windowState) }
+        }
+        closeCurrentLens()
+        reset()
+    }
+
     private func commitSuggestion(_ suggestion: CommandLensSuggestion) {
         let makeActive = !commandKeyHeldDuringCommit
 
@@ -1537,7 +1562,17 @@ final class CommandLensManager {
             case .openLocalDevices:
                 NSApp.typedDelegate.localDevicesWindowController.showWindow()
             case .toggleTabCanvas:
-                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggle()
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggleFloatingTabs()
+            case .favoriteCurrentPage:
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab, let bookmarks = tabManager.bookmarksManager {
+                    ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).toggleFavorite()
+                }
+            case .returnFromLook:
+                tabManager.returnFromLook(in: windowState)
+            case .keepPartVisible:
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+                    (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.beginRegionSelection(for: tab)
+                }
             }
             closeCurrentLens()
             reset()
@@ -1599,7 +1634,7 @@ final class CommandLensManager {
                   let webPage = tabManager.pagePool.page(for: refTab.activePage) {
             // Navigate the current reference tab when opened from address bar
             webPage.load(url)
-        } else if isAddressMode, makeActive, let activePage = windowState.activePage {
+        } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
             }
@@ -1620,7 +1655,7 @@ final class CommandLensManager {
             for url in urls.dropFirst() {
                 tabManager.createTab(url: url, makeActive: false, loadImmediately: true)
             }
-        } else if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.activePage {
+        } else if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(firstURL)
             }
@@ -1659,7 +1694,7 @@ final class CommandLensManager {
                   let webPage = tabManager.pagePool.page(for: refTab.activePage) {
             // Navigate the current reference tab when opened from address bar
             webPage.load(url)
-        } else if isAddressMode, makeActive, let activePage = windowState.activePage {
+        } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
             }

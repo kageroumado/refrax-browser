@@ -1,0 +1,53 @@
+import Foundation
+import Observation
+
+/// Shares the rail's saved arrangement across browser windows.
+@Observable
+final class ControlIslandConfiguration {
+    static let shared = ControlIslandConfiguration(defaults: .standard)
+    static let storageKey = "controlIsland.items"
+    static let dragTargetKey = "controlIsland.optionDragTarget"
+
+    private(set) var items: [ControlIslandItemPreference]
+    private(set) var optionDragTarget: ControlIslandDragTarget
+    @ObservationIgnored private let defaults: UserDefaults?
+
+    static var defaultItems: [ControlIslandItemPreference] {
+        ControlIslandItem.allCases.map { .init(item: $0, isVisible: $0.isDefault) }
+    }
+
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+        optionDragTarget = defaults?.string(forKey: Self.dragTargetKey)
+            .flatMap(ControlIslandDragTarget.init(rawValue:)) ?? .panel
+        let records = defaults?.data(forKey: Self.storageKey)
+            .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
+        items = Self.normalized(records.compactMap { record in
+            ControlIslandItem(rawValue: record.id).map { .init(item: $0, isVisible: record.isVisible) }
+        })
+    }
+
+    var visibleItems: [ControlIslandItem] {
+        items.filter(\.isVisible).map(\.item)
+    }
+
+    func apply(_ items: [ControlIslandItemPreference], optionDragTarget: ControlIslandDragTarget = .panel) {
+        self.items = Self.normalized(items)
+        self.optionDragTarget = optionDragTarget
+        defaults?.set(optionDragTarget.rawValue, forKey: Self.dragTargetKey)
+        let records = self.items.map { StoredItem(id: $0.item.rawValue, isVisible: $0.isVisible) }
+        guard let data = try? JSONEncoder().encode(records) else { return }
+        defaults?.set(data, forKey: Self.storageKey)
+    }
+
+    private static func normalized(_ items: [ControlIslandItemPreference]) -> [ControlIslandItemPreference] {
+        var seen = Set<ControlIslandItem>()
+        let unique = items.filter { seen.insert($0.item).inserted }
+        return unique + defaultItems.filter { !seen.contains($0.item) }
+    }
+
+    private struct StoredItem: Codable {
+        let id: String
+        let isVisible: Bool
+    }
+}

@@ -1,15 +1,18 @@
 import AppKit
 
-/// One tab on the desk: its snapshot, with the title above it. Draggable and flingable.
+/// A glass slab holding a tab's snapshot. It lifts when held and settles on release.
 final class CanvasTileView: NSView {
     var tab: Tab {
-        didSet { titleLabel.stringValue = tab.displayTitle }
+        didSet {
+            updateIdentity()
+            needsLayout = true
+        }
     }
 
     var snapshot: NSImage? {
         didSet {
             imageLayer.contents = snapshot
-            placeholderLabel.isHidden = snapshot != nil
+            placeholderLabel.isHidden = snapshot != nil || tab.boardIsCompact
         }
     }
 
@@ -17,53 +20,96 @@ final class CanvasTileView: NSView {
         didSet { applyColors() }
     }
 
+    var isTargeted = false {
+        didSet { applyColors() }
+    }
+
     var onClick: ((CanvasTileView) -> Void)?
+    var onSelect: ((CanvasTileView) -> Void)?
+    var onTogglePreview: ((CanvasTileView) -> Void)?
     /// Called after each move while the tile is dragged.
     var onDrag: ((CanvasTileView) -> Void)?
     /// Called on drop with the release velocity in board points per second.
     var onRelease: ((CanvasTileView, CGPoint) -> Void)?
     private(set) var isDragging = false
+    var isLifted = false {
+        didSet { updateElevation() }
+    }
 
+    private let edgeLayer = CAGradientLayer()
+    private let edgeMask = CAShapeLayer()
+    private let glass = NSGlassEffectView()
+    private let glassContent = NSView()
     private let imageLayer = CALayer()
+    private let targetLayer = CALayer()
     private let titleLabel = NSTextField(labelWithString: "")
+    private let faviconView = NSImageView()
     private let placeholderLabel = NSTextField(labelWithString: "")
+    private var faviconData: Data?
+    private var transitionPreview: CGFloat = 0
     private var dragOrigin: CGPoint = .zero
     private var frameAtDragStart: CGRect = .zero
     private var samples: [(time: CFTimeInterval, point: CGPoint)] = []
 
     private enum Constants {
-        static let cornerRadius: CGFloat = 12
+        static let cornerRadius = CanvasTileLayout.slabCornerRadius - CanvasTileLayout.glassInset
+        static let glassInset = CanvasTileLayout.glassInset
+        static let headerHeight = CanvasTileLayout.headerHeight
         static let titleHeight: CGFloat = 20
         static let dragThreshold: CGFloat = 3
         /// Only samples this recent count toward the release velocity.
         static let velocityWindow: CFTimeInterval = 0.08
         static let selectedBorderWidth: CGFloat = 3
+        static let targetInset: CGFloat = 5
+        static let thickness = CanvasPhysics.Constants.slabThickness
+        static let liftDuration: TimeInterval = 0.16
     }
 
     init(tab: Tab) {
         self.tab = tab
         super.init(frame: .zero)
         wantsLayer = true
+        clipsToBounds = false
+        layer?.masksToBounds = false
 
+        edgeLayer.cornerRadius = Constants.cornerRadius + Constants.glassInset
+        edgeLayer.borderWidth = 0.5
+        edgeMask.fillRule = .evenOdd
+        edgeLayer.mask = edgeMask
+        layer?.addSublayer(edgeLayer)
+        glass.style = .regular
+        glass.cornerRadius = Constants.cornerRadius + Constants.glassInset
+        if #available(macOS 27, *) {
+            glass.effectIsInteractive = true
+        }
+        glass.contentView = glassContent
+        glassContent.wantsLayer = true
+        addSubview(glass)
         imageLayer.contentsGravity = .resizeAspectFill
         imageLayer.cornerRadius = Constants.cornerRadius
         imageLayer.masksToBounds = true
-        layer?.addSublayer(imageLayer)
-        layer?.shadowOpacity = 0.18
-        layer?.shadowRadius = 14
-        layer?.shadowOffset = CGSize(width: 0, height: -6)
+        glassContent.layer?.addSublayer(imageLayer)
+        targetLayer.cornerRadius = Constants.cornerRadius + Constants.targetInset
+        targetLayer.borderWidth = 2
+        layer?.addSublayer(targetLayer)
+        updateElevation()
 
         titleLabel.stringValue = tab.displayTitle
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
         titleLabel.textColor = .secondaryLabelColor
         titleLabel.lineBreakMode = .byTruncatingTail
-        addSubview(titleLabel)
+        glassContent.addSubview(titleLabel)
+        faviconView.imageScaling = .scaleProportionallyUpOrDown
+        glassContent.addSubview(faviconView)
 
         placeholderLabel.stringValue = tab.activePage.url.host() ?? tab.displayTitle
         placeholderLabel.font = .systemFont(ofSize: 14)
         placeholderLabel.textColor = .tertiaryLabelColor
         placeholderLabel.alignment = .center
-        addSubview(placeholderLabel)
+        glassContent.addSubview(placeholderLabel)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        updateIdentity()
         applyColors()
     }
 
@@ -76,21 +122,172 @@ final class CanvasTileView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        imageLayer.frame = bounds
+        glass.frame = glassFrame
+        edgeLayer.frame = glassFrame.offsetBy(dx: 0, dy: -Constants.thickness)
+        let edgePath = CGMutablePath()
+        edgePath.addRoundedRect(in: edgeLayer.bounds, cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius)
+        edgePath.addRoundedRect(in: edgeLayer.bounds.offsetBy(dx: 0, dy: Constants.thickness), cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius)
+        edgeMask.path = edgePath
+        glassContent.frame = CGRect(origin: .zero, size: glassFrame.size)
+        imageLayer.frame = CGRect(origin: CGPoint(x: Constants.glassInset, y: Constants.glassInset), size: visualBounds.size)
+        imageLayer.isHidden = tab.boardIsCompact && transitionPreview == 0
+        imageLayer.opacity = Float(previewVisibility)
+        targetLayer.frame = glassFrame.insetBy(dx: -Constants.targetInset, dy: -Constants.targetInset)
+        layer?.shadowPath = CGPath(roundedRect: edgeLayer.frame, cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius, transform: nil)
         CATransaction.commit()
         // Above the tile: the superview is flipped, this view is not.
-        titleLabel.frame = CGRect(x: 2, y: bounds.height + 4, width: bounds.width - 4, height: Constants.titleHeight)
-        placeholderLabel.frame = bounds.insetBy(dx: 12, dy: 0)
+        let compactTitleY = (glassFrame.height - Constants.titleHeight) / 2
+        let previewTitleY = visualBounds.height + Constants.glassInset + (Constants.headerHeight + Constants.glassInset - Constants.titleHeight) / 2
+        let titleY = compactTitleY + (previewTitleY - compactTitleY) * previewVisibility
+        titleLabel.frame = CGRect(x: Constants.glassInset + 28, y: titleY, width: visualBounds.width - 36, height: Constants.titleHeight)
+        faviconView.frame = CGRect(x: Constants.glassInset + 5, y: titleY + 2, width: 16, height: 16)
+        placeholderLabel.frame = imageLayer.frame.insetBy(dx: 12, dy: 0)
+    }
+
+    private var glassFrame: CGRect {
+        CGRect(
+            x: visualBounds.minX - Constants.glassInset,
+            y: visualBounds.minY - Constants.glassInset,
+            width: visualBounds.width + Constants.glassInset * 2,
+            height: visualBounds.height + Constants.glassInset * 2 + Constants.headerHeight,
+        )
+    }
+
+    /// The raised glass outline in the containing plane, used to position nearby cues.
+    var slabFrameInSuperview: CGRect {
+        convert(glassFrame, to: superview)
+    }
+
+    private var previewVisibility: CGFloat {
+        tab.boardIsCompact ? transitionPreview : 1
+    }
+
+    private var visualBounds: CGRect {
+        guard tab.boardIsCompact, transitionPreview > 0, let preview = tab.boardFrame else { return bounds }
+        let size = CGSize(
+            width: bounds.width + (preview.width - bounds.width) * transitionPreview,
+            height: bounds.height + (preview.height - bounds.height) * transitionPreview,
+        )
+        return CanvasTileLayout.centeredFrame(size: size, on: bounds)
+    }
+
+    /// Unfolds a compact slab into its page preview along a camera transition.
+    func revealPreview(_ progress: CGFloat) {
+        guard tab.boardIsCompact else { return }
+        transitionPreview = min(1, max(0, progress))
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0, glassFrame.contains(convert(point, from: superview)) else { return nil }
+        return self
+    }
+
+    private func updateElevation() {
+        guard let layer else { return }
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : Constants.liftDuration
+        let shadowRadius: CGFloat = isLifted ? 24 : 10
+        if duration > 0 {
+            let animation = CABasicAnimation(keyPath: "shadowRadius")
+            animation.fromValue = layer.presentation()?.shadowRadius ?? layer.shadowRadius
+            animation.toValue = shadowRadius
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(animation, forKey: "lift")
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowOpacity = isLifted ? 0.3 : 0.22
+        layer.shadowRadius = shadowRadius
+        layer.shadowOffset = CGSize(width: 0, height: isLifted ? -18 : -5)
+        CATransaction.commit()
+    }
+
+    private func updateAccessibilityState() {
+        setAccessibilityValue(isSelected ? "Selected" : "")
     }
 
     override func updateLayer() {
         applyColors()
     }
 
+    override var wantsUpdateLayer: Bool {
+        true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance { applyColors() }
+    }
+
     private func applyColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { updateColors() }
+    }
+
+    private func updateColors() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         imageLayer.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        let base = NSColor.windowBackgroundColor
+        edgeLayer.colors = [
+            (base.blended(withFraction: 0.12, of: .labelColor) ?? base).cgColor,
+            (base.blended(withFraction: 0.32, of: .labelColor) ?? base).cgColor,
+        ]
+        edgeLayer.borderColor = NSColor.separatorColor.cgColor
         imageLayer.borderWidth = isSelected ? Constants.selectedBorderWidth : 1
         imageLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
+        targetLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.keyboardFocusIndicatorColor.cgColor
+        targetLayer.cornerRadius = glass.cornerRadius + Constants.targetInset
+        targetLayer.isHidden = !isTargeted && !(isSelected && tab.boardIsCompact)
+        titleLabel.textColor = isTargeted || tab.boardIsCompact ? .labelColor : .secondaryLabelColor
+        updateAccessibilityState()
+    }
+
+    private func updateIdentity() {
+        titleLabel.stringValue = tab.displayTitle
+        placeholderLabel.stringValue = tab.activePage.url.host() ?? tab.displayTitle
+        if faviconData != tab.activePage.faviconData || faviconView.image == nil {
+            faviconData = tab.activePage.faviconData
+            faviconView.image = faviconData.flatMap { NSImage(data: $0) }
+                ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        }
+        toolTip = tab.displayTitle
+        setAccessibilityLabel(tab.displayTitle)
+        setAccessibilityHelp("Open tab. Use arrow keys to move, Space to select, and the context menu to change preview size.")
+    }
+
+    override func menu(for _: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let item = NSMenuItem(title: tab.boardIsCompact ? "Show Preview" : "Make Compact", action: #selector(togglePreview), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc
+    private func togglePreview() {
+        onTogglePreview?(self)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?(self)
+        return true
+    }
+
+    /// A brief rock at contact makes the impulse visible while preserving the slab's place.
+    func respondToImpact(_ impact: CanvasPhysics.Impact, direction: CGFloat) {
+        guard !isLifted, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer else { return }
+        let strength = min(1, impact.speed / 1_200)
+        let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        let angle = direction * strength * 0.012
+        animation.values = [0, angle, -angle * 0.35, 0]
+        animation.keyTimes = [0, 0.18, 0.5, 1]
+        animation.duration = 0.22
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(animation, forKey: "contact")
     }
 
     // MARK: - Dragging
@@ -117,9 +314,13 @@ final class CanvasTileView: NSView {
         onDrag?(self)
     }
 
-    override func mouseUp(with _: NSEvent) {
+    override func mouseUp(with event: NSEvent) {
         guard isDragging else {
-            onClick?(self)
+            if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.shift) {
+                onSelect?(self)
+            } else {
+                onClick?(self)
+            }
             return
         }
         isDragging = false

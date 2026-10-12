@@ -120,7 +120,8 @@ struct WebViewContainer: View {
         .onAppear {
             // Claim ownership if we're the key window or no owner exists
             // Don't claim if forced inactive (e.g., docked view when separate window is open)
-            if !isForcedInactive, !isCurrentOwner, page.ownerWindowID == nil || isWindowKey {
+            if !isForcedInactive, !isCurrentOwner, !page.isInFloatingPreview,
+               page.ownerWindowID == nil || isWindowKey {
                 claimOwnership()
             }
 
@@ -196,7 +197,7 @@ struct WebViewContainer: View {
         // We must NOT respond here because windowState.window points to the MAIN
         // window — so this handler would fire when the main window becomes key,
         // incorrectly re-stealing ownership back to the reflected window.
-        guard !usesCustomOwnershipID else { return }
+        guard !usesCustomOwnershipID, !page.isInFloatingPreview else { return }
 
         guard !isForcedInactive,
               let keyWindow = notification.object as? NSWindow,

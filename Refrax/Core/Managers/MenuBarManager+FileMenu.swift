@@ -208,10 +208,10 @@ extension MenuBarManager {
     @objc
     func closeTab(_: Any?) {
         guard let controller = activeWindowController,
-              let tab = controller.windowState.activeTab else { return }
+              let tab = controller.windowState.focusedPage?.tab ?? controller.windowState.activeTab else { return }
         if tab.status == .liveFavorite {
             windowManager.tabManager.closeLiveFavoriteTab(tab)
-            controller.windowState.clearActiveLiveFavorite()
+            if controller.windowState.activeTabID == tab.id { controller.windowState.clearActiveLiveFavorite() }
         } else {
             windowManager.tabManager.closeTab(tab)
         }
@@ -220,7 +220,7 @@ extension MenuBarManager {
     @objc
     func saveAs(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage,
+              let webPage = controller.windowState.focusedWebPage,
               let window = controller.window else { return }
 
         Task { @MainActor in
@@ -292,13 +292,13 @@ extension MenuBarManager {
 
     @objc
     func printPage(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.printPage()
     }
 
     @objc
     func exportAsPDF(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage,
+        guard let webPage = activeWindowController?.windowState.focusedWebPage,
               let window = NSApp.keyWindow else { return }
 
         Task { @MainActor in
@@ -322,7 +322,7 @@ extension MenuBarManager {
 
     @objc
     func exportAsWebArchive(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage,
+        guard let webPage = activeWindowController?.windowState.focusedWebPage,
               let window = NSApp.keyWindow else { return }
 
         Task { @MainActor in

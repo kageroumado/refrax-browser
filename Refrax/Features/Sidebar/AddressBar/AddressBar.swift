@@ -3,6 +3,8 @@ import SwiftUI
 import WebKit
 
 struct AddressBar: View {
+    var onPresentationChange: ((Bool) -> Void)? = nil
+
     @Environment(WindowState.self) private var windowState: WindowState
     @Environment(TabManager.self) private var tabManager: TabManager
     @Environment(BrowserSettings.self) private var settings: BrowserSettings
@@ -140,6 +142,10 @@ struct AddressBar: View {
         .glassEffect(addressBarIsFloating ? .identity : .regular, in: Capsule())
         .contentShape(Capsule())
         .onHover { isHovered = $0 }
+        .onChange(of: showsPageMenu || showsWebpageSettings || showsSiteCookies) { _, presented in
+            onPresentationChange?(presented)
+        }
+        .onDisappear { onPresentationChange?(false) }
         .onTapGesture {
             if let context = addressBarContext {
                 context.onOpenLens()

@@ -13,9 +13,10 @@ extension TabManager {
     /// - Parameters:
     ///   - tab: The tab to convert.
     ///   - mode: Whether to create a live favorite or shortcut.
+    ///   - targetWindow: The window whose selection is preserved. Defaults to the active window.
     /// - Returns: The bookmark ID on success, nil on failure.
     @discardableResult
-    func convertTabToFavorite(_ tab: Tab, mode: FavoriteMode) -> UUID? {
+    func convertTabToFavorite(_ tab: Tab, mode: FavoriteMode, in targetWindow: WindowState? = nil) -> UUID? {
         guard let space = tab.space else { return nil }
 
         // Capture URL and metadata before closing the tab
@@ -26,7 +27,7 @@ extension TabManager {
         let spaceID = mode == .liveFavorite ? space.id : nil
 
         // Check if this tab is currently active BEFORE closing (in any window)
-        let windowState = activeWindowState
+        let windowState = targetWindow ?? activeWindowState
         let wasActiveTab = windowState?.activeTabID(for: space.id) == tab.id
 
         // For live favorites from global-storage spaces, we can preserve the WebView.
@@ -100,10 +101,11 @@ extension TabManager {
     /// - Parameters:
     ///   - tab: The live favorite tab to convert.
     ///   - bookmark: The associated bookmark (will have its link cleared).
+    ///   - targetWindow: The window that receives the tab. Defaults to the active window.
     /// - Returns: `true` if successful, `false` if no active window/space.
     @discardableResult
-    func convertLiveFavoriteToTab(_ tab: Tab, bookmark: Bookmark) -> Bool {
-        guard let windowState = activeWindowState,
+    func convertLiveFavoriteToTab(_ tab: Tab, bookmark: Bookmark, in targetWindow: WindowState? = nil) -> Bool {
+        guard let windowState = targetWindow ?? activeWindowState,
               let activeSpace = windowState.activeSpace else {
             return false
         }

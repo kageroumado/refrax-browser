@@ -156,6 +156,17 @@ struct PageImportanceScorer {
             factors.append("playing-audio")
         }
 
+        if page.isInFloatingPreview,
+           page.contentView.window != nil, !page.contentView.isHiddenOrHasHiddenAncestor {
+            score += Weight.isActive
+            factors.append("floating-preview")
+        }
+
+        if page.temporaryVisitRetentionCount > 0 {
+            score += Weight.isActive
+            factors.append("return-destination")
+        }
+
         // Pinned status
         if let tab, tab.isPinned {
             score += Weight.pinned
@@ -221,6 +232,12 @@ struct PageImportanceScorer {
         if page.hasUnsavedFormData {
             score += Weight.hasFormData
             factors.append("form-data")
+        }
+
+        if page.isInFloatingPreview,
+           page.contentView.window != nil, !page.contentView.isHiddenOrHasHiddenAncestor {
+            score += Weight.isActive
+            factors.append("floating-preview")
         }
 
         // Pinned status

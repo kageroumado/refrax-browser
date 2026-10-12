@@ -9,8 +9,13 @@ struct AddressBarBackButton: View {
     let webPage: WebPage?
     let canGoBack: Bool
 
+    var targetSize = CGSize(width: Constants.AddressBar.buttonWidth, height: Constants.AddressBar.buttonHeight)
+    var highlightsOnHover = true
+    var symbolWeight: Font.Weight = .medium
+
     @Environment(WindowState.self) private var windowState
     @Environment(TabManager.self) private var tabManager
+    @Environment(\.appearsActive) private var appearsActive
 
     @State private var isHovered = false
 
@@ -23,14 +28,14 @@ struct AddressBarBackButton: View {
             }
         } label: {
             Image(systemName: "chevron.left")
-                .font(.system(size: Constants.AddressBar.buttonFontSize, weight: .medium))
-                .foregroundStyle(canGoBack ? (isHovered ? .primary : .secondary) : .quaternary)
-                .frame(width: Constants.AddressBar.buttonWidth, height: Constants.AddressBar.buttonHeight)
+                .font(.system(size: Constants.AddressBar.buttonFontSize, weight: symbolWeight))
+                .foregroundStyle(canGoBack ? (appearsActive ? (highlightsOnHover && isHovered ? .primary : .secondary) : .tertiary) : .quaternary)
+                .frame(width: targetSize.width, height: targetSize.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!canGoBack)
-        .onHover { isHovered = $0 }
+        .onHover { if highlightsOnHover { isHovered = $0 } }
         .contextMenu { backContextMenu }
         .overlay {
             if canGoBack {
@@ -63,8 +68,13 @@ struct AddressBarForwardButton: View {
     let webPage: WebPage?
     let canGoForward: Bool
 
+    var targetSize = CGSize(width: Constants.AddressBar.buttonWidth, height: Constants.AddressBar.buttonHeight)
+    var highlightsOnHover = true
+    var symbolWeight: Font.Weight = .medium
+
     @Environment(WindowState.self) private var windowState
     @Environment(TabManager.self) private var tabManager
+    @Environment(\.appearsActive) private var appearsActive
 
     @State private var isHovered = false
 
@@ -77,15 +87,15 @@ struct AddressBarForwardButton: View {
             }
         } label: {
             Image(systemName: "chevron.right")
-                .font(.system(size: Constants.AddressBar.buttonFontSize, weight: .medium))
-                .foregroundStyle(canGoForward ? (isHovered ? .primary : .secondary) : .quaternary)
-                .frame(width: Constants.AddressBar.buttonWidth, height: Constants.AddressBar.buttonHeight)
+                .font(.system(size: Constants.AddressBar.buttonFontSize, weight: symbolWeight))
+                .foregroundStyle(canGoForward ? (appearsActive ? (highlightsOnHover && isHovered ? .primary : .secondary) : .tertiary) : .quaternary)
+                .frame(width: targetSize.width, height: targetSize.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!canGoForward)
-        .onHover { isHovered = $0 }
-        .frame(width: canGoForward ? Constants.AddressBar.buttonWidth : 0)
+        .onHover { if highlightsOnHover { isHovered = $0 } }
+        .frame(width: canGoForward ? targetSize.width : 0)
         .opacity(canGoForward ? 1 : 0)
         .clipped()
         .contextMenu { forwardContextMenu }

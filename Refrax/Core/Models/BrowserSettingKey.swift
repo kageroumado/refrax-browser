@@ -35,6 +35,7 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     // MARK: - Tabs
 
     case showTabPreviews
+    case canvasImpactSounds
     case archiveEnabled
     case autoArchiveRulesEnabled
     case enableAutomaticSnapshots
@@ -278,6 +279,16 @@ extension BrowserSettingKey {
                 valueKind: .toggle,
             )
         // Tabs
+        case .canvasImpactSounds:
+            SettingMetadata(
+                displayName: "Tab Collision Sounds",
+                description: "Play soft clicks when tabs touch on the desk",
+                keywords: ["canvas", "desk", "sound", "collision", "click", "slabs"],
+                icon: "speaker.wave.2",
+                category: .tabs,
+                highlightID: "tabs.canvasImpactSounds",
+                valueKind: .toggle,
+            )
         case .showTabPreviews:
             SettingMetadata(
                 displayName: "Tab Previews",
@@ -594,6 +605,7 @@ extension BrowserSettingKey {
         case .websiteColorUseSolidBlend: .bool(settings.websiteColorUseSolidBlend)
         // Tabs
         case .showTabPreviews: .bool(settings.showTabPreviews)
+        case .canvasImpactSounds: .bool(settings.canvasImpactSounds)
         case .archiveEnabled: .bool(settings.archiveEnabled)
         case .autoArchiveRulesEnabled: .bool(settings.autoArchiveRulesEnabled)
         case .enableAutomaticSnapshots: .bool(settings.enableAutomaticSnapshots)
@@ -686,6 +698,8 @@ extension BrowserSettingKey {
         // Tabs
         case .showTabPreviews:
             if case let .bool(v) = value { settings.showTabPreviews = v }
+        case .canvasImpactSounds:
+            if case let .bool(v) = value { settings.canvasImpactSounds = v }
         case .archiveEnabled:
             if case let .bool(v) = value { settings.archiveEnabled = v }
         case .autoArchiveRulesEnabled:

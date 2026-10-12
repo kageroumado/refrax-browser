@@ -227,6 +227,42 @@ extension MenuBarManager {
         canvasItem.target = self
         viewMenu.addItem(canvasItem)
 
+        let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "")
+        floatingItem.target = self
+        viewMenu.addItem(floatingItem)
+        let currentTabItem = NSMenuItem(title: "Current Tab…", action: #selector(showCurrentTabInfo(_:)), keyEquivalent: "")
+        currentTabItem.target = self
+        viewMenu.addItem(currentTabItem)
+        let returnItem = NSMenuItem(title: "Return to Activity", action: #selector(returnToActivity(_:)), keyEquivalent: "")
+        returnItem.target = self
+        viewMenu.addItem(returnItem)
+        let keepItem = NSMenuItem(title: "Keep Part Visible…", action: #selector(keepCurrentRegion(_:)), keyEquivalent: "")
+        keepItem.target = self
+        viewMenu.addItem(keepItem)
+        let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
+        favoriteItem.target = self
+        viewMenu.addItem(favoriteItem)
+        let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
+        controlsItem.target = self
+        viewMenu.addItem(controlsItem)
+        let customizeControlsItem = NSMenuItem(title: "Customize Controls…", action: #selector(customizeControls(_:)), keyEquivalent: "")
+        customizeControlsItem.target = self
+        viewMenu.addItem(customizeControlsItem)
+        let controlAppearance = NSMenu(title: "Control Appearance")
+        controlAppearance.delegate = self
+        for mode in ControlIslandState.Mode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(setControlAppearance(_:)), keyEquivalent: "")
+            item.representedObject = mode.rawValue
+            item.target = self
+            controlAppearance.addItem(item)
+        }
+        let appearanceItem = NSMenuItem(title: "Control Appearance", action: nil, keyEquivalent: "")
+        appearanceItem.submenu = controlAppearance
+        viewMenu.addItem(appearanceItem)
+        let resetControlsItem = NSMenuItem(title: "Reset Control Position", action: #selector(resetControlPosition(_:)), keyEquivalent: "")
+        resetControlsItem.target = self
+        viewMenu.addItem(resetControlsItem)
+
         viewMenu.addItem(.separator())
 
         // Video Viewer (WebKit's in-window viewer for the current video)
@@ -291,7 +327,7 @@ extension MenuBarManager {
     /// Reloads the active page in the other rendering engine: system WebKit ⇄ the first installed engine.
     @objc
     func switchRenderingEngine(_: Any?) {
-        guard let page = activeWindowController?.windowState.activeWebPage else { return }
+        guard let page = activeWindowController?.windowState.focusedWebPage else { return }
         let registry = NSApp.typedDelegate.engineRegistry
         guard let target = alternateEngine(for: page, in: registry) else { return }
         page.reload(in: target, registry: registry)
@@ -308,28 +344,28 @@ extension MenuBarManager {
     @objc
     func actualSize(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.resetZoom()
     }
 
     @objc
     func zoomIn(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.zoomIn()
     }
 
     @objc
     func zoomOut(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.zoomOut()
     }
 
     @objc
     func toggleVideoViewer(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         // Needs an active playback session (a video that has started playing);
         // without one the SPI is a silent no-op.
         webPage.toggleInWindowVideo()
@@ -382,6 +418,52 @@ extension MenuBarManager {
         activeWindowController?.tabCanvasManager.toggle()
     }
 
+    @objc func toggleFloatingTabs(_: Any?) {
+        activeWindowController?.tabCanvasManager.toggleFloatingTabs()
+    }
+
+    @objc func focusBrowserControls(_: Any?) {
+        activeWindowController?.useFloatingTabs()
+        activeWindowController?.windowState.controlIsland.focus()
+    }
+
+    @objc func showCurrentTabInfo(_: Any?) {
+        activeWindowController?.useFloatingTabs()
+        activeWindowController?.windowState.controlIsland.tabInfo.show()
+    }
+
+    @objc func resetControlPosition(_: Any?) {
+        activeWindowController?.windowState.controlIsland.resetPlacement()
+    }
+
+    @objc func customizeControls(_: Any?) {
+        activeWindowController?.useFloatingTabs()
+        activeWindowController?.windowState.controlIsland.showsCustomization = true
+    }
+
+    @objc func returnToActivity(_: Any?) {
+        guard let controller = activeWindowController else { return }
+        controller.tabManager.returnFromLook(in: controller.windowState)
+    }
+
+    @objc func keepCurrentRegion(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab else { return }
+        controller.tabCanvasManager.beginRegionSelection(for: tab)
+    }
+
+    @objc func favoriteCurrentPage(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab,
+              let bookmarks = controller.tabManager.bookmarksManager else { return }
+        ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()
+    }
+
+    @objc func setControlAppearance(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let mode = ControlIslandState.Mode(rawValue: rawValue) else { return }
+        activeWindowController?.useFloatingTabs()
+        activeWindowController?.windowState.controlIsland.mode = mode
+    }
+
     // MARK: - Sidebar Mode Actions
 
     @objc
@@ -398,10 +480,17 @@ extension MenuBarManager {
 
     /// Updates sidebar mode menu item checkmarks based on current setting.
     func updateViewMenu(_ menu: NSMenu) {
+        if menu.title == "Control Appearance" {
+            let mode = activeWindowController?.windowState.controlIsland.mode
+            for item in menu.items {
+                item.state = (item.representedObject as? String) == mode?.rawValue ? .on : .off
+            }
+            return
+        }
         guard menu.title == "View" || menu.title == "Sidebar Mode" else { return }
 
         if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {
-            let page = activeWindowController?.windowState.activeWebPage
+            let page = activeWindowController?.windowState.focusedWebPage
             let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
             engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
             engineItem.isHidden = target == nil

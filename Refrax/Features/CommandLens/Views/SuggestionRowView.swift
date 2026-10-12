@@ -32,6 +32,16 @@ struct SuggestionRowView: View {
             SuggestionContentView(suggestion: suggestion, selection: selection)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .contextMenu {
+            if case .openTab = suggestion.type {
+                Button("Show Its Place", systemImage: "scope") { manager.showPlace(of: suggestion) }
+            }
+            if suggestion.url != nil {
+                Button("Look", systemImage: "eye") { manager.look(at: suggestion) }
+            } else if case .openTab = suggestion.type {
+                Button("Look", systemImage: "eye") { manager.look(at: suggestion) }
+            }
+        }
         .buttonStyle(.plain)
         .background(
             isHighlighted ? selectionBackground : Color.clear,

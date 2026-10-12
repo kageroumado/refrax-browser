@@ -19,6 +19,7 @@ struct AddressLensOverlay: View {
 
     @State private var phase: AnimationPhase = .hidden
     @State private var opacity = 1.0
+    @State private var contentHeight: CGFloat = 400
 
     private enum Constants {
         static let expandedWidthMultiplier: CGFloat = 2.5
@@ -61,16 +62,19 @@ struct AddressLensOverlay: View {
 
     var body: some View {
         if phase != .hidden {
-            ZStack(alignment: .topLeading) {
-                clickCapture
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    clickCapture
 
-                CommandLensView()
-                    .smallStyle()
-                    .frame(width: currentWidth)
-                    .frame(minHeight: currentHeight)
-                    .offset(x: addressBarFrame.minX, y: 0)
-                    .opacity(opacity)
-                    .allowsHitTesting(true)
+                    CommandLensView()
+                        .smallStyle()
+                        .frame(width: lensWidth(in: geometry.size))
+                        .frame(minHeight: currentHeight)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                        .offset(lensOrigin(in: geometry.size))
+                        .opacity(opacity)
+                        .allowsHitTesting(true)
+                }
             }
         }
 
@@ -82,6 +86,20 @@ struct AddressLensOverlay: View {
                     closeLens()
                 }
             }
+    }
+
+    private func lensWidth(in size: CGSize) -> CGFloat {
+        guard windowState.usesFloatingTabs else { return currentWidth }
+        let preferred = isExpanded ? 640.0 : ControlIslandPlacement.addressSize.width
+        return min(preferred, max(1, size.width - 40))
+    }
+
+    private func lensOrigin(in size: CGSize) -> CGSize {
+        guard windowState.usesFloatingTabs else { return CGSize(width: addressBarFrame.minX, height: 0) }
+        return CGSize(
+            width: min(max(20, addressBarFrame.minX), max(20, size.width - lensWidth(in: size) - 20)),
+            height: min(max(20, addressBarFrame.minY), max(20, size.height - contentHeight - 20)),
+        )
     }
 
     private var clickCapture: some View {

@@ -64,6 +64,10 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
     #if os(macOS) && !targetEnvironment(macCatalyst)
         /// Wires up context menu action callbacks to use pagePool's managers.
         private func setupContextMenuActions() {
+            contextMenuBuilder.onLookAtLink = { [weak self] url in
+                guard let pool = self?.pagePool, let window = pool.windowManager.activeWindowController?.windowState else { return }
+                pool.tabManager.look(at: url, in: window)
+            }
             contextMenuBuilder.onOpenInNewTab = { [weak self] url in
                 guard let self,
                       let pagePool,

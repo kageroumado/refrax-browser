@@ -120,7 +120,7 @@ extension RefraxWindowController {
     func handleMouseMoved(at locationInWindow: NSPoint) {
         let sidebarItem = splitViewController.splitViewItems[0]
 
-        guard sidebarItem.isCollapsed else { return }
+        guard sidebarItem.isCollapsed, !windowState.usesFloatingTabs else { return }
 
         // In compact mode, hover tracking is disabled - compact sidebar is always visible
         guard windowState.effectiveSidebarMode == .overlay else { return }
@@ -447,6 +447,7 @@ extension RefraxWindowController {
     /// - Opens the sidebar
     /// - Triggers any other overlay interaction
     func showTutorialPeek() {
+        guard !windowState.usesFloatingTabs else { return }
         guard !windowState.hasShownTutorialPeek else { return }
 
         tutorialPeekTask?.cancel()

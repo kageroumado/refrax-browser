@@ -11,10 +11,8 @@ import AppKit
 ///   reaches the page untouched. The direction is only known once the fingers move, so
 ///   the gesture's `began` event is held back until then and handed to the page when the
 ///   pinch turns out to be its own.
-/// - **⌃** held alone over a page for ``Constants/peekDelay`` brings the desk up around the
-///   page, eased back a little so the page shows as a tile; releasing ⌃ settles into the
-///   tile nearest the middle of the window. A click or key within the delay is a ⌃-click
-///   or shortcut, and the desk stays down.
+/// - **⌃** held alone reveals floating tabs; releasing it leaves pinned previews visible.
+///   Other input within the delay keeps Control available for clicks and shortcuts.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and a mouse wheel zooms about the pointer. One more tap of
@@ -55,6 +53,10 @@ final class CanvasPageGestures {
 
     private weak var window: NSWindow?
     private unowned let canvas: TabCanvasManager
+    private let floatingEligible: () -> Bool
+    private let floatingContains: (CGPoint) -> Bool
+    private let floatingHasKeyboardFocus: () -> Bool
+    private var resignObserver: (any NSObjectProtocol)?
     private let isEligible: (CGPoint) -> Bool
     private var pinch = PinchState.idle
     private var monitor: Any?
@@ -72,26 +74,46 @@ final class CanvasPageGestures {
     /// - Parameter isEligible: Whether a gesture with the pointer at this point (window
     ///   coordinates) may reach the canvas: the window's state allows it and the point is
     ///   over the page.
-    init(window: NSWindow, canvas: TabCanvasManager, isEligible: @escaping (CGPoint) -> Bool) {
+    init(window: NSWindow, canvas: TabCanvasManager, floatingEligible: @escaping () -> Bool, floatingContains: @escaping (CGPoint) -> Bool, floatingHasKeyboardFocus: @escaping () -> Bool, isEligible: @escaping (CGPoint) -> Bool) {
         self.window = window
         self.canvas = canvas
         self.isEligible = isEligible
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged, .keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-            self?.handle(event) ?? event
+        self.floatingEligible = floatingEligible
+        self.floatingContains = floatingContains
+        self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
+        resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.interruptControl()
+                self?.canvas.dismissFloatingTabs()
+            }
+        }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            return handle(event)
         }
     }
 
     isolated deinit {
+        pendingPeek?.cancel()
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         if let monitor {
             NSEvent.removeMonitor(monitor)
         }
     }
 
     /// Returns the event to deliver, or nil when the canvas takes it.
-    private func handle(_ event: NSEvent) -> NSEvent? {
+    func handle(_ event: NSEvent) -> NSEvent? {
         guard event.window === window else { return event }
         if !canvas.isPanningFromPage {
             isMoveMode = false
+        }
+        if [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp,
+            .rightMouseDragged, .otherMouseDown, .otherMouseUp, .otherMouseDragged,
+            .scrollWheel, .magnify].contains(event.type), floatingContains(event.locationInWindow) {
+            cancelPeek()
+            controlDownAt = nil
+            lastControlTap = nil
+            return canvas.floatingVisibility.isHeld ? FloatingPreviewInput.removingRevealModifier(from: event) : event
         }
         switch event.type {
         case .magnify: return handlePinch(event)
@@ -99,6 +121,9 @@ final class CanvasPageGestures {
         case .flagsChanged: return handleFlags(event)
         case .leftMouseDown, .leftMouseDragged, .leftMouseUp: return handleMouse(event)
         case .keyDown: return handleKey(event)
+        case .keyUp:
+            return floatingHasKeyboardFocus() && canvas.floatingVisibility.isHeld
+                ? FloatingPreviewInput.removingRevealModifier(from: event) : event
         default:
             interruptControl()
             return event
@@ -129,6 +154,35 @@ final class CanvasPageGestures {
     }
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
+        if FloatingRevealKey.current == .command, event.modifierFlags.contains(.command) {
+            interruptControl()
+            return event
+        }
+        if event.keyCode == 48, event.modifierFlags.contains(.control) {
+            interruptControl()
+            canvas.dismissFloatingTabs()
+            return event
+        }
+        if canvas.floatingVisibility.isRevealed, event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus() {
+            interruptControl()
+            canvas.dismissFloatingTabs()
+            return nil
+        }
+        if floatingHasKeyboardFocus(), canvas.floatingVisibility.isHeld {
+            return FloatingPreviewInput.removingRevealModifier(from: event)
+        }
+        if canvas.floatingVisibility.isRevealed, !floatingHasKeyboardFocus() {
+            let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control]).subtracting(FloatingRevealKey.current.flag)
+            if modifiers.isEmpty, let direction = CanvasNavigation.Direction(rawValue: event.keyCode),
+               let bounds = window?.contentView?.bounds {
+                canvas.navigateFloatingTabs(toward: direction, in: bounds)
+                return nil
+            }
+            if modifiers.isEmpty, event.keyCode == 36 {
+                canvas.openFocusedFloatingTab()
+                return nil
+            }
+        }
         interruptControl()
         guard isMoveMode, event.keyCode == Constants.escapeKeyCode else { return event }
         settle(.origin)
@@ -168,15 +222,19 @@ final class CanvasPageGestures {
 
     private func handleFlags(_ event: NSEvent) -> NSEvent? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let revealKey = FloatingRevealKey.current
         let now = Date()
         Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
 
-        if modifiers == .control {
+        if canvas.floatingVisibility.isHeld, modifiers.contains(revealKey.flag), floatingHasKeyboardFocus() {
+            return event
+        }
+        if modifiers == revealKey.flag {
             controlDownAt = now
             if isMoveMode {
                 return event
             }
-            if let lastTap = lastControlTap, now.timeIntervalSince(lastTap) <= Constants.doubleTapInterval,
+            if revealKey == .control, let lastTap = lastControlTap, now.timeIntervalSince(lastTap) <= Constants.doubleTapInterval,
                !canvas.isActive, isEligible(pointer(for: event)) {
                 lastControlTap = nil
                 // The release of this second tap belongs to the double tap; only a later
@@ -187,7 +245,7 @@ final class CanvasPageGestures {
                 canvas.beginPan()
                 return event
             }
-            if !canvas.isActive, isEligible(pointer(for: event)) {
+            if !canvas.isActive, floatingEligible() {
                 schedulePeek()
             }
             return event
@@ -195,7 +253,9 @@ final class CanvasPageGestures {
 
         // ⌃ went up, or another modifier joined it.
         cancelPeek()
-        let wasTap = controlDownAt.map { now.timeIntervalSince($0) <= Constants.tapDuration } ?? false
+        let wasFloating = canvas.floatingVisibility.isHeld
+        canvas.releaseFloatingTabs()
+        let wasTap = !wasFloating && (controlDownAt.map { now.timeIntervalSince($0) <= Constants.tapDuration } ?? false)
         controlDownAt = nil
         if modifiers.isEmpty, wasTap {
             if isMoveMode {
@@ -206,7 +266,7 @@ final class CanvasPageGestures {
         } else {
             lastControlTap = nil
         }
-        if canvas.isPanningFromPage, !isMoveMode, !modifiers.contains(.control) {
+        if canvas.isPanningFromPage, !isMoveMode, !modifiers.contains(revealKey.flag) {
             canvas.endPan(settlingOn: .nearest)
         }
         return event
@@ -214,6 +274,7 @@ final class CanvasPageGestures {
 
     /// Other input while ⌃ is down makes it part of a shortcut or ⌃-click.
     private func interruptControl() {
+        canvas.releaseFloatingTabs()
         cancelPeek()
         controlDownAt = nil
         lastControlTap = nil
@@ -224,13 +285,21 @@ final class CanvasPageGestures {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             pendingPeek = nil
-            guard NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
-                  !canvas.isActive
+            guard NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask) == FloatingRevealKey.current.flag,
+                  !canvas.isActive, floatingEligible(), window?.isKeyWindow == true
             else { return }
-            canvas.beginPan()
+            controlDownAt = nil
+            lastControlTap = nil
+            if UserDefaults.standard.bool(forKey: "floatingTabs.toggleReveal") {
+                canvas.toggleFloatingTabs()
+                if canvas.floatingVisibility.isLatched { canvas.revealFloatingTabs() }
+            } else {
+                canvas.revealFloatingTabs()
+            }
         }
         pendingPeek = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.peekDelay, execute: work)
+        let configured = UserDefaults.standard.object(forKey: "floatingTabs.revealDelay") as? Double ?? Constants.peekDelay
+        DispatchQueue.main.asyncAfter(deadline: .now() + min(1, max(0.08, configured)), execute: work)
     }
 
     private func cancelPeek() {

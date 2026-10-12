@@ -152,6 +152,8 @@ final class KeyboardShortcutsManager: Sendable {
                     tabSwitcherManager.selectNext()
                 }
             } else if tabSwitcherManager.canShowSwitcher {
+                controller.windowState.closeCommandLens()
+                controller.tabCanvasManager.dismissFloatingTabs()
                 tabSwitcherManager.show()
             }
             return nil
@@ -170,8 +172,15 @@ final class KeyboardShortcutsManager: Sendable {
                 controller.windowState.closeAddressLens()
                 return nil
             }
+            let controls = controller.windowState.controlIsland
+            if controller.tabCanvasManager.showsFloatingControls,
+               !controls.isPresenting,
+               controls.isLatched || controls.hasKeyboardFocus || controls.showsAddress || controls.isHovered || controls.tabInfo.isVisible {
+                controls.dismiss()
+                return nil
+            }
             // Stop loading if the page is currently loading
-            if controller.windowState.activeWebPage?.isLoading == true {
+            if controller.windowState.focusedWebPage?.isLoading == true {
                 controller.stopLoading()
                 return nil
             }
@@ -197,7 +206,7 @@ final class KeyboardShortcutsManager: Sendable {
 
         // Tab switcher: dismiss when Control key is released
         if controller.tabSwitcherManager.isActive, !event.modifierFlags.contains(.control) {
-            controller.tabSwitcherManager.dismiss()
+            controller.tabSwitcherManager.controlReleased()
         }
 
         return event
@@ -213,10 +222,10 @@ final class KeyboardShortcutsManager: Sendable {
         // Button 3 = Back, Button 4 = Forward (standard multi-button mouse mapping)
         switch event.buttonNumber {
         case 3:
-            controller.windowState.activeWebPage?.goBack()
+            controller.windowState.focusedWebPage?.goBack()
             return nil
         case 4:
-            controller.windowState.activeWebPage?.goForward()
+            controller.windowState.focusedWebPage?.goForward()
             return nil
         default:
             return event

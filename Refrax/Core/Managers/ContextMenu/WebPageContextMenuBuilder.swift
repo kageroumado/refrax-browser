@@ -34,6 +34,7 @@ final class WebPageContextMenuBuilder: NSObject {
 
     /// Callback for opening a URL in a new tab.
     var onOpenInNewTab: ((URL) -> Void)?
+    var onLookAtLink: ((URL) -> Void)?
 
     /// Callback for the "Remind Me" action. Called when user selects the menu item.
     var onRemindMe: (() -> Void)?
@@ -233,6 +234,7 @@ final class WebPageContextMenuBuilder: NSObject {
     /// Returns link-related menu items (open in new tab, copy).
     private func linkItems(for url: URL) -> [NSMenuItem] {
         [
+            menuItem("Look at Link", action: #selector(lookAtLink(_:)), url: url),
             menuItem("Open Link in New Tab", action: #selector(openInNewTab(_:)), url: url),
             menuItem("Copy Link", action: #selector(copyLink(_:)), url: url),
         ]
@@ -403,6 +405,12 @@ final class WebPageContextMenuBuilder: NSObject {
     }
 
     // MARK: - Actions
+
+    @objc
+    private func lookAtLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onLookAtLink?(url)
+    }
 
     @objc
     private func openInNewTab(_ sender: NSMenuItem) {

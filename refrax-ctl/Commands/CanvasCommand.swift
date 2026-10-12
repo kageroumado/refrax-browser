@@ -14,7 +14,7 @@ struct CanvasCommand: AsyncParsableCommand {
         Positions are desk points, origin top-left. Every command that changes the \
         desk waits for its tiles to come to rest and then prints the state.
         """,
-        subcommands: [Show.self, Hide.self, State.self, Drag.self, Lab.self],
+        subcommands: [Show.self, Hide.self, State.self, Floating.self, Drag.self, Lab.self],
         defaultSubcommand: State.self,
     )
 
@@ -54,6 +54,40 @@ struct CanvasCommand: AsyncParsableCommand {
 
         func run() async throws {
             try sendAndHandle(.canvasState, json: json)
+        }
+    }
+
+    struct Floating: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(commandName: "floating", abstract: "Reveal, place, and pin floating tabs")
+
+        @Argument(help: "show, hide, hold, release, pin, unpin, compact, preview, move, resize")
+        var action: String
+        @Option(name: .long, help: "Tab ref for a presentation or position change")
+        var tab: String?
+        @Option(name: .long, help: "Top-left destination in window points: X,Y")
+        var to: String?
+        @Option(name: .long, help: "Preview width in window points")
+        var width: Double?
+        @Option(name: .long, help: "Preview height in window points")
+        var height: Double?
+        @Flag(name: .long, help: "Output raw JSON")
+        var json = false
+
+        func run() async throws {
+            guard let action = ControlRequest.FloatingTabsParams.Action(rawValue: action) else {
+                throw ValidationError("Use show, hide, hold, release, pin, unpin, compact, preview, move, or resize")
+            }
+            var x: Double?
+            var y: Double?
+            if let to {
+                let parts = to.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+                guard parts.count == 2, let first = parts[0], let second = parts[1], first.isFinite, second.isFinite else {
+                    throw ValidationError("--to takes finite X,Y coordinates")
+                }
+                x = first
+                y = second
+            }
+            try sendAndHandle(.floatingTabs(.init(action: action, tab: tab, x: x, y: y, width: width, height: height)), json: json)
         }
     }
 

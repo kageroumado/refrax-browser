@@ -37,7 +37,7 @@ struct MainContentView: View {
 
     /// Whether compact sidebar mode is active (collapsed + compact mode).
     private var isCompactModeActive: Bool {
-        windowState.effectiveSidebarMode == .compact && windowState.isSidebarCollapsed
+        !windowState.usesFloatingTabs && windowState.effectiveSidebarMode == .compact && windowState.isSidebarCollapsed
     }
 
     var body: some View {
@@ -80,6 +80,8 @@ struct MainContentView: View {
     private var contentRouter: some View {
         if let activeTab = windowState.activeTab {
             UnifiedContentView(tab: activeTab)
+        } else if windowState.usesFloatingTabs {
+            FloatingStartPage()
         } else if settings.showSidebarHints {
             SidebarHintsView()
         } else {

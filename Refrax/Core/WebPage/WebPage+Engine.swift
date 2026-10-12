@@ -99,6 +99,7 @@ extension WebPage {
         case let .rendererHealthChanged(health):
             backingNavigationDelegate.pagePool?.handleRendererHealth(for: tabPage.id, health: health)
         case .navigationCommitted:
+            documentRevision = UUID()
             prompts.dismissAll()
         default:
             break

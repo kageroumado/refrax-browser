@@ -10,6 +10,9 @@ import SwiftUI
 struct TabCanvasLayer: View {
     @Environment(TabCanvasManager.self) private var manager
     @Environment(WindowState.self) private var windowState
+    @Environment(BrowserSettings.self) private var settings
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -20,22 +23,23 @@ struct TabCanvasLayer: View {
                 CanvasHintLabel(text: hint.text)
                     .padding(.bottom, manager.isActive ? Layout.hintAboveToolbar : Layout.hintBottomPadding)
                     .allowsHitTesting(false)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .animation(.easeOut(duration: 0.25), value: manager.hint)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
+        .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
         .onChange(of: manager.isActive) { _, isActive in
             for item in windowState.window?.toolbar?.items ?? [] {
-                item.isHidden = isActive
+                item.isHidden = isActive || windowState.usesFloatingTabs
             }
         }
     }
 
     private enum Layout {
         static let hintBottomPadding: CGFloat = 28
-        static let hintAboveToolbar: CGFloat = 84
+        static let hintAboveToolbar: CGFloat = 80
     }
 }
 
@@ -103,6 +107,8 @@ private struct CanvasToolbar: View {
                     .padding(.trailing, Layout.spacing / 2)
 
                 toolbarButton("Zoom", systemImage: "arrow.up.left.and.arrow.down.right") { manager.zoomToSelection() }
+                toolbarButton(manager.selectionIsCompact ? "Previews" : "Compact", systemImage: manager.selectionIsCompact ? "rectangle" : "rectangle.compress.vertical") { manager.toggleSelectedPreviews() }
+                    .disabled(manager.isSettling)
                 toolbarButton("Group", systemImage: "rectangle.dashed") { manager.groupSelected() }
                 toolbarButton("Magnet", systemImage: "circle.hexagongrid.circle") { manager.makeMagnetFromSelected() }
                 toolbarButton("Close", systemImage: "xmark.circle") { manager.closeSelected() }
@@ -146,6 +152,8 @@ private struct CanvasToolbar: View {
 /// Hosts the zoomable AppKit board.
 private struct TabCanvasBoard: NSViewRepresentable {
     @Environment(TabCanvasManager.self) private var manager
+    @Environment(BrowserSettings.self) private var settings
+    @Environment(\.colorScheme) private var colorScheme
 
     let tabs: [Tab]
     let tileFrames: [Tab.ID: CGRect]
@@ -160,16 +168,17 @@ private struct TabCanvasBoard: NSViewRepresentable {
 
     func makeNSView(context: Context) -> TabCanvasScrollView {
         let view = TabCanvasScrollView(deskSize: manager.deskSize)
+        view.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
         view.onWillEnter = { [weak manager] tab in manager?.prepareToEnter(tab) }
         view.onDismiss = { [weak manager] in manager?.dismiss(activating: nil) }
         view.onSettle = { [weak manager] frames in manager?.settleTiles(frames) }
         view.onTileDropped = { [weak manager] tabID in manager?.finishTileDrag(tabID) }
-        view.onTileFellOffDesk = { [weak manager] tabID in manager?.tileFellOffDesk(tabID) }
         view.onZoneMoved = { [weak manager] groupID, delta in manager?.moveZone(groupID, by: delta) }
         view.onMagnetMoved = { [weak manager] groupID, delta in manager?.moveMagnet(groupID, by: delta) }
         view.onMagnetActivated = { [weak manager] groupID in manager?.attract(groupID) }
         view.onLasso = { [weak manager] tabIDs in manager?.select(tabIDs) }
         view.onClearSelection = { [weak manager] in manager?.clearSelection() }
+        view.onTogglePreview = { [weak manager] id, frame in manager?.togglePreview(id, at: frame) }
         manager.board = view
         reload(view)
         context.coordinator.lastZoomSerial = zoomRequest?.serial
@@ -179,7 +188,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
             view.beginPanning(focusedTile: manager.focusedTileFrame)
             view.pan(by: manager.pendingPan)
         } else {
-            view.beginOpening(focusedTile: manager.focusedTileFrame, everything: manager.tilesBounds)
+            view.beginOpening(focusedTile: manager.focusedTileFrame, desk: manager.deskBounds)
             view.setOpeningScale(manager.openingScale)
             if !manager.isOpeningInteractively {
                 view.finishOpening(commit: true)
@@ -189,6 +198,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
     }
 
     func updateNSView(_ view: TabCanvasScrollView, context: Context) {
+        view.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
         reload(view)
         if let zoomRequest, zoomRequest.serial != context.coordinator.lastZoomSerial {
             context.coordinator.lastZoomSerial = zoomRequest.serial
@@ -201,6 +211,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
     }
 
     private func reload(_ view: TabCanvasScrollView) {
+        view.impactSoundsEnabled = settings.canvasImpactSounds
         view.reload(CanvasBoardContent(
             tabs: tabs,
             frames: tileFrames,
@@ -208,6 +219,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
             zones: zones,
             magnets: magnets,
             selectedTabIDs: selectedTabIDs,
+            focusedTabID: manager.focusedTabID,
             tileSize: tileSize,
             deskSize: deskSize,
         ))
@@ -231,6 +243,7 @@ struct CanvasBoardContent {
     let zones: [CanvasZone]
     let magnets: [CanvasMagnet]
     let selectedTabIDs: Set<Tab.ID>
+    let focusedTabID: Tab.ID?
     let tileSize: CGSize
     let deskSize: CGSize
 }
