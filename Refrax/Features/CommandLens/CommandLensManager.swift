@@ -1618,9 +1618,9 @@ final class CommandLensManager {
 
     // MARK: - Navigation
 
-    /// Whether the command lens is in address bar mode (navigate current tab, not create new).
+    /// The lens opened beside the page card to edit its address: a URL loads in the current page.
     private var isAddressMode: Bool {
-        windowState.showsAddressLens
+        windowState.commandLensEntrance?.editsCurrentPage == true
     }
 
     /// Whether the command lens is in reference pane address mode.
@@ -1730,9 +1730,6 @@ final class CommandLensManager {
 
         if windowState.showsCommandLens {
             windowState.closeCommandLens()
-        }
-        if windowState.showsAddressLens {
-            windowState.closeAddressLens()
         }
         if windowState.showsReferencePaneLens {
             windowState.closeReferencePaneLens()

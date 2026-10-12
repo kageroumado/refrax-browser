@@ -118,72 +118,94 @@ struct WindowManagerActionTests {
 @Suite("WindowState Lens Operations", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowStateLensTests {
-    @Test("Lens starts nil")
-    func lensStartsNil() throws {
+    @Test("Lens starts closed")
+    func lensStartsClosed() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         #expect(windowState.showsCommandLens == false)
-        #expect(windowState.showsAddressLens == false)
+        #expect(windowState.showsAnchoredLens == false)
+        #expect(windowState.commandLensEntrance == nil)
     }
 
-    @Test("Open command lens sets state")
-    func openCommandLensSetsState() throws {
+    @Test("⌘T opens the lens empty and centered")
+    func commandLensOpensEmptyAndCentered() throws {
         let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = env.createActiveTab(url: try #require(URL(string: "https://example.com/page")), in: space, for: windowState)
 
         windowState.openCommandLens()
 
         #expect(windowState.showsCommandLens == true)
-        #expect(windowState.showsAddressLens == false)
+        #expect(windowState.showsAnchoredLens == false)
+        #expect(windowState.commandLensEntrance == CommandLensEntrance(prefill: nil, anchor: nil))
+        #expect(windowState.commandLensEntrance?.editsCurrentPage == false)
     }
 
-    @Test("Close command lens clears state")
+    @Test("⌘L opens the lens with the page address, anchored to the page card")
+    func editAddressOpensPrefilledAndAnchored() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        let url = try #require(URL(string: "https://example.com/page"))
+        _ = env.createActiveTab(url: url, in: space, for: windowState)
+        let card = CGRect(x: 68, y: 12, width: 416, height: 44)
+        windowState.addressBarFrame = card
+
+        windowState.editAddress()
+
+        #expect(windowState.showsCommandLens == true)
+        #expect(windowState.showsAnchoredLens == true)
+        #expect(windowState.commandLensEntrance == CommandLensEntrance(prefill: url.absoluteString, anchor: card))
+        #expect(windowState.commandLensEntrance?.editsCurrentPage == true)
+    }
+
+    @Test("Either entrance replaces the other")
+    func entrancesReplaceEachOther() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = env.createActiveTab(url: try #require(URL(string: "https://example.com/page")), in: space, for: windowState)
+
+        windowState.openCommandLens()
+        windowState.editAddress()
+        #expect(windowState.showsAnchoredLens == true)
+
+        windowState.openCommandLens()
+        #expect(windowState.showsCommandLens == true)
+        #expect(windowState.showsAnchoredLens == false)
+    }
+
+    @Test("Closing clears the entrance and the lens frame")
     func closeCommandLensClearsState() throws {
         let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = env.createActiveTab(url: try #require(URL(string: "https://example.com/page")), in: space, for: windowState)
 
-        windowState.openCommandLens()
-        #expect(windowState.showsCommandLens == true)
-
+        windowState.editAddress()
+        windowState.commandLensFrame = CGRect(x: 1, y: 1, width: 1, height: 1)
         windowState.closeCommandLens()
+
         #expect(windowState.showsCommandLens == false)
+        #expect(windowState.commandLensEntrance == nil)
+        #expect(windowState.commandLensFrame == .zero)
     }
 
-    @Test("Open address lens sets state")
-    func openAddressLensSetsState() throws {
+    @Test("An empty page routes either entrance to the start page lens")
+    func emptyPageRoutesToStartPageLens() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
-
-        windowState.openAddressLens()
-
-        #expect(windowState.showsAddressLens == true)
-        #expect(windowState.showsCommandLens == false)
-    }
-
-    @Test("Close address lens clears state")
-    func closeAddressLensClearsState() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        windowState.openAddressLens()
-        #expect(windowState.showsAddressLens == true)
-
-        windowState.closeAddressLens()
-        #expect(windowState.showsAddressLens == false)
-    }
-
-    @Test("Opening one lens closes other implicitly")
-    func openingOneLensClosesOther() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        windowState.usesFloatingTabs = true
 
         windowState.openCommandLens()
-        #expect(windowState.showsCommandLens == true)
-
-        windowState.openAddressLens()
-        #expect(windowState.showsAddressLens == true)
         #expect(windowState.showsCommandLens == false)
+        #expect(windowState.startPageLensRequest == 1)
+
+        windowState.editAddress()
+        #expect(windowState.showsCommandLens == false)
+        #expect(windowState.startPageLensRequest == 2)
     }
 
     @Test("Reference pane lens state")
@@ -551,22 +573,16 @@ struct DetailTrayModeTests {
     }
 }
 
-// MARK: - FocusedLens Tests
+// MARK: - CommandLensEntrance Tests
 
-@Suite("FocusedLens Enum", .tags(.windowManager))
+@Suite("CommandLensEntrance", .tags(.windowManager))
 @MainActor
-struct FocusedLensTests {
-    @Test("All cases are hashable")
-    func allCasesAreHashable() {
-        let set: Set<FocusedLens> = [.address, .command]
-        #expect(set.count == 2)
-        #expect(set.contains(.address))
-        #expect(set.contains(.command))
-    }
-
-    @Test("Cases are distinct")
-    func casesAreDistinct() {
-        #expect(FocusedLens.address != FocusedLens.command)
+struct CommandLensEntranceTests {
+    @Test("An anchored entrance edits the current page; a centered one opens a new tab")
+    func anchorDecidesWhereTheResultGoes() {
+        #expect(CommandLensEntrance(prefill: nil, anchor: nil).editsCurrentPage == false)
+        #expect(CommandLensEntrance(prefill: "https://example.com", anchor: nil).editsCurrentPage == false)
+        #expect(CommandLensEntrance(prefill: "https://example.com", anchor: CGRect(x: 0, y: 0, width: 416, height: 44)).editsCurrentPage == true)
     }
 }
 

@@ -95,11 +95,6 @@ struct FloatingTabsLayer: View {
                 canvas.dismissFloatingTabs()
             }
         }
-        .onChange(of: windowState.showsAddressLens) { _, shown in
-            if shown {
-                canvas.dismissFloatingTabs()
-            }
-        }
     }
 }
 

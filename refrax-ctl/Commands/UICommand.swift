@@ -20,7 +20,7 @@ extension UICommand {
             abstract: "Toggle UI elements",
         )
 
-        @Argument(help: "Element: sidebar, inspector, command-lens, or address-lens")
+        @Argument(help: "Element: sidebar, inspector, command-lens, or address-lens (the Command Lens with the page address in it)")
         var element: String
 
         func run() async throws {

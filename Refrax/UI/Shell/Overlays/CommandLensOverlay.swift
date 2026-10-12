@@ -2,15 +2,15 @@ import SwiftUI
 
 // MARK: - Command Lens Overlay
 
-/// Overlay for the command lens (Cmd+K).
+/// The Command Lens at full size, centered near the top of the window (⌘T, the rail button).
 ///
-/// Isolated observation of `showsCommandLens` from the parent container.
-/// The command lens appears centered at the top of the window with a scale/fade animation.
+/// Isolated observation of the lens entrance from the parent container; the anchored
+/// entrance is drawn by `AnchoredLensOverlay`.
 struct CommandLensOverlay: View {
     @Environment(WindowState.self) private var windowState
 
     var body: some View {
-        if windowState.showsCommandLens {
+        if windowState.showsCommandLens, !windowState.showsAnchoredLens {
             ZStack(alignment: .topLeading) {
                 clickCapture
 

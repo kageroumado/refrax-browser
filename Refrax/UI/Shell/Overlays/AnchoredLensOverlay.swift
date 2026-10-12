@@ -1,42 +1,35 @@
 import SwiftUI
 
-// MARK: - Address Lens Overlay
+// MARK: - Anchored Lens Overlay
 
-/// Overlay for the address lens with staged animation.
+/// The Command Lens beside the page card, small style, with the page address in it.
 ///
-/// The animation works in two phases:
-/// - **Opening**: Instantly appears at address bar size, then animates to expanded size
-/// - **Closing**: Animates back to address bar size, then instantly disappears
-struct AddressLensOverlay: View {
+/// Opening starts at the anchor's size and springs to the lens's width; closing springs back
+/// to the anchor and then disappears.
+struct AnchoredLensOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(WindowState.self) private var windowState
 
     private enum AnimationPhase {
         case hidden
-        case matchingAddressBar
+        case matchingAnchor
         case expanded
     }
 
     @State private var phase: AnimationPhase = .hidden
     @State private var opacity = 1.0
     @State private var contentHeight: CGFloat = 400
+    /// The anchor the lens opened at, kept through the closing animation.
+    @State private var anchor: CGRect = .zero
 
     private enum Constants {
         static let expandedWidthMultiplier: CGFloat = 2.5
-        static let expandedHeightPadding: CGFloat = 0
         static let expandedCornerRadius: CGFloat = 16 // Match CommandLensView.Layout.cornerRadiusSmall
-        static let shadowOpacity: CGFloat = 0.15
-        static let shadowRadius: CGFloat = 16
-        static let shadowY: CGFloat = 8
         static let expandDuration: CGFloat = 0.25
         static let collapseDuration: CGFloat = 0.2
     }
 
-    private var addressBarFrame: CGRect {
-        windowState.addressBarFrame
-    }
-
-    private var addressBarCornerRadius: CGFloat {
+    private var anchorCornerRadius: CGFloat {
         Refrax.Constants.AddressBar.height / 2
     }
 
@@ -45,19 +38,15 @@ struct AddressLensOverlay: View {
     }
 
     private var currentWidth: CGFloat {
-        isExpanded
-            ? addressBarFrame.width * Constants.expandedWidthMultiplier
-            : addressBarFrame.width
+        isExpanded ? anchor.width * Constants.expandedWidthMultiplier : anchor.width
     }
 
     private var currentHeight: CGFloat {
-        isExpanded
-            ? addressBarFrame.height + Constants.expandedHeightPadding
-            : addressBarFrame.height
+        anchor.height
     }
 
     private var currentCornerRadius: CGFloat {
-        isExpanded ? Constants.expandedCornerRadius : addressBarCornerRadius
+        isExpanded ? Constants.expandedCornerRadius : anchorCornerRadius
     }
 
     var body: some View {
@@ -79,7 +68,7 @@ struct AddressLensOverlay: View {
         }
 
         Color.clear
-            .onChange(of: windowState.showsAddressLens) { wasShowing, isShowing in
+            .onChange(of: windowState.showsAnchoredLens) { wasShowing, isShowing in
                 if isShowing, !wasShowing {
                     openLens()
                 } else if !isShowing, wasShowing {
@@ -95,10 +84,10 @@ struct AddressLensOverlay: View {
     }
 
     private func lensOrigin(in size: CGSize) -> CGSize {
-        guard windowState.usesFloatingTabs else { return CGSize(width: addressBarFrame.minX, height: 0) }
+        guard windowState.usesFloatingTabs else { return CGSize(width: anchor.minX, height: 0) }
         return CGSize(
-            width: min(max(20, addressBarFrame.minX), max(20, size.width - lensWidth(in: size) - 20)),
-            height: min(max(20, addressBarFrame.minY), max(20, size.height - contentHeight - 20)),
+            width: min(max(20, anchor.minX), max(20, size.width - lensWidth(in: size) - 20)),
+            height: min(max(20, anchor.minY), max(20, size.height - contentHeight - 20)),
         )
     }
 
@@ -107,12 +96,13 @@ struct AddressLensOverlay: View {
             .contentShape(Rectangle())
             .ignoresSafeArea()
             .onTapGesture {
-                windowState.closeAddressLens()
+                windowState.closeCommandLens()
             }
     }
 
     private func openLens() {
-        phase = .matchingAddressBar
+        anchor = windowState.commandLensEntrance?.anchor ?? windowState.addressBarFrame
+        phase = .matchingAnchor
 
         let animation: Animation? = reduceMotion
             ? nil
@@ -130,7 +120,7 @@ struct AddressLensOverlay: View {
             : .spring(duration: Constants.collapseDuration)
 
         withAnimation(animation) {
-            phase = .matchingAddressBar
+            phase = .matchingAnchor
             opacity = 0
         } completion: {
             phase = .hidden

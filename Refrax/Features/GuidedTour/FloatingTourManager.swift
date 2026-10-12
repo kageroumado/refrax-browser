@@ -113,15 +113,15 @@ final class FloatingTourManager {
         currentStep?.requestedPage
     }
 
-    /// The page is dimmed while the Address Lens is closed; that lens has its own place over the
-    /// page card. The Command Lens stands in a spotlight of its own under the scrim.
+    /// The page is dimmed while no lens is anchored to the page card; the anchored lens has its
+    /// own place there. The centered Command Lens stands in a spotlight of its own under the scrim.
     var dimsPage: Bool {
-        !windowState.showsAddressLens
+        !windowState.showsAnchoredLens
     }
 
     /// A lens over the page takes its own clicks and its own Escape.
     private var lensIsOpen: Bool {
-        windowState.showsCommandLens || windowState.showsAddressLens
+        windowState.showsCommandLens
     }
 
     /// The Command Lens over the page, in window content coordinates, while it is up.

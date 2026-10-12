@@ -460,15 +460,15 @@ final class WindowState {
 
     // MARK: - Lens State
 
-    /// Currently visible lens, if any.
+    /// How the Command Lens is open; `nil` while it is closed.
     ///
-    /// When set, darkens the background and presents the lens interface for
-    /// quick actions or address entry.
-    private(set) var focusedLens: FocusedLens?
-    
-    /// Frame of the address bar in global coordinates (root of view hierarchy).
+    /// One lens has two entrances. ⌘T and the rail button open it empty and centered;
+    /// ⌘L and the page card's identity open it beside the card with the page address in it.
+    private(set) var commandLensEntrance: CommandLensEntrance?
+
+    /// Frame of the page card (or the sidebar's address bar) in window coordinates.
     ///
-    /// Used to position the address lens overlay aligned with the address bar.
+    /// The anchor for the lens when it opens with the page address in it.
     var addressBarFrame: CGRect = .zero
 
     /// Frame of the Command Lens capsule in global coordinates, kept current by its overlay while the lens is up.
@@ -857,11 +857,12 @@ final class WindowState {
     // MARK: - Computed Properties
 
     var showsCommandLens: Bool {
-        focusedLens == .command
+        commandLensEntrance != nil
     }
 
-    var showsAddressLens: Bool {
-        focusedLens == .address
+    /// The lens is up beside the page card, editing the page's address.
+    var showsAnchoredLens: Bool {
+        commandLensEntrance?.anchor != nil
     }
 
     var commandLensBinding: Binding<Bool> {
@@ -891,32 +892,30 @@ final class WindowState {
 
     // MARK: - Lens Actions
 
-    /// Opens the address lens.
+    /// Opens the Command Lens.
     ///
-    /// Animation is handled by `AddressLensOverlay`.
-    func openAddressLens() {
-        webViewsShouldIgnoreAllEvents = true
-        focusedLens = .address
-    }
-
-    /// Closes the address lens.
+    /// - Parameters:
+    ///   - prefill: Text the lens starts with, selected. `nil` opens it empty.
+    ///   - anchor: The control the lens unfolds beside, in window coordinates. `nil` centers
+    ///     it in the window. An anchored lens edits the current page's address: a committed
+    ///     URL loads in that page instead of a new tab.
     ///
-    /// Animation is handled by `AddressLensOverlay`.
-    func closeAddressLens() {
-        clearFocus()
-    }
-
-    /// Opens the command lens (no animation by default)
-    func openCommandLens() {
+    /// On an empty page the start page hosts the lens itself, and either entrance refocuses it.
+    func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil) {
         if usesFloatingTabs, activeTab == nil {
             startPageLensRequest &+= 1
             return
         }
         webViewsShouldIgnoreAllEvents = true
-        focusedLens = .command
+        commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor)
     }
 
-    /// Closes the command lens (no animation by default)
+    /// ⌘L: the lens beside the page card with the page's address in it, selected.
+    func editAddress() {
+        openCommandLens(prefill: focusedPage?.url.absoluteString ?? "", anchor: addressBarFrame)
+    }
+
+    /// Closes the Command Lens from either entrance.
     func closeCommandLens() {
         clearFocus()
     }
@@ -940,7 +939,8 @@ final class WindowState {
     }
 
     private func clearFocus() {
-        focusedLens = nil
+        commandLensEntrance = nil
+        commandLensFrame = .zero
         webViewsShouldIgnoreAllEvents = false
         (window as? RefraxWindow)?.lockedFirstResponder = nil
         // Clear contextual creation flags when any lens closes
@@ -1182,43 +1182,23 @@ final class WindowState {
     }
 }
 
-// MARK: - Focus Region
+// MARK: - Lens Entrance
 
-/// Identifies which quick-action lens is currently visible in the window.
+/// How the Command Lens was opened, which sets its text, its place, and where its result goes.
 ///
-/// Lenses are overlay interfaces that appear over the main content for
-/// focused tasks like entering URLs or executing commands.
-///
-/// ## Lens Types
-///
-/// - **Address Lens**: Appears below the address bar for URL entry with suggestions
-/// - **Command Lens**: Centered overlay (Cmd+K) for quick actions and search
-///
-/// ## Behavior
-///
-/// Only one lens can be visible at a time. When a lens is active:
-/// - Background is dimmed with a dark overlay
-/// - Keyboard focus moves to the lens
-/// - Escape key dismisses the lens
-/// - Background clicks dismiss the lens
-///
-/// - Note: The lens state is managed by ``WindowState`` which coordinates
-///   the animation and keyboard focus.
-enum FocusedLens: Hashable, Sendable {
-    /// Address bar lens for URL entry and suggestions.
-    ///
-    /// Positioned directly below the address bar in the toolbar.
-    /// Displays search suggestions and history as the user types.
-    case address
+/// One lens, two entrances: empty and centered (⌘T, the rail button), or beside the page card
+/// with the page address in it (⌘L, the card's identity, the sidebar's address bar). While the
+/// lens is up, keyboard focus moves to it, Escape and background clicks dismiss it, and the page
+/// beneath ignores events.
+struct CommandLensEntrance: Equatable, Sendable {
+    /// Text the lens starts with, selected.
+    var prefill: String?
 
-    /// Command palette for quick actions.
-    ///
-    /// Centered overlay (Cmd+K) providing:
-    /// - Quick tab switching
-    /// - URL navigation
-    /// - Command execution
-    /// - Search across tabs and history
-    case command
+    /// The control the lens unfolds beside, in window coordinates; `nil` centers it.
+    var anchor: CGRect?
+
+    /// An anchored lens edits the current page's address: a committed URL loads in that page.
+    var editsCurrentPage: Bool { anchor != nil }
 }
 
 // MARK: - Detail Tray Mode

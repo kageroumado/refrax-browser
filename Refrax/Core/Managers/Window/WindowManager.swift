@@ -478,10 +478,10 @@ final class WindowManager {
         controller.openCommandLens()
     }
 
-    /// Opens address lens in the frontmost window.
+    /// Opens the Command Lens beside the page card with the address in it, in the frontmost window.
     func openLocation() {
         guard let controller = activeWindowController else { return }
-        controller.openAddressLens()
+        controller.editAddress()
     }
     
     /// Shows the bookmark import wizard.

@@ -32,6 +32,9 @@ struct ControlIsland: View {
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
+    @AppStorage(ControlIslandOptionDragHint.storageKey) private var optionDragExplained = false
+    @State private var showsDragHint = false
+    @State private var dragHintMidY: CGFloat?
     private typealias Layout = ControlIslandPlacement
 
     private var state: ControlIslandState {
@@ -52,22 +55,11 @@ struct ControlIsland: View {
     }
 
     private var height: CGFloat {
-        let items = visibleItems
-        let rowCount = items.reduce(1) { count, item in
-            switch item {
-            case .windowControls: count + 3
-            case .spaces: count
-            case .favoriteTabs: count
-            default: count + 1
-            }
-        }
-        let separators = items.indices.filter { $0 > 0 && (items[$0].isGroup || items[$0 - 1].isGroup) }.count
-            + (items.last?.isGroup == true ? 1 : 0)
-        return Layout.contentInset * 2
-            + Layout.rowHeight * CGFloat(rowCount) + Layout.sectionGap * CGFloat(separators)
-            + (items.contains(.spaces) ? CGFloat(min(spaces.spaces.count, Layout.maximumVisibleSpaces)) * Layout.spaceRowHeight : 0)
-            + (items.contains(.favoriteTabs) ? ControlIslandFavoriteTabs.height(for: favorites.count) : 0)
+        Layout.railHeight(items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count, showsGrip: showsGrip)
     }
+
+    /// The grip stands under More while the rail is awake and clears with the glass at rest.
+    private var showsGrip: Bool { !isResting }
 
     private func hasSeparator(before item: ControlIslandItem) -> Bool {
         guard let index = visibleItems.firstIndex(of: item), index > 0 else { return false }
@@ -120,6 +112,12 @@ struct ControlIsland: View {
         let x = opensLeft ? frame.minX - 38 : frame.maxX + 8
         return CGRect(x: x, y: (shortcutRowMidY ?? frame.midY) - 14, width: 30, height: 28)
     }
+    /// Beside the hand: level with the pointer, on the rail's open side.
+    private var dragHintFrame: CGRect {
+        let size = Layout.dragHintSize
+        let x = opensLeft ? frame.minX - Layout.adjacentGap - size.width : frame.maxX + Layout.adjacentGap
+        return CGRect(x: x, y: (dragHintMidY ?? frame.midY) - size.height / 2, width: size.width, height: size.height)
+    }
 
     var body: some View {
         @Bindable var state = windowState.controlIsland
@@ -164,6 +162,18 @@ struct ControlIsland: View {
                     .transition(.opacity)
                     .help("Hold \(revealKey.title) to reveal tabs; release to hide")
                     .accessibilityLabel("Tabs shortcut: hold \(revealKey.title)")
+                }
+                if showsDragHint {
+                    Text("Drag to move")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: dragHintFrame.width, height: dragHintFrame.height)
+                        .background(spaceTint, in: .rect(cornerRadius: 7))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 7))
+                        .glassEffectID("dragHint", in: glassNamespace)
+                        .offset(x: dragHintFrame.minX, y: dragHintFrame.minY)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
                 if state.isDragging {
                     let snap = state.placement.snapped(in: area, height: height)
@@ -255,6 +265,7 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsDragHint)
         .onAppear { state.wake() }
         .task(id: state.isHovered) {
             hoverHasSettled = false
@@ -270,6 +281,12 @@ struct ControlIsland: View {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             showsShortcut = false
+        }
+        .task(id: showsDragHint) {
+            guard showsDragHint else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            showsDragHint = false
         }
     }
 
@@ -297,6 +314,7 @@ struct ControlIsland: View {
             }
             .scrollIndicators(.automatic)
             .scrollBounceBehavior(.basedOnSize)
+            if showsGrip { grip }
         }
         .padding(.vertical, Layout.contentInset)
         .padding(.horizontal, Layout.horizontalInset)
@@ -334,7 +352,7 @@ struct ControlIsland: View {
                 if windowState.showsCommandLens { windowState.closeCommandLens() }
                 else { windowState.openCommandLens() }
             }
-            .help(item.detail)
+            .help("Command Lens · ⌘T")
         case .floatingTabs:
             control(item.title, symbol: canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol) {
                 dismissTransientOverlays()
@@ -342,6 +360,9 @@ struct ControlIsland: View {
                 showsShortcut = canvas.floatingVisibility.isRevealed
             }
             .overlay(alignment: .bottomTrailing) { unplacedBadge }
+            .contextMenu {
+                Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
+            }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
             .help("Show tabs · Hold \(revealKey.title) to peek")
         case .recentTabs:
@@ -412,10 +433,12 @@ struct ControlIsland: View {
         draggableBackground(Color.clear.contentShape(Rectangle()))
     }
 
+    /// Empty glass drags the window or the controls, and carries the rail's own menu on a right-click.
     @ViewBuilder
     private func draggableBackground(_ content: some View) -> some View {
-        if state.configuration.optionDragTarget.backgroundTarget == .panel { content.gesture(moveGesture) }
-        else { content.gesture(windowDrag) }
+        let surface = content.contextMenu { ControlIslandRailMenu() }
+        if state.configuration.optionDragTarget.backgroundTarget == .panel { surface.gesture(moveGesture) }
+        else { surface.gesture(windowDrag) }
     }
 
     private var sectionDivider: some View {
@@ -441,6 +464,7 @@ struct ControlIsland: View {
     private var optionDrag: some View {
         ControlIslandOptionDrag(target: state.configuration.optionDragTarget, isEnabled: !state.isReorderingFavorites, onFeedback: { feedback in
             railDragFeedback = feedback
+            explainOptionDrag(for: feedback)
         }, onBegin: {
             isOptionDragging = true
             state.isDragging = true
@@ -449,6 +473,40 @@ struct ControlIsland: View {
             state.isDragging = false
             finishPanelDrag()
         })
+    }
+
+    /// An 18 × 3-point capsule under More: a handle that moves the controls with no modifier.
+    private var grip: some View {
+        Capsule()
+            .fill(.secondary)
+            .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
+            .frame(width: Layout.contentWidth, height: Layout.gripRowHeight)
+            .contentShape(Rectangle())
+            .gesture(moveGesture)
+            .transition(.opacity)
+            .help("Move controls · ⌥-drag anywhere on the rail")
+            .accessibilityElement()
+            .accessibilityLabel("Move controls")
+            .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
+            .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
+            .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
+            .accessibilityAction(named: "Move controls down") { moveBy(dx: 0, dy: 32) }
+    }
+
+    /// The first Option held over the rail earns one "Drag to move" chip beside the hand.
+    private func explainOptionDrag(for feedback: ControlIslandDragFeedback) {
+        var hint = ControlIslandOptionDragHint(isExplained: optionDragExplained)
+        guard hint.shouldShow(for: feedback) else { return }
+        optionDragExplained = hint.isExplained
+        dragHintMidY = pointerLocation?.y
+        showsDragHint = true
+    }
+
+    /// The pointer in the rail's coordinate space: window content, origin top-left.
+    private var pointerLocation: CGPoint? {
+        guard let window = windowState.window, let content = window.contentView else { return nil }
+        let location = content.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return CGPoint(x: location.x, y: content.isFlipped ? location.y : content.bounds.height - location.y)
     }
 
     private func movePanel(by translation: CGSize) {
@@ -540,10 +598,15 @@ struct ControlIsland: View {
         tabSwitcher.cancel()
     }
 
+    /// Pages other than the current one that wait without a place of their own.
+    private var unplacedCount: Int {
+        canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
+    }
+
     /// How many pages wait without a place of their own, in the corner of the tab control.
     @ViewBuilder
     private var unplacedBadge: some View {
-        let count = canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
+        let count = unplacedCount
         if count > 0 {
             Text(count, format: .number)
                 .font(.caption2.weight(.semibold))
@@ -607,12 +670,10 @@ struct ControlIsland: View {
         guard state.configuration.avoidsPageControls, !state.isHovered, !state.isDragging,
               !state.hasKeyboardFocus, !state.isPresenting, !state.showsCustomization, !state.tabInfo.isVisible,
               !showsPageBranch, !canvas.floatingVisibility.isRevealed, !canvas.recentIsOpen,
-              !windowState.showsCommandLens, !windowState.showsAddressLens,
+              !windowState.showsCommandLens,
               let window = windowState.window, window.isKeyWindow, window.attachedSheet == nil,
               NSEvent.pressedMouseButtons == 0, Date().timeIntervalSince(state.lastPointerMovement) > 0.8,
-              let content = window.contentView else { return false }
-        let location = content.convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        let point = CGPoint(x: location.x, y: content.isFlipped ? location.y : content.bounds.height - location.y)
+              let point = pointerLocation else { return false }
         return !frame.insetBy(dx: -96, dy: -96).contains(point)
     }
 

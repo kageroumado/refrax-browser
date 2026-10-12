@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The current page as one card beside the rail: its icon, title, and domain, with reload,
-/// favorite, and the page actions. Tapping the identity opens the Address Lens in its place.
+/// favorite, and the page actions. Tapping the identity opens the Command Lens in the card's
+/// place with the address in it.
 struct ControlIslandPageBranch: View {
     let area: CGRect
     let frame: CGRect
@@ -57,7 +58,7 @@ struct ControlIslandPageBranch: View {
     private func identity(_ tab: Tab) -> some View {
         Button {
             windowState.addressBarFrame = frame
-            windowState.openAddressLens()
+            windowState.openCommandLens(prefill: url?.absoluteString ?? "", anchor: frame)
         } label: {
             HStack(spacing: 9) {
                 FaviconView(data: tab.activePage.faviconData, url: url, size: Layout.faviconSize)
