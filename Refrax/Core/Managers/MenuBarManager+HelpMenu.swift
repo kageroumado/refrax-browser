@@ -24,6 +24,15 @@ extension MenuBarManager {
         helpItem.target = self
         helpMenu.addItem(helpItem)
 
+        let tourItem = NSMenuItem(
+            title: "Refrax Tour",
+            action: #selector(startFloatingTour(_:)),
+            keyEquivalent: "",
+        )
+        tourItem.image = NSImage(systemSymbolName: "graduationcap", accessibilityDescription: nil)
+        tourItem.target = self
+        helpMenu.addItem(tourItem)
+
         helpMenu.addItem(.separator())
 
         let feedbackItem = NSMenuItem(
@@ -54,6 +63,12 @@ extension MenuBarManager {
     @objc
     func showHelp(_: Any?) {
         // TODO: Implement help
+    }
+
+    /// Walks the active window through opening pages, revealing them, and the control panel.
+    @objc
+    func startFloatingTour(_: Any?) {
+        activeWindowController?.environment.floatingTourManager.start()
     }
 
     @objc

@@ -7,6 +7,7 @@ struct FloatingStartPage: View {
     @Environment(UndoRedoManager.self) private var undoRedo
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
+    @Environment(FloatingTourManager.self) private var tour
     @AppStorage("startPage.hintsDismissed") private var hintsDismissed = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
 
@@ -27,6 +28,7 @@ struct FloatingStartPage: View {
                 .foregroundStyle(.secondary)
             CommandLensView()
                 .id(windowState.startPageLensRequest)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { tour.startPageLensFrame = $0 }
             recovery
             if !hintsDismissed { hints }
         }
@@ -34,6 +36,8 @@ struct FloatingStartPage: View {
         .padding(.horizontal, 24)
         .padding(.top, Layout.topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear { tour.offer() }
+        .onDisappear { tour.startPageLensFrame = .zero }
     }
 
     /// A way back: the last closed page in this space, the last page used here, or the tab layer.
@@ -76,7 +80,7 @@ struct FloatingStartPage: View {
                      text: "An address, a search, an open page, or a command: type it and press Return. ⌘T brings this back from any page.")
                 hint(symbol: "square.on.square", title: "Pages keep their places",
                      text: "Hold \(revealKey.glyph) to see every open page where you put it. Drag a title to move it; pin a page to keep it in view.",
-                     action: "Try it with two pages", perform: startTutorial)
+                     action: "Take the tour") { tour.start() }
                 hint(symbol: "slider.horizontal.3", title: "Controls that step aside",
                      text: "The panel fades while you work and wakes as you approach. ⌥-drag moves it; More › Customize picks what it holds.",
                      action: "Customize…") { windowState.controlIsland.showsCustomization = true }
@@ -112,17 +116,5 @@ struct FloatingStartPage: View {
         .padding(Layout.hintPadding)
         .background(Color.primary.opacity(Layout.hintFillOpacity), in: .rect(cornerRadius: Layout.hintCornerRadius))
         .accessibilityElement(children: .combine)
-    }
-
-    private func startTutorial() {
-        guard let space = windowState.activeSpace else { return }
-        let draft = tabs.createTab(url: FloatingTabsTutorial.url(reference: false), in: space, makeActive: false)
-        let reference = tabs.createTab(url: FloatingTabsTutorial.url(reference: true), in: space, makeActive: false)
-        draft.activePage.title = "Trip draft"
-        reference.activePage.title = "Arrival details"
-        canvas.updateFloatingPlacement(.init(x: 0.1, y: 0.4, isCompact: true, isPinned: false), for: draft)
-        canvas.updateFloatingPlacement(.init(x: 0.8, y: 0.4, isCompact: false, isPinned: false), for: reference)
-        tabs.setActiveTab(draft, in: windowState)
-        canvas.toggleFloatingTabs()
     }
 }

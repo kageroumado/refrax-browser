@@ -6,9 +6,12 @@ import SwiftUI
 /// When `shouldPassThrough()` returns true, both hit tests and cursor updates
 /// pass through to views underneath (e.g., WebKit). When false, this view
 /// captures hits and forces the cursor to arrow, preventing WebKit from
-/// changing the cursor to link/text selection cursors.
+/// changing the cursor to link/text selection cursors. Points inside
+/// `passThroughRegions()` (top-left window content coordinates) pass through
+/// regardless, so an overlay can leave openings for the content it points at.
 final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     let shouldPassThrough: () -> Bool
+    var passThroughRegions: () -> [CGRect] = { [] }
     private var trackingArea: NSTrackingArea?
 
     init(rootView: Content, shouldPassThrough: @escaping () -> Bool) {
@@ -28,10 +31,17 @@ final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if shouldPassThrough() {
+        if shouldPassThrough() || isInPassThroughRegion(convert(point, from: superview)) {
             return nil
         }
         return super.hitTest(point)
+    }
+
+    private func isInPassThroughRegion(_ local: NSPoint) -> Bool {
+        let regions = passThroughRegions()
+        guard !regions.isEmpty else { return false }
+        let topLeading = CGPoint(x: local.x, y: isFlipped ? local.y : bounds.height - local.y)
+        return regions.contains { $0.contains(topLeading) }
     }
 
     // MARK: - Cursor Blocking
@@ -63,7 +73,7 @@ final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        if !shouldPassThrough() {
+        if !shouldPassThrough(), !isInPassThroughRegion(convert(event.locationInWindow, from: nil)) {
             NSCursor.arrow.set()
         } else {
             super.cursorUpdate(with: event)
