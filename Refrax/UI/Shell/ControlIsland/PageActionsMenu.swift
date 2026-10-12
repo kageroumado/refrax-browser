@@ -2,18 +2,30 @@ import AppKit
 import SwiftUI
 
 /// Page actions shared by the control panel and spatial tabs.
-struct PageActionsMenu: View {
+struct PageActionsMenu: NSViewRepresentable {
     let tab: Tab
     let area: CGRect
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
+    @Environment(\.appearsActive) private var appearsActive
 
-    var body: some View {
-        ControlIslandTabMenuButton(state: windowState.controlIsland.tabInfo, makeMenu: menu, onClose: { canvas.menuTabID = nil }, onOpen: { canvas.menuTabID = tab.id })
-            .frame(width: 28, height: 28)
-            .accessibilityLabel("Actions for \(tab.displayTitle)")
+    func makeNSView(context _: Context) -> PageActionsButton {
+        PageActionsButton(frame: .zero, pullsDown: true)
+    }
+
+    func updateNSView(_ button: PageActionsButton, context _: Context) {
+        button.makeMenu = menu
+        button.infoState = windowState.controlIsland.tabInfo
+        button.onClose = { canvas.menuTabID = nil }
+        button.onOpen = { canvas.menuTabID = tab.id }
+        button.contentTintColor = appearsActive ? .labelColor : .secondaryLabelColor
+        button.setAccessibilityLabel("Actions for \(tab.displayTitle)")
+    }
+
+    static func dismantleNSView(_ button: PageActionsButton, coordinator _: ()) {
+        button.cancelPresentation()
     }
 
     private func menu() -> NSMenu {
@@ -88,5 +100,58 @@ struct PageActionsMenu: View {
         items.append(MenuItem("Duplicate Tab", systemImage: "plus.square.on.square") { actions.duplicate() })
         items.append(MenuItem("Close Tab", systemImage: "xmark") { tabs.requestCloseTab(tab) })
         return items.asNSMenu()
+    }
+}
+
+final class PageActionsButton: NSPopUpButton, NSMenuDelegate {
+    override init(frame buttonFrame: NSRect, pullsDown flag: Bool) {
+        super.init(frame: buttonFrame, pullsDown: flag)
+        isBordered = false
+        addItem(withTitle: "")
+        let icon = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More tab actions")?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
+        item(at: 0)?.image = icon
+        imagePosition = .imageOnly
+        focusRingType = .none
+        setAccessibilityLabel("More tab actions")
+        toolTip = "More tab actions"
+        (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        menu?.autoenablesItems = false
+        menu?.delegate = self
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    var makeMenu: () -> NSMenu = { NSMenu() }
+    var onClose: () -> Void = {}
+    var onOpen: () -> Void = {}
+    weak var infoState: ControlIslandTabInfoState?
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let icon = item(at: 0)?.image
+        menu.removeAllItems()
+        let titleItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        titleItem.image = icon
+        menu.addItem(titleItem)
+        let actions = makeMenu()
+        for item in actions.items {
+            actions.removeItem(item)
+            menu.addItem(item)
+        }
+    }
+
+    func cancelPresentation() {
+        menu?.cancelTracking()
+        infoState?.isMenuPresented = false
+    }
+
+    func menuWillOpen(_: NSMenu) {
+        infoState?.isMenuPresented = true
+        onOpen()
+    }
+
+    func menuDidClose(_: NSMenu) {
+        infoState?.isHovered = false
+        infoState?.isMenuPresented = false
+        onClose()
     }
 }

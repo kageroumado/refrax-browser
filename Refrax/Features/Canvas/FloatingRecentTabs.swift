@@ -40,6 +40,7 @@ struct FloatingRecentTabs: View {
                                 canvas.recentIsOpen = false
                             }
                             PageActionsMenu(tab: tab, area: area)
+                                .frame(width: 28, height: 28)
                         }
                     }
                 }

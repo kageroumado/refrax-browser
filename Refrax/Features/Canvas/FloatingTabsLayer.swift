@@ -18,10 +18,7 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
             guard let self, event.window === window else { return event }
             let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
             if event.type == .mouseMoved {
-                if let state = controlState?() {
-                    state.lastPointerMovement = Date()
-                    state.pointerMoved?(point)
-                }
+                controlState?()?.pointerMoved?(point)
                 return event
             }
             if event.type == .leftMouseDown { onPointerDown?(point) }
@@ -236,6 +233,7 @@ private struct FloatingTabCard: View {
                     .labelStyle(.titleOnly)
             }
             PageActionsMenu(tab: tab, area: area)
+                .frame(width: 28, height: 28)
 
         }
         .labelStyle(.iconOnly)

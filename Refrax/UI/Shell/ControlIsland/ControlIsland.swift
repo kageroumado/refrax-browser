@@ -11,7 +11,6 @@ struct ControlIsland: View {
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(SpaceManager.self) private var spaces
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.appearsActive) private var appearsActive
     @FocusState private var focusedControl: String?
     @GestureState private var isDraggingWindow = false
     @GestureState private var isDraggingPanel = false
@@ -19,14 +18,11 @@ struct ControlIsland: View {
     @State private var railDragFeedback: ControlIslandDragFeedback = .idle
     @State private var buttonDragFeedback: ControlIslandDragFeedback = .idle
     @State private var dragOrigin: CGPoint?
-    @State private var collapseTask: Task<Void, Never>?
     @State private var showsFavorites = false
     @State private var showsAddressTools = false
-    @State private var isPointerInside = false
-    @State private var hoverPath = ControlIslandHoverPath()
+    @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
-    @State private var shortcutTask: Task<Void, Never>?
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var showsInvitation = false
     @AppStorage("controlIsland.hasOpened") private var hasOpened = false
@@ -127,20 +123,15 @@ struct ControlIsland: View {
                         .frame(width: frame.width, height: frame.height)
                         .glassEffect(.regular, in: .rect(cornerRadius: Layout.cornerRadius))
                         .offset(x: frame.minX, y: frame.minY)
-                        .onHover(perform: hoverChanged)
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: frame.midY > buttonFrame.midY ? .top : .bottom)))
                 }
                 if showsPageBranch, !canvas.recentIsOpen {
                     ControlIslandPageBranch(area: area, onPresentationChange: { presented in
                         showsAddressTools = presented
-                        if !presented, !isPointerInside {
-                            hoverChanged(false)
-                        }
                     })
                     .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
                     .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                     .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
-                    .onHover(perform: hoverChanged)
                     .transition(.opacity)
                 }
                 if canvas.recentIsOpen {
@@ -148,7 +139,6 @@ struct ControlIsland: View {
                         .frame(width: recentFrame.width, height: recentFrame.height)
                         .glassEffect(.regular, in: .rect(cornerRadius: 20))
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
-                        .onHover(perform: hoverChanged)
                 }
                 if showsShortcut, state.isRevealed {
                     Button { canvas.toggleFloatingTabs() } label: {
@@ -176,27 +166,16 @@ struct ControlIsland: View {
         }
         .font(.system(size: 13, weight: .semibold))
         .buttonStyle(ControlIslandButtonStyle())
-        .onAppear(perform: updateHitRegions)
-        .onChange(of: frame) { updateHitRegions() }
+        .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
+        .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
         .onChange(of: state.placement) { avoidancePlacement = nil }
-        .onChange(of: buttonFrame) { updateHitRegions() }
-        .onChange(of: pageBranchFrame) { updateHitRegions() }
-        .onChange(of: showsPageBranch) { updateHitRegions() }
-        .onChange(of: canvas.recentIsOpen) { updateHitRegions() }
-        .onChange(of: showsShortcut) { updateHitRegions() }
-        .onChange(of: showsInvitation) { updateHitRegions() }
-        .onChange(of: shortcutFrame) { updateHitRegions() }
-        .onChange(of: state.tabInfo.isVisible) { updateHitRegions() }
-        .onChange(of: state.showsAddress) { updateHitRegions() }
-        .onChange(of: dragFeedback) { updateHitRegions() }
-        .onChange(of: state.isRevealed) { updateHitRegions() }
         .onChange(of: state.mode) { oldMode, _ in
+            state.dismiss(returnsFocusToPage: false)
             avoidancePlacement = nil
             let oldHeight = oldMode == .button ? Layout.railWidth : height(for: visibleItems(in: oldMode))
             let origin = state.placement.railFrame(in: area, height: oldHeight).origin
             state.placement.move(to: origin, in: area, height: anchorHeight)
             savePlacement()
-            updateHitRegions()
         }
         .onChange(of: windowState.activeTabID) { state.showsAddress = false }
         .onChange(of: windowState.activeSpaceID) {
@@ -211,12 +190,10 @@ struct ControlIsland: View {
             state.isDragging = dragging
             if !dragging {
                 finishPanelDrag()
-                if !isPointerInside { hoverChanged(false) }
             }
         }
         .onChange(of: showsFavorites || showsAddressTools) { _, presented in
             state.isPresenting = presented
-            if !presented, !isPointerInside { hoverChanged(false) }
         }
         .onChange(of: state.focusRequest) {
             focusedControl = visibleItems.contains(.address) ? "Address" : "More"
@@ -246,8 +223,6 @@ struct ControlIsland: View {
             }
         }
         .onDisappear {
-            collapseTask?.cancel()
-            shortcutTask?.cancel()
             state.pointerMoved = nil
             state.hitRegions = []
             state.isHovered = false
@@ -272,6 +247,13 @@ struct ControlIsland: View {
             showsInvitation = false
         }
         .task(id: avoidanceRevision) { await yieldToPageControl() }
+        .task(id: keepsHoverOpen ? .inside : pointerPhase) { await settleHover() }
+        .task(id: showsShortcut) {
+            guard showsShortcut else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            showsShortcut = false
+        }
     }
 
     private var controls: some View {
@@ -328,7 +310,7 @@ struct ControlIsland: View {
             control(item.title, symbol: canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol) {
                 dismissTransientOverlays()
                 canvas.toggleFloatingTabs()
-                teachTabShortcut()
+                showsShortcut = canvas.floatingVisibility.isRevealed
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
             .help("Show tabs · Hold \(revealKey.title) to peek")
@@ -377,10 +359,13 @@ struct ControlIsland: View {
     }
 
     private var dragSurface: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .modifier(ControlIslandBackgroundDrag(target: state.configuration.optionDragTarget.backgroundTarget,
-                                                  panelDrag: moveGesture, windowDrag: windowDrag))
+        draggableBackground(Color.clear.contentShape(Rectangle()))
+    }
+
+    @ViewBuilder
+    private func draggableBackground(_ content: some View) -> some View {
+        if state.configuration.optionDragTarget.backgroundTarget == .panel { content.gesture(moveGesture) }
+        else { content.gesture(windowDrag) }
     }
 
     private var anchorHeight: CGFloat { state.mode == .button ? Layout.railWidth : height }
@@ -388,11 +373,7 @@ struct ControlIsland: View {
     private var buttonFrame: CGRect { effectivePlacement.railFrame(in: area, height: Layout.railWidth) }
 
     private var sectionDivider: some View {
-        Divider()
-            .frame(height: Layout.sectionGap)
-            .contentShape(Rectangle())
-            .modifier(ControlIslandBackgroundDrag(target: state.configuration.optionDragTarget.backgroundTarget,
-                                                  panelDrag: moveGesture, windowDrag: windowDrag))
+        draggableBackground(Divider().frame(height: Layout.sectionGap).contentShape(Rectangle()))
     }
 
     private var revealButton: some View {
@@ -410,7 +391,6 @@ struct ControlIsland: View {
         .glassEffect(.regular, in: Circle())
         .background { optionDrag(isTrigger: true) }
         .offset(x: buttonFrame.minX, y: buttonFrame.minY)
-        .onHover(perform: hoverChanged)
         .contextMenu { ControlIslandAppearanceMenu() }
         .focusable()
         .focused($focusedControl, equals: "Reveal")
@@ -449,7 +429,6 @@ struct ControlIsland: View {
             isOptionDragging = false
             state.isDragging = false
             finishPanelDrag()
-            if !isPointerInside { hoverChanged(false) }
         })
     }
 
@@ -556,33 +535,32 @@ struct ControlIsland: View {
         .help(title)
     }
 
-    private func hoverChanged(_ hovering: Bool) {
-        isPointerInside = hovering
-        if hovering {
-            collapseTask?.cancel()
-            collapseTask = nil
+    private func hoverChanged(_ phase: ControlIslandHoverPath.Phase) {
+        guard pointerPhase != phase else { return }
+        pointerPhase = phase
+        if phase == .inside {
             state.isHovered = true
             hasOpened = true
             showsInvitation = false
-        } else {
-            guard collapseTask == nil else { return }
-            collapseTask = Task(name: "Collapse browser controls") {
-                defer { collapseTask = nil }
-                try? await Task.sleep(for: .milliseconds(550))
-                guard !Task.isCancelled, !state.isDragging, !showsFavorites, !showsAddressTools else { return }
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
-                    state.isHovered = false
-                    state.showsAddress = false
-                    state.tabInfo.isHovered = false
-                }
-            }
         }
     }
 
-    private func updateHitRegions() {
-        state.pointerMoved = { point in
-            hoverChanged(hoverPath.contains(point, regions: state.hitRegions))
+    private var keepsHoverOpen: Bool {
+        pointerPhase == .inside || state.isDragging || state.isPresenting || state.showsCustomization || state.tabInfo.isMenuPresented
+    }
+
+    private func settleHover() async {
+        guard !keepsHoverOpen else { return }
+        try? await Task.sleep(for: .seconds(pointerPhase == .crossing ? ControlIslandHoverPath.grace : 0.15))
+        guard !Task.isCancelled else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
+            state.isHovered = false
+            state.showsAddress = false
+            state.tabInfo.isHovered = false
         }
+    }
+
+    private var interactionRegions: [CGRect] {
         var regions: [CGRect] = []
         if state.mode == .button { regions.append(buttonFrame) }
         if showsInvitation, !state.isRevealed, state.mode == .button {
@@ -592,17 +570,7 @@ struct ControlIsland: View {
         if showsPageBranch, !canvas.recentIsOpen { regions.append(pageBranchFrame) }
         if canvas.recentIsOpen { regions.append(recentFrame) }
         if showsShortcut, state.isRevealed { regions.append(shortcutFrame) }
-        state.hitRegions = regions
-    }
-
-    private func teachTabShortcut() {
-        shortcutTask?.cancel()
-        showsShortcut = canvas.floatingVisibility.isRevealed
-        shortcutTask = Task(name: "Settle tab shortcut reminder") {
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            showsShortcut = false
-        }
+        return regions
     }
 
     private var avoidanceRevision: String {
@@ -632,7 +600,8 @@ struct ControlIsland: View {
         let revision = page.documentRevision
         guard let obstacles = await ControlIslandAvoidance.obstacles(on: page, in: window),
               !Task.isCancelled, canYield, state.placement == placement,
-              windowState.activeWebPage === page, revision == page.documentRevision else { return }
+              windowState.activeWebPage === page, revision == page.documentRevision,
+              window.contentView?.bounds.size == area.size else { return }
         let source = placement.railFrame(in: area, height: anchorHeight)
         var adjusted: ControlIslandPlacement?
         if let origin = ControlIslandAvoidance.proposedOrigin(for: source, in: area, obstacles: obstacles) {
@@ -658,17 +627,5 @@ struct ControlIsland: View {
     private func moveWindowBy(dx: CGFloat, dy: CGFloat) {
         guard let window = windowState.window, window.isMovable, !window.styleMask.contains(.fullScreen) else { return }
         window.setFrameOrigin(window.constrainFrameRect(window.frame.offsetBy(dx: dx, dy: dy), to: window.screen).origin)
-    }
-}
-
-private struct ControlIslandBackgroundDrag<PanelMovement: Gesture, WindowMovement: Gesture>: ViewModifier {
-    let target: ControlIslandDragTarget
-    let panelDrag: PanelMovement
-    let windowDrag: WindowMovement
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if target == .panel { content.gesture(panelDrag) }
-        else { content.gesture(windowDrag) }
     }
 }

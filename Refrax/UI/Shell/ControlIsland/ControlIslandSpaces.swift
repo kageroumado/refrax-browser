@@ -51,9 +51,10 @@ struct ControlIslandSpaces: View {
     }
 
     private var spaceButtons: some View {
-        VStack(spacing: 0) {
+        let selectedID = windowState.activeSpaceID
+        return VStack(spacing: 0) {
             ForEach(destinations) { space in
-                spaceButton(space).id(space.id)
+                spaceButton(space, selected: space.id == selectedID)
             }
         }
     }
@@ -81,9 +82,8 @@ struct ControlIslandSpaces: View {
         return Color(nsColor: selected ? .secondaryLabelColor : .tertiaryLabelColor)
     }
 
-    private func spaceButton(_ space: Space) -> some View {
-        let selected = space.id == windowState.activeSpaceID
-        return Button {
+    private func spaceButton(_ space: Space, selected: Bool) -> some View {
+        Button {
             guard !selected else { return }
             tabSwitcher.cancel()
             windowState.closeCommandLens()

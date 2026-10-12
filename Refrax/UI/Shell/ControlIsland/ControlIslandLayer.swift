@@ -3,7 +3,6 @@ import SwiftUI
 /// The control rail shares window coordinates with the page and stays above transient overlays.
 struct ControlIslandLayer: View {
     @Environment(TabCanvasManager.self) private var canvas
-    @Environment(WindowState.self) private var windowState
     @Environment(BrowserSettings.self) private var settings
     @Environment(\.colorScheme) private var colorScheme
 
@@ -17,9 +16,6 @@ struct ControlIslandLayer: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
-        }
-        .onChange(of: windowState.controlIsland.mode) {
-            (windowState.window?.windowController as? RefraxWindowController)?.applyTrafficLightVisibility(1)
         }
         .coordinateSpace(name: "browserControls")
         .ignoresSafeArea()

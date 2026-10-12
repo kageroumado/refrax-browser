@@ -32,9 +32,10 @@ final class ControlIslandState {
     var focusRequest = 0
     var dismissalRequest = 0
     var pageFocusRequest = 0
-    var hitRegions: [CGRect] = []
+    @ObservationIgnored var hitRegions: [CGRect] = []
     @ObservationIgnored var pointerMoved: ((CGPoint) -> Void)?
     @ObservationIgnored var lastPointerMovement = Date.distantPast
+    @ObservationIgnored private var hoverPath = ControlIslandHoverPath()
 
     @ObservationIgnored private let defaults: UserDefaults?
     private static let placementKey = "controlIsland.placement"
@@ -66,6 +67,11 @@ final class ControlIslandState {
     func focus() {
         hasKeyboardFocus = true
         focusRequest &+= 1
+    }
+
+    func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
+        lastPointerMovement = now
+        return hoverPath.phase(at: point, regions: hitRegions, now: now)
     }
 
     func dismissIfOutside(_ point: CGPoint) {

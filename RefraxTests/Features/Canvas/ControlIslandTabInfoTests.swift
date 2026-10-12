@@ -34,7 +34,8 @@ struct ControlIslandTabInfoTests {
     @Test
     func `native popup builds current actions and owns the card lifetime`() throws {
         let state = ControlIslandTabInfoState()
-        let button = ControlIslandTabMenuNSButton(frame: .zero, pullsDown: true)
+        let button = PageActionsButton(frame: .zero, pullsDown: true)
+        #expect(button.item(at: 0)?.image != nil)
         button.infoState = state
         var closeCount = 0
         button.onClose = { closeCount += 1 }
@@ -47,6 +48,7 @@ struct ControlIslandTabInfoTests {
         button.menuNeedsUpdate(menu)
         button.menuNeedsUpdate(menu)
         #expect(menu.items.map(\.title) == ["", "Reload"])
+        #expect(menu.items.first?.image != nil)
         state.hold()
         button.menuWillOpen(menu)
         state.release()

@@ -3,18 +3,21 @@ import Foundation
 
 /// Preserves disclosure while the pointer crosses the space between related controls.
 nonisolated struct ControlIslandHoverPath {
+    enum Phase: Equatable {
+        case inside, crossing, outside
+    }
     private var departure: CGPoint?
     private var lastInside = Date.distantPast
     static let grace: TimeInterval = 0.55
 
-    mutating func contains(_ point: CGPoint, regions: [CGRect], now: Date = Date()) -> Bool {
+    mutating func phase(at point: CGPoint, regions: [CGRect], now: Date = Date()) -> Phase {
         if regions.contains(where: { $0.contains(point) }) {
             departure = point
             lastInside = now
-            return true
+            return .inside
         }
-        guard let departure, now.timeIntervalSince(lastInside) < Self.grace else { return false }
-        return regions.contains { Self.bridges(point, from: departure, to: $0) }
+        guard let departure, now.timeIntervalSince(lastInside) < Self.grace else { return .outside }
+        return regions.contains { Self.bridges(point, from: departure, to: $0) } ? .crossing : .outside
     }
 
     static func bridges(_ point: CGPoint, from origin: CGPoint, to target: CGRect) -> Bool {

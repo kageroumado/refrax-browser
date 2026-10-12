@@ -1,4 +1,6 @@
 import AppKit
+import Observation
+import Synchronization
 import Testing
 @testable import Refrax
 
@@ -44,14 +46,14 @@ struct ControlIslandInteractionTests {
         var path = ControlIslandHoverPath()
         let start = Date(timeIntervalSince1970: 1_000)
         let regions = [CGRect(x: 0, y: 0, width: 48, height: 48), CGRect(x: 100, y: 100, width: 80, height: 40)]
-        let inside = path.contains(CGPoint(x: 20, y: 20), regions: regions, now: start)
-        let crossing = path.contains(CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(0.2))
-        let expired = path.contains(CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(1))
-        let arrived = path.contains(CGPoint(x: 120, y: 120), regions: regions, now: start.addingTimeInterval(2))
-        #expect(inside)
-        #expect(crossing)
-        #expect(expired == false)
-        #expect(arrived)
+        let inside = path.phase(at: CGPoint(x: 20, y: 20), regions: regions, now: start)
+        let crossing = path.phase(at: CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(0.2))
+        let expired = path.phase(at: CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(1))
+        let arrived = path.phase(at: CGPoint(x: 120, y: 120), regions: regions, now: start.addingTimeInterval(2))
+        #expect(inside == .inside)
+        #expect(crossing == .crossing)
+        #expect(expired == .outside)
+        #expect(arrived == .inside)
     }
 
     @Test
@@ -70,6 +72,35 @@ struct ControlIslandInteractionTests {
     func `avoidance stays still when every nearby destination is occupied`() {
         let frame = CGRect(x: 100, y: 100, width: 48, height: 48)
         #expect(ControlIslandAvoidance.proposedOrigin(for: frame, in: area, obstacles: [frame, area]) == nil)
+    }
+
+    @Test
+    func `avoidance clears a chain of neighboring controls`() throws {
+        let frame = CGRect(x: 12, y: 12, width: 48, height: 48)
+        let neighbors = [frame, CGRect(x: 12, y: 60, width: 48, height: 48), CGRect(x: 60, y: 12, width: 48, height: 96)]
+        let origin = try #require(ControlIslandAvoidance.proposedOrigin(for: frame, in: area, obstacles: neighbors))
+        let result = CGRect(origin: origin, size: frame.size)
+        #expect(neighbors.allSatisfy { !$0.insetBy(dx: -7.9, dy: -7.9).intersects(result) })
+        #expect(origin == CGPoint(x: 116, y: 12) || origin == CGPoint(x: 12, y: 116))
+    }
+
+    @Test
+    func `pointer bookkeeping leaves observation quiet until disclosure changes`() {
+        let state = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
+        state.mode = .button
+        let notifications = Mutex(0)
+        withObservationTracking {
+            _ = state.hitRegions
+            _ = state.lastPointerMovement
+            _ = state.isRevealed
+        } onChange: {
+            notifications.withLock { $0 += 1 }
+        }
+        state.hitRegions = [CGRect(x: 0, y: 0, width: 48, height: 48)]
+        for x in 0..<40 { _ = state.tracksPointer(CGPoint(x: x, y: 20)) }
+        #expect(notifications.withLock { $0 } == 0)
+        state.isHovered = true
+        #expect(notifications.withLock { $0 } == 1)
     }
 
     @Test

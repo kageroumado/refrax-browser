@@ -30,11 +30,12 @@ struct ControlIslandFavoriteTabs: View {
     }
 
     var body: some View {
-        ScrollView(.vertical) {
+        let selectedID = windowState.activeTabID
+        return ScrollView(.vertical) {
             VStack(spacing: 0) {
                 ForEach(favorites) { favorite in
                     if let tab = favorite.tab {
-                        favoriteButton(favorite, tab: tab).id(favorite.id)
+                        favoriteButton(favorite, tab: tab, selected: tab.id == selectedID)
                     }
                 }
             }
@@ -149,9 +150,8 @@ struct ControlIslandFavoriteTabs: View {
         scrollPosition.scrollTo(id: id)
     }
 
-    private func favoriteButton(_ favorite: FavoriteItem, tab: Tab) -> some View {
-        let selected = windowState.activeTabID == tab.id
-        return Button {
+    private func favoriteButton(_ favorite: FavoriteItem, tab: Tab, selected: Bool) -> some View {
+        Button {
             guard draggedID == nil else { return }
             tabSwitcher.cancel()
             windowState.closeCommandLens()
