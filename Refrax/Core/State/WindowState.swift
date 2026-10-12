@@ -899,15 +899,17 @@ final class WindowState {
     ///   - anchor: The control the lens unfolds beside, in window coordinates. `nil` centers
     ///     it in the window. An anchored lens edits the current page's address: a committed
     ///     URL loads in that page instead of a new tab.
+    ///   - source: The control that opened a centered lens, in window coordinates, for a ray
+    ///     of light from it to the lens. ⌘T passes `nil`: a key needs no pointer guidance.
     ///
     /// On an empty page the start page hosts the lens itself, and either entrance refocuses it.
-    func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil) {
+    func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil, source: CGRect? = nil) {
         if usesFloatingTabs, activeTab == nil {
             startPageLensRequest &+= 1
             return
         }
         webViewsShouldIgnoreAllEvents = true
-        commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor)
+        commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor, source: source)
     }
 
     /// ⌘L: the lens beside the page card with the page's address in it, selected.
@@ -1196,6 +1198,10 @@ struct CommandLensEntrance: Equatable, Sendable {
 
     /// The control the lens unfolds beside, in window coordinates; `nil` centers it.
     var anchor: CGRect?
+
+    /// The control that opened a centered lens, in window coordinates, which a ray of light
+    /// leaves for the lens; `nil` when a key opened it.
+    var source: CGRect?
 
     /// An anchored lens edits the current page's address: a committed URL loads in that page.
     var editsCurrentPage: Bool { anchor != nil }

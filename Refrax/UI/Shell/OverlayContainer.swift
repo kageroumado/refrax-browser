@@ -17,6 +17,7 @@ import SwiftUI
 /// ## Observation Isolation
 ///
 /// Each overlay is extracted to its own file to isolate observation scope:
+/// - `BrowserBeamsOverlay` - Observes the lens entrance and frame, and the page card's frame
 /// - `CommandLensOverlay` - Observes the lens entrance (centered)
 /// - `AnchoredLensOverlay` - Observes the lens entrance (beside the page card)
 /// - `ScreenshotPreviewOverlay` - Observes `screenshotCoordinator.currentPreview`
@@ -66,6 +67,9 @@ struct OverlayContainer: View {
             
             // Compact sidebar address bar overlay
             CompactAddressBarOverlay()
+
+            // Beams from the rail to what it opened, under the lens they point at
+            BrowserBeamsOverlay()
 
             // Command Lens, centered (⌘T) or beside the page card (⌘L)
             CommandLensOverlay()
