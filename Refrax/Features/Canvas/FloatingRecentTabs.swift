@@ -39,7 +39,7 @@ struct FloatingRecentTabs: View {
                                 canvas.updateFloatingPlacement(placement, for: tab)
                                 canvas.recentIsOpen = false
                             }
-                            PageActionsMenu(tab: tab, area: area, host: .recentList)
+                            PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
                                 .frame(width: 28, height: 28)
                         }
                     }

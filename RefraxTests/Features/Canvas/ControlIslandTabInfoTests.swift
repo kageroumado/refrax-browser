@@ -32,23 +32,17 @@ struct ControlIslandTabInfoTests {
     }
 
     @Test
-    func `native popup builds current actions and owns the card lifetime`() throws {
+    func `native popup renders the current tree and owns the card lifetime`() {
         let state = ControlIslandTabInfoState()
-        let button = PageActionsButton(frame: .zero, pullsDown: true)
-        #expect(button.item(at: 0)?.image != nil)
+        let button = PageActionsButton()
+        #expect(button.image != nil)
         button.infoState = state
         var closeCount = 0
         button.onClose = { closeCount += 1 }
-        button.makeMenu = {
-            let menu = NSMenu()
-            menu.addItem(withTitle: "Reload", action: nil, keyEquivalent: "")
-            return menu
-        }
-        let menu = try #require(button.menu)
-        button.menuNeedsUpdate(menu)
-        button.menuNeedsUpdate(menu)
-        #expect(menu.items.map(\.title) == ["", "Reload"])
-        #expect(menu.items.first?.image != nil)
+        button.makeTree = { MenuComposer.compose([MenuAction("page.reload", "Reload", group: .reload)]) }
+        let menu = NSMenuRenderer.menu(button.makeTree())
+        #expect(menu.items.map(\.title) == ["Reload"])
+        #expect(!button.isPresentingMenu)
         state.hold()
         button.menuWillOpen(menu)
         state.release()

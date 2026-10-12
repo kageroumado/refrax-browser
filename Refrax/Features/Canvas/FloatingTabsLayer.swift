@@ -231,7 +231,7 @@ private struct FloatingTabCard: View {
                 Button("Finish") { canvas.finishPreviewInteraction() }
                     .labelStyle(.titleOnly)
             }
-            PageActionsMenu(tab: tab, area: area, host: .floatingCard)
+            PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
                 .frame(width: Layout.headerControlSize, height: Layout.headerControlSize)
         }
         .labelStyle(.iconOnly)
