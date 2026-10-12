@@ -12,6 +12,8 @@ import Foundation
 ///              4 red   5 green   6 blue   7 intensity
 ///              8 core width   9 glow width   10 dispersion   11 spot scale
 ///             12–14 low band rgb   15 pad   16–18 high band rgb   19 pad
+///             20 pulse center (points along the path)   21 pulse sigma (points)
+///             22 pulse gain   23 pad
 /// segments   one record of `segmentStride` floats per segment, all paths in order:
 ///              0 ax   1 ay   2 bx   3 by   4 start along the path   5 length   6 dir x   7 dir y
 /// ```
@@ -22,7 +24,7 @@ nonisolated enum LightPacking {
     /// The most segments one shader pass draws, summed over every path.
     static let maximumSegments = 32
     static let headerLength = 2
-    static let pathStride = 20
+    static let pathStride = 24
     static let segmentStride = 8
 
     static func pack(_ paths: [LightPath]) -> [Float] {
@@ -64,6 +66,11 @@ nonisolated enum LightPacking {
             data[record + 16] = Float(bands.high.red)
             data[record + 17] = Float(bands.high.green)
             data[record + 18] = Float(bands.high.blue)
+            if let pulse = path.pulse {
+                data[record + 20] = Float(pulse.position * length)
+                data[record + 21] = Float(max(pulse.width * length, 0.5))
+                data[record + 22] = Float(max(pulse.gain, 0))
+            }
 
             var start: CGFloat = 0
             for (index, segmentLength) in lengths.enumerated() {

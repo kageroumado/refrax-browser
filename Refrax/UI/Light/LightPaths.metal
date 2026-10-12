@@ -5,13 +5,14 @@ using namespace metal;
 // light of every lit segment around it: a Gaussian halo in the path's color, a narrower
 // Gaussian core in white, a soft spot at the lit tip, and, on the last segment of a
 // dispersing path, two more bands turned a few degrees to either side in neighboring
-// hues. The sum becomes premultiplied color at the end.
+// hues. A path's pulse brightens the halo and core around one place along its length.
+// The sum becomes premultiplied color at the end.
 
 namespace light {
 
 // Layout of the float array; mirrors the constants in LightPacking.
 constant int header = 2;
-constant int pathStride = 20;
+constant int pathStride = 24;
 constant int segmentStride = 8;
 
 // Angle between the center band and each outer band at full dispersion (6°).
@@ -67,6 +68,9 @@ static half4 shade(float2 position, device const float *data, int count) {
         float spotScale = max(path[11], 0.01);
         float3 lowColor = float3(path[12], path[13], path[14]);
         float3 highColor = float3(path[16], path[17], path[18]);
+        float pulseCenter = path[20];
+        float pulseSigma = max(path[21], 0.5);
+        float pulseGain = path[22];
         float spotRadius = max(coreSigma * 4.0, minimumSpotRadius) * spotScale;
         float spotHaloSigma = glowSigma * 2.0 * spotScale;
         float cutoff = max(glowSigma, spotHaloSigma) * reach;
@@ -103,8 +107,10 @@ static half4 shade(float2 position, device const float *data, int count) {
                     continue;
                 }
 
-                float glow = gaussian(distance, glowSigma) * glowGain;
-                float core = gaussian(distance, coreSigma);
+                // The pulse scales the beam by how close this point's place along the path is to its center.
+                float pulse = 1.0 + pulseGain * gaussian(start + t - pulseCenter, pulseSigma);
+                float glow = gaussian(distance, glowSigma) * glowGain * pulse;
+                float core = gaussian(distance, coreSigma) * pulse;
                 float spotHalo = holdsTip ? gaussian(spotDistance, spotHaloSigma) * spotHaloGain : 0;
                 float spotCore = holdsTip ? gaussian(spotDistance, spotRadius) : 0;
 

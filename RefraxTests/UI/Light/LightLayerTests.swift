@@ -57,6 +57,19 @@ struct LightLayerTests {
         #expect(fanned[CGPoint(x: 16, y: 64 - 10.5)].alpha == 0, "the first segment keeps one beam")
     }
 
+    @Test func `a pulse brightens the beam around its place along the path`() throws {
+        var path = LightPath(points: [CGPoint(x: 8, y: 64), CGPoint(x: 120, y: 64)], color: violet)
+        path.intensity = 0.3
+        let even = try LightProbe.render([path], width: size, height: size)
+        path.pulse = LightPath.Pulse(position: 0.5, width: 0.08, gain: 2)
+        let pulsed = try LightProbe.render([path], width: size, height: size)
+        let center = CGPoint(x: 64, y: 64)
+        let away = CGPoint(x: 24, y: 64)
+        #expect(pulsed[center].alpha > even[center].alpha, "the pulse brightens its center")
+        #expect(abs(pulsed[away].alpha - even[away].alpha) < 0.02, "far from the pulse the beam is unchanged")
+        #expect(pulsed[center].alpha > pulsed[away].alpha)
+    }
+
     @Test func `intensity scales the light and an empty set draws nothing`() throws {
         var path = LightPath(points: [CGPoint(x: 16, y: 64), CGPoint(x: 112, y: 64)], color: violet)
         let full = try LightProbe.render([path], width: size, height: size)[CGPoint(x: 64, y: 64)].alpha
