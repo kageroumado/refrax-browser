@@ -3,6 +3,7 @@ import SwiftUI
 struct SuggestionsListView: View {
     @Environment(CommandLensManager.self) private var manager
     @Environment(\.commandLensIsSmall) private var isSmall
+    @State private var contentHeight: CGFloat = 0
 
     private enum Layout {
         static let maxHeight: CGFloat = 500
@@ -26,9 +27,10 @@ struct SuggestionsListView: View {
                 }
             }
             .padding(.vertical, isSmall ? 2 : 4)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
         .scrollBounceBehavior(.basedOnSize)
-        .frame(maxHeight: isSmall ? Layout.maxHeightSmall : Layout.maxHeight)
+        .frame(height: min(contentHeight, isSmall ? Layout.maxHeightSmall : Layout.maxHeight))
     }
 
     /// Only show headers for "Search Suggestions" section.

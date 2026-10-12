@@ -284,10 +284,10 @@ final class CommandLensManager {
     /// a tour step asks for one. The lens calls this as it appears and whenever its text empties.
     func showStandingSuggestions() async {
         let standing = await fetchLocalSuggestions(context: createContext())
-        guard !Task.isCancelled, inputText.trimmingCharacters(in: .whitespaces).isEmpty, !standing.isEmpty else { return }
+        guard !Task.isCancelled, inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         suggestions = standing
-        isPopupVisible = true
-        selection = CommandLensSelection(index: 0)
+        isPopupVisible = !standing.isEmpty
+        selection = standing.isEmpty ? .none : CommandLensSelection(index: 0)
     }
 
     // MARK: - Empty State Actions
