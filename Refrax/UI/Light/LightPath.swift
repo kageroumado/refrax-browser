@@ -9,8 +9,23 @@ import SwiftUI
 /// core and a soft halo, and it is lit from its first point along `progress` of its
 /// length, with a soft spot at the lit tip. After its last bend the beam can disperse into
 /// three bands whose hues sit at −``Layout/hueOffset``, 0°, and +``Layout/hueOffset`` from
-/// `color`, fanning out by up to ``Layout/fanAngle`` at full `dispersion`.
+/// `color`, fanning out by up to ``Layout/fanAngle`` at full `dispersion`. A ``Pulse`` is a
+/// brighter stretch at one place along the length, which moves when its position does.
 nonisolated struct LightPath: Equatable, Sendable {
+    /// A brighter stretch of the beam at one place along its length.
+    ///
+    /// The beam's halo and core are scaled by `1 + gain · exp(-((s − position·length) / (width·length))²)`
+    /// at distance `s` along the path, so the pulse is a soft bright region centered on
+    /// `position`. Advancing `position` over time sends it traveling along the beam.
+    struct Pulse: Equatable, Sendable {
+        /// Center of the pulse as a fraction of the path's length, 0 at the start.
+        var position: Double
+        /// Half-width of the pulse as a fraction of the path's length.
+        var width: Double = 0.12
+        /// Peak brightness added at the center, relative to the beam's own.
+        var gain: Double = 1
+    }
+
     /// The vertices, two or more. Consecutive equal points make a zero-length segment,
     /// which draws as a spot.
     var points: [CGPoint]
@@ -28,6 +43,8 @@ nonisolated struct LightPath: Equatable, Sendable {
     var dispersion: Double
     /// Scale of the spot at the lit tip, 1 at rest; a pulse goes above 1.
     var spotScale: CGFloat
+    /// A brighter stretch traveling along the beam, or `nil` for an even beam.
+    var pulse: Pulse?
 
     enum Layout {
         static let coreWidth: CGFloat = 2
@@ -47,6 +64,7 @@ nonisolated struct LightPath: Equatable, Sendable {
         progress: Double = 1,
         dispersion: Double = 0,
         spotScale: CGFloat = 1,
+        pulse: Pulse? = nil,
     ) {
         precondition(points.count >= 2, "A LightPath needs at least two points")
         self.points = points
@@ -57,6 +75,7 @@ nonisolated struct LightPath: Equatable, Sendable {
         self.progress = progress
         self.dispersion = dispersion
         self.spotScale = spotScale
+        self.pulse = pulse
     }
 
     /// The ray's three points, start, bend, and end, as one path.

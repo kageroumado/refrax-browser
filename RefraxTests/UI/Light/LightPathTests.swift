@@ -81,6 +81,18 @@ struct LightPathTests {
         #expect(Array(data[segments + 8 ..< segments + 16]) == [30, 0, 30, 40, 30, 40, 0, 1])
     }
 
+    @Test func `packing writes the pulse in points along the path and leaves it off otherwise`() {
+        var path = LightPath(points: [CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 0), CGPoint(x: 30, y: 40)], color: violet)
+        let record = LightPacking.headerLength
+        let even = LightPacking.pack([path])
+        #expect(even[record + 20] == 0 && even[record + 21] == 0 && even[record + 22] == 0)
+        path.pulse = LightPath.Pulse(position: 0.5, width: 0.1, gain: 1.5)
+        let pulsed = LightPacking.pack([path])
+        #expect(pulsed[record + 20] == 35, "the center is half of the 70 pt length")
+        #expect(pulsed[record + 21] == 7)
+        #expect(pulsed[record + 22] == 1.5)
+    }
+
     @Test func `packing keeps whole paths up to the segment cap`() {
         let short = LightPath(points: [.zero, CGPoint(x: 1, y: 0)], color: violet)
         let long = LightPath(points: (0 ... 30).map { CGPoint(x: CGFloat($0), y: 0) }, color: violet)
