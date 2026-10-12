@@ -1,0 +1,90 @@
+import AppKit
+import Testing
+@testable import Refrax
+
+@MainActor
+struct ControlIslandInteractionTests {
+    private let area = CGRect(x: 0, y: 0, width: 900, height: 650)
+
+    @Test(arguments: [0.0, 0.5, 1.0], [0.0, 0.5, 1.0])
+    func `unfolding preserves its anchor and stays within the window`(x: Double, y: Double) {
+        let placement = ControlIslandPlacement(x: x, y: y)
+        let hub = placement.railFrame(in: area, height: ControlIslandPlacement.railWidth)
+        let panel = placement.buttonPanelFrame(in: area, height: 520)
+        let page = placement.pageBranchFrame(in: area, anchor: hub, height: 40)
+        #expect(area.contains(panel))
+        #expect(area.contains(page))
+        #expect(hub.intersects(panel) == false)
+        #expect(hub.intersects(page) == false)
+        #expect(panel.intersects(page) == false)
+        #expect(panel.minX == hub.minX)
+    }
+
+    @Test
+    func `magnetic placement attracts nearby edges and preserves free placement`() {
+        let corner = ControlIslandPlacement(x: 0.01, y: 0.01).snapped(in: area, height: 48)
+        #expect(corner == ControlIslandPlacement(x: 0, y: 0))
+        let edge = ControlIslandPlacement(x: 0.99, y: 0.51).snapped(in: area, height: 48)
+        #expect(edge == ControlIslandPlacement(x: 1, y: 0.5))
+        let free = ControlIslandPlacement(x: 0.4, y: 0.4)
+        #expect(free.snapped(in: area, height: 48) == free)
+    }
+
+    @Test
+    func `diagonal travel keeps the destination open without claiming surrounding page space`() {
+        let origin = CGPoint(x: 20, y: 20)
+        let target = CGRect(x: 100, y: 100, width: 80, height: 40)
+        #expect(ControlIslandHoverPath.bridges(CGPoint(x: 60, y: 60), from: origin, to: target))
+        #expect(ControlIslandHoverPath.bridges(CGPoint(x: 25, y: 120), from: origin, to: target) == false)
+        #expect(ControlIslandHoverPath.bridges(CGPoint(x: 300, y: 20), from: origin, to: target) == false)
+    }
+
+    @Test
+    func `hover grace expires when the pointer parks between branches`() {
+        var path = ControlIslandHoverPath()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let regions = [CGRect(x: 0, y: 0, width: 48, height: 48), CGRect(x: 100, y: 100, width: 80, height: 40)]
+        let inside = path.contains(CGPoint(x: 20, y: 20), regions: regions, now: start)
+        let crossing = path.contains(CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(0.2))
+        let expired = path.contains(CGPoint(x: 60, y: 60), regions: regions, now: start.addingTimeInterval(1))
+        let arrived = path.contains(CGPoint(x: 120, y: 120), regions: regions, now: start.addingTimeInterval(2))
+        #expect(inside)
+        #expect(crossing)
+        #expect(expired == false)
+        #expect(arrived)
+    }
+
+    @Test
+    func `avoidance chooses a nearby clear place and leaves partial overlaps stable`() throws {
+        let frame = CGRect(x: 100, y: 100, width: 48, height: 48)
+        let origin = try #require(ControlIslandAvoidance.proposedOrigin(for: frame, in: area, obstacles: [frame]))
+        let moved = CGRect(origin: origin, size: frame.size)
+        #expect(moved.intersects(frame) == false)
+        #expect(area.contains(moved))
+        #expect(hypot(origin.x - frame.minX, origin.y - frame.minY) <= 160)
+        let broadButton = CGRect(x: 100, y: 100, width: 300, height: 48)
+        #expect(ControlIslandAvoidance.proposedOrigin(for: frame, in: area, obstacles: [broadButton]) == nil)
+    }
+
+    @Test
+    func `avoidance stays still when every nearby destination is occupied`() {
+        let frame = CGRect(x: 100, y: 100, width: 48, height: 48)
+        #expect(ControlIslandAvoidance.proposedOrigin(for: frame, in: area, obstacles: [frame, area]) == nil)
+    }
+
+    @Test
+    func `panel defaults and placement preferences survive a restart`() throws {
+        let name = "ControlIslandInteractionTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let config = ControlIslandConfiguration(defaults: defaults)
+        let state = ControlIslandState(defaults: defaults, configuration: config)
+        #expect(state.mode == .rail)
+        state.mode = .button
+        config.apply(config.items, optionDragTarget: .window, avoidsPageControls: false)
+        let restored = ControlIslandConfiguration(defaults: defaults)
+        #expect(restored.avoidsPageControls == false)
+        #expect(restored.optionDragTarget == .window)
+        #expect(ControlIslandState(defaults: defaults, configuration: restored).mode == .button)
+    }
+}

@@ -7,9 +7,11 @@ final class ControlIslandConfiguration {
     static let shared = ControlIslandConfiguration(defaults: .standard)
     static let storageKey = "controlIsland.items"
     static let dragTargetKey = "controlIsland.optionDragTarget"
+    static let avoidanceKey = "controlIsland.avoidsPageControls"
 
     private(set) var items: [ControlIslandItemPreference]
     private(set) var optionDragTarget: ControlIslandDragTarget
+    private(set) var avoidsPageControls: Bool
     @ObservationIgnored private let defaults: UserDefaults?
 
     static var defaultItems: [ControlIslandItemPreference] {
@@ -18,6 +20,7 @@ final class ControlIslandConfiguration {
 
     init(defaults: UserDefaults?) {
         self.defaults = defaults
+        avoidsPageControls = defaults?.object(forKey: Self.avoidanceKey) as? Bool ?? true
         optionDragTarget = defaults?.string(forKey: Self.dragTargetKey)
             .flatMap(ControlIslandDragTarget.init(rawValue:)) ?? .panel
         let records = defaults?.data(forKey: Self.storageKey)
@@ -31,9 +34,11 @@ final class ControlIslandConfiguration {
         items.filter(\.isVisible).map(\.item)
     }
 
-    func apply(_ items: [ControlIslandItemPreference], optionDragTarget: ControlIslandDragTarget = .panel) {
+    func apply(_ items: [ControlIslandItemPreference], optionDragTarget: ControlIslandDragTarget = .panel, avoidsPageControls: Bool = true) {
         self.items = Self.normalized(items)
         self.optionDragTarget = optionDragTarget
+        self.avoidsPageControls = avoidsPageControls
+        defaults?.set(avoidsPageControls, forKey: Self.avoidanceKey)
         defaults?.set(optionDragTarget.rawValue, forKey: Self.dragTargetKey)
         let records = self.items.map { StoredItem(id: $0.item.rawValue, isVisible: $0.isVisible) }
         guard let data = try? JSONEncoder().encode(records) else { return }

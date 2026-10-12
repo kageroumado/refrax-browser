@@ -13,9 +13,17 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
         guard window != nil else { return }
-        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
+        window?.acceptsMouseMovedEvents = true
+        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
             guard let self, event.window === window else { return event }
             let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
+            if event.type == .mouseMoved {
+                if let state = controlState?() {
+                    state.lastPointerMovement = Date()
+                    state.pointerMoved?(point)
+                }
+                return event
+            }
             if event.type == .leftMouseDown { onPointerDown?(point) }
             guard let state = controlState?(),
                   !state.isPresenting, !state.hitRegions.isEmpty else { return event }

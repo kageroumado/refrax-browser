@@ -12,11 +12,6 @@ struct ControlIslandLayer: View {
             if canvas.showsFloatingControls {
                 if let selection = canvas.regionSelection {
                     FloatingRegionSelector(selection: selection)
-                } else if windowState.controlIsland.mode == .marks {
-                    ZStack(alignment: .topLeading) {
-                        BrowserMarks(area: CGRect(origin: .zero, size: geometry.size))
-                        BrowserFavoriteGroup(area: CGRect(origin: .zero, size: geometry.size))
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     ControlIsland(area: CGRect(origin: .zero, size: geometry.size))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

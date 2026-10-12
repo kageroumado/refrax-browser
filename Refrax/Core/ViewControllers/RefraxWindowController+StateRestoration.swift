@@ -18,8 +18,6 @@ extension RefraxWindowController {
     ///
     /// - Reference tabs → Per-space in SwiftData
     func encodeWindowState(to state: NSCoder) {
-        let controls = [windowState.controlIsland.markPlacement, windowState.controlIsland.favoritePlacement]
-        if let data = try? JSONEncoder().encode(controls) { state.encode(data as NSData, forKey: "spatialControls") }
         if let data = try? JSONEncoder().encode(windowState.readingState) {
             state.encode(data as NSData, forKey: "readingState")
         }
@@ -74,11 +72,6 @@ extension RefraxWindowController {
     func decodeWindowState(from state: NSCoder) {
         isRestoringState = true
         defer { isRestoringState = false }
-        if let data = state.decodeObject(of: NSData.self, forKey: "spatialControls") as Data?,
-           let controls = try? JSONDecoder().decode([ControlIslandPlacement].self, from: data), controls.count == 2 {
-            windowState.controlIsland.markPlacement = controls[0]
-            windowState.controlIsland.favoritePlacement = controls[1]
-        }
         if let data = state.decodeObject(of: NSData.self, forKey: "readingState") as Data? {
             restoredReadingState = try? JSONDecoder().decode(WindowReadingState.self, from: data)
         }

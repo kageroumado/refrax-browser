@@ -24,6 +24,14 @@ enum FloatingRevealKey: String, CaseIterable {
         }
     }
 
+    var glyph: String {
+        switch self {
+        case .control: "⌃"
+        case .option: "⌥"
+        case .command: "⌘"
+        }
+    }
+
     var cgFlag: CGEventFlags {
         switch self {
         case .control: .maskControl

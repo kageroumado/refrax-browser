@@ -5,6 +5,7 @@ struct ControlIslandMenu: View {
     @Binding var showsFavorites: Bool
 
     @Environment(WindowState.self) private var windowState
+    @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.appearsActive) private var appearsActive
 
     var body: some View {
@@ -13,6 +14,7 @@ struct ControlIslandMenu: View {
                 windowState.controlIsland.tabInfo.show()
             }
             Divider()
+            Button("Unplaced Tabs (\(canvas.unplacedFloatingTabs.count))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
             Button("Favorites…", systemImage: "star") { showsFavorites = true }
             Divider()
             Button("History", systemImage: "clock") { windowState.showDetailTray(.history) }

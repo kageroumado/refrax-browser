@@ -6,10 +6,11 @@ struct ControlIslandCustomizationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var items: [ControlIslandItemPreference]
     @State private var optionDragTarget: ControlIslandDragTarget
+    @State private var avoidsPageControls: Bool
 
     private enum Layout {
         static let width: CGFloat = 480
-        static let height: CGFloat = 560
+        static let height: CGFloat = 610
         static let padding: CGFloat = 20
     }
 
@@ -17,6 +18,7 @@ struct ControlIslandCustomizationSheet: View {
         self.configuration = configuration
         _items = State(initialValue: configuration.items)
         _optionDragTarget = State(initialValue: configuration.optionDragTarget)
+        _avoidsPageControls = State(initialValue: configuration.avoidsPageControls)
     }
 
     var body: some View {
@@ -46,6 +48,8 @@ struct ControlIslandCustomizationSheet: View {
             .listStyle(.inset)
 
             VStack(alignment: .leading, spacing: 16) {
+                Toggle("Move aside when covering a page control", isOn: $avoidsPageControls)
+                    .help("Makes a small adjustment after a page loads, while the pointer is away")
                 Picker("Option-drag moves", selection: $optionDragTarget) {
                     ForEach(ControlIslandDragTarget.allCases, id: \.self) { target in
                         Text(target.title).tag(target)
@@ -58,12 +62,13 @@ struct ControlIslandCustomizationSheet: View {
                     Button("Restore Defaults") {
                         items = ControlIslandConfiguration.defaultItems
                         optionDragTarget = .panel
+                        avoidsPageControls = true
                     }
                     Spacer()
                     Button("Cancel", role: .cancel) { dismiss() }
                         .keyboardShortcut(.cancelAction)
                     Button("Done") {
-                        configuration.apply(items, optionDragTarget: optionDragTarget)
+                        configuration.apply(items, optionDragTarget: optionDragTarget, avoidsPageControls: avoidsPageControls)
                         dismiss()
                     }
                     .keyboardShortcut(.defaultAction)

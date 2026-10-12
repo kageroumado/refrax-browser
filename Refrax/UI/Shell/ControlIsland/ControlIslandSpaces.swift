@@ -8,6 +8,7 @@ struct ControlIslandSpaces: View {
     @Environment(WindowState.self) private var windowState
     @Environment(SpaceManager.self) private var spaces
     @Environment(TabSwitcherManager.self) private var tabSwitcher
+    @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.appearsActive) private var appearsActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -83,10 +84,14 @@ struct ControlIslandSpaces: View {
     private func spaceButton(_ space: Space) -> some View {
         let selected = space.id == windowState.activeSpaceID
         return Button {
+            guard !selected else { return }
             tabSwitcher.cancel()
             windowState.closeCommandLens()
+            windowState.pageVisit.end()
             Task.immediate(name: "Switch control island space") {
+                if canvas.floatingVisibility.isRevealed { canvas.spaceToReveal = space.id }
                 await spaces.switchToSpace(space, for: windowState)
+                if windowState.activeSpaceID != space.id { canvas.spaceToReveal = nil }
             }
         } label: {
             Group {

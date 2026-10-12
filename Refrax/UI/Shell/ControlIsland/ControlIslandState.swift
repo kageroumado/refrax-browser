@@ -5,20 +5,17 @@ import Observation
 @Observable
 final class ControlIslandState {
     enum Mode: String, CaseIterable {
-        case marks, rail, button
+        case rail, button
 
         var title: String {
             switch self {
-            case .marks: "Page and space marks"
             case .rail: "Icon rail"
-            case .button: "Single button"
+            case .button: "Unfolding button"
             }
         }
     }
 
     var placement: ControlIslandPlacement
-    var markPlacement = ControlIslandPlacement(x: 0, y: 0)
-    var favoritePlacement = ControlIslandPlacement(x: 1, y: 0.15)
     let configuration: ControlIslandConfiguration
     let tabInfo = ControlIslandTabInfoState()
     var showsCustomization = false
@@ -35,12 +32,9 @@ final class ControlIslandState {
     var focusRequest = 0
     var dismissalRequest = 0
     var pageFocusRequest = 0
-    private var controlHitRegions: [CGRect] = []
-    var favoriteHitRegions: [CGRect] = []
-    var hitRegions: [CGRect] {
-        get { controlHitRegions + favoriteHitRegions }
-        set { controlHitRegions = newValue }
-    }
+    var hitRegions: [CGRect] = []
+    @ObservationIgnored var pointerMoved: ((CGPoint) -> Void)?
+    @ObservationIgnored var lastPointerMovement = Date.distantPast
 
     @ObservationIgnored private let defaults: UserDefaults?
     private static let placementKey = "controlIsland.placement"
@@ -50,7 +44,7 @@ final class ControlIslandState {
         self.defaults = defaults
         self.configuration = configuration
         let savedMode = defaults?.string(forKey: Self.modeKey).flatMap(Mode.init(rawValue:))
-        self.mode = savedMode == .marks ? .rail : savedMode ?? .rail
+        self.mode = savedMode ?? .rail
         self.placement = defaults?.data(forKey: Self.placementKey)
             .flatMap { try? JSONDecoder().decode(ControlIslandPlacement.self, from: $0) } ?? .init()
     }

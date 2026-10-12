@@ -75,7 +75,7 @@ struct ControlIslandTests {
         let small = CGRect(x: 0, y: 0, width: 650, height: 400)
         let rail = placement.railFrame(in: small, height: 500)
         #expect(small.contains(rail))
-        #expect(small.contains(placement.addressFrame(in: small, island: rail)))
+        #expect(small.contains(placement.pageBranchFrame(in: small, anchor: rail, height: 40)))
         #expect(placement == saved)
     }
 
@@ -99,11 +99,11 @@ struct ControlIslandTests {
     }
 
     @Test
-    func `address disclosure aligns to its measured row`() {
+    func `page controls share the panel leading edge`() {
         let placement = ControlIslandPlacement()
         let panel = placement.railFrame(in: area, height: 500)
-        let address = placement.addressFrame(in: area, island: panel, rowMidY: 380)
-        #expect(address.midY == 380)
+        let address = placement.pageBranchFrame(in: area, anchor: panel, height: 40)
+        #expect(address.minY == panel.minY)
     }
 
     @Test @MainActor

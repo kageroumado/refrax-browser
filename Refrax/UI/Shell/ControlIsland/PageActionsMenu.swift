@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The same actions accompany a page's mark, footprint, and live preview.
+/// Page actions shared by the control panel and spatial tabs.
 struct PageActionsMenu: View {
     let tab: Tab
     let area: CGRect

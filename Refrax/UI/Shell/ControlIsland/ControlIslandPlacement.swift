@@ -16,9 +16,10 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let cornerRadius: CGFloat = 24
     static let maximumVisibleSpaces = 4
     static let spaceRowHeight = contentWidth
-    static let addressSize = CGSize(width: 300, height: 36)
-    static let tabInfoSize = CGSize(width: 304, height: 124)
-    private static let adjacentGap: CGFloat = 8
+    static let pageBranchWidth: CGFloat = 416
+    static let pageBranchHeight: CGFloat = 40
+    static let adjacentGap: CGFloat = 8
+    static let magnetDistance: CGFloat = 24
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
@@ -38,51 +39,40 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     func buttonPanelFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
         let button = railFrame(in: bounds, height: Self.railWidth)
-        let width = min(Self.railWidth, max(1, area.width - Self.railWidth - Self.contentInset))
-        let panelHeight = min(height, max(1, area.height))
-        let proposedX = opensLeft(in: bounds)
-            ? button.minX - Self.contentInset - width : button.maxX + Self.contentInset
+        let below = max(0, area.maxY - button.maxY - Self.adjacentGap)
+        let above = max(0, button.minY - area.minY - Self.adjacentGap)
+        let opensDown = below >= above
+        let panelHeight = min(height, max(1, max(below, above)))
         return CGRect(
-            x: min(max(proposedX, area.minX), area.maxX - width),
-            y: min(max(button.midY - panelHeight / 2, area.minY), area.maxY - panelHeight),
-            width: width, height: panelHeight,
+            x: button.minX,
+            y: opensDown ? button.maxY + Self.adjacentGap : button.minY - Self.adjacentGap - panelHeight,
+            width: button.width, height: panelHeight,
         )
     }
 
-    func addressFrame(in bounds: CGRect, island: CGRect, rowMidY: CGFloat? = nil) -> CGRect {
-        adjacentFrame(size: Self.addressSize, in: bounds, island: island, rowMidY: rowMidY)
+    func pageBranchFrame(in bounds: CGRect, anchor: CGRect, height: CGFloat) -> CGRect {
+        let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
+        let left = max(1, anchor.minX - Self.adjacentGap - area.minX)
+        let right = max(1, area.maxX - anchor.maxX - Self.adjacentGap)
+        let opensRight = right >= left
+        let width = min(Self.pageBranchWidth, max(left, right))
+        return CGRect(x: opensRight ? anchor.maxX + Self.adjacentGap : anchor.minX - Self.adjacentGap - width,
+                      y: min(max(anchor.minY, area.minY), max(area.minY, area.maxY - height)),
+                      width: width, height: min(height, area.height))
     }
 
-    func tabInfoFrame(in bounds: CGRect, island: CGRect) -> CGRect {
+    /// Nearby window edges and edge midpoints become stable resting places.
+    func snapped(in bounds: CGRect, height: CGFloat) -> Self {
+        let frame = railFrame(in: bounds, height: height)
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
-        let availableWidth = max(island.minX - area.minX, area.maxX - island.maxX) - Self.adjacentGap
-        let size = CGSize(width: min(Self.tabInfoSize.width, max(1, availableWidth)), height: Self.tabInfoSize.height)
-        return adjacentFrame(size: size, in: bounds, island: island, rowMidY: island.minY + size.height / 2)
-    }
-
-    private func adjacentFrame(size: CGSize, in bounds: CGRect, island: CGRect, rowMidY: CGFloat?) -> CGRect {
-        let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
-        let width = min(size.width, max(1, area.width))
-        let gap = Self.adjacentGap
-        let x: CGFloat
-        let y: CGFloat
-        if island.maxX + gap + width <= area.maxX {
-            x = island.maxX + gap
-            y = (rowMidY ?? island.midY) - size.height / 2
-        } else if island.minX - gap - width >= area.minX {
-            x = island.minX - gap - width
-            y = (rowMidY ?? island.midY) - size.height / 2
-        } else {
-            x = min(max(island.midX - width / 2, area.minX), area.maxX - width)
-            y = island.minY - gap - size.height >= area.minY
-                ? island.minY - gap - size.height : island.maxY + gap
-        }
-        return CGRect(
-            x: x,
-            y: min(max(y, area.minY), max(area.minY, area.maxY - size.height)),
-            width: width,
-            height: size.height,
-        )
+        var result = self
+        if frame.minX - area.minX < Self.magnetDistance { result.x = 0 }
+        else if area.maxX - frame.maxX < Self.magnetDistance { result.x = 1 }
+        if frame.minY - area.minY < Self.magnetDistance { result.y = 0 }
+        else if area.maxY - frame.maxY < Self.magnetDistance { result.y = 1 }
+        if result.x == 0 || result.x == 1, abs(frame.midY - area.midY) < Self.magnetDistance { result.y = 0.5 }
+        if result.y == 0 || result.y == 1, abs(frame.midX - area.midX) < Self.magnetDistance { result.x = 0.5 }
+        return result
     }
 
     mutating func move(to origin: CGPoint, in bounds: CGRect, height: CGFloat) {

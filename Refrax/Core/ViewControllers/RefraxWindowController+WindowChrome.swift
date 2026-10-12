@@ -86,10 +86,10 @@ extension RefraxWindowController {
     ///   - animated: Whether to use animator (for spring/linear animations)
     func applyTrafficLightVisibility(_ progress: CGFloat, animated: Bool = false) {
         for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            window?.standardWindowButton(type)?.isHidden = windowState.usesFloatingTabs && windowState.controlIsland.mode != .marks
+            window?.standardWindowButton(type)?.isHidden = windowState.usesFloatingTabs
         }
         if windowState.usesFloatingTabs {
-            themeFrame?.buttonRevealAmount = windowState.controlIsland.mode == .marks ? 1 : 0
+            themeFrame?.buttonRevealAmount = 0
             return
         }
         guard let themeFrame else { return }

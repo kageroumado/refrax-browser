@@ -95,7 +95,7 @@ struct ControlIslandTabInfoTests {
         let bounds = CGRect(x: 0, y: 0, width: 650, height: 400)
         let placement = ControlIslandPlacement(x: point.x, y: point.y)
         let rail = placement.railFrame(in: bounds, height: 500)
-        let card = placement.tabInfoFrame(in: bounds, island: rail)
+        let card = placement.pageBranchFrame(in: bounds, anchor: rail, height: 40)
         #expect(bounds.contains(card))
         #expect(!card.intersects(rail))
     }

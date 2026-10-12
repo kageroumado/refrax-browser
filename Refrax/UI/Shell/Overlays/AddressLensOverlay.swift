@@ -90,7 +90,7 @@ struct AddressLensOverlay: View {
 
     private func lensWidth(in size: CGSize) -> CGFloat {
         guard windowState.usesFloatingTabs else { return currentWidth }
-        let preferred = isExpanded ? 640.0 : ControlIslandPlacement.addressSize.width
+        let preferred = isExpanded ? 640.0 : ControlIslandPlacement.pageBranchWidth
         return min(preferred, max(1, size.width - 40))
     }
 
