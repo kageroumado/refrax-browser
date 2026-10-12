@@ -78,8 +78,8 @@ private struct MenuKeyShortcut: ViewModifier {
 }
 
 private extension NSEvent.ModifierFlags {
-    var eventModifiers: EventModifiers {
-        var modifiers: EventModifiers = []
+    var eventModifiers: SwiftUI.EventModifiers {
+        var modifiers: SwiftUI.EventModifiers = []
         if contains(.command) { modifiers.insert(.command) }
         if contains(.shift) { modifiers.insert(.shift) }
         if contains(.option) { modifiers.insert(.option) }

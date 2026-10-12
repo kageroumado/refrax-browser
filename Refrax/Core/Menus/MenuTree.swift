@@ -31,7 +31,7 @@ nonisolated struct MenuTree: Sendable {
 
     /// Top-level action and submenu identities, in order.
     var ids: [String] {
-        sections.flatMap { $0.nodes.map(\.id) }
+        sections.flatMap { $0.nodes.map { $0.id } }
     }
 
     /// One line per row, `"——"` between sections, a submenu as `"Title ▸ (n)"` followed by its rows
@@ -58,7 +58,7 @@ nonisolated struct MenuTree: Sendable {
     }
 }
 
-extension MenuTree.Node {
+nonisolated extension MenuTree.Node {
     var id: String {
         switch self {
         case let .action(action): action.id
