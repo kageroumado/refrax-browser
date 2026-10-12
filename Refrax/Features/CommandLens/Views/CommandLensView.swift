@@ -4,6 +4,7 @@ import SwiftUI
 struct CommandLensView: View {
     @Environment(CommandLensManager.self) private var manager
     @Environment(WindowState.self) private var windowState
+    @Environment(FloatingTourManager.self) private var tour
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.commandLensIsSmall) private var isSmallMode
 
@@ -60,6 +61,10 @@ struct CommandLensView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.isCreatingReferenceTab)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.layoutModeTargetPosition)
         .task { await onAppear() }
+        .task(id: tour.requestedPage) {
+            guard !isSmallMode, manager.inputText.isEmpty else { return }
+            await manager.showStandingSuggestions()
+        }
         .onChange(of: manager.inputText) { _, newValue in
             if !newValue.isEmpty { cancelAutoShowButtonsTimer() }
         }
