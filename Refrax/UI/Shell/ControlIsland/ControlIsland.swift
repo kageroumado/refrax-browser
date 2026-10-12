@@ -321,6 +321,7 @@ struct ControlIsland: View {
                 canvas.toggleFloatingTabs()
                 showsShortcut = canvas.floatingVisibility.isRevealed
             }
+            .overlay(alignment: .bottomTrailing) { unplacedBadge }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
             .help("Show tabs · Hold \(revealKey.title) to peek")
         case .recentTabs:
@@ -495,6 +496,22 @@ struct ControlIsland: View {
     private func dismissTransientOverlays() {
         windowState.closeCommandLens()
         tabSwitcher.cancel()
+    }
+
+    /// How many pages wait without a place of their own, in the corner of the tab control.
+    @ViewBuilder
+    private var unplacedBadge: some View {
+        let count = canvas.unplacedFloatingTabs.count
+        if count > 0 {
+            Text(count, format: .number)
+                .font(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(isResting || !appearsActive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .padding(.trailing, Layout.badgeInset)
+                .padding(.bottom, Layout.badgeInset)
+                .allowsHitTesting(false)
+                .accessibilityLabel("\(count) unplaced tabs")
+        }
     }
 
     private func control(_ title: String, symbol: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {

@@ -23,6 +23,27 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         )
     }
 
+    /// The places a tab starts at before anyone moves it: the window's four corners.
+    static let startingSlotCount = 4
+
+    /// The starting slot whose card would cover none of `occupied`, nearest to `anchor`;
+    /// without an anchor, the first free slot in grid order.
+    static func freeStartingSlot(
+        nearest anchor: CGPoint?, avoiding occupied: [FloatingTabPlacement], in bounds: CGRect, isCompact: Bool,
+    ) -> FloatingTabPlacement? {
+        let taken = occupied.map { $0.frame(in: bounds) }
+        let free = (0 ..< startingSlotCount).map { initial(index: $0, count: startingSlotCount, isCompact: isCompact) }
+            .filter { slot in
+                let frame = slot.frame(in: bounds)
+                return !taken.contains { $0.intersects(frame) }
+            }
+        guard let anchor else { return free.first }
+        return free.min { lhs, rhs in
+            let a = lhs.frame(in: bounds), b = rhs.frame(in: bounds)
+            return hypot(a.midX - anchor.x, a.midY - anchor.y) < hypot(b.midX - anchor.x, b.midY - anchor.y)
+        }
+    }
+
     static let headerHeight: CGFloat = 34
     static let previewInset: CGFloat = 6
 

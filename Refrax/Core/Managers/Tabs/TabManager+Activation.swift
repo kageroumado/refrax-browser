@@ -48,6 +48,13 @@ extension TabManager {
         // Update window state (handles both live favorites and space tabs)
         windowState.setActiveTab(tab)
 
+        // A page the person was on, pushed out by another, is handed to the floating layer.
+        // Look visits, returns, and a page changing identity leave the layer quiet.
+        if !preservingVisit, !windowState.pageVisit.isTransformingIdentity,
+           let previousTabID, previousTabID != tab.id, let previous = state.tab(for: previousTabID) {
+            windowState.tabDisplacedHandler?(previous)
+        }
+
         tab.updateLastAccessed()
         tab.isUnread = false
         tab.unreadFromBadge = false

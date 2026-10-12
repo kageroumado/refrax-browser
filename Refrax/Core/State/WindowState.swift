@@ -471,6 +471,12 @@ final class WindowState {
     /// Used to position the address lens overlay aligned with the address bar.
     var addressBarFrame: CGRect = .zero
 
+    /// Frame of the Command Lens capsule in global coordinates, kept current by its overlay while the lens is up.
+    var commandLensFrame: CGRect = .zero
+
+    /// Receives the tab that stopped filling the window when another took its place.
+    @ObservationIgnored var tabDisplacedHandler: ((Tab) -> Void)?
+
     /// The empty page hosts Command Lens itself; each request refocuses that lens.
     var startPageLensRequest = 0
 

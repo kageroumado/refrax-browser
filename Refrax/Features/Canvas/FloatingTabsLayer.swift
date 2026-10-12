@@ -67,6 +67,12 @@ struct FloatingTabsLayer: View {
                         .frame(width: frame.width, height: frame.height)
                         .offset(x: frame.minX, y: frame.minY)
                 }
+                if let request = canvas.rayRequest, let tab = canvas.floatingTabs.first(where: { $0.id == request.tabID }) {
+                    FloatingRayView(path: FloatingRayPath(from: request.source, to: canvas.floatingFrame(for: tab, in: bounds), in: bounds)) {
+                        canvas.finishRay(request.revision)
+                    }
+                    .id(request.revision)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "floatingTabs")

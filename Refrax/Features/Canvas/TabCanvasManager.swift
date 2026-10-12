@@ -150,6 +150,49 @@ final class TabCanvasManager {
     var menuTabID: Tab.ID?
     var selectedFloatingTabIDs: Set<Tab.ID> = []
 
+    /// The ray the layer draws toward a page that just left the window.
+    private(set) var rayRequest: FloatingRayRequest?
+    @ObservationIgnored private var rayRevision = 0
+
+    /// Gives a page that stopped filling the window a starting place and asks the
+    /// layer to point at it. Pages that already have a place, favorites, pages from
+    /// other spaces, and Look visits keep the layer quiet.
+    func tabDisplaced(_ tab: Tab) {
+        guard showsFloatingControls, !tab.isLiveFavorite, !tab.isArchived,
+              tab.space?.id == windowState.activeSpaceID, tab.id != windowState.activeTabID,
+              windowState.pageVisit.destination == nil,
+              storedFloatingPlacement(for: tab) == nil else { return }
+        let area = floatingArea
+        let source = raySource
+        let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
+        guard let placement = FloatingTabPlacement.freeStartingSlot(
+            nearest: source.isEmpty ? nil : CGPoint(x: source.midX, y: source.midY), avoiding: occupied, in: area,
+            isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+        ) else { return }
+        updateFloatingPlacement(placement, for: tab)
+        rayRevision += 1
+        rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
+    }
+
+    /// Clears the ray once the layer has finished drawing that revision.
+    func finishRay(_ revision: Int) {
+        guard rayRequest?.revision == revision else { return }
+        rayRequest = nil
+    }
+
+    /// The control the ray leaves from: the lens while it is up, else the page card, else the rail.
+    private var raySource: CGRect {
+        if windowState.showsCommandLens, !windowState.commandLensFrame.isEmpty { return windowState.commandLensFrame }
+        if !windowState.addressBarFrame.isEmpty { return windowState.addressBarFrame }
+        return windowState.controlIsland.hitRegions.first ?? .zero
+    }
+
+    /// The window area floating tabs are placed in, in the layer's coordinates.
+    private var floatingArea: CGRect {
+        guard let bounds = windowState.window?.contentView?.bounds, !bounds.isEmpty else { return Layout.nominalFloatingArea }
+        return CGRect(origin: .zero, size: bounds.size)
+    }
+
     var floatingTabs: [Tab] {
         _ = tabManager.state.tabListVersion
         let retained = tabManager.state.spaces.filter {
@@ -313,10 +356,14 @@ final class TabCanvasManager {
         for tab in floatingTabs where windowState.floatingPlacements[tab.id] == nil {
             if let placement = storedFloatingPlacement(for: tab) { windowState.floatingPlacements[tab.id] = placement }
         }
-        let unplaced = unplacedFloatingTabs
-        let placed = floatingTabs.filter { storedFloatingPlacement(for: $0) != nil }
-        for (index, tab) in unplaced.prefix(max(0, 4 - placed.count)).enumerated() {
-            updateFloatingPlacement(.initial(index: placed.count + index, count: 4, isCompact: tab.boardFrame == nil || tab.boardIsCompact), for: tab)
+        let area = floatingArea
+        var occupied = floatingTabs.compactMap { storedFloatingPlacement(for: $0) }
+        for tab in unplacedFloatingTabs {
+            guard let placement = FloatingTabPlacement.freeStartingSlot(
+                nearest: nil, avoiding: occupied, in: area, isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+            ) else { break }
+            updateFloatingPlacement(placement, for: tab)
+            occupied.append(placement)
         }
         tabManager.state.scheduleSave()
     }
@@ -430,6 +477,8 @@ final class TabCanvasManager {
         static let gap: CGFloat = 48
         /// Margin kept between the desk's edge and auto-placed tiles.
         static let deskInset: CGFloat = 120
+        /// Stands in for the window while a placement is chosen before the window has a size.
+        static let nominalFloatingArea = CGRect(x: 0, y: 0, width: 1_280, height: 800)
         /// Breathing room around the tiles when zoomed to fit everything.
         static let fitInset: CGFloat = 80
         /// Width of the snapshot image; the tile is scaled from this.
@@ -458,6 +507,7 @@ final class TabCanvasManager {
         self.pagePool = pagePool
         self.groupManager = groupManager
 
+        windowState.tabDisplacedHandler = { [weak self] tab in self?.tabDisplaced(tab) }
         startObservingActivation()
     }
 

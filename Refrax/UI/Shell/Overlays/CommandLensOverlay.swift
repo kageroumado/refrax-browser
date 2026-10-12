@@ -17,6 +17,7 @@ struct CommandLensOverlay: View {
                 VStack {
                     CommandLensView()
                         .frame(maxWidth: 640)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { windowState.commandLensFrame = $0 }
                         .padding(.horizontal, 20)
                         .padding(.top, 180)
 
