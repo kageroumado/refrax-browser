@@ -6,7 +6,7 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PageActionsMenuTests {
-    private struct Fixture {
+    @MainActor private struct Fixture {
         let env: TabManagerTestEnvironment
         let space: Space
         let window: WindowState
