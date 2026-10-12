@@ -240,7 +240,7 @@ final class ExtensionCommandHandler {
     func conflictsWithSystemShortcut(_ shortcut: CommandShortcut) -> Bool {
         let systemShortcuts: [(NSEvent.ModifierFlags, String)] = [
             (.command, "t"), // Cmd+T: Command lens
-            (.command, "l"), // Cmd+L: Address lens
+            (.command, "l"), // Cmd+L: edit the page address
             ([.command, .shift], "["), // Cmd+Shift+[: Previous tab
             ([.command, .shift], "]"), // Cmd+Shift+]: Next tab
             (.command, "w"), // Cmd+W: Close tab

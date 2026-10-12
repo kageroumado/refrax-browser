@@ -167,8 +167,36 @@ struct ControlIslandTests {
                                       pagePool: environment.pagePool, groupManager: environment.groupManager)
         state.openCommandLens()
         #expect(canvas.showsFloatingControls)
-        state.openAddressLens()
+        state.editAddress()
         #expect(canvas.showsFloatingControls)
+    }
+
+    @Test @MainActor
+    func `the grip adds one row of height only while it is shown`() {
+        let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .recentTabs, .desk, .spaces]
+        let resting = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0, showsGrip: false)
+        let awake = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0, showsGrip: true)
+        let rows = ControlIslandPlacement.rowHeight * 10
+        let gaps = ControlIslandPlacement.sectionGap * 3
+        let spaces = ControlIslandPlacement.spaceRowHeight * 2
+        #expect(resting == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces)
+        #expect(awake - resting == ControlIslandPlacement.gripRowHeight)
+        #expect(ControlIslandPlacement.gripRowHeight == 10)
+        #expect(ControlIslandPlacement.gripSize == CGSize(width: 18, height: 3))
+    }
+
+    @Test
+    func `the Option-drag chip shows once per install`() {
+        var hint = ControlIslandOptionDragHint(isExplained: false)
+        #expect(!hint.shouldShow(for: .idle))
+        #expect(!hint.shouldShow(for: .dragging(.panel)))
+        #expect(!hint.shouldShow(for: .unavailable))
+        #expect(hint.shouldShow(for: .ready(.panel)))
+        #expect(hint.isExplained)
+        #expect(!hint.shouldShow(for: .ready(.window)))
+        var explained = ControlIslandOptionDragHint(isExplained: true)
+        #expect(!explained.shouldShow(for: .ready(.panel)))
+        #expect(ControlIslandOptionDragHint.storageKey == "controlIsland.optionDragExplained")
     }
 
     @Test @MainActor

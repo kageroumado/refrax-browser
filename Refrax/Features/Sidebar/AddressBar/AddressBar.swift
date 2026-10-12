@@ -90,7 +90,7 @@ struct AddressBar: View {
     }
 
     private var isLensVisible: Bool {
-        addressBarContext?.isLensVisible ?? windowState.showsAddressLens
+        addressBarContext?.isLensVisible ?? windowState.showsAnchoredLens
     }
 
     /// Extensions to display in the page menu.
@@ -150,10 +150,8 @@ struct AddressBar: View {
             if let context = addressBarContext {
                 context.onOpenLens()
             } else if url != nil {
-                // Open address lens when there's an active page with a URL
-                windowState.openAddressLens()
+                windowState.editAddress()
             } else {
-                // Open command lens when no tab is selected
                 windowState.openCommandLens()
             }
         }

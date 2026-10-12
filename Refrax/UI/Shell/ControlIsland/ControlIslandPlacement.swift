@@ -26,6 +26,32 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     /// A pointer must rest on the rail this long before the page card unfolds.
     static let hoverSettle: TimeInterval = 0.45
     static let spaceTintOpacity: Double = 0.18
+    /// The handle under More that moves the controls with no modifier.
+    static let gripSize = CGSize(width: 18, height: 3)
+    static let gripRowHeight: CGFloat = 10
+    /// The "Drag to move" chip beside the hand, the first time Option is held over the rail.
+    static let dragHintSize = CGSize(width: 104, height: 28)
+
+    /// The rail's height: one row per action, three for the window controls, the space and
+    /// favorite columns at their own heights, a gap at each section edge, the content insets,
+    /// and the grip row while the grip is shown.
+    @MainActor
+    static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int, showsGrip: Bool) -> CGFloat {
+        let rowCount = items.reduce(1) { count, item in
+            switch item {
+            case .windowControls: count + 3
+            case .spaces, .favoriteTabs: count
+            default: count + 1
+            }
+        }
+        let separators = items.indices.filter { $0 > 0 && (items[$0].isGroup || items[$0 - 1].isGroup) }.count
+            + (items.last?.isGroup == true ? 1 : 0)
+        return contentInset * 2
+            + rowHeight * CGFloat(rowCount) + sectionGap * CGFloat(separators)
+            + (items.contains(.spaces) ? CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight : 0)
+            + (items.contains(.favoriteTabs) ? ControlIslandFavoriteTabs.height(for: favoriteCount) : 0)
+            + (showsGrip ? gripRowHeight : 0)
+    }
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)

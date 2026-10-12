@@ -1366,8 +1366,8 @@ final class RefraxControlServer {
         guard let windowState = windowManager.activeWindowController?.windowState else {
             return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
         }
-        windowState.openAddressLens()
-        return .ok("Address lens opened")
+        windowState.editAddress()
+        return .ok("Command lens opened with the page address")
     }
 
     // MARK: - Accessibility Tree (AX API)

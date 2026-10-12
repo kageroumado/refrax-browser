@@ -261,7 +261,8 @@ struct CommandLensView: View {
 
     private func onAppear() {
         if isSmallMode {
-            manager.inputText = windowState.focusedPage?.url.absoluteString ?? ""
+            manager.inputText = windowState.commandLensEntrance?.prefill
+                ?? windowState.focusedPage?.url.absoluteString ?? ""
             shouldSelectAll = true
         } else {
             startAutoShowButtonsTimer()
@@ -296,7 +297,6 @@ struct CommandLensView: View {
         } else {
             manager.reset()
             windowState.closeCommandLens()
-            windowState.closeAddressLens()
             windowState.closeReferencePaneLens()
         }
     }

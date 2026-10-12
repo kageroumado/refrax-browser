@@ -17,8 +17,8 @@ import SwiftUI
 /// ## Observation Isolation
 ///
 /// Each overlay is extracted to its own file to isolate observation scope:
-/// - `CommandLensOverlay` - Observes `showsCommandLens`
-/// - `AddressLensOverlay` - Observes `showsAddressLens`, `addressBarFrame`
+/// - `CommandLensOverlay` - Observes the lens entrance (centered)
+/// - `AnchoredLensOverlay` - Observes the lens entrance (beside the page card)
 /// - `ScreenshotPreviewOverlay` - Observes `screenshotCoordinator.currentPreview`
 /// - `RecordingPreviewOverlay` - Observes `recordingCoordinator.currentPreview`
 /// - `FloatingTourOverlay` - Observes the tour's current step and the frames it points at
@@ -41,7 +41,6 @@ struct OverlayContainer: View {
     /// The actual hit regions are handled by individual overlays.
     private var requiresHitTesting: Bool {
         windowState.showsCommandLens
-            || windowState.showsAddressLens
             || windowState.toastMessage != nil
             || windowState.pendingSearchEngineDetection != nil
             || tabSwitcherManager.isActive
@@ -68,11 +67,9 @@ struct OverlayContainer: View {
             // Compact sidebar address bar overlay
             CompactAddressBarOverlay()
 
-            // Command lens (Cmd+K)
+            // Command Lens, centered (⌘T) or beside the page card (⌘L)
             CommandLensOverlay()
-
-            // Address lens (click address bar)
-            AddressLensOverlay()
+            AnchoredLensOverlay()
 
             // Guided tour instruction bubble
             GuidedTourOverlay()

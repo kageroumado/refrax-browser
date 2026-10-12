@@ -95,7 +95,7 @@ final class FloatingTourManager {
 
     /// The page is dimmed while nothing else covers it. A lens draws its own cover.
     var dimsPage: Bool {
-        !windowState.showsCommandLens && !windowState.showsAddressLens
+        !windowState.showsCommandLens
     }
 
     // MARK: - Lifecycle

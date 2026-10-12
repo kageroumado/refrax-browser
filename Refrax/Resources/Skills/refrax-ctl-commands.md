@@ -228,7 +228,7 @@ refrax-ctl window minimize
 ## UI Controls
 
 ```bash
-refrax-ctl ui toggle sidebar|inspector|command-lens|address-lens
+refrax-ctl ui toggle sidebar|inspector|command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
 refrax-ctl ui ax-tree [--depth N] [--id IDENTIFIER]   # Dump accessibility tree
 refrax-ctl ui ax-click IDENTIFIER                      # Click by accessibility identifier
 refrax-ctl hotkey cmd,k                                # Simulate keyboard shortcut

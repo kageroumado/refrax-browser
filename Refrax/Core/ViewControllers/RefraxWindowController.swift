@@ -552,7 +552,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     /// Page gestures reach the canvas only over a page at its normal size, with no lens up.
     private func setupCanvasPageGestures(window: NSWindow) {
         canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager, floatingEligible: { [unowned self] in
-            !windowState.showsCommandLens && !windowState.showsAddressLens && !windowState.isSpaceLocked
+            !windowState.showsCommandLens && !windowState.isSpaceLocked
                 && !tabSwitcherManager.isActive && window.attachedSheet == nil
         }, floatingContains: { [unowned self] point in
             guard let content = window.contentView else { return false }
@@ -573,7 +573,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 return focused === page.contentView || focused.isDescendant(of: page.contentView)
             }
         }) { [unowned self] point in
-            guard !windowState.showsCommandLens, !windowState.showsAddressLens,
+            guard !windowState.showsCommandLens,
                   tabCanvasManager.isLivePageAtNormalSize,
                   let pageFrame = tabCanvasManager.currentLivePageFrame()
             else { return false }
@@ -584,7 +584,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     private func setupOverlayView(contentView: NSView) {
         let overlay = TransparentHostingView(rootView: OverlayContainer().refraxEnvironment(environment)) { [unowned self] in
             !windowState.showsCommandLens
-                && !windowState.showsAddressLens
                 && !tabSwitcherManager.isActive
                 && (!windowState.showsCompactAddressBar || windowState.usesFloatingTabs)
                 && windowState.lockedSpaceRequiringAuth == nil
@@ -885,9 +884,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         windowState.openCommandLens()
     }
 
-    /// Opens the address lens
-    func openAddressLens() {
-        windowState.openAddressLens()
+    /// Opens the Command Lens beside the page card with the address in it (⌘L).
+    func editAddress() {
+        windowState.editAddress()
     }
 
     /// Toggles the sidebar visibility.

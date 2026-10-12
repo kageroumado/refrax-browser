@@ -218,7 +218,7 @@ final class TabCanvasManager {
 
     var visibleFloatingTabs: [Tab] {
         guard !isActive, regionSelection == nil, !windowState.isSpaceLocked,
-              !windowState.showsCommandLens, !windowState.showsAddressLens else { return [] }
+              !windowState.showsCommandLens else { return [] }
         return floatingTabs.filter { tab in
             // The rail's page card is the current tab's place; a second card for it would float elsewhere.
             if showsFloatingControls, tab.id == windowState.activeTabID { return false }

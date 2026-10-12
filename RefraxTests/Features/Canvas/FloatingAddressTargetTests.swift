@@ -14,7 +14,7 @@ struct FloatingAddressTargetTests {
         let mainPage = try #require(env.pagePool.page(for: main.activePage))
         let previewPage = try #require(env.pagePool.page(for: preview.activePage))
         window.recordInteraction(with: preview.activePage.id)
-        window.openAddressLens()
+        window.editAddress()
         let manager = CommandLensManager(
             tabManager: env.tabManager, historyManager: env.historyManager, windowState: window,
             browserSettings: env.settings, siteSettingsManager: env.siteSettingsManager,
