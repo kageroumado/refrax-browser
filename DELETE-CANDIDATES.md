@@ -29,3 +29,17 @@ Looks dead; scope or origin unverified.
 - **Not deleted because**: removing a stored `@Model` property is a schema change
 - **To confirm**: decide whether agent chat needs an off switch; wire it or remove it with a schema migration
 - **Found**: 2026-09-25
+
+## `Refrax/Core/Views/RefraxContextMenu.swift:128-360` — `refraxEmptyAreaContextMenu(_:)`, `EmptyAreaContextMenuInterceptor`, `shouldShowEmptyAreaMenu()`, `isSwiftUIContentView(_:)`
+- **What**: the view modifier, its NSViewRepresentable interceptor, and the two depth-heuristic helpers it uses
+- **Looks dead because**: no callers anywhere in `Refrax/`; the context-menu study of 2026-10-12 (`Docs/plans/context-menu-architecture.md`) found the empty-area heuristic superseded by the per-site `.contextMenu` modifiers
+- **Not deleted because**: the context-menu rework will replace this file's DSL wholesale; deleting piecemeal first would conflict with that migration
+- **To confirm**: `rg 'refraxEmptyAreaContextMenu|EmptyAreaContextMenuInterceptor' ~/Developer/refrax`
+- **Found**: 2026-10-12
+
+## `Refrax/Core/Views/RefraxContextMenu.swift:564` — `MenuGroup`
+- **What**: a `MenuItemConvertible` grouping type
+- **Looks dead because**: never constructed; `PageActionsMenu` is the DSL's only consumer and uses `MenuItem`, `SubMenu`, `MenuDivider`
+- **Not deleted because**: same migration as above
+- **To confirm**: `rg 'MenuGroup' ~/Developer/refrax/Refrax`
+- **Found**: 2026-10-12
