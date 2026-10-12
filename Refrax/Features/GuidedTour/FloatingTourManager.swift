@@ -26,6 +26,15 @@ final class FloatingTourManager {
             }
         }
 
+        /// The tutorial page the step asks the lens to offer first, while the step asks for a page.
+        var requestedPage: FloatingTabsTutorial.Page? {
+            switch self {
+            case .openPage: .tripDraft
+            case .openSecondPage: .arrivalDetails
+            default: nil
+            }
+        }
+
         /// The number of steps completed when this step is current.
         var completedSteps: Int { rawValue }
     }
@@ -40,6 +49,9 @@ final class FloatingTourManager {
 
     /// The inline lens on the empty page, in window content coordinates, while that page is shown.
     var startPageLensFrame: CGRect = .zero
+
+    /// Counts the times a beam was asked for anew, carried by every ``beamRequests`` entry.
+    private(set) var beamRevision = 0
 
     static let totalSteps = Step.actionSteps.count
     static let outcomeKey = "floatingTour.outcome"
@@ -56,6 +68,8 @@ final class FloatingTourManager {
     @ObservationIgnored private var entry = Baseline()
     /// The current step's condition has been false since the step began, so a true reading is the person's doing.
     @ObservationIgnored private var armed = false
+    /// The beams on screen at the last review; a kind joining them bumps the revision.
+    @ObservationIgnored private var litBeams: Set<TourBeam.Kind> = []
     @ObservationIgnored private var observation: Task<Void, Never>?
     @ObservationIgnored private var keyMonitor: Any?
 
@@ -70,6 +84,7 @@ final class FloatingTourManager {
     private struct Reading: Equatable, Sendable {
         var holds: Bool
         var pageCount: Int
+        var beams: [TourBeam.Kind]
     }
 
     init(windowState: WindowState, canvas: TabCanvasManager, tabManager: TabManager, defaults: UserDefaults? = .standard) {
@@ -93,9 +108,26 @@ final class FloatingTourManager {
         Double(currentStep?.completedSteps ?? 0) / Double(Self.totalSteps)
     }
 
-    /// The page is dimmed while nothing else covers it. A lens draws its own cover.
+    /// The tutorial page the lens offers first, while the current step asks for a page.
+    var requestedPage: FloatingTabsTutorial.Page? {
+        currentStep?.requestedPage
+    }
+
+    /// The page is dimmed while the Address Lens is closed; that lens has its own place over the
+    /// page card. The Command Lens stands in a spotlight of its own under the scrim.
     var dimsPage: Bool {
-        !windowState.showsCommandLens && !windowState.showsAddressLens
+        !windowState.showsAddressLens
+    }
+
+    /// A lens over the page takes its own clicks and its own Escape.
+    private var lensIsOpen: Bool {
+        windowState.showsCommandLens || windowState.showsAddressLens
+    }
+
+    /// The Command Lens over the page, in window content coordinates, while it is up.
+    private var openLensFrame: CGRect? {
+        guard windowState.showsCommandLens, !windowState.commandLensFrame.isEmpty else { return nil }
+        return windowState.commandLensFrame
     }
 
     // MARK: - Lifecycle
@@ -135,6 +167,7 @@ final class FloatingTourManager {
         observation = nil
         removeKeyMonitor()
         armed = false
+        litBeams = []
         currentStep = nil
     }
 
@@ -145,6 +178,7 @@ final class FloatingTourManager {
         guard let step = currentStep, step != .done else { return }
         ensurePages(for: step)
         adoptNewPlacements()
+        reviewBeams()
         if conditionHolds(for: step) {
             if armed { advance() }
         } else {
@@ -166,6 +200,7 @@ final class FloatingTourManager {
             islandPlacement: windowState.controlIsland.placement,
         )
         armed = !conditionHolds(for: step)
+        reviewBeams()
     }
 
     private func conditionHolds(for step: Step) -> Bool {
@@ -210,10 +245,10 @@ final class FloatingTourManager {
     private func ensurePages(for step: Step) {
         let required = step.requiredPageCount
         guard required > 0, pageCount < required, let space = windowState.activeSpace, !windowState.isSpaceLocked else { return }
-        let draft = tabManager.createTab(url: FloatingTabsTutorial.url(reference: false), in: space, makeActive: false)
-        let reference = tabManager.createTab(url: FloatingTabsTutorial.url(reference: true), in: space, makeActive: false)
-        draft.activePage.title = "Trip draft"
-        reference.activePage.title = "Arrival details"
+        let draft = tabManager.createTab(url: FloatingTabsTutorial.Page.tripDraft.url, in: space, makeActive: false)
+        let reference = tabManager.createTab(url: FloatingTabsTutorial.Page.arrivalDetails.url, in: space, makeActive: false)
+        draft.activePage.title = FloatingTabsTutorial.Page.tripDraft.title
+        reference.activePage.title = FloatingTabsTutorial.Page.arrivalDetails.title
         canvas.updateFloatingPlacement(.init(x: 0.1, y: 0.4, isCompact: true, isPinned: false), for: draft)
         canvas.updateFloatingPlacement(.init(x: 0.8, y: 0.4, isCompact: false, isPinned: false), for: reference)
         if windowState.activeTab == nil {
@@ -223,21 +258,55 @@ final class FloatingTourManager {
 
     // MARK: - Targets
 
-    /// The frames the current step points at, in window content coordinates.
+    /// The rail row the current step points at, when the step has one.
+    private var railItem: ControlIslandItem? {
+        switch currentStep {
+        case .openPage: windowState.activeTab == nil ? nil : .commandLens
+        case .openSecondPage: .commandLens
+        case .revealPages: .floatingTabs
+        case .placePage, .keepVisible: canvas.visibleFloatingTabs.isEmpty ? .floatingTabs : nil
+        case .pageCard: .page
+        case .movePanel, .done, nil: nil
+        }
+    }
+
+    /// The rail row the rail lights above its glass: the step's row, while the rail shows it.
+    var highlightedItem: ControlIslandItem? {
+        guard let item = railItem, let frame = windowState.controlIsland.itemFrames[item], !frame.isEmpty else { return nil }
+        return item
+    }
+
+    /// Whether the rail lights its whole glass: the step moves the panel, or points at a row
+    /// that customization has hidden.
+    var highlightsRail: Bool {
+        guard let step = currentStep else { return false }
+        return step == .movePanel || (railItem != nil && highlightedItem == nil)
+    }
+
+    /// The areas the current step lights, in window content coordinates, each with the corner
+    /// radius of what it surrounds.
     ///
     /// Rail rows come from the control island's reported frames; floating pages from the
     /// canvas; the empty page's lens from the page itself. A step whose control is hidden
-    /// by customization points at the whole rail.
-    func spotlights(in bounds: CGRect) -> [CGRect] {
+    /// by customization lights the whole rail. While the Command Lens is up over the page,
+    /// the lens is the one lit area, wherever the step points.
+    func spotlights(in bounds: CGRect) -> [TourSpotlight] {
         guard let step = currentStep else { return [] }
+        if let lens = openLensFrame {
+            return [FloatingTourLayout.spotlight(around: lens, of: .lens)]
+        }
         let island = windowState.controlIsland
-        func row(_ item: ControlIslandItem) -> [CGRect] {
-            [island.itemFrames[item] ?? island.railFrame].filter { !$0.isEmpty }
+        let rail: [TourSpotlight] = island.railFrame.isEmpty ? [] : [FloatingTourLayout.spotlight(around: island.railFrame, of: .rail)]
+        func row(_ item: ControlIslandItem) -> [TourSpotlight] {
+            if let frame = island.itemFrames[item], !frame.isEmpty {
+                return [FloatingTourLayout.spotlight(around: frame, of: .railRow)]
+            }
+            return rail
         }
         switch step {
         case .openPage:
             if windowState.activeTab == nil {
-                return startPageLensFrame.isEmpty ? [] : [startPageLensFrame]
+                return startPageLensFrame.isEmpty ? [] : [FloatingTourLayout.spotlight(around: startPageLensFrame, of: .lens)]
             }
             return row(.commandLens)
         case .openSecondPage:
@@ -245,21 +314,62 @@ final class FloatingTourManager {
         case .revealPages:
             return row(.floatingTabs)
         case .placePage, .keepVisible:
-            let cards = canvas.visibleFloatingTabs.map { canvas.floatingFrame(for: $0, in: bounds) }
+            let cards = canvas.visibleFloatingTabs.map { FloatingTourLayout.spotlight(around: canvas.floatingFrame(for: $0, in: bounds), of: .floatingCard) }
             return cards.isEmpty ? row(.floatingTabs) : cards
         case .pageCard:
-            return row(.page)
+            return row(.page) + (pageCardSpotlight.map { [$0] } ?? [])
         case .movePanel:
-            return [island.railFrame].filter { !$0.isEmpty }
+            return rail
         case .done:
             return []
         }
     }
 
-    /// Where clicks reach the content under the overlay: the spotlit targets, while the page is dimmed.
+    /// The page card, lit together with the page icon once it has unfolded.
+    private var pageCardSpotlight: TourSpotlight? {
+        let frame = windowState.controlIsland.pageCardFrame
+        return frame.isEmpty ? nil : FloatingTourLayout.spotlight(around: frame, of: .pageCard)
+    }
+
+    /// The area the instruction card sits beside: the page card once it has unfolded, else
+    /// everything the step lights, together.
+    func instructionAnchor(in bounds: CGRect) -> CGRect? {
+        if currentStep == .pageCard, openLensFrame == nil, let card = pageCardSpotlight {
+            return card.rect
+        }
+        let union = spotlights(in: bounds).reduce(CGRect.null) { $0.union($1.rect) }
+        return union.isNull ? nil : union
+    }
+
+    /// Where clicks reach the content under the overlay: the lit targets, while no lens is up.
+    /// A lens lives in the overlay itself and takes its own clicks.
     func passThroughRegions(in bounds: CGRect) -> [CGRect] {
-        guard isActive, dimsPage else { return [] }
-        return spotlights(in: bounds).map(FloatingTourLayout.spotlight(around:))
+        guard isActive, !lensIsOpen else { return [] }
+        return spotlights(in: bounds).map(\.rect)
+    }
+
+    // MARK: - Beams
+
+    /// Paths of light from a control to what it opened, for the light engine to draw: the
+    /// rail's lens button to the open lens, and the page icon to its card.
+    var beamRequests: [TourBeam] {
+        guard isActive else { return [] }
+        let island = windowState.controlIsland
+        var beams: [TourBeam] = []
+        if let lens = openLensFrame, let button = island.itemFrames[.commandLens], !button.isEmpty {
+            beams.append(TourBeam(kind: .lensButtonToLens, from: button, to: lens, revision: beamRevision))
+        }
+        if currentStep == .pageCard, let row = island.itemFrames[.page], !row.isEmpty, let card = pageCardSpotlight {
+            beams.append(TourBeam(kind: .pageIconToCard, from: row, to: card.rect.insetBy(dx: FloatingTourLayout.spotlightPadding, dy: FloatingTourLayout.spotlightPadding), revision: beamRevision))
+        }
+        return beams
+    }
+
+    /// A beam that was not lit at the last review is asked for anew.
+    private func reviewBeams() {
+        let lit = Set(beamRequests.map(\.kind))
+        if !lit.subtracting(litBeams).isEmpty { beamRevision += 1 }
+        litBeams = lit
     }
 
     // MARK: - Observation
@@ -276,8 +386,8 @@ final class FloatingTourManager {
     }
 
     private func reading() -> Reading {
-        guard let step = currentStep else { return Reading(holds: false, pageCount: 0) }
-        return Reading(holds: conditionHolds(for: step), pageCount: step.requiredPageCount > 0 ? pageCount : 0)
+        guard let step = currentStep else { return Reading(holds: false, pageCount: 0, beams: []) }
+        return Reading(holds: conditionHolds(for: step), pageCount: step.requiredPageCount > 0 ? pageCount : 0, beams: beamRequests.map(\.kind))
     }
 
     // MARK: - Escape
@@ -294,7 +404,7 @@ final class FloatingTourManager {
 
     /// Escape first serves whatever is open above the page: a lens, the revealed tab layer, a sheet.
     private var escapeEndsTour: Bool {
-        dimsPage && !canvas.floatingVisibility.isRevealed
+        !lensIsOpen && !canvas.floatingVisibility.isRevealed
             && windowState.window?.attachedSheet == nil && !windowState.controlIsland.showsCustomization
     }
 
@@ -311,6 +421,7 @@ extension FloatingTourManager.Step {
     struct Context {
         var revealKey: FloatingRevealKey
         var hasPage: Bool
+        var lensIsOpen: Bool
         var layerRevealed: Bool
         var optionDragMovesPanel: Bool
     }
@@ -343,13 +454,15 @@ extension FloatingTourManager.Step {
 
     func instruction(in context: Context) -> String {
         let hold = "Hold \(context.revealKey.title) (\(context.revealKey.glyph))"
+        /// "Press Return" once the lens is up; "Press ⌘T, then Return" while it has to be opened first.
+        func open(_ page: FloatingTabsTutorial.Page, lensShown: Bool) -> String {
+            lensShown ? "Press Return to open \(page.title)" : "Press ⌘T, then Return to open \(page.title)"
+        }
         switch self {
         case .openPage:
-            return context.hasPage
-                ? "Press ⌘T, type an address or a search, then press Return."
-                : "Type an address or a search, then press Return."
+            return "\(open(.tripDraft, lensShown: context.lensIsOpen || !context.hasPage)), or type anything to search."
         case .openSecondPage:
-            return "Press ⌘T, type something else, then press Return. The first page keeps its place."
+            return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
             return "\(hold) to see every open page where it was left. Release to hide them."
         case .placePage:

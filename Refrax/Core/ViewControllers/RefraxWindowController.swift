@@ -250,6 +250,18 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             previewProvider: tabPreviewProvider,
             browserSettings: settings,
         )
+        self.tabSwitcherManager = TabSwitcherManager(
+            tabManager: appDelegate.tabManager,
+            windowState: windowState,
+            previewProvider: tabPreviewProvider,
+        )
+        self.tabCanvasManager = TabCanvasManager(
+            tabManager: appDelegate.tabManager,
+            windowState: windowState,
+            pagePool: appDelegate.pagePool,
+            groupManager: appDelegate.groupManager,
+        )
+        let floatingTourManager = FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: appDelegate.tabManager)
         self.commandLensManager = CommandLensManager(
             tabManager: appDelegate.tabManager,
             historyManager: appDelegate.historyManager,
@@ -261,17 +273,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             extensionManager: appDelegate.extensionManager,
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             localNetworkSource: appDelegate.localNetworkDirectory,
-        )
-        self.tabSwitcherManager = TabSwitcherManager(
-            tabManager: appDelegate.tabManager,
-            windowState: windowState,
-            previewProvider: tabPreviewProvider,
-        )
-        self.tabCanvasManager = TabCanvasManager(
-            tabManager: appDelegate.tabManager,
-            windowState: windowState,
-            pagePool: appDelegate.pagePool,
-            groupManager: appDelegate.groupManager,
+            floatingTour: floatingTourManager,
         )
         self.sidebarManagers = SidebarManagers(
             tabManager: appDelegate.tabManager,
@@ -362,7 +364,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             appUpdateManager: appDelegate.appUpdateManager,
             guidedTourManager: GuidedTourManager(),
-            floatingTourManager: FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager),
+            floatingTourManager: floatingTourManager,
             engineRegistry: appDelegate.engineRegistry,
         )
 

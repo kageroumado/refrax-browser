@@ -21,7 +21,14 @@ struct SuggestionIconView: View {
             }
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            
+
+        case .tutorialPage:
+            // Drawn at the size of a page's icon on the rail: the row stands for a page.
+            Image(systemName: suggestion.iconName)
+                .font(.system(size: isSmall ? 14 : ControlIslandPlacement.pageIconSize, weight: .medium))
+                .frame(width: size, height: size, alignment: .center)
+                .foregroundStyle(.secondary)
+
         default:
             Image(systemName: suggestion.iconName)
                 .font(isSmall ? .system(size: 14, weight: .medium) : .system(size: 22, weight: .medium))

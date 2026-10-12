@@ -13,7 +13,8 @@ struct CommandLensView: View {
     @State private var shouldSelectAll = false
     @State private var autoShowButtonsTask: Task<Void, Never>?
 
-    private enum Layout {
+    /// The lens's measurements; the tour reads the corner radius to light the lens concentrically.
+    nonisolated enum Layout {
         static let height: CGFloat = 52
         static let heightSmall: CGFloat = 32 // Match address bar height
         static let cornerRadius: CGFloat = 26
@@ -58,7 +59,7 @@ struct CommandLensView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: manager.showSearchEngineBadge)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.isCreatingReferenceTab)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.layoutModeTargetPosition)
-        .task { onAppear() }
+        .task { await onAppear() }
         .onChange(of: manager.inputText) { _, newValue in
             if !newValue.isEmpty { cancelAutoShowButtonsTimer() }
         }
@@ -259,12 +260,13 @@ struct CommandLensView: View {
 
     // MARK: - Lifecycle
 
-    private func onAppear() {
+    private func onAppear() async {
         if isSmallMode {
             manager.inputText = windowState.focusedPage?.url.absoluteString ?? ""
             shouldSelectAll = true
         } else {
             startAutoShowButtonsTimer()
+            await manager.showStandingSuggestions()
         }
     }
 

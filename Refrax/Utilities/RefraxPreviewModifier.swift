@@ -137,6 +137,18 @@ struct RefraxPreviewModifier: PreviewModifier {
 
         let customSearchEngineManager = CustomSearchEngineManager(modelContext: modelContext)
 
+        let tabSwitcherManager = TabSwitcherManager(
+            tabManager: tabManager,
+            windowState: windowState,
+            previewProvider: tabPreviewProvider,
+        )
+        let tabCanvasManager = TabCanvasManager(
+            tabManager: tabManager,
+            windowState: windowState,
+            pagePool: pagePool,
+            groupManager: groupManager,
+        )
+        let floatingTourManager = FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager, defaults: nil)
         let commandLensManager = CommandLensManager(
             tabManager: tabManager,
             historyManager: historyManager,
@@ -148,18 +160,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             extensionManager: extensionManager,
             customSearchEngineManager: customSearchEngineManager,
             localNetworkSource: LocalNetworkDirectory(),
-        )
-
-        let tabSwitcherManager = TabSwitcherManager(
-            tabManager: tabManager,
-            windowState: windowState,
-            previewProvider: tabPreviewProvider,
-        )
-        let tabCanvasManager = TabCanvasManager(
-            tabManager: tabManager,
-            windowState: windowState,
-            pagePool: pagePool,
-            groupManager: groupManager,
+            floatingTour: floatingTourManager,
         )
 
         let sidebarManagers = SidebarManagers(
@@ -295,7 +296,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),
             guidedTourManager: GuidedTourManager(),
-            floatingTourManager: FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager, defaults: nil),
+            floatingTourManager: floatingTourManager,
             engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
         )
     }

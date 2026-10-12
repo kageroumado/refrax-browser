@@ -3,8 +3,9 @@ import SwiftUI
 /// The floating tour on screen: a scrim over the page with the step's target lit, an
 /// instruction card beside it, and a progress bar that fills as steps complete.
 ///
-/// The target stays usable: the hosting view passes clicks through the lit areas, and the
-/// control rail is drawn above this overlay. Every frame comes from the tour itself.
+/// The target stays usable: the hosting view passes clicks through the lit areas, the scrim's
+/// own hit area leaves them out, and the control rail is drawn above this overlay. Every frame
+/// comes from the tour itself. The tour's beam requests are drawn by the light engine.
 struct FloatingTourOverlay: View {
     @Environment(FloatingTourManager.self) private var tour
     @Environment(WindowState.self) private var windowState
@@ -20,9 +21,9 @@ struct FloatingTourOverlay: View {
         if let step = tour.currentStep {
             GeometryReader { geometry in
                 let bounds = CGRect(origin: .zero, size: geometry.size)
-                let spotlights = tour.spotlights(in: bounds).map(Layout.spotlight(around:))
-                let target = spotlights.reduce(CGRect.null) { $0.union($1) }
-                let origin = Layout.cardOrigin(for: target.isNull ? nil : target, cardSize: cardSize, in: bounds,
+                let spotlights = tour.spotlights(in: bounds)
+                let anchor = tour.instructionAnchor(in: bounds)
+                let origin = Layout.cardOrigin(for: anchor, cardSize: cardSize, in: bounds,
                                                avoiding: windowState.controlIsland.railFrame.isEmpty ? .null : windowState.controlIsland.railFrame)
                 ZStack(alignment: .topLeading) {
                     if tour.dimsPage {
@@ -47,38 +48,42 @@ struct FloatingTourOverlay: View {
 
     // MARK: - Scrim
 
-    private func scrim(spotlights: [CGRect]) -> some View {
+    /// A tap on the scrim closes a lens the way its own cover would, and points at the target again.
+    private func scrim(spotlights: [TourSpotlight]) -> some View {
         Rectangle()
             .fill(.black.opacity(Layout.scrimOpacity))
             .mask {
                 ZStack(alignment: .topLeading) {
                     Rectangle()
                     ForEach(Array(spotlights.enumerated()), id: \.offset) { _, spot in
-                        RoundedRectangle(cornerRadius: Layout.spotlightCornerRadius)
-                            .frame(width: spot.width, height: spot.height)
-                            .offset(x: spot.minX, y: spot.minY)
+                        RoundedRectangle(cornerRadius: spot.cornerRadius)
+                            .frame(width: spot.rect.width, height: spot.rect.height)
+                            .offset(x: spot.rect.minX, y: spot.rect.minY)
                             .blendMode(.destinationOut)
                     }
                 }
                 .compositingGroup()
             }
-            .contentShape(Rectangle())
-            .onTapGesture { pulse += 1 }
+            .contentShape(SpotlightCutout(spotlights: spotlights), eoFill: true)
+            .onTapGesture {
+                pulse += 1
+                if windowState.showsCommandLens { windowState.closeCommandLens() }
+            }
             .accessibilityHidden(true)
     }
 
-    private func rings(_ spotlights: [CGRect]) -> some View {
+    private func rings(_ spotlights: [TourSpotlight]) -> some View {
         ForEach(Array(spotlights.enumerated()), id: \.offset) { _, spot in
-            RoundedRectangle(cornerRadius: Layout.spotlightCornerRadius)
+            RoundedRectangle(cornerRadius: spot.cornerRadius)
                 .strokeBorder(Color.appAccentColor, lineWidth: Layout.ringWidth)
-                .frame(width: spot.width, height: spot.height)
+                .frame(width: spot.rect.width, height: spot.rect.height)
                 .keyframeAnimator(initialValue: CGFloat(1), trigger: reduceMotion ? 0 : pulse) { ring, scale in
                     ring.scaleEffect(scale)
                 } keyframes: { _ in
                     SpringKeyframe(Layout.pulseScale, duration: 0.15)
                     SpringKeyframe(1, duration: 0.3)
                 }
-                .offset(x: spot.minX, y: spot.minY)
+                .offset(x: spot.rect.minX, y: spot.rect.minY)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -119,6 +124,7 @@ struct FloatingTourOverlay: View {
         .init(
             revealKey: revealKey,
             hasPage: windowState.activeTab != nil,
+            lensIsOpen: windowState.showsCommandLens,
             layerRevealed: canvas.floatingVisibility.isRevealed,
             optionDragMovesPanel: windowState.controlIsland.configuration.optionDragTarget == .panel,
         )
@@ -137,6 +143,7 @@ struct FloatingTourOverlay: View {
                 if step == .done {
                     Button("Done") { tour.finish() }
                         .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.roundedRectangle(radius: Layout.cardInnerCornerRadius))
                 }
                 Spacer()
                 if step != .done {
@@ -152,5 +159,19 @@ struct FloatingTourOverlay: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Layout.cardCornerRadius))
         .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// The scrim's hit area: the whole window with every spotlight cut out, so a click on a lit
+/// target reaches the target.
+private nonisolated struct SpotlightCutout: Shape {
+    var spotlights: [TourSpotlight]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        for spot in spotlights {
+            path.addRoundedRect(in: spot.rect, cornerSize: CGSize(width: spot.cornerRadius, height: spot.cornerRadius))
+        }
+        return path
     }
 }

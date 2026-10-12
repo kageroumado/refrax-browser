@@ -26,6 +26,12 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     /// A pointer must rest on the rail this long before the page card unfolds.
     static let hoverSettle: TimeInterval = 0.45
     static let spaceTintOpacity: Double = 0.18
+    /// The tour's highlight of a row: a capsule this far inside the cell, with a glow around it.
+    static let highlightInset: CGFloat = 2
+    static let highlightLineWidth: CGFloat = 1.5
+    static let highlightFillOpacity: Double = 0.3
+    static let highlightGlowOpacity: Double = 0.7
+    static let highlightGlowRadius: CGFloat = 8
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
