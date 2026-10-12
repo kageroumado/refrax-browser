@@ -9,7 +9,8 @@ struct FloatingRayView: View {
     let onFinish: () -> Void
 
     var body: some View {
-        LightTravel(paths: [LightPath(ray: path, color: Color.Components(color: .appAccentColor))], onFinish: onFinish)
+        let style = LightStyle.displaced
+        LightTravel(paths: [style.path(ray: path, color: style.color(space: nil))], timing: style.timing, onFinish: onFinish)
             .accessibilityHidden(true)
     }
 }

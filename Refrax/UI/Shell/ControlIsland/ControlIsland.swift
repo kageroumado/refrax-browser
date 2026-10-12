@@ -350,7 +350,7 @@ struct ControlIsland: View {
             control(item.title, symbol: item.symbol) {
                 tabSwitcher.cancel()
                 if windowState.showsCommandLens { windowState.closeCommandLens() }
-                else { windowState.openCommandLens() }
+                else { windowState.openCommandLens(source: state.itemFrames[.commandLens]) }
             }
             .help("Command Lens · ⌘T")
         case .floatingTabs:

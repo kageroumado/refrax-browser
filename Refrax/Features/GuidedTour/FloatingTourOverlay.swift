@@ -15,6 +15,8 @@ struct FloatingTourOverlay: View {
     @State private var cardSize = CGSize.zero
     /// A click on the dimmed page draws the eye back to the target.
     @State private var pulse = 0
+    /// The beam revision whose travel has ended, so the engine draws nothing until the next.
+    @State private var finishedBeamRevision: Int?
     private typealias Layout = FloatingTourLayout
 
     var body: some View {
@@ -30,6 +32,7 @@ struct FloatingTourOverlay: View {
                         scrim(spotlights: spotlights)
                         rings(spotlights)
                     }
+                    beams(in: bounds)
                     progressBar(step: step)
                         .frame(width: bounds.width, alignment: .top)
                         .padding(.top, Layout.progressTop)
@@ -87,6 +90,29 @@ struct FloatingTourOverlay: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    // MARK: - Beams
+
+    /// The tour's beams, from a control to what it opened, played once per revision above the
+    /// scrim and under the card. The window's own beams rest while the tour runs, so each pair
+    /// lights once.
+    @ViewBuilder
+    private func beams(in bounds: CGRect) -> some View {
+        let requests = tour.beamRequests
+        let revision = tour.beamRevision
+        if !requests.isEmpty, finishedBeamRevision != revision {
+            let style = LightStyle.guide
+            let color = style.color(space: nil)
+            LightTravel(
+                paths: requests.map { style.path(ray: FloatingRayPath(from: $0.from, to: $0.to, in: bounds), color: color) },
+                timing: style.timing,
+            ) {
+                finishedBeamRevision = revision
+            }
+            .id(revision)
+            .accessibilityHidden(true)
+        }
     }
 
     // MARK: - Progress
