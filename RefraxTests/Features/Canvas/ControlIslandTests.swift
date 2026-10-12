@@ -188,14 +188,18 @@ struct ControlIslandTests {
     @Test
     func `the Option-drag chip shows once per install`() {
         var hint = ControlIslandOptionDragHint(isExplained: false)
-        #expect(!hint.shouldShow(for: .idle))
-        #expect(!hint.shouldShow(for: .dragging(.panel)))
-        #expect(!hint.shouldShow(for: .unavailable))
-        #expect(hint.shouldShow(for: .ready(.panel)))
+        let idle = hint.shouldShow(for: .idle)
+        let dragging = hint.shouldShow(for: .dragging(.panel))
+        let unavailable = hint.shouldShow(for: .unavailable)
+        let ready = hint.shouldShow(for: .ready(.panel))
+        let again = hint.shouldShow(for: .ready(.window))
+        #expect(!idle && !dragging && !unavailable)
+        #expect(ready)
         #expect(hint.isExplained)
-        #expect(!hint.shouldShow(for: .ready(.window)))
+        #expect(!again)
         var explained = ControlIslandOptionDragHint(isExplained: true)
-        #expect(!explained.shouldShow(for: .ready(.panel)))
+        let explainedShows = explained.shouldShow(for: .ready(.panel))
+        #expect(!explainedShows)
         #expect(ControlIslandOptionDragHint.storageKey == "controlIsland.optionDragExplained")
     }
 
