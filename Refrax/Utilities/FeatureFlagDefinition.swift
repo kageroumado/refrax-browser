@@ -39,7 +39,8 @@ extension FeatureFlagDefinition {
     /// All known feature flags, grouped by category.
     ///
     /// WebKit flags use their `_WKFeature` key verbatim so ``enableFeatures(on:)``
-    /// can look up overrides directly. App-level flags use `app.` prefixed keys.
+    /// can look up overrides directly. App-level flags use keys with no WebKit
+    /// counterpart: `app.` or the feature's own prefix, such as `floatingTabs.`.
     static let all: [FeatureFlagDefinition] = webPlatform + privacy + media + security + browser
 
     // MARK: Web Platform
@@ -188,6 +189,13 @@ extension FeatureFlagDefinition {
             key: "app.widgetsEnabled",
             name: "Widget Data Sharing",
             description: "Share tab and space data with widgets via App Group container. May trigger a privacy prompt on first use.",
+            category: .browser,
+            defaultValue: false
+        ),
+        FeatureFlagDefinition(
+            key: "floatingTabs.regionsEnabled",
+            name: "Floating Tab Regions",
+            description: "Keep part of a page visible as a floating preview: adds Keep Part Visible, Adjust Region, and Preview Zoom to a card's menu.",
             category: .browser,
             defaultValue: false
         ),

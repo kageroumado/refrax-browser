@@ -132,7 +132,7 @@ struct ControlIslandPageBranch: View {
                 actions.toggleFavorite()
             }
             .disabled(!actions.canFavorite)
-            PageActionsMenu(tab: tab, area: area)
+            PageActionsMenu(tab: tab, surface: .pageCard, area: area)
                 .frame(width: Layout.actionSize, height: Layout.actionSize)
         }
     }
