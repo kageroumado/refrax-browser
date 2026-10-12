@@ -24,6 +24,9 @@ struct ControlIslandSpaces: View {
         static let cornerRadius = ControlIslandPlacement.contentWidth / 2
     }
 
+    /// One space is a place, not a choice: its icon stands alone without a track or selection.
+    private var isSelector: Bool { destinations.count > 1 }
+
     var body: some View {
         Group {
             if destinations.count <= ControlIslandPlacement.maximumVisibleSpaces {
@@ -33,10 +36,12 @@ struct ControlIslandSpaces: View {
             }
         }
         .background {
-            RoundedRectangle(cornerRadius: Layout.cornerRadius)
-                .fill(Color.primary.opacity(Layout.trackOpacity).shadow(.inner(
-                    color: .black.opacity(Layout.shadowOpacity), radius: 2, y: 1,
-                )))
+            if isSelector {
+                RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                    .fill(Color.primary.opacity(Layout.trackOpacity).shadow(.inner(
+                        color: .black.opacity(Layout.shadowOpacity), radius: 2, y: 1,
+                    )))
+            }
         }
         .clipShape(.rect(cornerRadius: Layout.cornerRadius))
         .accessibilityElement(children: .contain)
@@ -113,7 +118,7 @@ struct ControlIslandSpaces: View {
             .frame(height: ControlIslandPlacement.spaceRowHeight)
             .contentShape(Rectangle())
             .background {
-                if selected {
+                if selected, isSelector {
                     Circle()
                         .fill(.background.opacity(Layout.selectionOpacity))
                         .overlay {

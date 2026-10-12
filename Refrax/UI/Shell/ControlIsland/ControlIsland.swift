@@ -24,11 +24,11 @@ struct ControlIsland: View {
     @State private var railDragFeedback: ControlIslandDragFeedback = .idle
     @State private var dragOrigin: CGPoint?
     @State private var showsFavorites = false
-    @State private var showsAddressTools = false
     @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
     @State private var avoidancePlacement: ControlIslandPlacement?
+    @State private var hoverHasSettled = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
     private typealias Layout = ControlIslandPlacement
 
@@ -80,9 +80,12 @@ struct ControlIsland: View {
         return effectivePlacement.pageBranchFrame(in: area, anchor: anchor,
             height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37))
     }
+    /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,
+    /// the revealed tab layer, or a visit that can return. A pointer crossing the rail leaves it closed.
     private var showsPageBranch: Bool {
         windowState.activePage != nil && dragFeedback == .idle && !state.isDragging
-            && (state.tabInfo.isVisible || state.showsAddress || state.isHovered || windowState.pageVisit.destination != nil)
+            && (state.tabInfo.isVisible || state.showsAddress || hoverHasSettled || windowState.pageVisit.destination != nil
+                || canvas.floatingVisibility.isRevealed)
     }
 
     /// The glass clears and the symbols recede while nothing on the rail is in use.
@@ -116,9 +119,7 @@ struct ControlIsland: View {
                     .glassEffectID("rail", in: glassNamespace)
                     .offset(x: frame.minX, y: frame.minY)
                 if showsPageBranch, !canvas.recentIsOpen {
-                    ControlIslandPageBranch(area: area, onPresentationChange: { presented in
-                        showsAddressTools = presented
-                    })
+                    ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                     .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
                     .glassEffect(glass, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                     .glassEffectID("pageBranch", in: glassNamespace)
@@ -179,7 +180,7 @@ struct ControlIsland: View {
                 finishPanelDrag()
             }
         }
-        .onChange(of: showsFavorites || showsAddressTools) { _, presented in
+        .onChange(of: showsFavorites) { _, presented in
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
@@ -229,6 +230,13 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .onAppear { state.wake() }
+        .task(id: state.isHovered) {
+            hoverHasSettled = false
+            guard state.isHovered else { return }
+            try? await Task.sleep(for: .seconds(Layout.hoverSettle))
+            guard !Task.isCancelled else { return }
+            hoverHasSettled = true
+        }
         .task(id: avoidanceRevision) { await yieldToPageControl() }
         .task(id: keepsHoverOpen ? .inside : pointerPhase) { await settleHover() }
         .task(id: showsShortcut) {

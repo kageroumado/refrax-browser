@@ -37,6 +37,11 @@ struct ControlIslandTabActions {
         NSPasteboard.general.setString(tabs.copyableURL(for: tab), forType: .string)
     }
 
+    func copyMarkdownLink() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("[\(tab.displayTitle)](\(tabs.copyableURL(for: tab)))", forType: .string)
+    }
+
     @discardableResult
     func duplicate() -> Tab? {
         let duplicate: Tab

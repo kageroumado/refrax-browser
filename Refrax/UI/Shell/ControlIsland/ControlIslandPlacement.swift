@@ -17,9 +17,11 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let maximumVisibleSpaces = 4
     static let spaceRowHeight = contentWidth
     static let pageBranchWidth: CGFloat = 416
-    static let pageBranchHeight: CGFloat = 40
+    static let pageBranchHeight: CGFloat = 44
     static let adjacentGap: CGFloat = 8
     static let magnetDistance: CGFloat = 24
+    /// A pointer must rest on the rail this long before the page card unfolds.
+    static let hoverSettle: TimeInterval = 0.45
     /// Symbol presence while the controls rest: present enough to find, faint enough to read through.
     static let restingOpacity: Double = 0.42
     static let spaceTintOpacity: Double = 0.14

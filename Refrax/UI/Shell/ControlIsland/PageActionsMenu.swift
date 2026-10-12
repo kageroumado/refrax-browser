@@ -9,6 +9,8 @@ struct PageActionsMenu: NSViewRepresentable {
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
+    @Environment(ReaderModeManager.self) private var readerMode
+    @Environment(SharingCoordinator.self) private var sharing
     @Environment(\.appearsActive) private var appearsActive
 
     func makeNSView(context _: Context) -> PageActionsButton {
@@ -31,12 +33,22 @@ struct PageActionsMenu: NSViewRepresentable {
     private func menu() -> NSMenu {
         let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
         let placement = canvas.floatingPlacement(for: tab)
+        let page = tabs.pagePool.existingPage(for: tab.activePage)
         var items: [any MenuItemConvertible] = [
-            MenuItem(actions.isFavorite ? "Remove Favorite" : "Favorite", systemImage: actions.isFavorite ? "star.slash" : "star") {
-                actions.toggleFavorite()
-            },
             MenuItem("Copy Address", systemImage: "link") { actions.copyLink() },
+            MenuItem("Copy as Markdown Link", systemImage: "text.quote") { actions.copyMarkdownLink() },
+            MenuItem("Share…", systemImage: "square.and.arrow.up") {
+                sharing.shareURL(URL(string: tabs.copyableURL(for: tab)) ?? tab.activePage.url, title: tab.activePage.title)
+            },
         ]
+        if tab.id == windowState.activeTabID, let page {
+            items.append(MenuItem("Find on Page…", systemImage: "magnifyingglass", keyEquivalent: "f") { windowState.showFindNavigator() })
+            items.append(MenuItem(readerMode.isReaderActive(for: tab.id) ? "Leave Reader" : "Reader", systemImage: "text.page") {
+                Task(name: "Toggle reader from page card") {
+                    if await readerMode.toggleReader(for: page) == .tooLong { windowState.showToast("This page is too long for Reader") }
+                }
+            })
+        }
         if let bookmark = tab.linkedBookmark, actions.isFavorite {
             items.append(MenuItem("Update Saved Address", systemImage: "bookmark") {
                 bookmark.url = tab.activePage.url
@@ -96,7 +108,6 @@ struct PageActionsMenu: NSViewRepresentable {
             })
         }
         items.append(MenuDivider())
-        items.append(MenuItem("Reload", systemImage: "arrow.clockwise") { _ = tabs.pagePool.existingPage(for: tab.activePage)?.reload() })
         items.append(MenuItem("Duplicate Tab", systemImage: "plus.square.on.square") { actions.duplicate() })
         items.append(MenuItem("Close Tab", systemImage: "xmark") { tabs.requestCloseTab(tab) })
         return items.asNSMenu()

@@ -177,7 +177,9 @@ final class TabCanvasManager {
         guard !isActive, regionSelection == nil, !windowState.isSpaceLocked,
               !windowState.showsCommandLens, !windowState.showsAddressLens else { return [] }
         return floatingTabs.filter { tab in
-            (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
+            // The rail's page card is the current tab's place; a second card for it would float elsewhere.
+            if showsFloatingControls, tab.id == windowState.activeTabID { return false }
+            return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
                 || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
                 || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
         }

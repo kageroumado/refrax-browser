@@ -127,6 +127,12 @@ final class ControlIslandOptionDragView: NSView {
             return event
         }
         refreshFeedback(for: event)
+        // The web view's tracking area receives every mouseMoved regardless of hit testing and
+        // answers with its own cursor a moment later; while the hand is up, those events stop here.
+        if feedback != .idle, event.type == .mouseMoved || event.type == .cursorUpdate {
+            applyCursor()
+            return nil
+        }
         guard event.type == .leftMouseDown, event.window === window,
               event.modifierFlags.contains(.option), containsPointer(at: event.locationInWindow) else { return event }
 
