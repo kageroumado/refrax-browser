@@ -21,12 +21,14 @@ import SwiftUI
 /// - `AddressLensOverlay` - Observes `showsAddressLens`, `addressBarFrame`
 /// - `ScreenshotPreviewOverlay` - Observes `screenshotCoordinator.currentPreview`
 /// - `RecordingPreviewOverlay` - Observes `recordingCoordinator.currentPreview`
+/// - `FloatingTourOverlay` - Observes the tour's current step and the frames it points at
 /// - `ToastOverlay` - Observes `toastMessage`, `sidebarThickness`
 /// - `SearchEngineDetectedOverlay` - Observes `pendingSearchEngineDetection`
 struct OverlayContainer: View {
     @Environment(WindowState.self) private var windowState: WindowState
     @Environment(TabSwitcherManager.self) private var tabSwitcherManager: TabSwitcherManager
     @Environment(GuidedTourManager.self) private var guidedTourManager: GuidedTourManager
+    @Environment(FloatingTourManager.self) private var floatingTourManager: FloatingTourManager
 
     /// The active space if it requires authentication, otherwise nil.
     private var lockedSpace: Space? {
@@ -46,6 +48,7 @@ struct OverlayContainer: View {
             || lockedSpace != nil
             || (windowState.showsCompactAddressBar && !windowState.usesFloatingTabs)
             || guidedTourManager.isActive
+            || floatingTourManager.isActive
     }
 
     var body: some View {
@@ -73,6 +76,9 @@ struct OverlayContainer: View {
 
             // Guided tour instruction bubble
             GuidedTourOverlay()
+
+            // Floating tour: scrim, spotlights, instruction card, progress
+            FloatingTourOverlay()
 
             // Toast notification (top-right corner)
             ToastOverlay()

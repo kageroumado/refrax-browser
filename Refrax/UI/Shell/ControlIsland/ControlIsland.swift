@@ -174,6 +174,7 @@ struct ControlIsland: View {
         .buttonStyle(ControlIslandButtonStyle())
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
+        .onChange(of: frame, initial: true) { _, frame in state.railFrame = frame }
         .onChange(of: state.placement) { avoidancePlacement = nil }
         .onChange(of: windowState.activeTabID) { state.showsAddress = false }
         .onChange(of: windowState.activeSpaceID) {
@@ -224,6 +225,7 @@ struct ControlIsland: View {
         .onDisappear {
             state.pointerMoved = nil
             state.hitRegions = []
+            state.clearFrames()
             state.isHovered = false
             state.showsAddress = false
             state.hasKeyboardFocus = false
@@ -265,6 +267,9 @@ struct ControlIsland: View {
                     ForEach(visibleItems) { item in
                         if hasSeparator(before: item) { sectionDivider }
                         itemControl(item)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
+                                state.reportFrame($0, for: item)
+                            }
                     }
                     if visibleItems.last?.isGroup == true { sectionDivider }
                     ControlIslandMenu(showsFavorites: $showsFavorites)

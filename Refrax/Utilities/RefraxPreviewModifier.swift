@@ -295,6 +295,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),
             guidedTourManager: GuidedTourManager(),
+            floatingTourManager: FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager, defaults: nil),
             engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
         )
     }

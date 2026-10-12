@@ -19,6 +19,10 @@ final class ControlIslandState {
     var focusRequest = 0
     var dismissalRequest = 0
     var pageFocusRequest = 0
+    /// The rail's frame in window content coordinates, for anything that points at it.
+    var railFrame: CGRect = .zero
+    /// Each visible control's frame in window content coordinates.
+    private(set) var itemFrames: [ControlIslandItem: CGRect] = [:]
     @ObservationIgnored var hitRegions: [CGRect] = []
     @ObservationIgnored var pointerMoved: ((CGPoint) -> Void)?
     @ObservationIgnored var lastPointerMovement = Date.distantPast
@@ -55,6 +59,16 @@ final class ControlIslandState {
     func resetPlacement() {
         placement = .init()
         savePlacement()
+    }
+
+    func reportFrame(_ frame: CGRect, for item: ControlIslandItem) {
+        guard itemFrames[item] != frame else { return }
+        itemFrames[item] = frame
+    }
+
+    func clearFrames() {
+        railFrame = .zero
+        itemFrames = [:]
     }
 
     func focus() {

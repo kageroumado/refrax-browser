@@ -1,0 +1,373 @@
+import AppKit
+import Observation
+import SwiftUI
+
+/// A step-by-step tour of the floating-tabs browser that advances on real actions.
+///
+/// The tour owns its step list: each action step names the control it spotlights and the
+/// state change that completes it. The overlay draws what the tour reports and never decides
+/// a step on its own. A step completes only when its own condition turns true after the
+/// step began, so state that already held when the step started counts for nothing.
+@Observable
+final class FloatingTourManager {
+    /// The tour's steps, in order. Every step before `done` completes on an action.
+    enum Step: Int, CaseIterable, Sendable {
+        case openPage, openSecondPage, revealPages, placePage, keepVisible, pageCard, movePanel, done
+
+        /// The steps that teach something, in order.
+        static let actionSteps = Self.allCases.filter { $0 != .done }
+
+        /// How many open pages the step needs before it can show anything.
+        var requiredPageCount: Int {
+            switch self {
+            case .openPage, .openSecondPage, .done: 0
+            case .revealPages, .placePage, .keepVisible: 2
+            case .pageCard, .movePanel: 1
+            }
+        }
+
+        /// The number of steps completed when this step is current.
+        var completedSteps: Int { rawValue }
+    }
+
+    /// How a tour ended. An automatic start never repeats a tour the person already answered.
+    enum Outcome: String, Sendable {
+        case completed, skipped
+    }
+
+    /// The current step, or nil while the tour is not running.
+    private(set) var currentStep: Step?
+
+    /// The inline lens on the empty page, in window content coordinates, while that page is shown.
+    var startPageLensFrame: CGRect = .zero
+
+    static let totalSteps = Step.actionSteps.count
+    static let outcomeKey = "floatingTour.outcome"
+    static let hintsDismissedKey = "startPage.hintsDismissed"
+    private static let escapeKeyCode: UInt16 = 53
+
+    /// Whether an automatic start already happened in this process.
+    static var hasOfferedThisLaunch = false
+
+    @ObservationIgnored private unowned let windowState: WindowState
+    @ObservationIgnored private unowned let canvas: TabCanvasManager
+    @ObservationIgnored private unowned let tabManager: TabManager
+    @ObservationIgnored private let defaults: UserDefaults?
+    @ObservationIgnored private var entry = Baseline()
+    /// The current step's condition has been false since the step began, so a true reading is the person's doing.
+    @ObservationIgnored private var armed = false
+    @ObservationIgnored private var observation: Task<Void, Never>?
+    @ObservationIgnored private var keyMonitor: Any?
+
+    /// What the window looked like when the current step began.
+    private struct Baseline {
+        var activeTabID: Tab.ID?
+        var placements: [Tab.ID: FloatingTabPlacement] = [:]
+        var islandPlacement = ControlIslandPlacement()
+    }
+
+    /// Everything a step's condition depends on, read inside one observation so a change re-evaluates the step.
+    private struct Reading: Equatable, Sendable {
+        var holds: Bool
+        var pageCount: Int
+    }
+
+    init(windowState: WindowState, canvas: TabCanvasManager, tabManager: TabManager, defaults: UserDefaults? = .standard) {
+        self.windowState = windowState
+        self.canvas = canvas
+        self.tabManager = tabManager
+        self.defaults = defaults
+    }
+
+    isolated deinit {
+        observation?.cancel()
+        removeKeyMonitor()
+    }
+
+    // MARK: - State
+
+    var isActive: Bool { currentStep != nil }
+
+    /// Completed steps over the total, from 0 at the first step to 1 on the closing card.
+    var progress: Double {
+        Double(currentStep?.completedSteps ?? 0) / Double(Self.totalSteps)
+    }
+
+    /// The page is dimmed while nothing else covers it. A lens draws its own cover.
+    var dimsPage: Bool {
+        !windowState.showsCommandLens && !windowState.showsAddressLens
+    }
+
+    // MARK: - Lifecycle
+
+    /// Starts the tour from the first step.
+    func start() {
+        Self.hasOfferedThisLaunch = true
+        enter(.openPage)
+        observe()
+        installKeyMonitor()
+    }
+
+    /// Starts the tour the first time the empty page appears in this launch, unless the person
+    /// already finished or skipped a tour or dismissed the empty page's hints.
+    func offer() {
+        guard !Self.hasOfferedThisLaunch, !isActive,
+              defaults?.bool(forKey: Self.hintsDismissedKey) != true,
+              defaults?.string(forKey: Self.outcomeKey) == nil else { return }
+        start()
+    }
+
+    /// Ends the tour early and remembers that it was declined.
+    func skip() {
+        end(.skipped)
+    }
+
+    /// Ends the tour from its closing card. The empty page's hints have done their job and go away.
+    func finish() {
+        defaults?.set(true, forKey: Self.hintsDismissedKey)
+        end(.completed)
+    }
+
+    private func end(_ outcome: Outcome) {
+        guard isActive else { return }
+        defaults?.set(outcome.rawValue, forKey: Self.outcomeKey)
+        observation?.cancel()
+        observation = nil
+        removeKeyMonitor()
+        armed = false
+        currentStep = nil
+    }
+
+    // MARK: - Steps
+
+    /// Reads the window and advances when the current step's condition has turned true.
+    func review() {
+        guard let step = currentStep, step != .done else { return }
+        ensurePages(for: step)
+        adoptNewPlacements()
+        if conditionHolds(for: step) {
+            if armed { advance() }
+        } else {
+            armed = true
+        }
+    }
+
+    private func advance() {
+        guard let step = currentStep, let next = Step(rawValue: step.rawValue + 1) else { return }
+        enter(next)
+    }
+
+    private func enter(_ step: Step) {
+        currentStep = step
+        ensurePages(for: step)
+        entry = Baseline(
+            activeTabID: windowState.activeTabID,
+            placements: windowState.floatingPlacements,
+            islandPlacement: windowState.controlIsland.placement,
+        )
+        armed = !conditionHolds(for: step)
+    }
+
+    private func conditionHolds(for step: Step) -> Bool {
+        switch step {
+        case .openPage:
+            windowState.activeTabID != nil && windowState.activeTabID != entry.activeTabID
+        case .openSecondPage:
+            pageCount >= 2 && windowState.activeTabID != entry.activeTabID
+        case .revealPages:
+            canvas.floatingVisibility.isHeld
+        case .placePage:
+            windowState.floatingPlacements.contains { id, placement in
+                guard let before = entry.placements[id] else { return false }
+                return before.x != placement.x || before.y != placement.y
+            }
+        case .keepVisible:
+            windowState.floatingPlacements.contains { id, placement in
+                placement.isPinned && entry.placements[id]?.isPinned != true
+            }
+        case .pageCard:
+            windowState.controlIsland.tabInfo.isVisible || windowState.controlIsland.showsAddress
+        case .movePanel:
+            windowState.controlIsland.placement != entry.islandPlacement
+        case .done:
+            false
+        }
+    }
+
+    /// A page placed after the step began is measured from where it first appeared.
+    private func adoptNewPlacements() {
+        for (id, placement) in windowState.floatingPlacements where entry.placements[id] == nil {
+            entry.placements[id] = placement
+        }
+    }
+
+    private var pageCount: Int {
+        _ = tabManager.state.tabListVersion
+        return windowState.activeSpaceTabs.filter { !$0.isArchived }.count
+    }
+
+    /// Opens the two tutorial pages when a step needs pages to show and the space has too few.
+    private func ensurePages(for step: Step) {
+        let required = step.requiredPageCount
+        guard required > 0, pageCount < required, let space = windowState.activeSpace, !windowState.isSpaceLocked else { return }
+        let draft = tabManager.createTab(url: FloatingTabsTutorial.url(reference: false), in: space, makeActive: false)
+        let reference = tabManager.createTab(url: FloatingTabsTutorial.url(reference: true), in: space, makeActive: false)
+        draft.activePage.title = "Trip draft"
+        reference.activePage.title = "Arrival details"
+        canvas.updateFloatingPlacement(.init(x: 0.1, y: 0.4, isCompact: true, isPinned: false), for: draft)
+        canvas.updateFloatingPlacement(.init(x: 0.8, y: 0.4, isCompact: false, isPinned: false), for: reference)
+        if windowState.activeTab == nil {
+            tabManager.setActiveTab(draft, in: windowState)
+        }
+    }
+
+    // MARK: - Targets
+
+    /// The frames the current step points at, in window content coordinates.
+    ///
+    /// Rail rows come from the control island's reported frames; floating pages from the
+    /// canvas; the empty page's lens from the page itself. A step whose control is hidden
+    /// by customization points at the whole rail.
+    func spotlights(in bounds: CGRect) -> [CGRect] {
+        guard let step = currentStep else { return [] }
+        let island = windowState.controlIsland
+        func row(_ item: ControlIslandItem) -> [CGRect] {
+            [island.itemFrames[item] ?? island.railFrame].filter { !$0.isEmpty }
+        }
+        switch step {
+        case .openPage:
+            if windowState.activeTab == nil {
+                return startPageLensFrame.isEmpty ? [] : [startPageLensFrame]
+            }
+            return row(.commandLens)
+        case .openSecondPage:
+            return row(.commandLens)
+        case .revealPages:
+            return row(.floatingTabs)
+        case .placePage, .keepVisible:
+            let cards = canvas.visibleFloatingTabs.map { canvas.floatingFrame(for: $0, in: bounds) }
+            return cards.isEmpty ? row(.floatingTabs) : cards
+        case .pageCard:
+            return row(.page)
+        case .movePanel:
+            return [island.railFrame].filter { !$0.isEmpty }
+        case .done:
+            return []
+        }
+    }
+
+    /// Where clicks reach the content under the overlay: the spotlit targets, while the page is dimmed.
+    func passThroughRegions(in bounds: CGRect) -> [CGRect] {
+        guard isActive, dimsPage else { return [] }
+        return spotlights(in: bounds).map(FloatingTourLayout.spotlight(around:))
+    }
+
+    // MARK: - Observation
+
+    private func observe() {
+        observation?.cancel()
+        observation = Task(name: "Floating tour steps") { [weak self] in
+            let readings = Observations { @MainActor [weak self] in self?.reading() }
+            for await _ in readings {
+                guard let self, !Task.isCancelled else { return }
+                review()
+            }
+        }
+    }
+
+    private func reading() -> Reading {
+        guard let step = currentStep else { return Reading(holds: false, pageCount: 0) }
+        return Reading(holds: conditionHolds(for: step), pageCount: step.requiredPageCount > 0 ? pageCount : 0)
+    }
+
+    // MARK: - Escape
+
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == Self.escapeKeyCode, event.window === windowState.window,
+                  isActive, escapeEndsTour else { return event }
+            skip()
+            return nil
+        }
+    }
+
+    /// Escape first serves whatever is open above the page: a lens, the revealed tab layer, a sheet.
+    private var escapeEndsTour: Bool {
+        dimsPage && !canvas.floatingVisibility.isRevealed
+            && windowState.window?.attachedSheet == nil && !windowState.controlIsland.showsCustomization
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
+}
+
+// MARK: - Step Text
+
+extension FloatingTourManager.Step {
+    /// What the window looks like while the step is shown, which chooses the wording.
+    struct Context {
+        var revealKey: FloatingRevealKey
+        var hasPage: Bool
+        var layerRevealed: Bool
+        var optionDragMovesPanel: Bool
+    }
+
+    var title: String {
+        switch self {
+        case .openPage: "Open a page"
+        case .openSecondPage: "Open a second page"
+        case .revealPages: "See both pages"
+        case .placePage: "Put a page somewhere"
+        case .keepVisible: "Keep a page in view"
+        case .pageCard: "The current page"
+        case .movePanel: "Move the panel"
+        case .done: "You know the whole browser"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .openPage: "sparkle.magnifyingglass"
+        case .openSecondPage: "plus.square.on.square"
+        case .revealPages: "square.on.square"
+        case .placePage: "hand.draw"
+        case .keepVisible: "pin"
+        case .pageCard: "globe"
+        case .movePanel: "slider.horizontal.3"
+        case .done: "checkmark.seal"
+        }
+    }
+
+    func instruction(in context: Context) -> String {
+        let hold = "Hold \(context.revealKey.title) (\(context.revealKey.glyph))"
+        switch self {
+        case .openPage:
+            return context.hasPage
+                ? "Press ⌘T, type an address or a search, then press Return."
+                : "Type an address or a search, then press Return."
+        case .openSecondPage:
+            return "Press ⌘T, type something else, then press Return. The first page keeps its place."
+        case .revealPages:
+            return "\(hold) to see every open page where it was left. Release to hide them."
+        case .placePage:
+            return context.layerRevealed
+                ? "Drag a page's title to where you want it. It stays there."
+                : "\(hold), then drag a page's title to where you want it. It stays there."
+        case .keepVisible:
+            return context.layerRevealed
+                ? "Click a page's pin, or choose Keep Visible from its actions menu. It stays after you release."
+                : "\(hold), then click a page's pin or choose Keep Visible from its actions menu. It stays after you release."
+        case .pageCard:
+            return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."
+        case .movePanel:
+            return context.optionDragMovesPanel
+                ? "Hold ⌥ and drag the panel somewhere else. It rests while you work and wakes as you approach."
+                : "Drag the panel's empty glass somewhere else. It rests while you work and wakes as you approach."
+        case .done:
+            return "Pages open from the lens, keep their places behind \(context.revealKey.glyph), and the panel stays out of your way."
+        }
+    }
+}

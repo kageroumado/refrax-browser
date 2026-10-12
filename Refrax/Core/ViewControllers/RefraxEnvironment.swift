@@ -58,6 +58,7 @@ struct RefraxEnvironment {
     let customSearchEngineManager: CustomSearchEngineManager
     let appUpdateManager: AppUpdateManager
     let guidedTourManager: GuidedTourManager
+    let floatingTourManager: FloatingTourManager
     let engineRegistry: EngineRegistry
 }
 
@@ -126,6 +127,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.customSearchEngineManager)
             .environment(environment.appUpdateManager)
             .environment(environment.guidedTourManager)
+            .environment(environment.floatingTourManager)
             .environment(environment.engineRegistry)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)

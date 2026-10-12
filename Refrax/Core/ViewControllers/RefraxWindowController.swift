@@ -362,6 +362,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             appUpdateManager: appDelegate.appUpdateManager,
             guidedTourManager: GuidedTourManager(),
+            floatingTourManager: FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager),
             engineRegistry: appDelegate.engineRegistry,
         )
 
@@ -581,7 +582,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     }
 
     private func setupOverlayView(contentView: NSView) {
-        overlayView = TransparentHostingView(rootView: OverlayContainer().refraxEnvironment(environment)) { [unowned self] in
+        let overlay = TransparentHostingView(rootView: OverlayContainer().refraxEnvironment(environment)) { [unowned self] in
             !windowState.showsCommandLens
                 && !windowState.showsAddressLens
                 && !tabSwitcherManager.isActive
@@ -590,7 +591,14 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 && !windowState.isHoveringOverlayNotification
                 && environment.screenshotCoordinator.currentPreview == nil
                 && environment.recordingCoordinator.currentPreview == nil
+                && !environment.floatingTourManager.isActive
         }
+        // The tour's spotlit targets stay reachable under the scrim.
+        overlay.passThroughRegions = { [weak overlay, unowned self] in
+            guard let overlay else { return [] }
+            return environment.floatingTourManager.passThroughRegions(in: overlay.bounds)
+        }
+        overlayView = overlay
 
         contentView.addSubview(overlayView)
         overlayView.translatesAutoresizingMaskIntoConstraints = false
