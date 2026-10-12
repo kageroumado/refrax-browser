@@ -226,6 +226,34 @@ extension Color {
             }
         }
         
+        /// The same color with its hue turned by `degrees` around the color wheel; chroma,
+        /// brightness, alpha, and color space stay. Grays have no hue and come back unchanged.
+        func rotatingHue(by degrees: Double) -> Components {
+            let high = max(red, green, blue)
+            let chroma = high - min(red, green, blue)
+            guard chroma > 0 else { return self }
+            let sector: Double = if high == red {
+                (green - blue) / chroma
+            } else if high == green {
+                (blue - red) / chroma + 2
+            } else {
+                (red - green) / chroma + 4
+            }
+            var hue = (sector * 60 + degrees).truncatingRemainder(dividingBy: 360)
+            if hue < 0 { hue += 360 }
+            let x = chroma * (1 - abs((hue / 60).truncatingRemainder(dividingBy: 2) - 1))
+            let floor = high - chroma
+            let (r, g, b): (Double, Double, Double) = switch Int(hue / 60) {
+            case 0: (chroma, x, 0)
+            case 1: (x, chroma, 0)
+            case 2: (0, chroma, x)
+            case 3: (0, x, chroma)
+            case 4: (x, 0, chroma)
+            default: (chroma, 0, x)
+            }
+            return Components(red: r + floor, green: g + floor, blue: b + floor, alpha: alpha, colorSpace: colorSpace)
+        }
+
         /// An AppKit representation of the color.
         var nsColor: NSColor {
             switch colorSpace {
