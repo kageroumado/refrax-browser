@@ -1,16 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// Page actions shared by the control panel and spatial tabs.
+/// Page actions shared by the control panel and spatial tabs, ordered by ``PageActionsMenuPlan``.
 struct PageActionsMenu: NSViewRepresentable {
     let tab: Tab
     let area: CGRect
+    let host: PageActionsMenuPlan.Host
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(ReaderModeManager.self) private var readerMode
     @Environment(SharingCoordinator.self) private var sharing
+    @Environment(BrowserSettings.self) private var settings
     @Environment(\.appearsActive) private var appearsActive
 
     func makeNSView(context _: Context) -> PageActionsButton {
@@ -34,49 +36,84 @@ struct PageActionsMenu: NSViewRepresentable {
         let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
         let placement = canvas.floatingPlacement(for: tab)
         let page = tabs.pagePool.existingPage(for: tab.activePage)
-        var items: [any MenuItemConvertible] = [
-            MenuItem("Copy Address", systemImage: "link") { actions.copyLink() },
-            MenuItem("Copy as Markdown Link", systemImage: "text.quote") { actions.copyMarkdownLink() },
-            MenuItem("Share…", systemImage: "square.and.arrow.up") {
-                sharing.shareURL(URL(string: tabs.copyableURL(for: tab)) ?? tab.activePage.url, title: tab.activePage.title)
-            },
-        ]
-        if tab.id == windowState.activeTabID, let page {
-            items.append(MenuItem("Find on Page…", systemImage: "magnifyingglass", keyEquivalent: "f") { windowState.showFindNavigator() })
-            items.append(MenuItem(readerMode.isReaderActive(for: tab.id) ? "Leave Reader" : "Reader", systemImage: "text.page") {
-                Task(name: "Toggle reader from page card") {
-                    if await readerMode.toggleReader(for: page) == .tooLong { windowState.showToast("This page is too long for Reader") }
-                }
-            })
+        let context = PageActionsMenuPlan.Context(
+            host: host,
+            isCurrentPage: tab.id == windowState.activeTabID,
+            hasPage: page != nil,
+            isReaderActive: readerMode.isReaderActive(for: tab.id),
+            canUpdateSavedAddress: tab.linkedBookmark != nil && actions.isFavorite,
+            isCompact: placement.isCompact,
+            isPinned: placement.isPinned,
+            hasRegion: placement.region != nil,
+            regionsEnabled: settings.floatingTabRegionsEnabled,
+            canGroup: !tab.isLiveFavorite && tab.space?.id == windowState.activeSpaceID,
+            isSelectedForGroup: canvas.selectedFloatingTabIDs.contains(tab.id),
+            selectionCount: canvas.selectedFloatingTabIDs.count,
+            canShowInEverySpace: placement.isPinned && tab.space?.dataStoreMode != .private,
+            showsInEverySpace: placement.showsInEverySpace == true,
+        )
+        let items = PageActionsMenuPlan.entries(for: context).map { entry in
+            item(for: entry, title: PageActionsMenuPlan.title(of: entry, in: context), actions: actions, placement: placement, page: page)
         }
-        if let bookmark = tab.linkedBookmark, actions.isFavorite {
-            items.append(MenuItem("Update Saved Address", systemImage: "bookmark") {
+        return items.asNSMenu()
+    }
+
+    private func item(
+        for entry: PageActionsMenuPlan.Entry, title: String, actions: ControlIslandTabActions, placement: FloatingTabPlacement, page: WebPage?,
+    ) -> any MenuItemConvertible {
+        switch entry {
+        case .copyAddress:
+            MenuItem(title, systemImage: "link") { actions.copyLink() }
+        case .copyMarkdownLink:
+            MenuItem(title, systemImage: "text.quote") { actions.copyMarkdownLink() }
+        case .share:
+            MenuItem(title, systemImage: "square.and.arrow.up") {
+                sharing.shareURL(URL(string: tabs.copyableURL(for: tab)) ?? tab.activePage.url, title: tab.activePage.title)
+            }
+        case .findOnPage:
+            MenuItem(title, systemImage: "magnifyingglass", keyEquivalent: "f") { windowState.showFindNavigator() }
+        case .reader:
+            MenuItem(title, systemImage: "text.page") {
+                guard let page else { return }
+                Task(name: "Toggle reader from page card") {
+                    if await readerMode.toggleReader(for: page) == .tooLong {
+                        windowState.showToast("This page is too long for Reader")
+                    }
+                }
+            }
+        case .updateSavedAddress:
+            MenuItem(title, systemImage: "bookmark") {
+                guard let bookmark = tab.linkedBookmark else { return }
                 bookmark.url = tab.activePage.url
                 bookmarks.refreshFavoritesCache()
                 tabs.state.scheduleSave()
-            })
-        }
-        if tab.id != windowState.activeTabID {
-            items.append(MenuItem("Look", systemImage: "eye") { canvas.lookAtFloatingTab(tab) })
-        }
-        items.append(MenuDivider())
-        items.append(MenuItem(placement.isCompact ? "Show as Preview" : "Show as Compact Tab", systemImage: "rectangle.expand.vertical") {
-            var next = placement
-            next.setCompact(!next.isCompact, in: area)
-            canvas.updateFloatingPlacement(next, for: tab)
-            if tab.id == windowState.activeTabID { canvas.toggleFloatingTabs() }
-        })
-        items.append(MenuItem(placement.isPinned ? "Hide Preview" : "Keep Visible", systemImage: "pin") {
-            var next = placement
-            next.isPinned.toggle()
-            if next.isPinned { next.isCompact = false }
-            canvas.updateFloatingPlacement(next, for: tab)
-        })
-        items.append(MenuItem(placement.region == nil ? "Keep Part Visible… (Experimental)" : "Adjust Region…", systemImage: "crop") {
-            canvas.beginRegionSelection(for: tab)
-        })
-        if placement.region != nil {
-            items.append(SubMenu("Preview Zoom") {
+            }
+        case .look:
+            MenuItem(title, systemImage: "eye") { canvas.lookAtFloatingTab(tab) }
+        case .divider:
+            MenuDivider()
+        case .keepVisible:
+            MenuItem(title, systemImage: "pin") {
+                var next = placement
+                next.isPinned.toggle()
+                if next.isPinned {
+                    next.isCompact = false
+                }
+                canvas.updateFloatingPlacement(next, for: tab)
+            }
+        case .presentation:
+            MenuItem(title, systemImage: placement.isCompact ? "rectangle.expand.vertical" : "rectangle.compress.vertical") {
+                var next = placement
+                next.setCompact(!next.isCompact, in: area)
+                canvas.updateFloatingPlacement(next, for: tab)
+                if tab.id == windowState.activeTabID {
+                    canvas.toggleFloatingTabs()
+                }
+            }
+        case .region:
+            MenuItem(title, systemImage: "crop") { canvas.beginRegionSelection(for: tab) }
+        case .previewZoom:
+            SubMenu(title) {
                 for scale in [0.5, 0.75, 1.0, 1.25, 1.5] {
                     MenuItem("\(Int(scale * 100))%") {
                         var next = placement
@@ -89,28 +126,28 @@ struct PageActionsMenu: NSViewRepresentable {
                     next.region = nil
                     canvas.updateFloatingPlacement(next, for: tab)
                 }
-            })
-        }
-        if !tab.isLiveFavorite, tab.space?.id == windowState.activeSpaceID {
-            items.append(MenuItem(canvas.selectedFloatingTabIDs.contains(tab.id) ? "Deselect for Group" : "Select for Group") {
-                if canvas.selectedFloatingTabIDs.contains(tab.id) { canvas.selectedFloatingTabIDs.remove(tab.id) }
-                else { canvas.selectedFloatingTabIDs.insert(tab.id) }
-            })
-            if canvas.selectedFloatingTabIDs.count > 1 {
-                items.append(MenuItem("Group Selected Tabs") { canvas.groupFloatingSelection() })
             }
-        }
-        if placement.isPinned, tab.space?.dataStoreMode != .private {
-            items.append(MenuItem(placement.showsInEverySpace == true ? "Show in This Space" : "Show in Every Space") {
+        case .selectForGroup:
+            MenuItem(title) {
+                if canvas.selectedFloatingTabIDs.contains(tab.id) {
+                    canvas.selectedFloatingTabIDs.remove(tab.id)
+                } else {
+                    canvas.selectedFloatingTabIDs.insert(tab.id)
+                }
+            }
+        case .groupSelectedTabs:
+            MenuItem(title) { canvas.groupFloatingSelection() }
+        case .showInEverySpace:
+            MenuItem(title) {
                 var next = placement
                 next.showsInEverySpace = placement.showsInEverySpace != true
                 canvas.updateFloatingPlacement(next, for: tab)
-            })
+            }
+        case .duplicateTab:
+            MenuItem(title, systemImage: "plus.square.on.square") { actions.duplicate() }
+        case .closeTab:
+            MenuItem(title, systemImage: "xmark") { tabs.requestCloseTab(tab) }
         }
-        items.append(MenuDivider())
-        items.append(MenuItem("Duplicate Tab", systemImage: "plus.square.on.square") { actions.duplicate() })
-        items.append(MenuItem("Close Tab", systemImage: "xmark") { tabs.requestCloseTab(tab) })
-        return items.asNSMenu()
     }
 }
 
@@ -131,7 +168,9 @@ final class PageActionsButton: NSPopUpButton, NSMenuDelegate {
         menu?.delegate = self
     }
 
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     var makeMenu: () -> NSMenu = { NSMenu() }
     var onClose: () -> Void = {}

@@ -11,7 +11,12 @@ final class PageVisitState {
         let focusedPageID: TabPage.ID?
     }
 
+    /// The verb for opening a page while keeping the way back, wherever a menu or lens offers it.
+    nonisolated static let lookActionTitle = "Look, then Return"
+
     private(set) var destination: Destination?
+    /// When the visit that `destination` belongs to began.
+    private(set) var beganAt: Date?
     var isTransformingIdentity = false
 
     func replaceIdentity(of original: Tab.ID, with tab: Tab) {
@@ -26,6 +31,7 @@ final class PageVisitState {
         guard destination == nil else { return }
         destination = Destination(tabID: tab.id, spaceID: window.activeSpaceID,
                                   title: tab.displayTitle, focusedPageID: window.focusedPageID)
+        beganAt = Date()
         retainedPage = page
         page?.temporaryVisitRetentionCount += 1
         responder = window.window?.firstResponder
@@ -48,6 +54,7 @@ final class PageVisitState {
         retainedPage = nil
         responder = nil
         destination = nil
+        beganAt = nil
     }
 
     isolated deinit { retainedPage?.temporaryVisitRetentionCount -= 1 }

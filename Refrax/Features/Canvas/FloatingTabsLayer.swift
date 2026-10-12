@@ -113,6 +113,13 @@ private struct FloatingTabCard: View {
     @State private var dragOrigin: CGPoint?
     @State private var resizeOrigin: CGSize?
 
+    private enum Layout {
+        /// Each header control's target, inside the 34-point header.
+        static let headerControlSize: CGFloat = 32
+        static let headerControlSpacing: CGFloat = 2
+        static let headerInset: CGFloat = 10
+    }
+
     private var isMainPage: Bool { tab.id == windowState.activeTabID }
     private var hasInput: Bool { windowState.focusedPage?.tab?.id == tab.id && !isMainPage }
 
@@ -185,7 +192,7 @@ private struct FloatingTabCard: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Layout.headerControlSpacing) {
             HStack(spacing: 7) {
                 if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
                     Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
@@ -223,29 +230,49 @@ private struct FloatingTabCard: View {
             .accessibilityAction(named: "Move up") { moveBy(dx: 0, dy: -24) }
             .accessibilityAction(named: "Move down") { moveBy(dx: 0, dy: 24) }
 
-            Button(placement.isPinned ? "Unpin preview" : "Keep preview visible", systemImage: placement.isPinned ? "pin.fill" : "pin") {
-                var next = placement
-                next.isPinned.toggle()
-                if next.isPinned {
-                    next.setCompact(false, in: area)
-                }
-                canvas.updateFloatingPlacement(next, for: tab)
-            }
-            .foregroundStyle(placement.isPinned ? Color.appAccentColor : .secondary)
-            .frame(width: 28, height: 28).contentShape(Rectangle())
-            .help(placement.isPinned ? "Hide preview" : "Keep preview visible")
+            presentationButton
+            pinButton
             if canvas.retainedInputTabID == tab.id && !canvas.floatingVisibility.isRevealed {
                 Button("Finish") { canvas.finishPreviewInteraction() }
                     .labelStyle(.titleOnly)
             }
-            PageActionsMenu(tab: tab, area: area)
-                .frame(width: 28, height: 28)
-
+            PageActionsMenu(tab: tab, area: area, host: .floatingCard)
+                .frame(width: Layout.headerControlSize, height: Layout.headerControlSize)
         }
         .labelStyle(.iconOnly)
         .controlSize(.small)
         .buttonStyle(.plain)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, Layout.headerInset)
+    }
+
+    /// Switches the card between compact and preview where it stands.
+    private var presentationButton: some View {
+        let title = placement.isCompact ? "Show as preview" : "Show as compact tab"
+        return Button(title, systemImage: placement.isCompact ? "rectangle.expand.vertical" : "rectangle.compress.vertical") {
+            var next = placement
+            next.setCompact(!placement.isCompact, in: area)
+            canvas.updateFloatingPlacement(next, for: tab)
+        }
+        .foregroundStyle(.secondary)
+        .frame(width: Layout.headerControlSize, height: Layout.headerControlSize).contentShape(Rectangle())
+        .help(title)
+        .accessibilityLabel(title)
+    }
+
+    private var pinButton: some View {
+        let title = placement.isPinned ? "Hide preview" : "Keep preview visible"
+        return Button(title, systemImage: placement.isPinned ? "pin.fill" : "pin") {
+            var next = placement
+            next.isPinned.toggle()
+            if next.isPinned {
+                next.setCompact(false, in: area)
+            }
+            canvas.updateFloatingPlacement(next, for: tab)
+        }
+        .foregroundStyle(placement.isPinned ? Color.appAccentColor : .secondary)
+        .frame(width: Layout.headerControlSize, height: Layout.headerControlSize).contentShape(Rectangle())
+        .help(title)
+        .accessibilityLabel(title)
     }
 
     private func moveBy(dx: CGFloat, dy: CGFloat) {

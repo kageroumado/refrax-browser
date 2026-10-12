@@ -88,6 +88,19 @@ extension MenuBarManager {
         emptyCachesItem.target = self
         developMenu.addItem(emptyCachesItem)
 
+        // --- Separator: Feature Flags ---
+        developMenu.addItem(.separator())
+
+        let floatingRegionsItem = NSMenuItem(
+            title: "Floating Tab Regions",
+            action: #selector(toggleFloatingTabRegions(_:)),
+            keyEquivalent: "",
+        )
+        floatingRegionsItem.target = self
+        floatingRegionsItem.tag = DevelopMenuItemTag.floatingTabRegions.rawValue
+        floatingRegionsItem.toolTip = "Offer Keep Part Visible and Preview Zoom in a page's actions menu"
+        developMenu.addItem(floatingRegionsItem)
+
         #if DEBUG
         developMenu.addItem(.separator())
 
@@ -186,6 +199,12 @@ extension MenuBarManager {
     #endif
 
     @objc
+    func toggleFloatingTabRegions(_: Any?) {
+        let settings = NSApplication.shared.typedDelegate.settings
+        settings.floatingTabRegionsEnabled.toggle()
+    }
+
+    @objc
     func emptyCaches(_: Any?) {
         guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.emptyCaches()
@@ -213,6 +232,9 @@ extension MenuBarManager {
                 let isSelecting = activeWebPage?.isElementSelectionActive ?? false
                 item.title = isSelecting ? "Stop Element Selection" : "Start Element Selection"
 
+            case DevelopMenuItemTag.floatingTabRegions.rawValue:
+                item.state = NSApplication.shared.typedDelegate.settings.floatingTabRegionsEnabled ? .on : .off
+
             default:
                 break
             }
@@ -225,4 +247,5 @@ private enum DevelopMenuItemTag: Int {
     case toggleInspector = 1_001
     case timelineRecording = 1_002
     case elementSelection = 1_003
+    case floatingTabRegions = 1_004
 }

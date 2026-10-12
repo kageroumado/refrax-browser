@@ -28,6 +28,9 @@ final class ControlIslandState {
     @ObservationIgnored var lastPointerMovement = Date.distantPast
     @ObservationIgnored private var hoverPath = ControlIslandHoverPath()
     @ObservationIgnored private var quietTask: Task<Void, Never>?
+    /// The end of the latest ``holdAwake(for:now:)``.
+    private var awakeUntil = Date.distantPast
+    @ObservationIgnored private var awakeHoldTask: Task<Void, Never>?
 
     @ObservationIgnored private let defaults: UserDefaults?
     private static let placementKey = "controlIsland.placement"
@@ -37,6 +40,8 @@ final class ControlIslandState {
     /// A pointer resting past this distance after waking the controls lets them rest again.
     static let farDistance: CGFloat = 220
     static let stillDelay: TimeInterval = 2.5
+    /// How long a Look keeps the rail awake, so the page card's return row is seen.
+    static let visitHold: TimeInterval = 4
 
     init(defaults: UserDefaults? = .standard, configuration: ControlIslandConfiguration = .shared) {
         self.defaults = defaults
@@ -48,7 +53,27 @@ final class ControlIslandState {
     /// Work in progress on the controls, which keeps the glass present and the pointer grace alive.
     var isEngaged: Bool {
         isHovered || hasKeyboardFocus || isPresenting || isDragging || showsAddress || showsCustomization
-            || isReorderingFavorites || tabInfo.isVisible
+            || isReorderingFavorites || tabInfo.isVisible || isHeldAwake()
+    }
+
+    /// Whether a ``holdAwake(for:now:)`` is still running at `now`.
+    func isHeldAwake(now: Date = Date()) -> Bool {
+        now < awakeUntil
+    }
+
+    /// Keeps the controls engaged for `duration` from `now`; a longer hold already running is kept.
+    func holdAwake(for duration: TimeInterval, now: Date = Date()) {
+        let until = now.addingTimeInterval(duration)
+        guard until > awakeUntil else { return }
+        awakeUntil = until
+        wake()
+        awakeHoldTask?.cancel()
+        awakeHoldTask = Task(name: "Release browser controls hold") { [weak self] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard let self, !Task.isCancelled else { return }
+            awakeUntil = .distantPast
+            awakeHoldTask = nil
+        }
     }
 
     func savePlacement() {

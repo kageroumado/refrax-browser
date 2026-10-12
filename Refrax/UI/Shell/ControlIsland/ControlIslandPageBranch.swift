@@ -19,7 +19,6 @@ struct ControlIslandPageBranch: View {
         static let leadingInset: CGFloat = 12
         static let trailingInset: CGFloat = 6
         static let actionSize: CGFloat = 30
-        static let returnRowHeight: CGFloat = 36
     }
 
     private var tab: Tab? { windowState.focusedPage?.tab ?? windowState.activeTab }
@@ -45,18 +44,7 @@ struct ControlIslandPageBranch: View {
             }
             if let destination = windowState.pageVisit.destination {
                 Divider().padding(.horizontal, Layout.leadingInset)
-                HStack(spacing: 4) {
-                    Button {
-                        tabs.returnFromLook(in: windowState)
-                    } label: {
-                        Label("Return to \(destination.title)", systemImage: "arrow.uturn.backward")
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, minHeight: Layout.returnRowHeight, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    Button("Stay Here") { windowState.pageVisit.end() }
-                        .frame(height: Layout.returnRowHeight)
-                }.padding(.horizontal, Layout.leadingInset)
+                LookReturnRow(destination: destination, beganAt: windowState.pageVisit.beganAt)
             }
         }
         .buttonStyle(ControlIslandButtonStyle())
@@ -132,7 +120,7 @@ struct ControlIslandPageBranch: View {
                 actions.toggleFavorite()
             }
             .disabled(!actions.canFavorite)
-            PageActionsMenu(tab: tab, area: area)
+            PageActionsMenu(tab: tab, area: area, host: .pageCard)
                 .frame(width: Layout.actionSize, height: Layout.actionSize)
         }
     }
@@ -141,5 +129,59 @@ struct ControlIslandPageBranch: View {
         Button(action: perform) {
             Image(systemName: symbol).frame(width: Layout.actionSize, height: Layout.actionSize).contentShape(Rectangle())
         }.help(title).accessibilityLabel(title).focusEffectDisabled()
+    }
+}
+
+/// The way back from a Look: "Return to *title*" beside "Stay Here". A visit that has just
+/// begun underlines the row in the space color and the underline fades, so the row is seen
+/// before the rail rests; with Reduce Motion the underline stays for the visit.
+private struct LookReturnRow: View {
+    let destination: PageVisitState.Destination
+    let beganAt: Date?
+    @Environment(WindowState.self) private var windowState
+    @Environment(TabManager.self) private var tabs
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var emphasis = 1.0
+
+    private enum Layout {
+        static let inset: CGFloat = 12
+        static let rowHeight: CGFloat = 36
+        static let underlineHeight: CGFloat = 2
+        static let emphasisDuration: TimeInterval = 1.2
+    }
+
+    /// The visit began within the emphasis; a row shown later stays plain.
+    private var isFresh: Bool {
+        guard let beganAt else { return false }
+        return Date().timeIntervalSince(beganAt) < Layout.emphasisDuration
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button {
+                tabs.returnFromLook(in: windowState)
+            } label: {
+                Label("Return to \(destination.title)", systemImage: "arrow.uturn.backward")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            Button("Stay Here") { windowState.pageVisit.end() }
+                .frame(height: Layout.rowHeight)
+        }
+        .padding(.horizontal, Layout.inset)
+        .overlay(alignment: .bottom) {
+            Capsule()
+                .fill(windowState.activeSpace?.color ?? Color.appAccentColor)
+                .frame(height: Layout.underlineHeight)
+                .padding(.horizontal, Layout.inset)
+                .opacity(reduceMotion ? 1 : (isFresh ? emphasis : 0))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .onAppear {
+            guard !reduceMotion, isFresh else { return }
+            withAnimation(.easeOut(duration: Layout.emphasisDuration)) { emphasis = 0 }
+        }
     }
 }

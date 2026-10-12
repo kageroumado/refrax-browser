@@ -171,6 +171,13 @@ extension FeatureFlagDefinition {
             defaultValue: false
         ),
         FeatureFlagDefinition(
+            key: "app.floatingTabs.regionsEnabled",
+            name: "Floating Tab Regions",
+            description: "Offer Keep Part Visible and Preview Zoom in a page's actions menu, so a floating preview can show one region of its page.",
+            category: .browser,
+            defaultValue: false,
+        ),
+        FeatureFlagDefinition(
             key: "app.realPopupWebViews",
             name: "Real Popup Web Views",
             description: "Use real WKWebView instances for popups to preserve window.opener semantics. Disabling returns nil for window.open() calls.",
