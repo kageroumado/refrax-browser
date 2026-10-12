@@ -9,7 +9,7 @@ struct ControlIslandMenuTests {
             ["Settings…"],
             ["Customize Controls…"],
         ])
-        #expect(ControlIslandMoreItem.sections.flatMap { $0 } == ControlIslandMoreItem.allCases)
+        #expect(ControlIslandMoreItem.sections.flatMap(\.self) == ControlIslandMoreItem.allCases)
     }
 
     @Test

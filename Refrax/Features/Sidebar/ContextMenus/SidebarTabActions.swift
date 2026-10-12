@@ -63,7 +63,11 @@ struct SidebarTabActions {
             "sidebar.unread", unread ? "Mark as Read" : "Mark as Unread",
             symbol: unread ? ContextMenuIcon.markRead.systemName : ContextMenuIcon.markUnread.systemName, group: .tab,
         ) {
-            if unread { tabManager.markAsRead(tab) } else { tabManager.markAsUnread(tab) }
+            if unread {
+                tabManager.markAsRead(tab)
+            } else {
+                tabManager.markAsUnread(tab)
+            }
         })
         return actions
     }
@@ -145,7 +149,9 @@ struct SidebarTabActions {
 
     // MARK: - Close family
 
-    private var mainTabs: [Tab] { tab.space?.mainTabs ?? [] }
+    private var mainTabs: [Tab] {
+        tab.space?.mainTabs ?? []
+    }
     private var tabsAbove: [Tab] {
         guard let index = mainTabs.firstIndex(where: { $0.id == tab.id }) else { return [] }
         return Array(mainTabs[..<index])
@@ -156,7 +162,9 @@ struct SidebarTabActions {
         return Array(mainTabs[(index + 1)...])
     }
 
-    private var otherTabs: [Tab] { mainTabs.filter { $0.id != tab.id } }
+    private var otherTabs: [Tab] {
+        mainTabs.filter { $0.id != tab.id }
+    }
 
     private func closeFamily() -> [MenuAction] {
         var actions: [MenuAction] = []

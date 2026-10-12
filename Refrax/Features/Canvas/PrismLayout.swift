@@ -63,7 +63,7 @@ nonisolated struct PrismLayout: Equatable, Sendable {
             CGPoint(x: bounds.minX, y: lensFrame.midY)
         }
         let entryPoint = Self.facingPoint(of: lensFrame, toward: origin)
-        entry = [origin, entryPoint].map { Self.clamp($0, to: bounds) }
+        self.entry = [origin, entryPoint].map { Self.clamp($0, to: bounds) }
 
         let targets = Array(pageFrames.prefix(Self.maximumBands))
         let runs: [(exit: CGPoint, end: CGPoint, angle: Double)] = targets.map { frame in
@@ -76,7 +76,7 @@ nonisolated struct PrismLayout: Equatable, Sendable {
         for (rank, index) in order.enumerated() where runs.count > 1 {
             offsets[index] = -Self.hueSpread + 2 * Self.hueSpread * Double(rank) / Double(runs.count - 1)
         }
-        bands = zip(runs, zip(offsets, targets)).map { run, rest in
+        self.bands = zip(runs, zip(offsets, targets)).map { run, rest in
             Band(points: [run.exit, run.end].map { Self.clamp($0, to: bounds) }, hueOffset: rest.0, target: rest.1)
         }
     }
@@ -151,8 +151,12 @@ nonisolated struct PrismLayout: Equatable, Sendable {
     /// The middle of the edge of `rect` that faces `point`: the near vertical edge when
     /// `point` lies beyond the rect's horizontal span, else the near horizontal edge.
     static func facingPoint(of rect: CGRect, toward point: CGPoint) -> CGPoint {
-        if point.x < rect.minX { return CGPoint(x: rect.minX, y: rect.midY) }
-        if point.x > rect.maxX { return CGPoint(x: rect.maxX, y: rect.midY) }
+        if point.x < rect.minX {
+            return CGPoint(x: rect.minX, y: rect.midY)
+        }
+        if point.x > rect.maxX {
+            return CGPoint(x: rect.maxX, y: rect.midY)
+        }
         return CGPoint(x: rect.midX, y: point.y < rect.midY ? rect.minY : rect.maxY)
     }
 

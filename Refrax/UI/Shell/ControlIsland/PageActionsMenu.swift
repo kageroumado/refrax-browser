@@ -80,9 +80,13 @@ final class PageActionsButton: NSButton, NSMenuDelegate {
         action = #selector(presentMenu(_:))
     }
 
-    required init?(coder _: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
-    var isPresentingMenu: Bool { presenter.presentedMenu != nil }
+    var isPresentingMenu: Bool {
+        presenter.presentedMenu != nil
+    }
 
     @objc
     private func presentMenu(_: Any?) {

@@ -25,8 +25,12 @@ struct FloatingTourOverlay: View {
                 let bounds = CGRect(origin: .zero, size: geometry.size)
                 let spotlights = tour.spotlights(in: bounds)
                 let anchor = tour.instructionAnchor(in: bounds)
-                let origin = Layout.cardOrigin(for: anchor, cardSize: cardSize, in: bounds,
-                                               avoiding: windowState.controlIsland.railFrame.isEmpty ? .null : windowState.controlIsland.railFrame)
+                let origin = Layout.cardOrigin(
+                    for: anchor,
+                    cardSize: cardSize,
+                    in: bounds,
+                    avoiding: windowState.controlIsland.railFrame.isEmpty ? .null : windowState.controlIsland.railFrame,
+                )
                 ZStack(alignment: .topLeading) {
                     if tour.dimsPage {
                         scrim(spotlights: spotlights)
@@ -70,7 +74,9 @@ struct FloatingTourOverlay: View {
             .contentShape(SpotlightCutout(spotlights: spotlights), eoFill: true)
             .onTapGesture {
                 pulse += 1
-                if windowState.showsCommandLens { windowState.closeCommandLens() }
+                if windowState.showsCommandLens {
+                    windowState.closeCommandLens()
+                }
             }
             .accessibilityHidden(true)
     }

@@ -9,7 +9,9 @@ struct MenuTreeView: View {
 
     var body: some View {
         ForEach(Array(tree.sections.enumerated()), id: \.offset) { index, section in
-            if index > 0 { Divider() }
+            if index > 0 {
+                Divider()
+            }
             ForEach(Array(section.nodes.enumerated()), id: \.offset) { _, node in
                 MenuNodeView(node: node)
             }
@@ -80,10 +82,18 @@ private struct MenuKeyShortcut: ViewModifier {
 private extension NSEvent.ModifierFlags {
     var eventModifiers: SwiftUI.EventModifiers {
         var modifiers: SwiftUI.EventModifiers = []
-        if contains(.command) { modifiers.insert(.command) }
-        if contains(.shift) { modifiers.insert(.shift) }
-        if contains(.option) { modifiers.insert(.option) }
-        if contains(.control) { modifiers.insert(.control) }
+        if contains(.command) {
+            modifiers.insert(.command)
+        }
+        if contains(.shift) {
+            modifiers.insert(.shift)
+        }
+        if contains(.option) {
+            modifiers.insert(.option)
+        }
+        if contains(.control) {
+            modifiers.insert(.control)
+        }
         return modifiers
     }
 }

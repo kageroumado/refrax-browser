@@ -100,12 +100,12 @@ struct ControlIslandTabInfoTests {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let cardWindow = env.makeActiveWindowState(with: space)
-        let tab = env.createActiveTab(url: try #require(URL(string: "about:blank#current-tab")), in: space, for: cardWindow)
+        let tab = try env.createActiveTab(url: #require(URL(string: "about:blank#current-tab")), in: space, for: cardWindow)
         tab.floatingPlacement = FloatingTabPlacement(x: 0.6, y: 0.3, isCompact: false, isPinned: true)
         let originalPlacement = tab.floatingPlacement
         let otherSpace = env.makeSpace(name: "Other Window")
         let otherWindow = env.makeActiveWindowState(with: otherSpace)
-        let otherTab = env.createActiveTab(url: try #require(URL(string: "about:blank#other-tab")), in: otherSpace, for: otherWindow)
+        let otherTab = try env.createActiveTab(url: #require(URL(string: "about:blank#other-tab")), in: otherSpace, for: otherWindow)
 
         ControlIslandTabActions(tab: tab, windowState: cardWindow, tabs: env.tabManager, bookmarks: env.bookmarksManager).toggleFavorite()
         let favorite = try #require(cardWindow.activeTab)
@@ -129,7 +129,7 @@ struct ControlIslandTabInfoTests {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
-        let bookmark = env.bookmarksManager.createBookmark(url: try #require(URL(string: "about:blank#favorite")), title: "Favorite", isFavorite: true)
+        let bookmark = try env.bookmarksManager.createBookmark(url: #require(URL(string: "about:blank#favorite")), title: "Favorite", isFavorite: true)
         let favorite = try #require(env.browserState.liveFavoriteTab(for: bookmark.id))
         env.tabManager.setActiveTab(favorite, in: window)
         let other = env.makeActiveWindowState(with: env.makeSpace(name: "Other"))

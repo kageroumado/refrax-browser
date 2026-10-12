@@ -19,7 +19,9 @@ extension TabManager {
             window.pageVisit.begin(from: source, in: window, page: pagePool.existingPage(for: source.activePage))
         }
         window.controlIsland.holdAwake(for: ControlIslandState.visitHold)
-        if let space = tab.space, space.id != window.activeSpaceID { spaceManager.switchToSpaceSync(space, for: window) }
+        if let space = tab.space, space.id != window.activeSpaceID {
+            spaceManager.switchToSpaceSync(space, for: window)
+        }
         setActiveTab(tab, in: window, preservingVisit: true)
     }
 

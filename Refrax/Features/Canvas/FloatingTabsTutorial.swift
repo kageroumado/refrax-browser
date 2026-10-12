@@ -4,7 +4,8 @@ import Foundation
 enum FloatingTabsTutorial {
     /// A tutorial page: its name, the symbol that stands for it in the lens, and its address.
     nonisolated enum Page: CaseIterable, Hashable, Sendable {
-        case tripDraft, arrivalDetails
+        case tripDraft
+        case arrivalDetails
 
         var title: String {
             switch self {

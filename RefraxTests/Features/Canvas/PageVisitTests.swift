@@ -1,17 +1,18 @@
+import Foundation
 import Testing
 @testable import Refrax
-import Foundation
 
 @Suite(.serialized)
 @MainActor
 struct PageVisitTests {
-    @Test func `successive looks keep the first return destination and preserve visited tabs`() throws {
+    @Test
+    func `successive looks keep the first return destination and preserve visited tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
-        let source = env.createActiveTab(url: try #require(URL(string: "about:blank#source")), in: space, for: window)
-        let first = env.tabManager.createTab(url: try #require(URL(string: "about:blank#first")), in: space, makeActive: false)
-        let second = env.tabManager.createTab(url: try #require(URL(string: "about:blank#second")), in: space, makeActive: false)
+        let source = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: window)
+        let first = try env.tabManager.createTab(url: #require(URL(string: "about:blank#first")), in: space, makeActive: false)
+        let second = try env.tabManager.createTab(url: #require(URL(string: "about:blank#second")), in: space, makeActive: false)
         env.tabManager.look(at: first, in: window)
         env.tabManager.look(at: second, in: window)
         #expect(window.pageVisit.destination?.tabID == source.id)
@@ -23,14 +24,15 @@ struct PageVisitTests {
         #expect(env.browserState.tab(for: second.id) != nil)
     }
 
-    @Test func `ordinary activation ends a visit in only its owning window`() throws {
+    @Test
+    func `ordinary activation ends a visit in only its owning window`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let firstWindow = env.makeActiveWindowState(with: space)
         let secondWindow = env.makeActiveWindowState(with: space)
-        let source = env.createActiveTab(url: try #require(URL(string: "about:blank#source")), in: space, for: firstWindow)
+        let source = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: firstWindow)
         env.tabManager.setActiveTab(source, in: secondWindow)
-        let reference = env.tabManager.createTab(url: try #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
+        let reference = try env.tabManager.createTab(url: #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
         env.tabManager.look(at: reference, in: firstWindow)
         env.tabManager.look(at: reference, in: secondWindow)
         env.tabManager.setActiveTab(source, in: firstWindow)
@@ -38,13 +40,14 @@ struct PageVisitTests {
         #expect(secondWindow.pageVisit.destination?.tabID == source.id)
     }
 
-    @Test func `return restores the original space after a cross space look`() throws {
+    @Test
+    func `return restores the original space after a cross space look`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let other = env.makeSpace(name: "Reference")
         let window = env.makeActiveWindowState(with: space)
-        let source = env.createActiveTab(url: try #require(URL(string: "about:blank#source")), in: space, for: window)
-        let reference = env.tabManager.createTab(url: try #require(URL(string: "about:blank#reference")), in: other, makeActive: false)
+        let source = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: window)
+        let reference = try env.tabManager.createTab(url: #require(URL(string: "about:blank#reference")), in: other, makeActive: false)
         env.tabManager.look(at: reference, in: window)
         #expect(window.activeSpaceID == other.id)
         #expect(window.activeTabID == reference.id)
@@ -53,12 +56,13 @@ struct PageVisitTests {
         #expect(window.activeTabID == source.id)
     }
 
-    @Test func `closed destination ends the visit without choosing another page`() throws {
+    @Test
+    func `closed destination ends the visit without choosing another page`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
-        let source = env.createActiveTab(url: try #require(URL(string: "about:blank#source")), in: space, for: window)
-        let reference = env.tabManager.createTab(url: try #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
+        let source = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: window)
+        let reference = try env.tabManager.createTab(url: #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
         env.tabManager.look(at: reference, in: window)
         env.tabManager.closeTab(source)
         #expect(!env.tabManager.returnFromLook(in: window))

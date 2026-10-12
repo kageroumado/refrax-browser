@@ -120,7 +120,6 @@ final class CommandLensManager {
     private let customSearchEngineManager: CustomSearchEngineManager
     private let localNetworkSource: any LocalNetworkSnapshotSource
 
-
     // MARK: - Providers
 
     private let suggestionProviders: [any CommandLensSuggestionProvider]
@@ -251,7 +250,9 @@ final class CommandLensManager {
             // Query all local providers concurrently
             let allSuggestions = await fetchLocalSuggestions(context: context)
 
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
 
             // Calculate inline completion from local results
             calculateInlineCompletion(for: text, from: allSuggestions)
@@ -272,7 +273,9 @@ final class CommandLensManager {
 
             let networkSuggestions = await networkProvider.suggestions(for: context)
 
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
 
             if !networkSuggestions.isEmpty {
                 suggestions.append(contentsOf: networkSuggestions)
@@ -539,11 +542,21 @@ final class CommandLensManager {
             return "exclamationmark.circle"
         case .completed:
             if let type = download.contentType {
-                if type.conforms(to: .image) { return "photo" }
-                if type.conforms(to: .movie) { return "film" }
-                if type.conforms(to: .audio) { return "music.note" }
-                if type.conforms(to: .pdf) { return "doc.richtext" }
-                if type.conforms(to: .archive) { return "archivebox" }
+                if type.conforms(to: .image) {
+                    return "photo"
+                }
+                if type.conforms(to: .movie) {
+                    return "film"
+                }
+                if type.conforms(to: .audio) {
+                    return "music.note"
+                }
+                if type.conforms(to: .pdf) {
+                    return "doc.richtext"
+                }
+                if type.conforms(to: .archive) {
+                    return "archivebox"
+                }
             }
             return "doc"
         }
@@ -1282,13 +1295,21 @@ final class CommandLensManager {
         let second = octets[1]
 
         // 127.x.x.x - loopback
-        if first == 127 { return true }
+        if first == 127 {
+            return true
+        }
         // 10.x.x.x - private class A
-        if first == 10 { return true }
+        if first == 10 {
+            return true
+        }
         // 172.16.0.0 - 172.31.255.255 - private class B
-        if first == 172, second >= 16, second <= 31 { return true }
+        if first == 172, second >= 16, second <= 31 {
+            return true
+        }
         // 192.168.x.x - private class C
-        if first == 192, second == 168 { return true }
+        if first == 192, second == 168 {
+            return true
+        }
 
         return false
     }
@@ -1456,9 +1477,13 @@ final class CommandLensManager {
     func look(at suggestion: CommandLensSuggestion) {
         switch suggestion.type {
         case let .openTab(id):
-            if let tab = tabManager.state.tab(for: id) { tabManager.look(at: tab, in: windowState) }
+            if let tab = tabManager.state.tab(for: id) {
+                tabManager.look(at: tab, in: windowState)
+            }
         default:
-            if let url = suggestion.url { tabManager.look(at: url, in: windowState) }
+            if let url = suggestion.url {
+                tabManager.look(at: url, in: windowState)
+            }
         }
         closeCurrentLens()
         reset()

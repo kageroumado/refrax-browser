@@ -102,26 +102,26 @@ extension MenuBarManager {
         developMenu.addItem(floatingRegionsItem)
 
         #if DEBUG
-        developMenu.addItem(.separator())
+            developMenu.addItem(.separator())
 
-        let generateTabsItem = NSMenuItem(
-            title: "Generate 500 Test Tabs",
-            action: #selector(generateDebugTabs(_:)),
-            keyEquivalent: "",
-        )
-        generateTabsItem.target = self
-        developMenu.addItem(generateTabsItem)
+            let generateTabsItem = NSMenuItem(
+                title: "Generate 500 Test Tabs",
+                action: #selector(generateDebugTabs(_:)),
+                keyEquivalent: "",
+            )
+            generateTabsItem.target = self
+            developMenu.addItem(generateTabsItem)
 
-        let labItem = NSMenuItem(title: "Tab Canvas Lab", action: nil, keyEquivalent: "")
-        let labMenu = NSMenu(title: "Tab Canvas Lab")
-        for scenario in CanvasScenario.allCases {
-            let item = NSMenuItem(title: scenario.title, action: #selector(loadCanvasScenario(_:)), keyEquivalent: "")
-            item.representedObject = scenario.rawValue
-            item.target = self
-            labMenu.addItem(item)
-        }
-        labItem.submenu = labMenu
-        developMenu.addItem(labItem)
+            let labItem = NSMenuItem(title: "Tab Canvas Lab", action: nil, keyEquivalent: "")
+            let labMenu = NSMenu(title: "Tab Canvas Lab")
+            for scenario in CanvasScenario.allCases {
+                let item = NSMenuItem(title: scenario.title, action: #selector(loadCanvasScenario(_:)), keyEquivalent: "")
+                item.representedObject = scenario.rawValue
+                item.target = self
+                labMenu.addItem(item)
+            }
+            labItem.submenu = labMenu
+            developMenu.addItem(labItem)
         #endif
 
         developMenuItem.submenu = developMenu
@@ -165,37 +165,37 @@ extension MenuBarManager {
     }
 
     #if DEBUG
-    @objc
-    func generateDebugTabs(_: Any?) {
-        guard let controller = activeWindowController,
-              let space = controller.windowState.activeSpace
-        else { return }
-        let appDelegate = NSApplication.shared.typedDelegate
-        DebugTabGenerator.generate(
-            tabManager: appDelegate.tabManager,
-            groupManager: appDelegate.groupManager,
-            space: space,
-        )
-    }
+        @objc
+        func generateDebugTabs(_: Any?) {
+            guard let controller = activeWindowController,
+                  let space = controller.windowState.activeSpace
+            else { return }
+            let appDelegate = NSApplication.shared.typedDelegate
+            DebugTabGenerator.generate(
+                tabManager: appDelegate.tabManager,
+                groupManager: appDelegate.groupManager,
+                space: space,
+            )
+        }
     #endif
 
     #if DEBUG
-    @objc
-    func loadCanvasScenario(_ sender: NSMenuItem) {
-        guard let controller = activeWindowController,
-              let rawValue = sender.representedObject as? String,
-              let scenario = CanvasScenario(rawValue: rawValue)
-        else { return }
-        let appDelegate = NSApplication.shared.typedDelegate
-        CanvasScenario.load(
-            scenario,
-            tabManager: appDelegate.tabManager,
-            spaceManager: appDelegate.spaceManager,
-            groupManager: appDelegate.groupManager,
-            windowState: controller.windowState,
-            canvas: controller.tabCanvasManager,
-        )
-    }
+        @objc
+        func loadCanvasScenario(_ sender: NSMenuItem) {
+            guard let controller = activeWindowController,
+                  let rawValue = sender.representedObject as? String,
+                  let scenario = CanvasScenario(rawValue: rawValue)
+            else { return }
+            let appDelegate = NSApplication.shared.typedDelegate
+            CanvasScenario.load(
+                scenario,
+                tabManager: appDelegate.tabManager,
+                spaceManager: appDelegate.spaceManager,
+                groupManager: appDelegate.groupManager,
+                windowState: controller.windowState,
+                canvas: controller.tabCanvasManager,
+            )
+        }
     #endif
 
     @objc

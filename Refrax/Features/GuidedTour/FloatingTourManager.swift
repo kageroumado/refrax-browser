@@ -12,7 +12,14 @@ import SwiftUI
 final class FloatingTourManager {
     /// The tour's steps, in order. Every step before `done` completes on an action.
     enum Step: Int, CaseIterable, Sendable {
-        case openPage, openSecondPage, revealPages, placePage, keepVisible, pageCard, movePanel, done
+        case openPage
+        case openSecondPage
+        case revealPages
+        case placePage
+        case keepVisible
+        case pageCard
+        case movePanel
+        case done
 
         /// The steps that teach something, in order.
         static let actionSteps = Self.allCases.filter { $0 != .done }
@@ -36,12 +43,15 @@ final class FloatingTourManager {
         }
 
         /// The number of steps completed when this step is current.
-        var completedSteps: Int { rawValue }
+        var completedSteps: Int {
+            rawValue
+        }
     }
 
     /// How a tour ended. An automatic start never repeats a tour the person already answered.
     enum Outcome: String, Sendable {
-        case completed, skipped
+        case completed
+        case skipped
     }
 
     /// The current step, or nil while the tour is not running.
@@ -101,7 +111,9 @@ final class FloatingTourManager {
 
     // MARK: - State
 
-    var isActive: Bool { currentStep != nil }
+    var isActive: Bool {
+        currentStep != nil
+    }
 
     /// Completed steps over the total, from 0 at the first step to 1 on the closing card.
     var progress: Double {
@@ -180,7 +192,9 @@ final class FloatingTourManager {
         adoptNewPlacements()
         reviewBeams()
         if conditionHolds(for: step) {
-            if armed { advance() }
+            if armed {
+                advance()
+            }
         } else {
             armed = true
         }
@@ -368,7 +382,9 @@ final class FloatingTourManager {
     /// A beam that was not lit at the last review is asked for anew.
     private func reviewBeams() {
         let lit = Set(beamRequests.map(\.kind))
-        if !lit.subtracting(litBeams).isEmpty { beamRevision += 1 }
+        if !lit.subtracting(litBeams).isEmpty {
+            beamRevision += 1
+        }
         litBeams = lit
     }
 
@@ -409,7 +425,9 @@ final class FloatingTourManager {
     }
 
     private func removeKeyMonitor() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
         keyMonitor = nil
     }
 }

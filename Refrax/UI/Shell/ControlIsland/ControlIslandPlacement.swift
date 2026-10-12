@@ -79,9 +79,12 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
         let right = max(1, area.maxX - anchor.maxX - Self.adjacentGap)
         let opensRight = right >= left
         let width = min(Self.pageBranchWidth, max(left, right))
-        return CGRect(x: opensRight ? anchor.maxX + Self.adjacentGap : anchor.minX - Self.adjacentGap - width,
-                      y: min(max(anchor.minY, area.minY), max(area.minY, area.maxY - height)),
-                      width: width, height: min(height, area.height))
+        return CGRect(
+            x: opensRight ? anchor.maxX + Self.adjacentGap : anchor.minX - Self.adjacentGap - width,
+            y: min(max(anchor.minY, area.minY), max(area.minY, area.maxY - height)),
+            width: width,
+            height: min(height, area.height),
+        )
     }
 
     /// Nearby window edges and edge midpoints become stable resting places.
@@ -89,12 +92,22 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
         let frame = railFrame(in: bounds, height: height)
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
         var result = self
-        if frame.minX - area.minX < Self.magnetDistance { result.x = 0 }
-        else if area.maxX - frame.maxX < Self.magnetDistance { result.x = 1 }
-        if frame.minY - area.minY < Self.magnetDistance { result.y = 0 }
-        else if area.maxY - frame.maxY < Self.magnetDistance { result.y = 1 }
-        if result.x == 0 || result.x == 1, abs(frame.midY - area.midY) < Self.magnetDistance { result.y = 0.5 }
-        if result.y == 0 || result.y == 1, abs(frame.midX - area.midX) < Self.magnetDistance { result.x = 0.5 }
+        if frame.minX - area.minX < Self.magnetDistance {
+            result.x = 0
+        } else if area.maxX - frame.maxX < Self.magnetDistance {
+            result.x = 1
+        }
+        if frame.minY - area.minY < Self.magnetDistance {
+            result.y = 0
+        } else if area.maxY - frame.maxY < Self.magnetDistance {
+            result.y = 1
+        }
+        if result.x == 0 || result.x == 1, abs(frame.midY - area.midY) < Self.magnetDistance {
+            result.y = 0.5
+        }
+        if result.y == 0 || result.y == 1, abs(frame.midX - area.midX) < Self.magnetDistance {
+            result.x = 0.5
+        }
         return result
     }
 

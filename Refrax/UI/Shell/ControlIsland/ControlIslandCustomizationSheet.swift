@@ -78,8 +78,13 @@ struct ControlIslandCustomizationSheet: View {
                     Button("Cancel", role: .cancel) { dismiss() }
                         .keyboardShortcut(.cancelAction)
                     Button("Done") {
-                        configuration.apply(items, optionDragTarget: optionDragTarget, avoidsPageControls: avoidsPageControls,
-                                            restsWhenIdle: restsWhenIdle, tintsWithSpaceColor: tintsWithSpaceColor)
+                        configuration.apply(
+                            items,
+                            optionDragTarget: optionDragTarget,
+                            avoidsPageControls: avoidsPageControls,
+                            restsWhenIdle: restsWhenIdle,
+                            tintsWithSpaceColor: tintsWithSpaceColor,
+                        )
                         dismiss()
                     }
                     .keyboardShortcut(.defaultAction)

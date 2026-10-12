@@ -26,7 +26,9 @@ struct PageActions {
             let readerTitle = readerMode.isReaderActive(for: tab.activePage.id) ? "Leave Reader" : "Reader"
             actions.append(MenuAction("page.reader", readerTitle, symbol: "text.page", group: .read) {
                 Task(name: "Toggle reader from page card") {
-                    if await readerMode.toggleReader(for: page) == .tooLong { windowState.showToast("This page is too long for Reader") }
+                    if await readerMode.toggleReader(for: page) == .tooLong {
+                        windowState.showToast("This page is too long for Reader")
+                    }
                 }
             })
         }
@@ -39,7 +41,9 @@ struct PageActions {
     private func reloadActions() -> [MenuAction] {
         if tab.pages.count > 1 {
             return [MenuAction("page.reloadAll", "Reload All Pages", symbol: "arrow.clockwise", group: .reload) {
-                for page in tab.pages { _ = tabs.pagePool.existingPage(for: page)?.reload() }
+                for page in tab.pages {
+                    _ = tabs.pagePool.existingPage(for: page)?.reload()
+                }
             }]
         }
         guard let page = tab.pages.lazy.compactMap({ tabs.pagePool.existingPage(for: $0) }).first else { return [] }

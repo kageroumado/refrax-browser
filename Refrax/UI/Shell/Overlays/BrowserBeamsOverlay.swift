@@ -89,8 +89,12 @@ nonisolated struct BrowserBeamCues: Equatable, Sendable {
 
     /// Clears a request the engine has finished drawing.
     mutating func finish(_ request: Request) {
-        if lensRay == request { lensRay = nil }
-        if trail == request { trail = nil }
+        if lensRay == request {
+            lensRay = nil
+        }
+        if trail == request {
+            trail = nil
+        }
     }
 
     private mutating func next(_ style: LightStyle, from: CGRect, to: CGRect) -> Request {
@@ -122,7 +126,7 @@ struct BrowserBeamsOverlay: View {
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
             ZStack(alignment: .topLeading) {
-                ForEach([cues.lensRay, cues.trail].compactMap { $0 }, id: \.revision) { request in
+                ForEach([cues.lensRay, cues.trail].compactMap(\.self), id: \.revision) { request in
                     LightTravel(
                         paths: [request.style.path(request.points(in: bounds), color: request.style.color(space: space))],
                         timing: request.style.timing,

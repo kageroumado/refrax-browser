@@ -23,11 +23,15 @@ nonisolated enum MenuComposer {
         var groups: [MenuGroupID] = []
         var members: [MenuGroupID: [MenuAction]] = [:]
         for action in actions {
-            if members[action.group] == nil { groups.append(action.group) }
+            if members[action.group] == nil {
+                groups.append(action.group)
+            }
             members[action.group, default: []].append(action)
         }
         let positioned = groups.enumerated().map { index, group -> (key: (Int, Int, Int), group: MenuGroupID) in
-            if let listed = groupOrder.firstIndex(of: group) { return ((0, listed, index), group) }
+            if let listed = groupOrder.firstIndex(of: group) {
+                return ((0, listed, index), group)
+            }
             return ((1, group.rank, index), group)
         }
         var sections = positioned
@@ -51,10 +55,16 @@ nonisolated enum MenuComposer {
         var folded = false
         var demoted = false
 
-        var primary: MenuAction? { folded && !demoted ? actions.first(where: \.isPrimary) : nil }
-        var rows: Int { folded ? (primary == nil ? 1 : 2) : actions.count }
+        var primary: MenuAction? {
+            folded && !demoted ? actions.first(where: \.isPrimary) : nil
+        }
+        var rows: Int {
+            folded ? (primary == nil ? 1 : 2) : actions.count
+        }
         /// Nothing in the section can be clicked, so it is the first to fold under height pressure.
-        var isInert: Bool { actions.allSatisfy { !$0.isEnabled } }
+        var isInert: Bool {
+            actions.allSatisfy { !$0.isEnabled }
+        }
     }
 
     private static func ordered(_ actions: [MenuAction]) -> [MenuAction] {

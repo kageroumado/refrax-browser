@@ -7,7 +7,9 @@ struct ControlIslandTabActions {
     let tabs: TabManager
     let bookmarks: BookmarksManager
 
-    var isFavorite: Bool { tab.isLiveFavorite && tab.linkedBookmark?.isFavorite == true }
+    var isFavorite: Bool {
+        tab.isLiveFavorite && tab.linkedBookmark?.isFavorite == true
+    }
 
     var canFavorite: Bool {
         isFavorite || (tab.space != nil && tabs.state.liveFavoriteTabs.count < bookmarks._maxLiveFavoriteTabs)
@@ -26,7 +28,9 @@ struct ControlIslandTabActions {
                   let favorite = tabs.state.liveFavoriteTab(for: id) else { return }
             favorite.boardFrameData = placement
             windowState.pageVisit.replaceIdentity(of: tab.id, with: favorite)
-            if let layout = windowState.floatingPlacements.removeValue(forKey: tab.id) { windowState.floatingPlacements[favorite.id] = layout }
+            if let layout = windowState.floatingPlacements.removeValue(forKey: tab.id) {
+                windowState.floatingPlacements[favorite.id] = layout
+            }
             windowState.showToast("Added to Favorites · \(favorite.displayTitle)")
         }
         bookmarks.refreshFavoritesCache()

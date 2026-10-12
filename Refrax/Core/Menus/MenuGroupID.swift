@@ -10,8 +10,12 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
     let symbol: String
     let rank: Int
 
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 
     /// Rename, Get Info, Preview, Pin, Favorites, Mark Unread, Duplicate.
     static let tab = MenuGroupID(id: "tab", title: "Tab", symbol: "rectangle", rank: 0)

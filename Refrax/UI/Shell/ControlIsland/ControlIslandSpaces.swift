@@ -26,7 +26,9 @@ struct ControlIslandSpaces: View {
     }
 
     /// One space is a place, not a choice: its icon stands alone without a track or selection.
-    private var isSelector: Bool { destinations.count > 1 }
+    private var isSelector: Bool {
+        destinations.count > 1
+    }
 
     var body: some View {
         Group {
@@ -73,10 +75,14 @@ struct ControlIslandSpaces: View {
             .scrollIndicators(.visible)
             .frame(height: CGFloat(ControlIslandPlacement.maximumVisibleSpaces) * ControlIslandPlacement.spaceRowHeight)
             .onAppear {
-                if let id = windowState.activeSpaceID { reader.scrollTo(id) }
+                if let id = windowState.activeSpaceID {
+                    reader.scrollTo(id)
+                }
             }
             .onChange(of: windowState.activeSpaceID) { _, id in
-                if let id { reader.scrollTo(id) }
+                if let id {
+                    reader.scrollTo(id)
+                }
             }
         }
     }
@@ -95,14 +101,18 @@ struct ControlIslandSpaces: View {
             windowState.closeCommandLens()
             windowState.pageVisit.end()
             Task.immediate(name: "Switch control island space") {
-                if canvas.floatingVisibility.isRevealed { canvas.spaceToReveal = space.id }
+                if canvas.floatingVisibility.isRevealed {
+                    canvas.spaceToReveal = space.id
+                }
                 await spaces.switchToSpace(space, for: windowState)
-                if windowState.activeSpaceID != space.id { canvas.spaceToReveal = nil }
+                if windowState.activeSpaceID != space.id {
+                    canvas.spaceToReveal = nil
+                }
             }
         } label: {
             Group {
                 if space.isEmoji {
-                    if selected && appearsActive && !isResting {
+                    if selected, appearsActive, !isResting {
                         Text(space.iconName)
                     } else {
                         Text(space.iconName).hidden()

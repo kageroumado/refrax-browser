@@ -14,7 +14,9 @@ nonisolated struct MenuTree: Sendable {
         let symbol: String?
         let sections: [Section]
 
-        var rowCount: Int { sections.reduce(0) { $0 + $1.nodes.count } }
+        var rowCount: Int {
+            sections.reduce(0) { $0 + $1.nodes.count }
+        }
     }
 
     /// The rows between two dividers.
@@ -27,11 +29,13 @@ nonisolated struct MenuTree: Sendable {
     static let empty = MenuTree(sections: [])
 
     /// Top-level rows; dividers are half-height and do not count.
-    var rowCount: Int { sections.reduce(0) { $0 + $1.nodes.count } }
+    var rowCount: Int {
+        sections.reduce(0) { $0 + $1.nodes.count }
+    }
 
     /// Top-level action and submenu identities, in order.
     var ids: [String] {
-        sections.flatMap { $0.nodes.map { $0.id } }
+        sections.flatMap { $0.nodes.map(\.id) }
     }
 
     /// One line per row, `"——"` between sections, a submenu as `"Title ▸ (n)"` followed by its rows
@@ -43,7 +47,9 @@ nonisolated struct MenuTree: Sendable {
     private static func outline(_ sections: [Section], indent: String) -> [String] {
         var lines: [String] = []
         for (index, section) in sections.enumerated() {
-            if index > 0 { lines.append("\(indent)——") }
+            if index > 0 {
+                lines.append("\(indent)——")
+            }
             for node in section.nodes {
                 switch node {
                 case let .action(action):

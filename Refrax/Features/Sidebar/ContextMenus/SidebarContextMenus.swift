@@ -40,7 +40,9 @@ enum SidebarContextMenus {
         let windowState: WindowState
         let bookmarksManager: BookmarksManager?
 
-        var activeSpace: Space? { windowState.activeSpace }
+        var activeSpace: Space? {
+            windowState.activeSpace
+        }
         var availableSpaces: [Space] {
             tabManager.state.spaces.filter { $0.id != windowState.activeSpaceID }
         }

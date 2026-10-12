@@ -1204,7 +1204,9 @@ struct CommandLensEntrance: Equatable, Sendable {
     var source: CGRect?
 
     /// An anchored lens edits the current page's address: a committed URL loads in that page.
-    var editsCurrentPage: Bool { anchor != nil }
+    var editsCurrentPage: Bool {
+        anchor != nil
+    }
 }
 
 // MARK: - Detail Tray Mode

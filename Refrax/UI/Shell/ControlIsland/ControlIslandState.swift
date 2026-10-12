@@ -110,7 +110,9 @@ final class ControlIslandState {
         let reach = isQuiet ? Self.nearDistance : Self.farDistance
         let near = phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
         setQuiet(!near)
-        if near { watchForStillness() }
+        if near {
+            watchForStillness()
+        }
         return phase
     }
 
@@ -128,7 +130,9 @@ final class ControlIslandState {
     }
 
     private func setQuiet(_ quiet: Bool) {
-        if quiet { quietTask?.cancel(); quietTask = nil }
+        if quiet {
+            quietTask?.cancel(); quietTask = nil
+        }
         guard isQuiet != quiet else { return }
         isQuiet = quiet
     }
@@ -140,7 +144,9 @@ final class ControlIslandState {
                 let elapsed = Date().timeIntervalSince(self?.lastPointerMovement ?? .distantPast)
                 try? await Task.sleep(for: .seconds(max(0.1, Self.stillDelay - elapsed)))
                 guard let self, !Task.isCancelled else { return }
-                if quietIfStill() { quietTask = nil; return }
+                if quietIfStill() {
+                    quietTask = nil; return
+                }
             }
         }
     }
@@ -157,6 +163,8 @@ final class ControlIslandState {
         showsAddress = false
         tabInfo.dismiss()
         dismissalRequest &+= 1
-        if returnsFocusToPage { pageFocusRequest &+= 1 }
+        if returnsFocusToPage {
+            pageFocusRequest &+= 1
+        }
     }
 }

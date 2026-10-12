@@ -3,9 +3,16 @@ import SwiftUI
 
 /// The browser destinations behind More, in their sections.
 nonisolated enum ControlIslandMoreItem: CaseIterable, Identifiable {
-    case favorites, history, downloads, bookmarks, settings, customizeControls
+    case favorites
+    case history
+    case downloads
+    case bookmarks
+    case settings
+    case customizeControls
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     /// Destinations, then Settings, then the one visible seat for the rail's own setup.
     static let sections: [[ControlIslandMoreItem]] = [
@@ -48,7 +55,9 @@ struct ControlIslandMenu: View {
     var body: some View {
         Menu {
             ForEach(ControlIslandMoreItem.sections.indices, id: \.self) { section in
-                if section > 0 { Divider() }
+                if section > 0 {
+                    Divider()
+                }
                 ForEach(ControlIslandMoreItem.sections[section]) { item in
                     Button(item.title, systemImage: item.symbol) { perform(item) }
                 }

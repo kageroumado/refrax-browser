@@ -407,40 +407,48 @@ extension MenuBarManager {
         activeWindowController?.tabCanvasManager.toggle()
     }
 
-    @objc func toggleFloatingTabs(_: Any?) {
+    @objc
+    func toggleFloatingTabs(_: Any?) {
         activeWindowController?.tabCanvasManager.toggleFloatingTabs()
     }
 
-    @objc func focusBrowserControls(_: Any?) {
+    @objc
+    func focusBrowserControls(_: Any?) {
         activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.focus()
     }
 
-    @objc func showCurrentTabInfo(_: Any?) {
+    @objc
+    func showCurrentTabInfo(_: Any?) {
         activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.tabInfo.show()
     }
 
-    @objc func resetControlPosition(_: Any?) {
+    @objc
+    func resetControlPosition(_: Any?) {
         activeWindowController?.windowState.controlIsland.resetPlacement()
     }
 
-    @objc func customizeControls(_: Any?) {
+    @objc
+    func customizeControls(_: Any?) {
         activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.showsCustomization = true
     }
 
-    @objc func returnToActivity(_: Any?) {
+    @objc
+    func returnToActivity(_: Any?) {
         guard let controller = activeWindowController else { return }
         controller.tabManager.returnFromLook(in: controller.windowState)
     }
 
-    @objc func keepCurrentRegion(_: Any?) {
+    @objc
+    func keepCurrentRegion(_: Any?) {
         guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab else { return }
         controller.tabCanvasManager.beginRegionSelection(for: tab)
     }
 
-    @objc func favoriteCurrentPage(_: Any?) {
+    @objc
+    func favoriteCurrentPage(_: Any?) {
         guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab,
               let bookmarks = controller.tabManager.bookmarksManager else { return }
         ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()

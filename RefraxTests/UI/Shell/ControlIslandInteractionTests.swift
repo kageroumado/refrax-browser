@@ -115,7 +115,9 @@ struct ControlIslandInteractionTests {
             notifications.withLock { $0 += 1 }
         }
         state.hitRegions = [CGRect(x: 0, y: 0, width: 48, height: 48)]
-        for x in 0..<40 { _ = state.tracksPointer(CGPoint(x: x, y: 20)) }
+        for x in 0 ..< 40 {
+            _ = state.tracksPointer(CGPoint(x: x, y: 20))
+        }
         #expect(notifications.withLock { $0 } == 0)
         state.isHovered = true
         #expect(notifications.withLock { $0 } == 1)

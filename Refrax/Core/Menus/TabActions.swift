@@ -50,7 +50,9 @@ struct TabActions {
             MenuAction("tab.keepVisible", placement.isPinned ? "Hide Preview" : "Keep Visible", symbol: "pin", group: .preview, isPrimary: true) {
                 var next = placement
                 next.isPinned.toggle()
-                if next.isPinned { next.isCompact = false }
+                if next.isPinned {
+                    next.isCompact = false
+                }
                 canvas.updateFloatingPlacement(next, for: tab)
             },
         ]
@@ -60,7 +62,9 @@ struct TabActions {
                 var next = placement
                 next.setCompact(!next.isCompact, in: area)
                 canvas.updateFloatingPlacement(next, for: tab)
-                if tab.id == windowState.activeTabID { canvas.toggleFloatingTabs() }
+                if tab.id == windowState.activeTabID {
+                    canvas.toggleFloatingTabs()
+                }
             })
         }
         guard regionsEnabled else { return actions }
@@ -89,7 +93,11 @@ struct TabActions {
         if !tab.isLiveFavorite, tab.space?.id == windowState.activeSpaceID {
             let isSelected = canvas.selectedFloatingTabIDs.contains(tab.id)
             actions.append(MenuAction("tab.select", isSelected ? "Deselect for Group" : "Select for Group", group: .move) {
-                if isSelected { canvas.selectedFloatingTabIDs.remove(tab.id) } else { canvas.selectedFloatingTabIDs.insert(tab.id) }
+                if isSelected {
+                    canvas.selectedFloatingTabIDs.remove(tab.id)
+                } else {
+                    canvas.selectedFloatingTabIDs.insert(tab.id)
+                }
             })
             if canvas.selectedFloatingTabIDs.count > 1 {
                 actions.append(MenuAction("tab.groupSelection", "Group Selected Tabs", group: .move) { canvas.groupFloatingSelection() })

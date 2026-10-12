@@ -6,12 +6,12 @@ import Testing
 @testable import Refrax
 
 /// Runs the `lightPaths` shader from the app's Metal library over a texture and reads it back.
-@Suite
 struct LightLayerTests {
     private let violet = Color.Components(red: 0.5, green: 0.2, blue: 0.9)
     private let size = 128
 
-    @Test func `the shader lights the diagonal and leaves the far corners clear`() throws {
+    @Test
+    func `the shader lights the diagonal and leaves the far corners clear`() throws {
         let path = LightPath(points: [CGPoint(x: 16, y: 16), CGPoint(x: 112, y: 112)], color: violet)
         let pixels = try LightProbe.render([path], width: size, height: size)
 
@@ -28,7 +28,8 @@ struct LightLayerTests {
         }
     }
 
-    @Test func `progress lights the path from its start`() throws {
+    @Test
+    func `progress lights the path from its start`() throws {
         var path = LightPath(points: [CGPoint(x: 8, y: 64), CGPoint(x: 120, y: 64)], color: violet)
         path.progress = 0.5
         let pixels = try LightProbe.render([path], width: size, height: size)
@@ -39,7 +40,8 @@ struct LightLayerTests {
         #expect(try LightProbe.render([path], width: size, height: size)[CGPoint(x: 8, y: 64)].alpha == 0)
     }
 
-    @Test func `dispersion fans the last segment into bands of neighboring hues`() throws {
+    @Test
+    func `dispersion fans the last segment into bands of neighboring hues`() throws {
         var path = LightPath(points: [CGPoint(x: 8, y: 64), CGPoint(x: 24, y: 64), CGPoint(x: 124, y: 64)], color: violet)
         path.glowWidth = 4
         path.dispersion = 0
@@ -57,7 +59,8 @@ struct LightLayerTests {
         #expect(fanned[CGPoint(x: 16, y: 64 - 10.5)].alpha == 0, "the first segment keeps one beam")
     }
 
-    @Test func `a pulse brightens the beam around its place along the path`() throws {
+    @Test
+    func `a pulse brightens the beam around its place along the path`() throws {
         var path = LightPath(points: [CGPoint(x: 8, y: 64), CGPoint(x: 120, y: 64)], color: violet)
         path.intensity = 0.3
         let even = try LightProbe.render([path], width: size, height: size)
@@ -70,7 +73,8 @@ struct LightLayerTests {
         #expect(pulsed[center].alpha > pulsed[away].alpha)
     }
 
-    @Test func `intensity scales the light and an empty set draws nothing`() throws {
+    @Test
+    func `intensity scales the light and an empty set draws nothing`() throws {
         var path = LightPath(points: [CGPoint(x: 16, y: 64), CGPoint(x: 112, y: 64)], color: violet)
         let full = try LightProbe.render([path], width: size, height: size)[CGPoint(x: 64, y: 64)].alpha
         path.intensity = 0.25

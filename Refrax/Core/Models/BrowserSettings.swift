@@ -1092,8 +1092,7 @@ final class BrowserSettings {
         }
         set {
             if let data = try? JSONEncoder().encode(newValue),
-               let json = String(data: data, encoding: .utf8)
-            {
+               let json = String(data: data, encoding: .utf8) {
                 featureFlagOverridesJSON = json
             }
         }

@@ -4,7 +4,6 @@ import SwiftUI
 import Testing
 @testable import Refrax
 
-@Suite
 struct PrismLayoutTests {
     private let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
     private let lens = CGRect(x: 480, y: 198, width: 640, height: 52)
@@ -22,7 +21,8 @@ struct PrismLayoutTests {
         (0 ..< count).map { FloatingTabPlacement.initial(index: $0, count: count).frame(in: bounds) }
     }
 
-    @Test func `the entry beam leaves the rail's lens row and ends on the lens's facing edge`() {
+    @Test
+    func `the entry beam leaves the rail's lens row and ends on the lens's facing edge`() {
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: [], bounds: bounds)
         #expect(layout.entry.count == 2)
         #expect(onEdge(layout.entry[0], of: railLens))
@@ -31,7 +31,8 @@ struct PrismLayoutTests {
         #expect(abs(layout.entry[1].x - lens.minX) < 0.01 && abs(layout.entry[1].y - lens.midY) < 0.01)
     }
 
-    @Test func `without a row frame the beam leaves the rail, and without a rail the window's left edge`() {
+    @Test
+    func `without a row frame the beam leaves the rail, and without a rail the window's left edge`() {
         let fromRail = PrismLayout(railLensFrame: .zero, railFrame: rail, lensFrame: lens, pageFrames: [], bounds: bounds)
         #expect(onEdge(fromRail.entry[0], of: rail))
         let fromEdge = PrismLayout(railLensFrame: .zero, railFrame: .zero, lensFrame: lens, pageFrames: [], bounds: bounds)
@@ -39,7 +40,8 @@ struct PrismLayoutTests {
         #expect(onEdge(fromEdge.entry[1], of: lens))
     }
 
-    @Test func `each band leaves the lens and ends on its page's outline edge`() {
+    @Test
+    func `each band leaves the lens and ends on its page's outline edge`() {
         let frames = pages(5)
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: frames, bounds: bounds)
         #expect(layout.bands.count == frames.count)
@@ -51,7 +53,8 @@ struct PrismLayoutTests {
         }
     }
 
-    @Test func `three placeholder outlines stand on the right with no pages, on the left when the rail is there`() {
+    @Test
+    func `three placeholder outlines stand on the right with no pages, on the left when the rail is there`() {
         let right = PrismLayout.placeholderFrames(in: bounds, railFrame: rail)
         #expect(right.count == 3)
         #expect(right.allSatisfy { $0.midX > bounds.midX && bounds.contains($0) })
@@ -64,7 +67,8 @@ struct PrismLayoutTests {
         #expect(layout.bands.count == 3)
     }
 
-    @Test func `three bands take the dispersion hues in angular order`() {
+    @Test
+    func `three bands take the dispersion hues in angular order`() {
         let frames = PrismLayout.placeholderFrames(in: bounds, railFrame: rail)
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: frames, bounds: bounds)
         let offsets = layout.bands.map(\.hueOffset)
@@ -88,7 +92,8 @@ struct PrismLayoutTests {
         #expect(onEdge(layout.entry[1], of: lens))
     }
 
-    @Test func `twelve pages fit under the segment cap and the thirteenth gets no band`() {
+    @Test
+    func `twelve pages fit under the segment cap and the thirteenth gets no band`() {
         let twelve = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: pages(12), bounds: bounds)
         #expect(twelve.bands.count == 12)
         #expect(twelve.segmentCount <= LightPacking.maximumSegments)
@@ -99,10 +104,11 @@ struct PrismLayoutTests {
         #expect(fifteen.bands.count == PrismLayout.maximumBands)
     }
 
-    @Test func `the pulse travels the entry beam once every period and the bands breathe between half and full`() {
+    @Test
+    func `the pulse travels the entry beam once every period and the bands breathe between half and full`() throws {
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: pages(3), bounds: bounds)
         let early = layout.paths(color: violet, time: 0.7, tightened: false, reduceMotion: false)
-        let pulse = try! #require(early[0].pulse)
+        let pulse = try #require(early[0].pulse)
         #expect(abs(pulse.position - 0.5) < 0.001, "halfway through its travel")
         let resting = layout.paths(color: violet, time: PrismLayout.pulseTravel + 0.5, tightened: false, reduceMotion: false)
         #expect(resting[0].pulse == nil, "between pulses the beam is even")
@@ -117,7 +123,8 @@ struct PrismLayoutTests {
         #expect(full[1].color != full[2].color && full[1].color != violet, "bands carry the dispersion hues")
     }
 
-    @Test func `reduce motion rests the light and typing tightens the beam`() {
+    @Test
+    func `reduce motion rests the light and typing tightens the beam`() {
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: pages(2), bounds: bounds)
         let still = layout.paths(color: violet, time: 0.7, tightened: false, reduceMotion: true)
         #expect(still[0].pulse == nil)
@@ -128,7 +135,8 @@ struct PrismLayoutTests {
         #expect(typing[0].intensity > still[0].intensity)
     }
 
-    @Test func `edge points land on the boundary and facing points on the near edge's middle`() {
+    @Test
+    func `edge points land on the boundary and facing points on the near edge's middle`() {
         let rect = CGRect(x: 100, y: 100, width: 200, height: 50)
         #expect(PrismLayout.edgePoint(of: rect, toward: CGPoint(x: 600, y: 125)) == CGPoint(x: 300, y: 125))
         #expect(PrismLayout.edgePoint(of: rect, toward: CGPoint(x: 200, y: 400)) == CGPoint(x: 200, y: 150))

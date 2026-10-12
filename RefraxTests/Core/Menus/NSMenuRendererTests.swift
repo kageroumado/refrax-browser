@@ -38,7 +38,7 @@ struct NSMenuRendererTests {
 
     @Test
     func `a folded group is a submenu titled with the group`() throws {
-        let tree = MenuComposer.compose((1...4).map { MenuAction("open.\($0)", "Open \($0)", group: .open, isPrimary: $0 == 2) })
+        let tree = MenuComposer.compose((1 ... 4).map { MenuAction("open.\($0)", "Open \($0)", group: .open, isPrimary: $0 == 2) })
         let menu = NSMenuRenderer.menu(tree)
         #expect(menu.items.map(\.title) == ["Open 2", "Open"])
         let submenu = try #require(menu.items[1].submenu)

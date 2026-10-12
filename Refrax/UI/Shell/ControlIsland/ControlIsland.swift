@@ -59,21 +59,30 @@ struct ControlIsland: View {
     }
 
     /// The grip stands under More while the rail is awake and clears with the glass at rest.
-    private var showsGrip: Bool { !isResting }
+    private var showsGrip: Bool {
+        !isResting
+    }
 
     private func hasSeparator(before item: ControlIslandItem) -> Bool {
         guard let index = visibleItems.firstIndex(of: item), index > 0 else { return false }
         return item.isGroup || visibleItems[index - 1].isGroup
     }
-    private var frame: CGRect { effectivePlacement.railFrame(in: area, height: height) }
-    private var effectivePlacement: ControlIslandPlacement { avoidancePlacement ?? state.placement }
+    private var frame: CGRect {
+        effectivePlacement.railFrame(in: area, height: height)
+    }
+    private var effectivePlacement: ControlIslandPlacement {
+        avoidancePlacement ?? state.placement
+    }
     private var opensLeft: Bool {
         effectivePlacement.opensLeft(in: area)
     }
     private var pageBranchFrame: CGRect {
         let anchor = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: Layout.railWidth)
-        return effectivePlacement.pageBranchFrame(in: area, anchor: anchor,
-            height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37))
+        return effectivePlacement.pageBranchFrame(
+            in: area,
+            anchor: anchor,
+            height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37),
+        )
     }
     /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,
     /// the revealed tab layer, or a visit that can return. A pointer crossing the rail leaves it closed.
@@ -96,7 +105,9 @@ struct ControlIsland: View {
     }
 
     /// At rest the glass is clear rather than frosted; the symbols stay opaque and step back one shade.
-    private var glass: Glass { isResting && !reduceTransparency ? .clear : .regular }
+    private var glass: Glass {
+        isResting && !reduceTransparency ? .clear : .regular
+    }
 
     /// The space color is drawn as the rail's own layer under the symbols, so it can fade with
     /// the glass: a tint inside the glass would drop to white the moment the glass starts to clear.
@@ -104,7 +115,9 @@ struct ControlIsland: View {
         guard state.configuration.tintsWithSpaceColor, let color = windowState.activeSpace?.color else { return .clear }
         return color.opacity(Layout.spaceTintOpacity)
     }
-    private var restAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.4) }
+    private var restAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.4)
+    }
     private var recentFrame: CGRect {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
@@ -129,16 +142,20 @@ struct ControlIsland: View {
                     .background(spaceTint.opacity(isResting ? 0 : 1), in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffectID("rail", in: glassNamespace)
-                    .overlay { if tour.highlightsRail { railHighlight } }
+                    .overlay {
+                        if tour.highlightsRail {
+                            railHighlight
+                        }
+                    }
                     .offset(x: frame.minX, y: frame.minY)
                 if showsPageBranch, !canvas.recentIsOpen {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
-                    .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
-                    .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
-                    .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
-                    .glassEffectID("pageBranch", in: glassNamespace)
-                    .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
-                    .transition(.opacity)
+                        .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
+                        .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                        .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                        .glassEffectID("pageBranch", in: glassNamespace)
+                        .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
+                        .transition(.opacity)
                 }
                 if canvas.recentIsOpen {
                     FloatingRecentTabs(area: area)
@@ -200,8 +217,11 @@ struct ControlIsland: View {
             state.tabInfo.dismiss()
         }
         .onChange(of: focusedControl) {
-            if focusedControl == nil { state.hasKeyboardFocus = false }
-            else if NSApp.currentEvent?.type == .keyDown { state.hasKeyboardFocus = true }
+            if focusedControl == nil {
+                state.hasKeyboardFocus = false
+            } else if NSApp.currentEvent?.type == .keyDown {
+                state.hasKeyboardFocus = true
+            }
         }
         .onChange(of: isDraggingWindow || isDraggingPanel || isOptionDragging || state.isReorderingFavorites) { _, dragging in
             state.isDragging = dragging
@@ -296,14 +316,22 @@ struct ControlIsland: View {
                 let highlightedItem = tour.highlightedItem
                 VStack(spacing: 0) {
                     ForEach(visibleItems) { item in
-                        if hasSeparator(before: item) { sectionDivider }
+                        if hasSeparator(before: item) {
+                            sectionDivider
+                        }
                         itemControl(item)
-                            .background { if highlightedItem == item { rowHighlight } }
+                            .background {
+                                if highlightedItem == item {
+                                    rowHighlight
+                                }
+                            }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
                                 state.reportFrame($0, for: item)
                             }
                     }
-                    if visibleItems.last?.isGroup == true { sectionDivider }
+                    if visibleItems.last?.isGroup == true {
+                        sectionDivider
+                    }
                     ControlIslandMenu(showsFavorites: $showsFavorites)
                         .focused($focusedControl, equals: "More")
                         .focusEffectDisabled()
@@ -314,7 +342,9 @@ struct ControlIsland: View {
             }
             .scrollIndicators(.automatic)
             .scrollBounceBehavior(.basedOnSize)
-            if showsGrip { grip }
+            if showsGrip {
+                grip
+            }
         }
         .padding(.vertical, Layout.contentInset)
         .padding(.horizontal, Layout.horizontalInset)
@@ -349,8 +379,11 @@ struct ControlIsland: View {
         case .commandLens:
             control(item.title, symbol: item.symbol) {
                 tabSwitcher.cancel()
-                if windowState.showsCommandLens { windowState.closeCommandLens() }
-                else { windowState.openCommandLens(source: state.itemFrames[.commandLens]) }
+                if windowState.showsCommandLens {
+                    windowState.closeCommandLens()
+                } else {
+                    windowState.openCommandLens(source: state.itemFrames[.commandLens])
+                }
             }
             .help("Command Lens · ⌘T")
         case .floatingTabs:
@@ -383,11 +416,17 @@ struct ControlIsland: View {
         case .favoriteTabs:
             ControlIslandFavoriteTabs(favorites: favorites, focusedControl: $focusedControl)
         case .reload:
-            control(windowState.activeWebPage?.isLoading == true ? "Stop loading" : "Reload",
-                    symbol: windowState.activeWebPage?.isLoading == true ? "xmark" : item.symbol,
-                    enabled: windowState.activeWebPage != nil) {
+            control(
+                windowState.activeWebPage?.isLoading == true ? "Stop loading" : "Reload",
+                symbol: windowState.activeWebPage?.isLoading == true ? "xmark" : item.symbol,
+                enabled: windowState.activeWebPage != nil,
+            ) {
                 if let page = windowState.activeWebPage {
-                    if page.isLoading { page.stopLoading() } else { _ = page.reload() }
+                    if page.isLoading {
+                        page.stopLoading()
+                    } else {
+                        _ = page.reload()
+                    }
                 }
             }
         case .favorites:
@@ -427,7 +466,9 @@ struct ControlIsland: View {
             .accessibilityHidden(true)
     }
 
-    private var dragFeedback: ControlIslandDragFeedback { railDragFeedback }
+    private var dragFeedback: ControlIslandDragFeedback {
+        railDragFeedback
+    }
 
     private var dragSurface: some View {
         draggableBackground(Color.clear.contentShape(Rectangle()))
@@ -437,8 +478,11 @@ struct ControlIsland: View {
     @ViewBuilder
     private func draggableBackground(_ content: some View) -> some View {
         let surface = content.contextMenu { ControlIslandRailMenu() }
-        if state.configuration.optionDragTarget.backgroundTarget == .panel { surface.gesture(moveGesture) }
-        else { surface.gesture(windowDrag) }
+        if state.configuration.optionDragTarget.backgroundTarget == .panel {
+            surface.gesture(moveGesture)
+        } else {
+            surface.gesture(windowDrag)
+        }
     }
 
     private var sectionDivider: some View {
@@ -556,7 +600,9 @@ struct ControlIsland: View {
         .frame(width: Layout.contentWidth, height: Layout.rowHeight)
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: canGoForward)
         .onChange(of: canGoForward) { _, available in
-            if !available, focusedControl == "Forward" { focusedControl = "Back" }
+            if !available, focusedControl == "Forward" {
+                focusedControl = "Back"
+            }
         }
     }
 
@@ -564,7 +610,11 @@ struct ControlIsland: View {
     private var pageRow: some View {
         Button {
             tabSwitcher.cancel()
-            if state.tabInfo.isLatched { state.tabInfo.dismiss() } else { state.tabInfo.show() }
+            if state.tabInfo.isLatched {
+                state.tabInfo.dismiss()
+            } else {
+                state.tabInfo.show()
+            }
         } label: {
             ControlIslandRow {
                 ZStack {
@@ -656,9 +706,15 @@ struct ControlIsland: View {
 
     private var interactionRegions: [CGRect] {
         var regions = [frame]
-        if showsPageBranch, !canvas.recentIsOpen { regions.append(pageBranchFrame) }
-        if canvas.recentIsOpen { regions.append(recentFrame) }
-        if showsShortcut { regions.append(shortcutFrame) }
+        if showsPageBranch, !canvas.recentIsOpen {
+            regions.append(pageBranchFrame)
+        }
+        if canvas.recentIsOpen {
+            regions.append(recentFrame)
+        }
+        if showsShortcut {
+            regions.append(shortcutFrame)
+        }
         return regions
     }
 

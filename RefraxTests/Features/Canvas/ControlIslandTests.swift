@@ -163,8 +163,12 @@ struct ControlIslandTests {
         let environment = try TabManagerTestEnvironment()
         let state = environment.makeWindowState()
         state.usesFloatingTabs = true
-        let canvas = TabCanvasManager(tabManager: environment.tabManager, windowState: state,
-                                      pagePool: environment.pagePool, groupManager: environment.groupManager)
+        let canvas = TabCanvasManager(
+            tabManager: environment.tabManager,
+            windowState: state,
+            pagePool: environment.pagePool,
+            groupManager: environment.groupManager,
+        )
         state.openCommandLens()
         #expect(canvas.showsFloatingControls)
         state.editAddress()
@@ -258,9 +262,17 @@ struct ControlIslandTests {
             DispatchQueue.main.async { continuation.resume() }
         }
         let point = group.convert(CGPoint(x: 20, y: 16), to: nil)
-        let event = try #require(NSEvent.enterExitEvent(with: .mouseEntered, location: point, modifierFlags: [],
-                                                       timestamp: 0, windowNumber: window.windowNumber, context: nil,
-                                                       eventNumber: 0, trackingNumber: 0, userData: nil))
+        let event = try #require(NSEvent.enterExitEvent(
+            with: .mouseEntered,
+            location: point,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            trackingNumber: 0,
+            userData: nil,
+        ))
         group.mouseEntered(with: event)
         let theme = try #require(window.contentView?.superview)
         let refresh = NSSelectorFromString("_updateMouseTracking")
@@ -271,9 +283,17 @@ struct ControlIslandTests {
         }
         try expectWidgetHover(group, state: 4)
 
-        let exit = try #require(NSEvent.enterExitEvent(with: .mouseExited, location: CGPoint(x: 500, y: 500), modifierFlags: [],
-                                                      timestamp: 0, windowNumber: window.windowNumber, context: nil,
-                                                      eventNumber: 0, trackingNumber: 0, userData: nil))
+        let exit = try #require(NSEvent.enterExitEvent(
+            with: .mouseExited,
+            location: CGPoint(x: 500, y: 500),
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            trackingNumber: 0,
+            userData: nil,
+        ))
         group.mouseExited(with: exit)
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
@@ -323,7 +343,7 @@ struct ControlIslandTests {
             try expectWidgetHover(group, state: 4)
         }
         window.pointerLocation = CGPoint(x: 400, y: 400)
-        NSApp.sendEvent(try mouseEvent(.mouseMoved, at: CGPoint(x: 400, y: 400), window: window))
+        try NSApp.sendEvent(mouseEvent(.mouseMoved, at: CGPoint(x: 400, y: 400), window: window))
         try expectWidgetHover(group, state: 0)
     }
 
@@ -340,15 +360,33 @@ struct ControlIslandTests {
         drag.onFeedback = { feedback.append($0) }
         for target in ControlIslandDragTarget.allCases {
             drag.target = target
-            let option = try #require(NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: .option,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
-                isARepeat: false, keyCode: 58))
+            let option = try #require(NSEvent.keyEvent(
+                with: .flagsChanged,
+                location: .zero,
+                modifierFlags: .option,
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: 58,
+            ))
             #expect(drag.handle(option) === option)
             #expect(drag.feedback == .ready(target))
             #expect(NSCursor.current == .openHand)
-            let release = try #require(NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: [],
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
-                isARepeat: false, keyCode: 58))
+            let release = try #require(NSEvent.keyEvent(
+                with: .flagsChanged,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: 58,
+            ))
             _ = drag.handle(release)
             #expect(drag.feedback == .idle)
             #expect(NSCursor.current == previousCursor)
@@ -366,21 +404,23 @@ struct ControlIslandTests {
         drag.cornerRadius = 24
         window.contentView?.addSubview(drag)
         drag.updateTrackingAreas()
-        for tracking in drag.trackingAreas { #expect(drag.bounds.contains(tracking.rect)) }
+        for tracking in drag.trackingAreas {
+            #expect(drag.bounds.contains(tracking.rect))
+        }
         let inside = CGPoint(x: 124, y: 300)
-        _ = drag.handle(try mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
         #expect(drag.feedback == .ready(.panel))
         for outside in [CGPoint(x: 101, y: 101), CGPoint(x: 500, y: 500)] {
-            _ = drag.handle(try mouseEvent(.mouseMoved, at: outside, window: window, modifiers: .option))
+            _ = try drag.handle(mouseEvent(.mouseMoved, at: outside, window: window, modifiers: .option))
             #expect(drag.feedback == .idle)
             #expect(NSCursor.current == previousCursor)
         }
-        _ = drag.handle(try mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
         drag.isHidden = true
-        _ = drag.handle(try mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
         #expect(drag.feedback == .idle)
         drag.isHidden = false
-        _ = drag.handle(try mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
         drag.removeFromSuperview()
         #expect(drag.feedback == .idle)
         #expect(NSCursor.current == previousCursor)
@@ -395,15 +435,24 @@ struct ControlIslandTests {
         let drag = ControlIslandOptionDragView(frame: CGRect(x: 100, y: 100, width: 48, height: 500))
         window.contentView?.addSubview(drag)
         let point = CGPoint(x: 124, y: 300)
-        _ = drag.handle(try mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
         #expect(drag.feedback == .dragging(.panel))
         #expect(NSCursor.current == .closedHand)
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
         }
-        let release = try #require(NSEvent.keyEvent(with: .flagsChanged, location: point, modifierFlags: [],
-            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
-            isARepeat: false, keyCode: 58))
+        let release = try #require(NSEvent.keyEvent(
+            with: .flagsChanged,
+            location: point,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: 58,
+        ))
         _ = drag.handle(release)
         NSCursor.arrow.set()
         await withCheckedContinuation { continuation in
@@ -411,12 +460,21 @@ struct ControlIslandTests {
         }
         #expect(NSCursor.current == .closedHand)
         drag.target = .window
-        _ = drag.handle(try mouseEvent(.leftMouseDragged, at: CGPoint(x: 500, y: 500), window: window))
+        _ = try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 500, y: 500), window: window))
         #expect(drag.feedback == .dragging(.panel))
         #expect(NSCursor.current == .closedHand)
-        let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: point, modifierFlags: [],
-            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
-            isARepeat: false, keyCode: 53))
+        let escape = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: point,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false,
+            keyCode: 53,
+        ))
         #expect(drag.handle(escape) == nil)
         #expect(drag.feedback == .idle)
         #expect(NSCursor.current == previousCursor)
@@ -436,19 +494,19 @@ struct ControlIslandTests {
         drag.onMove = { translations.append($0) }
         drag.onEnd = { ended += 1 }
         let start = CGPoint(x: 224, y: 600)
-        #expect(drag.handle(try mouseEvent(.leftMouseDown, at: start, window: window)) != nil)
-        #expect(drag.handle(try mouseEvent(.leftMouseDown, at: CGPoint(x: 500, y: 500), window: window, modifiers: .option)) != nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: start, window: window)) != nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: CGPoint(x: 500, y: 500), window: window, modifiers: .option)) != nil)
         #expect(began == 0)
-        #expect(drag.handle(try mouseEvent(.leftMouseDown, at: start, window: window, modifiers: .option)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: start, window: window, modifiers: .option)) == nil)
         #expect(began == 1)
         drag.target = .window
-        #expect(drag.handle(try mouseEvent(.leftMouseDragged, at: CGPoint(x: 225, y: 600), window: window)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 225, y: 600), window: window)) == nil)
         #expect(translations.isEmpty)
-        #expect(drag.handle(try mouseEvent(.leftMouseDragged, at: CGPoint(x: 254, y: 580), window: window)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 254, y: 580), window: window)) == nil)
         #expect(translations == [CGSize(width: 30, height: 20)])
-        #expect(drag.handle(try mouseEvent(.leftMouseUp, at: CGPoint(x: 254, y: 580), window: window)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: CGPoint(x: 254, y: 580), window: window)) == nil)
         #expect(ended == 1)
-        #expect(drag.handle(try mouseEvent(.leftMouseUp, at: start, window: window)) != nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: start, window: window)) != nil)
     }
 
     @Test @MainActor
@@ -463,11 +521,11 @@ struct ControlIslandTests {
         drag.onMove = { _ in moves += 1 }
         drag.onEnd = { ends += 1 }
         let point = CGPoint(x: 24, y: 250)
-        NSApp.sendEvent(try mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
-        NSApp.sendEvent(try mouseEvent(.leftMouseUp, at: point, window: window))
+        try NSApp.sendEvent(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
+        try NSApp.sendEvent(mouseEvent(.leftMouseUp, at: point, window: window))
         #expect(moves == 0)
         #expect(ends == 1)
-        _ = drag.handle(try mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
+        _ = try drag.handle(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
         drag.removeFromSuperview()
         #expect(ends == 2)
     }
@@ -493,11 +551,23 @@ struct ControlIslandTests {
     }
 
     @MainActor
-    private func mouseEvent(_ type: NSEvent.EventType, at point: CGPoint, window: NSWindow,
-                            modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
-        try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifiers, timestamp: 0,
-                                       windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-                                       clickCount: 1, pressure: 0))
+    private func mouseEvent(
+        _ type: NSEvent.EventType,
+        at point: CGPoint,
+        window: NSWindow,
+        modifiers: NSEvent.ModifierFlags = [],
+    ) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(
+            with: type,
+            location: point,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0,
+        ))
     }
 
     @Test @MainActor
@@ -519,8 +589,8 @@ struct ControlIslandTests {
         #expect(drag.handle(press) == nil)
         #expect(drag.feedback == .unavailable)
         #expect(NSCursor.current == .operationNotAllowed)
-        #expect(drag.handle(try mouseEvent(.leftMouseDragged, at: CGPoint(x: 200, y: 200), window: window)) == nil)
-        #expect(drag.handle(try mouseEvent(.leftMouseUp, at: point, window: window)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 200, y: 200), window: window)) == nil)
+        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: point, window: window)) == nil)
         #expect(window.dragCount == 1)
         #expect(panelMoves == 0)
     }
@@ -538,7 +608,9 @@ struct ControlIslandTests {
 
     @MainActor
     private func widgetGroup(in view: NSView) -> ControlIslandWindowButtonGroup? {
-        if let group = view as? ControlIslandWindowButtonGroup { return group }
+        if let group = view as? ControlIslandWindowButtonGroup {
+            return group
+        }
         return view.subviews.lazy.compactMap { widgetGroup(in: $0) }.first
     }
 

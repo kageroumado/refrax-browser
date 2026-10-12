@@ -15,12 +15,12 @@ struct FloatingTourTests {
         let tour: FloatingTourManager
 
         init() throws {
-            env = try TabManagerTestEnvironment()
-            space = env.makeSpace()
-            window = env.makeActiveWindowState(with: space)
-            canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-            defaults = try #require(UserDefaults(suiteName: "FloatingTourTests.\(UUID())"))
-            tour = FloatingTourManager(windowState: window, canvas: canvas, tabManager: env.tabManager, defaults: defaults)
+            self.env = try TabManagerTestEnvironment()
+            self.space = env.makeSpace()
+            self.window = env.makeActiveWindowState(with: space)
+            self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+            self.defaults = try #require(UserDefaults(suiteName: "FloatingTourTests.\(UUID())"))
+            self.tour = FloatingTourManager(windowState: window, canvas: canvas, tabManager: env.tabManager, defaults: defaults)
         }
 
         func openPage(_ fragment: String) throws -> Tab {
@@ -47,7 +47,9 @@ struct FloatingTourTests {
 
         func reportRail() {
             window.controlIsland.railFrame = Self.rail
-            for (item, frame) in Self.rows { window.controlIsland.reportFrame(frame, for: item) }
+            for (item, frame) in Self.rows {
+                window.controlIsland.reportFrame(frame, for: item)
+            }
         }
 
         /// Gives tabs a place of their own, as the window does when a page is displaced.
@@ -92,7 +94,8 @@ struct FloatingTourTests {
 
     private static let padding = FloatingTourLayout.spotlightPadding
 
-    @Test func `the lens offers the step's tutorial page first only while a step asks for a page`() async throws {
+    @Test
+    func `the lens offers the step's tutorial page first only while a step asks for a page`() async throws {
         let stage = try Stage()
         let lens = stage.makeLens()
         let provider = TourSuggestionProvider(tour: stage.tour)
@@ -148,7 +151,8 @@ struct FloatingTourTests {
         #expect(kind.cornerRadius == expected)
     }
 
-    @Test func `each step lights its target with that target's corners`() throws {
+    @Test
+    func `each step lights its target with that target's corners`() throws {
         let stage = try Stage()
         let tour = stage.tour
         let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
@@ -189,14 +193,15 @@ struct FloatingTourTests {
         tour.skip()
     }
 
-    @Test func `the page card step lights the icon and the card together and anchors the card`() throws {
+    @Test
+    func `the page card step lights the icon and the card together and anchors the card`() throws {
         let stage = try Stage()
         let tour = stage.tour
         let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
         stage.reportRail()
         try stage.advance(to: .pageCard)
         #expect(tour.currentStep == .pageCard)
-        let icon = FloatingTourLayout.spotlight(around: Stage.rows[.page]!, of: .railRow)
+        let icon = try FloatingTourLayout.spotlight(around: #require(Stage.rows[.page]), of: .railRow)
         #expect(tour.spotlights(in: bounds) == [icon])
         #expect(tour.highlightedItem == .page)
         #expect(tour.beamRequests.isEmpty)
@@ -217,13 +222,14 @@ struct FloatingTourTests {
         tour.skip()
     }
 
-    @Test func `a lens opening during the tour moves the spotlight to the lens and asks for a beam`() throws {
+    @Test
+    func `a lens opening during the tour moves the spotlight to the lens and asks for a beam`() throws {
         let stage = try Stage()
         let tour = stage.tour
         let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
         stage.reportRail()
         try stage.advance(to: .openSecondPage)
-        let row = FloatingTourLayout.spotlight(around: Stage.rows[.commandLens]!, of: .railRow)
+        let row = try FloatingTourLayout.spotlight(around: #require(Stage.rows[.commandLens]), of: .railRow)
         #expect(tour.spotlights(in: bounds) == [row])
         #expect(tour.beamRequests.isEmpty)
 
@@ -260,7 +266,8 @@ struct FloatingTourTests {
         tour.skip()
     }
 
-    @Test func `steps advance only on their own condition and never skip`() throws {
+    @Test
+    func `steps advance only on their own condition and never skip`() throws {
         let stage = try Stage()
         let tour = stage.tour
         tour.start()
@@ -339,7 +346,8 @@ struct FloatingTourTests {
         #expect(stage.defaults.string(forKey: FloatingTourManager.outcomeKey) == FloatingTourManager.Outcome.completed.rawValue)
     }
 
-    @Test func `progress counts completed steps over the total`() throws {
+    @Test
+    func `progress counts completed steps over the total`() throws {
         let stage = try Stage()
         let tour = stage.tour
         #expect(tour.progress == 0)
@@ -356,7 +364,8 @@ struct FloatingTourTests {
         tour.skip()
     }
 
-    @Test func `skip ends the tour and records the dismissal`() throws {
+    @Test
+    func `skip ends the tour and records the dismissal`() throws {
         let stage = try Stage()
         let tour = stage.tour
         tour.start()
@@ -378,7 +387,8 @@ struct FloatingTourTests {
         tour.skip()
     }
 
-    @Test func `an untouched launch offers the tour once`() throws {
+    @Test
+    func `an untouched launch offers the tour once`() throws {
         let stage = try Stage()
         FloatingTourManager.hasOfferedThisLaunch = false
         stage.tour.offer()
@@ -389,7 +399,8 @@ struct FloatingTourTests {
         #expect(!stage.tour.isActive)
     }
 
-    @Test func `tutorial pages appear only when a step needs pages and none exist`() throws {
+    @Test
+    func `tutorial pages appear only when a step needs pages and none exist`() throws {
         let stage = try Stage()
         let tour = stage.tour
         tour.start()
@@ -434,8 +445,9 @@ struct FloatingTourTests {
         #expect(abs(centered.x + size.width / 2 - bounds.midX) < 1)
     }
 
-    @Test func `the card keeps clear of the rail when its target is a rail row`() {
-        let bounds = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+    @Test
+    func `the card keeps clear of the rail when its target is a rail row`() {
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
         let rail = CGRect(x: 12, y: 200, width: 48, height: 400)
         let row = CGRect(x: 16, y: 360, width: 40, height: 32)
         let size = CGSize(width: 360, height: 90)

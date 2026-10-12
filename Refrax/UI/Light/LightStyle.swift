@@ -25,10 +25,14 @@ nonisolated enum LightStyle: CaseIterable, Sendable {
     }
 
     /// Full width of the beam's bright center, in points.
-    var coreWidth: CGFloat { Layout.coreWidth }
+    var coreWidth: CGFloat {
+        Layout.coreWidth
+    }
 
     /// Full width of the beam's soft halo, in points.
-    var glowWidth: CGFloat { Layout.glowWidth }
+    var glowWidth: CGFloat {
+        Layout.glowWidth
+    }
 
     /// Brightness of the beam, 0 to 1.
     var intensity: Double {

@@ -497,11 +497,15 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         floatingView.sizingOptions = []
         floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState] point in
             guard let floatingView, let tabCanvasManager, let windowState else { return }
-            if windowState.controlIsland.hitRegions.contains(where: { $0.contains(point) }) { return }
+            if windowState.controlIsland.hitRegions.contains(where: { $0.contains(point) }) {
+                return
+            }
             if tabCanvasManager.floatingVisibility.isRevealed, tabCanvasManager.floatingGroups.contains(where: {
                 let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
                 return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24).contains(point)
-            }) { return }
+            }) {
+                return
+            }
             if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds).contains(point) }) {
                 let frame = tabCanvasManager.floatingFrame(for: tab, in: floatingView.bounds)
                 if point.y > frame.minY + FloatingTabPlacement.headerHeight, tab.id != windowState.activeTabID {
@@ -509,12 +513,16 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 }
             } else {
                 tabCanvasManager.retainedInputTabID = nil
-                if !windowState.controlIsland.tabInfo.isMenuPresented { tabCanvasManager.dismissFloatingTabs() }
+                if !windowState.controlIsland.tabInfo.isMenuPresented {
+                    tabCanvasManager.dismissFloatingTabs()
+                }
             }
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager] in
             guard let floatingView, let tabCanvasManager else { return [] }
-            if tabCanvasManager.draggedRecentTabID != nil { return [floatingView.bounds] }
+            if tabCanvasManager.draggedRecentTabID != nil {
+                return [floatingView.bounds]
+            }
             let groups: [CGRect] = tabCanvasManager.floatingVisibility.isRevealed ? tabCanvasManager.floatingGroups.map {
                 let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
                 return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24)
@@ -561,7 +569,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             let local = content.convert(point, from: nil)
             let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
             if tabCanvasManager.showsFloatingControls,
-               windowState.controlIsland.hitRegions.contains(where: { $0.contains(topLeft) }) { return true }
+               windowState.controlIsland.hitRegions.contains(where: { $0.contains(topLeft) }) {
+                return true
+            }
             return tabCanvasManager.visibleFloatingTabs.contains {
                 tabCanvasManager.floatingFrame(for: $0, in: content.bounds).contains(topLeft)
             } || (tabCanvasManager.floatingVisibility.isRevealed && tabCanvasManager.floatingGroups.contains {
@@ -1158,14 +1168,22 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
             if let textView = window?.firstResponder as? NSTextView,
                let undoManager = textView.undoManager {
-                if isRedo, undoManager.canRedo { return event }
-                if !isRedo, undoManager.canUndo { return event }
+                if isRedo, undoManager.canRedo {
+                    return event
+                }
+                if !isRedo, undoManager.canUndo {
+                    return event
+                }
             }
 
             if let firstResponder = window?.firstResponder,
                let undoManager = firstResponder.undoManager {
-                if isRedo, undoManager.canRedo { return event }
-                if !isRedo, undoManager.canUndo { return event }
+                if isRedo, undoManager.canRedo {
+                    return event
+                }
+                if !isRedo, undoManager.canUndo {
+                    return event
+                }
             }
 
             if isRedo {

@@ -773,7 +773,9 @@ final class RefraxControlServer {
             if let nativeID = node.nativeID {
                 let interaction = _WKTextExtractionInteraction(action: .click)
                 interaction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    interaction.scrollToVisible = true
+                }
                 do {
                     try await webPage.performInteraction(interaction)
                 } catch {
@@ -1027,7 +1029,9 @@ final class RefraxControlServer {
             if let nativeID = node.nativeID {
                 let focusInteraction = _WKTextExtractionInteraction(action: .click)
                 focusInteraction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { focusInteraction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    focusInteraction.scrollToVisible = true
+                }
                 do {
                     try await webPage.performInteraction(focusInteraction)
                 } catch {
@@ -1036,7 +1040,9 @@ final class RefraxControlServer {
 
                 let typeInteraction = _WKTextExtractionInteraction(action: .textInput)
                 typeInteraction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { typeInteraction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    typeInteraction.scrollToVisible = true
+                }
                 typeInteraction.text = params.text
                 do {
                     try await webPage.performInteraction(typeInteraction)
@@ -1163,11 +1169,10 @@ final class RefraxControlServer {
             return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
         }
 
-        let space: Space?
-        if let spaceReference = params.spaceID {
-            space = try resolveSpace(spaceReference)
+        let space: Space? = if let spaceReference = params.spaceID {
+            try resolveSpace(spaceReference)
         } else {
-            space = windowManager.activeWindowController?.windowState.activeSpace
+            windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
         }
 
@@ -1473,7 +1478,9 @@ final class RefraxControlServer {
         for win in windows {
             var numValue: CFTypeRef?
             // Try to match by position/title if window number isn't directly accessible
-            if windows.count == 1 { return win }
+            if windows.count == 1 {
+                return win
+            }
 
             // AX doesn't directly expose windowNumber, but we can compare titles
             if AXUIElementCopyAttributeValue(win, "_AXWindowNumber" as CFString, &numValue) == .success,
@@ -1567,7 +1574,9 @@ final class RefraxControlServer {
         indent: String,
         output: inout String,
     ) {
-        if let max = maxDepth, depth >= max { return }
+        if let max = maxDepth, depth >= max {
+            return
+        }
 
         let role = axGetRole(element)
         let id = axGetIdentifier(element)
@@ -1584,10 +1593,18 @@ final class RefraxControlServer {
         if hasInfo {
             var line = indent
             line += "[\(role ?? "Element")]"
-            if let id { line += " id=\"\(id)\"" }
-            if let label { line += " \"\(label)\"" }
-            if let value, value != label { line += " value=\"\(value)\"" }
-            if !sizeStr.isEmpty { line += " \(sizeStr)" }
+            if let id {
+                line += " id=\"\(id)\""
+            }
+            if let label {
+                line += " \"\(label)\""
+            }
+            if let value, value != label {
+                line += " value=\"\(value)\""
+            }
+            if !sizeStr.isEmpty {
+                line += " \(sizeStr)"
+            }
             output += line + "\n"
         }
 
@@ -2584,7 +2601,9 @@ final class RefraxControlServer {
         let canvas = try canvasManager()
         switch params.action {
         case .show:
-            if !canvas.floatingVisibility.isLatched { canvas.toggleFloatingTabs() }
+            if !canvas.floatingVisibility.isLatched {
+                canvas.toggleFloatingTabs()
+            }
         case .hide: canvas.dismissFloatingTabs()
         case .hold: canvas.revealFloatingTabs()
         case .release: canvas.releaseFloatingTabs()
@@ -2666,30 +2685,30 @@ final class RefraxControlServer {
 
     private func handleCanvasLab(_ params: ControlRequest.CanvasLabParams) async throws -> ControlResponse {
         #if DEBUG
-        guard let controller = windowManager.activeWindowController,
-              let scenario = CanvasScenario(rawValue: params.scenario.lowercased())
-        else {
-            let names = CanvasScenario.allCases.map(\.rawValue).joined(separator: ", ")
-            throw ControlError.invalidParams("Unknown scenario '\(params.scenario)'. Scenarios: \(names)")
-        }
-        let appDelegate = NSApplication.shared.typedDelegate
-        CanvasScenario.load(
-            scenario,
-            tabManager: appDelegate.tabManager,
-            spaceManager: appDelegate.spaceManager,
-            groupManager: appDelegate.groupManager,
-            windowState: controller.windowState,
-            canvas: controller.tabCanvasManager,
-        )
-        // The scenario opens the canvas once its pages have had a moment to render.
-        let deadline = ContinuousClock.now + .seconds(5)
-        while !controller.tabCanvasManager.isActive, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        _ = await controller.tabCanvasManager.waitUntilSettled()
-        return try canvasStateResponse()
+            guard let controller = windowManager.activeWindowController,
+                  let scenario = CanvasScenario(rawValue: params.scenario.lowercased())
+            else {
+                let names = CanvasScenario.allCases.map(\.rawValue).joined(separator: ", ")
+                throw ControlError.invalidParams("Unknown scenario '\(params.scenario)'. Scenarios: \(names)")
+            }
+            let appDelegate = NSApplication.shared.typedDelegate
+            CanvasScenario.load(
+                scenario,
+                tabManager: appDelegate.tabManager,
+                spaceManager: appDelegate.spaceManager,
+                groupManager: appDelegate.groupManager,
+                windowState: controller.windowState,
+                canvas: controller.tabCanvasManager,
+            )
+            // The scenario opens the canvas once its pages have had a moment to render.
+            let deadline = ContinuousClock.now + .seconds(5)
+            while !controller.tabCanvasManager.isActive, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            _ = await controller.tabCanvasManager.waitUntilSettled()
+            return try canvasStateResponse()
         #else
-        throw ControlError.invalidParams("Canvas lab scenarios exist only in debug builds")
+            throw ControlError.invalidParams("Canvas lab scenarios exist only in debug builds")
         #endif
     }
 
@@ -2730,9 +2749,9 @@ final class RefraxControlServer {
             )
         }
         #if DEBUG
-        let scenarios = CanvasScenario.allCases.map(\.rawValue)
+            let scenarios = CanvasScenario.allCases.map(\.rawValue)
         #else
-        let scenarios: [String] = []
+            let scenarios: [String] = []
         #endif
         return .canvas(CTL.CanvasInfo(
             isActive: canvas.isActive,
@@ -2755,9 +2774,17 @@ final class RefraxControlServer {
         return .init(isRevealed: canvas.floatingVisibility.isRevealed, tiles: canvas.floatingTabs.map { tab in
             let placement = canvas.floatingPlacement(for: tab)
             let frame = placement.frame(in: bounds)
-            return .init(tabID: tab.id.uuidString, title: tab.displayTitle,
-                         x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
-                         isCompact: placement.isCompact, isPinned: placement.isPinned, isVisible: visible.contains(tab.id))
+            return .init(
+                tabID: tab.id.uuidString,
+                title: tab.displayTitle,
+                x: frame.minX,
+                y: frame.minY,
+                width: frame.width,
+                height: frame.height,
+                isCompact: placement.isCompact,
+                isPinned: placement.isPinned,
+                isVisible: visible.contains(tab.id),
+            )
         })
     }
 
@@ -2879,7 +2906,7 @@ final class RefraxControlServer {
     /// space came from a tab: `--space` first, then `--page`, then the tab.
     private func resolveCookieSpace(_ params: ControlRequest.DevCookiesParams) throws -> (Space, pageHost: String?) {
         if let spaceReference = params.spaceID {
-            return (try resolveSpace(spaceReference), nil)
+            return try (resolveSpace(spaceReference), nil)
         }
         if let pageID = params.pageID {
             guard let page = findTabPage(byID: pageID), let space = page.tab?.space else {
@@ -3083,7 +3110,9 @@ final class RefraxControlServer {
             if ContinuousClock.now > deadline {
                 throw ControlError.timeout("Wait timed out after \(timeout)s")
             }
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             try? await Task.sleep(for: .milliseconds(100))
         }
     }
@@ -3285,8 +3314,12 @@ final class RefraxControlServer {
 
     /// Returns the single match or throws an appropriate error.
     private func uniqueMatch(_ matches: [Tab], ref: String) throws -> Tab {
-        if matches.count == 1 { return matches[0] }
-        if matches.isEmpty { throw ControlError.tabNotFound(ref) }
+        if matches.count == 1 {
+            return matches[0]
+        }
+        if matches.isEmpty {
+            throw ControlError.tabNotFound(ref)
+        }
         throw ControlError.ambiguousTabRef(
             ref: ref,
             matches: matches.map { (id: "\($0.id)", title: $0.activePage.title, url: $0.activePage.url.absoluteString) },
@@ -3709,7 +3742,7 @@ extension RefraxControlServer {
             url: url,
             scope: scope,
             timeoutSeconds: timeout,
-            configuration: configuration
+            configuration: configuration,
         )
 
         return .pageContent(content)
@@ -3720,11 +3753,10 @@ extension RefraxControlServer {
             throw ControlError.invalidURL(params.url)
         }
 
-        let space: Space?
-        if let spaceReference = params.spaceID {
-            space = try resolveSpace(spaceReference)
+        let space: Space? = if let spaceReference = params.spaceID {
+            try resolveSpace(spaceReference)
         } else {
-            space = windowManager.activeWindowController?.windowState.activeSpace
+            windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
         }
 
@@ -3780,7 +3812,9 @@ extension RefraxControlServer {
         if let nativeID = node.nativeID {
             let interaction = _WKTextExtractionInteraction(action: .click)
             interaction.nodeIdentifier = nativeID
-            if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
+            if Self.supportsScrollToVisible {
+                interaction.scrollToVisible = true
+            }
             try await webPage.performInteraction(interaction)
         } else {
             try await webPage.callJavaScript("document.elementFromPoint(\(node.rect.midX), \(node.rect.midY))?.click()")
@@ -3863,10 +3897,14 @@ extension RefraxControlServer {
         var length = 0
         for child in node.children {
             let part = collectVisibleText(from: child, maxLength: maxLength.map { $0 - length })
-            if part.isEmpty { continue }
+            if part.isEmpty {
+                continue
+            }
             parts.append(part)
             length += part.count + 1
-            if let maxLength, length >= maxLength { break }
+            if let maxLength, length >= maxLength {
+                break
+            }
         }
         return parts.joined(separator: " ")
     }
@@ -3900,8 +3938,16 @@ extension RefraxControlServer {
 
             if matches {
                 let text = collectVisibleText(from: node, maxLength: 80)
-                let href: String? = if case let .link(url) = node.type { url } else { nil }
-                let inputType: String? = if case let .formControl(controlType, _, _, _) = node.type { controlType } else { nil }
+                let href: String? = if case let .link(url) = node.type {
+                    url
+                } else {
+                    nil
+                }
+                let inputType: String? = if case let .formControl(controlType, _, _, _) = node.type {
+                    controlType
+                } else {
+                    nil
+                }
 
                 results.append(CTL.FoundElementInfo(
                     ref: ref,

@@ -2,7 +2,9 @@ import SwiftUI
 
 /// The rail's own settings, on a right-click of its empty glass.
 nonisolated enum ControlIslandRailMenuItem: CaseIterable {
-    case customizeControls, resetPosition, optionDragTarget
+    case customizeControls
+    case resetPosition
+    case optionDragTarget
 
     var title: String {
         switch self {
@@ -17,7 +19,9 @@ nonisolated enum ControlIslandRailMenuItem: CaseIterable {
 struct ControlIslandRailMenu: View {
     @Environment(WindowState.self) private var windowState
 
-    private var configuration: ControlIslandConfiguration { windowState.controlIsland.configuration }
+    private var configuration: ControlIslandConfiguration {
+        windowState.controlIsland.configuration
+    }
 
     var body: some View {
         Button(ControlIslandRailMenuItem.customizeControls.title, systemImage: "slider.horizontal.3") {
@@ -36,8 +40,13 @@ struct ControlIslandRailMenu: View {
         Binding {
             configuration.optionDragTarget
         } set: { target in
-            configuration.apply(configuration.items, optionDragTarget: target, avoidsPageControls: configuration.avoidsPageControls,
-                                restsWhenIdle: configuration.restsWhenIdle, tintsWithSpaceColor: configuration.tintsWithSpaceColor)
+            configuration.apply(
+                configuration.items,
+                optionDragTarget: target,
+                avoidsPageControls: configuration.avoidsPageControls,
+                restsWhenIdle: configuration.restsWhenIdle,
+                tintsWithSpaceColor: configuration.tintsWithSpaceColor,
+            )
         }
     }
 }

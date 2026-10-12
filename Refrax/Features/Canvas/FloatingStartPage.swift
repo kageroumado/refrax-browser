@@ -60,8 +60,13 @@ struct FloatingStartPage: View {
         let bounds = windowBounds
         let railLensFrame = island.itemFrames[.commandLens] ?? .zero
         let places = outlines(in: bounds, railFrame: island.railFrame)
-        let layout = PrismLayout(railLensFrame: railLensFrame, railFrame: island.railFrame, lensFrame: lensCapsule,
-                                 pageFrames: places.map(\.frame), bounds: bounds)
+        let layout = PrismLayout(
+            railLensFrame: railLensFrame,
+            railFrame: island.railFrame,
+            lensFrame: lensCapsule,
+            pageFrames: places.map(\.frame),
+            bounds: bounds,
+        )
         let sourceCenter = island.railFrame.isEmpty ? layout.entry[0] : CGPoint(x: island.railFrame.midX, y: island.railFrame.midY)
         ZStack(alignment: .topLeading) {
             field(around: sourceCenter)
@@ -76,7 +81,9 @@ struct FloatingStartPage: View {
             column
             if !hintsDismissed {
                 railNote(beside: railLensFrame.isEmpty ? island.railFrame : railLensFrame, in: bounds)
-                if let last = places.last { placesNote(below: last) }
+                if let last = places.last {
+                    placesNote(below: last)
+                }
                 gotIt
             }
         }
@@ -140,8 +147,12 @@ struct FloatingStartPage: View {
     /// A soft field of the space color behind the rail.
     private func field(around center: CGPoint) -> some View {
         Circle()
-            .fill(RadialGradient(colors: [spaceColor.opacity(Layout.fieldOpacity), .clear], center: .center,
-                                 startRadius: 0, endRadius: Layout.fieldDiameter / 2))
+            .fill(RadialGradient(
+                colors: [spaceColor.opacity(Layout.fieldOpacity), .clear],
+                center: .center,
+                startRadius: 0,
+                endRadius: Layout.fieldDiameter / 2,
+            ))
             .frame(width: Layout.fieldDiameter, height: Layout.fieldDiameter)
             .position(local(center))
             .allowsHitTesting(false)
@@ -209,7 +220,9 @@ struct FloatingStartPage: View {
                     lensFrame = $0
                     tour.startPageLensFrame = $0
                 }
-            if !hintsDismissed { lensNote }
+            if !hintsDismissed {
+                lensNote
+            }
             recovery
                 .padding(.top, Layout.spacing)
         }

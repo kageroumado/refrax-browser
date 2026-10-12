@@ -28,7 +28,9 @@ extension TabManager {
             }
         }
 
-        if !preservingVisit, !windowState.pageVisit.isTransformingIdentity { windowState.pageVisit.end() }
+        if !preservingVisit, !windowState.pageVisit.isTransformingIdentity {
+            windowState.pageVisit.end()
+        }
 
         if windowState.isInLayoutMode {
             windowState.exitLayoutMode()
@@ -68,7 +70,9 @@ extension TabManager {
         // Defer non user-interactive work using a Task with utility priority
         let previousTab = if let previousTabID {
             state.tab(for: previousTabID)
-        } else { Tab?.none }
+        } else {
+            Tab?.none
+        }
 
         if let previousTab, previousTab.id != tab.id {
             state.pipCoordinator.onTabDeactivated(previousTab, in: state)

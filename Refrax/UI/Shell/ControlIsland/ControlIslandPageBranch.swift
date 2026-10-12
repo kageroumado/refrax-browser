@@ -22,11 +22,21 @@ struct ControlIslandPageBranch: View {
         static let actionSize: CGFloat = 30
     }
 
-    private var tab: Tab? { windowState.focusedPage?.tab ?? windowState.activeTab }
-    private var page: WebPage? { tab.flatMap { tabs.pagePool.existingPage(for: $0.activePage) } }
-    private var url: URL? { tab?.activePage.url }
-    private var domain: String { url?.safeDisplayDomain ?? "" }
-    private var isLoading: Bool { page?.isLoading == true }
+    private var tab: Tab? {
+        windowState.focusedPage?.tab ?? windowState.activeTab
+    }
+    private var page: WebPage? {
+        tab.flatMap { tabs.pagePool.existingPage(for: $0.activePage) }
+    }
+    private var url: URL? {
+        tab?.activePage.url
+    }
+    private var domain: String {
+        url?.safeDisplayDomain ?? ""
+    }
+    private var isLoading: Bool {
+        page?.isLoading == true
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,7 +109,11 @@ struct ControlIslandPageBranch: View {
         let certificate = page.certificateInfo
         switch page.securityState {
         case .mixedContent: return .red
-        case .insecure: if case .invalid = certificate.trustState { return .red } else { return .secondary }
+        case .insecure: if case .invalid = certificate.trustState {
+                return .red
+            } else {
+                return .secondary
+            }
         case .localNetwork: return .orange
         case .secure: return .secondary
         }
@@ -110,7 +124,13 @@ struct ControlIslandPageBranch: View {
         return HStack(spacing: 0) {
             AddressBarReloadButton(
                 isLoading: isLoading,
-                onReload: { if isLoading { page?.stopLoading() } else { _ = page?.reload() } },
+                onReload: {
+                    if isLoading {
+                        page?.stopLoading()
+                    } else {
+                        _ = page?.reload()
+                    }
+                },
                 onReloadFromOrigin: { _ = page?.reload(fromOrigin: true) },
                 onReloadWithoutContentBlockers: { page?.reloadWithoutContentBlockers() },
                 otherEngines: engineRegistry.descriptors.filter { $0.id != (page?.activeEngineID ?? .systemWebKit) },

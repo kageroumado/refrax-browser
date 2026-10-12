@@ -117,7 +117,11 @@ struct OverlayContainer: View {
                 pageTitle: pageInfo.title,
                 isPresented: Binding(
                     get: { windowState.remindMePageInfo != nil },
-                    set: { if !$0 { windowState.dismissRemindMeSheet() } },
+                    set: {
+                        if !$0 {
+                            windowState.dismissRemindMeSheet()
+                        }
+                    },
                 ),
             )
         }

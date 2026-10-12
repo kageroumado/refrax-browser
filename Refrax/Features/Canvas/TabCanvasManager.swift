@@ -182,8 +182,12 @@ final class TabCanvasManager {
 
     /// The control the ray leaves from: the lens while it is up, else the page card, else the rail.
     private var raySource: CGRect {
-        if windowState.showsCommandLens, !windowState.commandLensFrame.isEmpty { return windowState.commandLensFrame }
-        if !windowState.addressBarFrame.isEmpty { return windowState.addressBarFrame }
+        if windowState.showsCommandLens, !windowState.commandLensFrame.isEmpty {
+            return windowState.commandLensFrame
+        }
+        if !windowState.addressBarFrame.isEmpty {
+            return windowState.addressBarFrame
+        }
         return windowState.controlIsland.hitRegions.first ?? .zero
     }
 
@@ -204,7 +208,9 @@ final class TabCanvasManager {
         return (windowState.activeSpaceTabs + tabManager.state.liveFavoriteTabs + retained).filter { !$0.isArchived }
     }
 
-    var unplacedFloatingTabs: [Tab] { floatingTabs.filter { storedFloatingPlacement(for: $0) == nil } }
+    var unplacedFloatingTabs: [Tab] {
+        floatingTabs.filter { storedFloatingPlacement(for: $0) == nil }
+    }
 
     private func storedFloatingPlacement(for tab: Tab) -> FloatingTabPlacement? {
         windowState.floatingPlacements[tab.id] ?? (tab.space?.dataStoreMode == .private ? nil : tab.floatingPlacement)
@@ -212,7 +218,9 @@ final class TabCanvasManager {
 
     func floatingFrame(for tab: Tab, in area: CGRect) -> CGRect {
         var frame = floatingPlacement(for: tab).frame(in: area)
-        if tab.id == windowState.activeTabID { frame.size.height = 58 }
+        if tab.id == windowState.activeTabID {
+            frame.size.height = 58
+        }
         return frame
     }
 
@@ -221,7 +229,9 @@ final class TabCanvasManager {
               !windowState.showsCommandLens else { return [] }
         return floatingTabs.filter { tab in
             // The rail's page card is the current tab's place; a second card for it would float elsewhere.
-            if showsFloatingControls, tab.id == windowState.activeTabID { return false }
+            if showsFloatingControls, tab.id == windowState.activeTabID {
+                return false
+            }
             return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
                 || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
                 || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
@@ -229,14 +239,19 @@ final class TabCanvasManager {
     }
 
     func floatingPlacement(for tab: Tab) -> FloatingTabPlacement {
-        storedFloatingPlacement(for: tab) ?? .initial(index: floatingTabs.firstIndex(where: { $0.id == tab.id }) ?? 0, count: floatingTabs.count,
-                                          isCompact: tab.boardFrame == nil || tab.boardIsCompact)
+        storedFloatingPlacement(for: tab) ?? .initial(
+            index: floatingTabs.firstIndex(where: { $0.id == tab.id }) ?? 0,
+            count: floatingTabs.count,
+            isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+        )
     }
 
     func updateFloatingPlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
         windowState.floatingPlacements[tab.id] = placement
         windowState.window?.invalidateRestorableState()
-        if tab.space?.dataStoreMode != .private { tab.floatingPlacement = placement }
+        if tab.space?.dataStoreMode != .private {
+            tab.floatingPlacement = placement
+        }
         if placement.isPinned {
             tabManager.state.pipCoordinator.onTabActivated(tab, in: tabManager.state)
         }
@@ -275,7 +290,9 @@ final class TabCanvasManager {
         let shouldReveal = spaceToReveal == windowState.activeSpaceID
         spaceToReveal = nil
         dismissFloatingTabs()
-        if shouldReveal { toggleFloatingTabs() }
+        if shouldReveal {
+            toggleFloatingTabs()
+        }
     }
 
     func confirmFloatingPlacement() {
@@ -283,8 +300,12 @@ final class TabCanvasManager {
         UserDefaults.standard.set(true, forKey: "floatingTabs.hasRecalledPlacement")
         windowState.showToast("Hold \(FloatingRevealKey.current.title) to find it here again.")
     }
-    func beginFloatingManipulation() { floatingVisibility.beginManipulation() }
-    func endFloatingManipulation() { floatingVisibility.endManipulation() }
+    func beginFloatingManipulation() {
+        floatingVisibility.beginManipulation()
+    }
+    func endFloatingManipulation() {
+        floatingVisibility.endManipulation()
+    }
 
     func navigateFloatingTabs(toward direction: CanvasNavigation.Direction, in bounds: CGRect) {
         let tiles = visibleFloatingTabs.map { CanvasNavigation.Tile(id: $0.id, frame: floatingPlacement(for: $0).frame(in: bounds)) }
@@ -303,12 +324,16 @@ final class TabCanvasManager {
 
     func toggleFloatingTabs() {
         guard !windowState.isSpaceLocked else { return }
-        if isActive { dismiss(activating: nil) }
+        if isActive {
+            dismiss(activating: nil)
+        }
         onUseFloatingTabs?()
         placeFloatingTabs()
         floatingVisibility.toggle()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
-        if floatingVisibility.isRevealed { refreshFloatingSnapshots() }
+        if floatingVisibility.isRevealed {
+            refreshFloatingSnapshots()
+        }
     }
 
     func openFloatingTab(_ tab: Tab) {
@@ -324,19 +349,27 @@ final class TabCanvasManager {
 
     func floatingGroupFrame(_ members: [Tab], in area: CGRect) -> CGRect {
         let bounds = members.reduce(CGRect.null) { $0.union(floatingFrame(for: $1, in: area)) }
-        return CGRect(x: max(0, bounds.minX - 8), y: max(0, bounds.minY - 28),
-                      width: min(area.width, bounds.width + 16), height: min(area.height, bounds.height + 36))
+        return CGRect(
+            x: max(0, bounds.minX - 8),
+            y: max(0, bounds.minY - 28),
+            width: min(area.width, bounds.width + 16),
+            height: min(area.height, bounds.height + 36),
+        )
     }
 
     func groupFloatingSelection() {
         let members = floatingTabs.filter { selectedFloatingTabIDs.contains($0.id) && !$0.isLiveFavorite && $0.space?.id == windowState.activeSpaceID }
         guard members.count > 1, let group = try? groupManager.createGroup(in: windowState.activeSpace, name: "Group") else { return }
-        for tab in members { groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace) }
+        for tab in members {
+            groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
+        }
         selectedFloatingTabIDs = []
     }
 
     func ungroupFloatingTabs(_ members: [Tab]) {
-        for tab in members { groupManager.moveTabToGroup(tab, group: nil, in: tab.space) }
+        for tab in members {
+            groupManager.moveTabToGroup(tab, group: nil, in: tab.space)
+        }
     }
 
     func renameFloatingGroup(_ members: [Tab], to name: String) {
@@ -347,14 +380,20 @@ final class TabCanvasManager {
     }
 
     func showFloatingPlace(of tab: Tab) {
-        if !floatingVisibility.isRevealed { toggleFloatingTabs() }
+        if !floatingVisibility.isRevealed {
+            toggleFloatingTabs()
+        }
         focusedFloatingTabID = tab.id
-        if tab.floatingPlacement == nil { recentIsOpen = true }
+        if tab.floatingPlacement == nil {
+            recentIsOpen = true
+        }
     }
 
     private func placeFloatingTabs() {
         for tab in floatingTabs where windowState.floatingPlacements[tab.id] == nil {
-            if let placement = storedFloatingPlacement(for: tab) { windowState.floatingPlacements[tab.id] = placement }
+            if let placement = storedFloatingPlacement(for: tab) {
+                windowState.floatingPlacements[tab.id] = placement
+            }
         }
         let area = floatingArea
         var occupied = floatingTabs.compactMap { storedFloatingPlacement(for: $0) }

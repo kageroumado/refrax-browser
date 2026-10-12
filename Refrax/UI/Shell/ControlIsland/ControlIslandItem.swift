@@ -2,12 +2,27 @@ import Foundation
 
 /// The configurable actions and groups available in the control rail.
 nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable {
-    case windowControls, navigation, commandLens, floatingTabs, recentTabs, desk, spaces, favoriteTabs
-    case reload, copyLink, favorites, history, downloads, bookmarks, settings
+    case windowControls
+    case navigation
+    case commandLens
+    case floatingTabs
+    case recentTabs
+    case desk
+    case spaces
+    case favoriteTabs
+    case reload
+    case copyLink
+    case favorites
+    case history
+    case downloads
+    case bookmarks
+    case settings
     /// The current page's icon, which unfolds the page card. Stored under its original name.
     case page = "address"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [

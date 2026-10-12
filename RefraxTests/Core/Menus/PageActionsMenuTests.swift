@@ -6,14 +6,15 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PageActionsMenuTests {
-    @MainActor private struct Fixture {
+    @MainActor
+    private struct Fixture {
         let env: TabManagerTestEnvironment
         let space: Space
         let window: WindowState
         let canvas: TabCanvasManager
         let readerMode: ReaderModeManager
         let sharing = SharingCoordinator()
-        let area = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let area = CGRect(x: 0, y: 0, width: 1_200, height: 800)
         let active: Tab
         let other: Tab
 
@@ -23,8 +24,8 @@ struct PageActionsMenuTests {
             self.window = env.makeActiveWindowState(with: space)
             self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
             self.readerMode = ReaderModeManager(state: env.browserState)
-            self.active = env.createActiveTab(url: try #require(URL(string: "https://example.com/active")), in: space, for: window)
-            self.other = env.tabManager.createTab(url: try #require(URL(string: "https://example.com/other")), in: space, makeActive: false)
+            self.active = try env.createActiveTab(url: #require(URL(string: "https://example.com/active")), in: space, for: window)
+            self.other = try env.tabManager.createTab(url: #require(URL(string: "https://example.com/other")), in: space, makeActive: false)
         }
 
         func tree(for tab: Tab, surface: MenuSurface) -> MenuTree {
@@ -120,7 +121,7 @@ struct PageActionsMenuTests {
         #expect(page.outline.contains("  Preview Zoom ▸ (6)"))
         #expect(page.outline.contains("    Show Whole Page"))
 
-        let unplaced = fixture.env.tabManager.createTab(url: try #require(URL(string: "https://example.com/new")), in: fixture.space, makeActive: false)
+        let unplaced = try fixture.env.tabManager.createTab(url: #require(URL(string: "https://example.com/new")), in: fixture.space, makeActive: false)
         let fresh = fixture.tree(for: unplaced, surface: .floatingCard)
         #expect(fresh.outline.contains("Keep Part Visible… (Experimental)"))
         #expect(!fresh.ids.contains("tab.zoom"))

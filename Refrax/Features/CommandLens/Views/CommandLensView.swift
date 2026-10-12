@@ -66,7 +66,9 @@ struct CommandLensView: View {
             await manager.showStandingSuggestions()
         }
         .onChange(of: manager.inputText) { _, newValue in
-            if !newValue.isEmpty { cancelAutoShowButtonsTimer() }
+            if !newValue.isEmpty {
+                cancelAutoShowButtonsTimer()
+            }
         }
         .onDisappear {
             cancelAutoShowButtonsTimer()
@@ -312,7 +314,9 @@ struct CommandLensView: View {
         // Search engine switching takes priority — Tab's primary purpose is
         // engine activation. Inline completion is available via Right Arrow.
         if let providerSuggestion = manager.suggestions.first(where: {
-            if case .searchProvider = $0.type { return true }
+            if case .searchProvider = $0.type {
+                return true
+            }
             return false
         }), case let .searchProvider(engine) = providerSuggestion.type {
             manager.selectSearchProvider(engine)

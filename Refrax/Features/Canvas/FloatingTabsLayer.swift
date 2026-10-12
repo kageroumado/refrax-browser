@@ -10,7 +10,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        if let pointerMonitor {
+            NSEvent.removeMonitor(pointerMonitor)
+        }
         pointerMonitor = nil
         guard window != nil else { return }
         window?.acceptsMouseMovedEvents = true
@@ -21,7 +23,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
                 controlState?()?.pointerMoved?(point)
                 return event
             }
-            if event.type == .leftMouseDown { onPointerDown?(point) }
+            if event.type == .leftMouseDown {
+                onPointerDown?(point)
+            }
             guard let state = controlState?(),
                   !state.isPresenting, !state.hitRegions.isEmpty else { return event }
             state.dismissIfOutside(point)
@@ -30,7 +34,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     }
 
     isolated deinit {
-        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        if let pointerMonitor {
+            NSEvent.removeMonitor(pointerMonitor)
+        }
     }
 
     private func topLeadingPoint(_ point: CGPoint) -> CGPoint {
@@ -115,8 +121,12 @@ private struct FloatingTabCard: View {
         static let headerInset: CGFloat = 10
     }
 
-    private var isMainPage: Bool { tab.id == windowState.activeTabID }
-    private var hasInput: Bool { windowState.focusedPage?.tab?.id == tab.id && !isMainPage }
+    private var isMainPage: Bool {
+        tab.id == windowState.activeTabID
+    }
+    private var hasInput: Bool {
+        windowState.focusedPage?.tab?.id == tab.id && !isMainPage
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -140,7 +150,7 @@ private struct FloatingTabCard: View {
                 .allowsHitTesting(false)
         }
         .overlay(alignment: .bottomTrailing) {
-            if !placement.isCompact && !isMainPage {
+            if !placement.isCompact, !isMainPage {
                 resizeHandle
             }
         }
@@ -200,9 +210,14 @@ private struct FloatingTabCard: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 if NSEvent.modifierFlags.contains(.shift) {
-                    if canvas.selectedFloatingTabIDs.contains(tab.id) { canvas.selectedFloatingTabIDs.remove(tab.id) }
-                    else { canvas.selectedFloatingTabIDs.insert(tab.id) }
-                } else { canvas.openFloatingTab(tab) }
+                    if canvas.selectedFloatingTabIDs.contains(tab.id) {
+                        canvas.selectedFloatingTabIDs.remove(tab.id)
+                    } else {
+                        canvas.selectedFloatingTabIDs.insert(tab.id)
+                    }
+                } else {
+                    canvas.openFloatingTab(tab)
+                }
             }
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named("floatingTabs"))
                 .onChanged { value in
@@ -227,7 +242,7 @@ private struct FloatingTabCard: View {
 
             presentationButton
             pinButton
-            if canvas.retainedInputTabID == tab.id && !canvas.floatingVisibility.isRevealed {
+            if canvas.retainedInputTabID == tab.id, !canvas.floatingVisibility.isRevealed {
                 Button("Finish") { canvas.finishPreviewInteraction() }
                     .labelStyle(.titleOnly)
             }

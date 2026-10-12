@@ -103,7 +103,10 @@ nonisolated struct FloatingRayPath: Equatable, Sendable {
 
     /// The edge of the destination the ray enters through.
     enum Side: Equatable, Sendable {
-        case top, bottom, leading, trailing
+        case top
+        case bottom
+        case leading
+        case trailing
 
         var inwardNormal: CGVector {
             switch self {
@@ -155,7 +158,9 @@ nonisolated struct FloatingRayPath: Equatable, Sendable {
         let vertical = max(above, below)
         let horizontal = max(before, beyond)
         guard max(vertical, horizontal) > 0 else { return nil }
-        if vertical >= horizontal { return above >= below ? .top : .bottom }
+        if vertical >= horizontal {
+            return above >= below ? .top : .bottom
+        }
         return before >= beyond ? .leading : .trailing
     }
 

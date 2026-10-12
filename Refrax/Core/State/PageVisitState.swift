@@ -29,8 +29,12 @@ final class PageVisitState {
 
     func begin(from tab: Tab, in window: WindowState, page: WebPage?) {
         guard destination == nil else { return }
-        destination = Destination(tabID: tab.id, spaceID: window.activeSpaceID,
-                                  title: tab.displayTitle, focusedPageID: window.focusedPageID)
+        destination = Destination(
+            tabID: tab.id,
+            spaceID: window.activeSpaceID,
+            title: tab.displayTitle,
+            focusedPageID: window.focusedPageID,
+        )
         beganAt = Date()
         retainedPage = page
         page?.temporaryVisitRetentionCount += 1
@@ -38,7 +42,9 @@ final class PageVisitState {
     }
 
     func restoreFocus(in window: WindowState) {
-        if let pageID = destination?.focusedPageID { window.recordInteraction(with: pageID) }
+        if let pageID = destination?.focusedPageID {
+            window.recordInteraction(with: pageID)
+        }
         if let view = responder as? NSView, let tabID = destination?.tabID {
             DispatchQueue.main.async { [weak window, weak view] in
                 guard let window, let view, window.activeTabID == tabID, view.window === window.window else { return }

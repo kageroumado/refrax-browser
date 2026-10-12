@@ -7,8 +7,12 @@ enum NSMenuRenderer {
         let menu = NSMenu(title: title)
         menu.autoenablesItems = false
         for (index, section) in tree.sections.enumerated() {
-            if index > 0 { menu.addItem(.separator()) }
-            for node in section.nodes { menu.addItem(item(node)) }
+            if index > 0 {
+                menu.addItem(.separator())
+            }
+            for node in section.nodes {
+                menu.addItem(item(node))
+            }
         }
         return menu
     }

@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Refrax
 
-@Suite
 struct FloatingRayPathTests {
     private let area = CGRect(x: 0, y: 0, width: 1_200, height: 800)
     private let lens = CGRect(x: 280, y: 180, width: 640, height: 48)
@@ -29,10 +28,11 @@ struct FloatingRayPathTests {
         #expect(path.length > 0)
     }
 
-    @Test func `the bend turns the ray toward the pane's normal`() {
+    @Test
+    func `the bend turns the ray toward the pane's normal`() throws {
         let destination = CGRect(x: 16, y: 750, width: 250, height: 34)
         let path = FloatingRayPath(from: lens, to: destination, in: area)
-        let side = try! #require(FloatingRayPath.nearSide(of: destination, from: path.start))
+        let side = try #require(FloatingRayPath.nearSide(of: destination, from: path.start))
         #expect(side == .top)
         let sines = path.sines(normal: side.inwardNormal)
         #expect(sines.incidence > 0)
@@ -43,7 +43,8 @@ struct FloatingRayPathTests {
         #expect(path.end.x < path.bend.x, "the second run keeps the same tangential sense")
     }
 
-    @Test func `a ray straight down the normal keeps its line`() {
+    @Test
+    func `a ray straight down the normal keeps its line`() {
         let destination = CGRect(x: 475, y: 700, width: 250, height: 34)
         let path = FloatingRayPath(from: lens, to: destination, in: area)
         #expect(abs(path.start.x - path.bend.x) < 0.01)
@@ -51,7 +52,8 @@ struct FloatingRayPathTests {
         #expect(abs(path.end.y - destination.minY) < 0.01)
     }
 
-    @Test func `a destination beside the source enters through its side`() {
+    @Test
+    func `a destination beside the source enters through its side`() {
         let destination = CGRect(x: 1_000, y: 190, width: 180, height: 34)
         let path = FloatingRayPath(from: lens, to: destination, in: area)
         #expect(FloatingRayPath.nearSide(of: destination, from: path.start) == .leading)
@@ -78,7 +80,8 @@ struct FloatingRayPathTests {
         #expect(path.length < hypot(lens.width, lens.height) + 1)
     }
 
-    @Test func `an empty source starts the ray at its point`() {
+    @Test
+    func `an empty source starts the ray at its point`() {
         let destination = CGRect(x: 934, y: 750, width: 250, height: 34)
         let path = FloatingRayPath(from: .zero, to: destination, in: area)
         #expect(path.start == .zero)
@@ -92,17 +95,18 @@ struct FloatingRayPathTests {
 struct FloatingRayTriggerTests {
     private let lensFrame = CGRect(x: 280, y: 180, width: 640, height: 48)
 
-    @Test func `a page replaced from the lens takes the nearest corner and gets a ray from the lens`() throws {
+    @Test
+    func `a page replaced from the lens takes the nearest corner and gets a ray from the lens`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-        let first = env.createActiveTab(url: try #require(URL(string: "about:blank#first")), in: space, for: window)
+        let first = try env.createActiveTab(url: #require(URL(string: "about:blank#first")), in: space, for: window)
         #expect(canvas.rayRequest == nil)
 
         window.commandLensFrame = lensFrame
         window.openCommandLens()
-        let second = env.tabManager.createTab(url: try #require(URL(string: "about:blank#second")), in: space, makeActive: false)
+        let second = try env.tabManager.createTab(url: #require(URL(string: "about:blank#second")), in: space, makeActive: false)
         env.tabManager.setActiveTab(second, in: window)
         window.closeCommandLens()
 
@@ -118,14 +122,15 @@ struct FloatingRayTriggerTests {
         #expect(canvas.rayRequest == nil)
     }
 
-    @Test func `without the lens the ray leaves from the page card and a placed page stays quiet`() throws {
+    @Test
+    func `without the lens the ray leaves from the page card and a placed page stays quiet`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
         window.addressBarFrame = CGRect(x: 4, y: 300, width: 40, height: 44)
-        let first = env.createActiveTab(url: try #require(URL(string: "about:blank#first")), in: space, for: window)
-        let second = env.tabManager.createTab(url: try #require(URL(string: "about:blank#second")), in: space, makeActive: false)
+        let first = try env.createActiveTab(url: #require(URL(string: "about:blank#first")), in: space, for: window)
+        let second = try env.tabManager.createTab(url: #require(URL(string: "about:blank#second")), in: space, makeActive: false)
 
         env.tabManager.setActiveTab(second, in: window)
         let request = try #require(canvas.rayRequest)
@@ -139,14 +144,15 @@ struct FloatingRayTriggerTests {
         #expect(canvas.rayRequest?.revision == revision, "a page with a place of its own gets no ray")
     }
 
-    @Test func `favorites, other spaces, and Look visits get no ray`() throws {
+    @Test
+    func `favorites, other spaces, and Look visits get no ray`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let other = env.makeSpace(name: "Other")
         let window = env.makeActiveWindowState(with: space)
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-        let source = env.createActiveTab(url: try #require(URL(string: "about:blank#source")), in: space, for: window)
-        let reference = env.tabManager.createTab(url: try #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
+        let source = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: window)
+        let reference = try env.tabManager.createTab(url: #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
 
         env.tabManager.look(at: reference, in: window)
         #expect(canvas.rayRequest == nil)
@@ -158,20 +164,21 @@ struct FloatingRayTriggerTests {
         env.tabManager.setActiveTab(reference, in: window)
         #expect(canvas.rayRequest == nil)
 
-        let elsewhere = env.tabManager.createTab(url: try #require(URL(string: "about:blank#elsewhere")), in: other, makeActive: false)
+        let elsewhere = try env.tabManager.createTab(url: #require(URL(string: "about:blank#elsewhere")), in: other, makeActive: false)
         env.tabManager.setActiveTab(elsewhere, in: window)
         #expect(window.activeSpaceID == space.id)
         #expect(canvas.rayRequest == nil)
     }
 
-    @Test func `displaced pages take free corners and the rest wait for the count`() throws {
+    @Test
+    func `displaced pages take free corners and the rest wait for the count`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
         var pages: [Tab] = []
         for index in 0 ..< 6 {
-            pages.append(env.createActiveTab(url: try #require(URL(string: "about:blank#\(index)")), in: space, for: window))
+            try pages.append(env.createActiveTab(url: #require(URL(string: "about:blank#\(index)")), in: space, for: window))
         }
         let placed = pages.filter { $0.floatingPlacement != nil }
         #expect(placed.count == FloatingTabPlacement.startingSlotCount)

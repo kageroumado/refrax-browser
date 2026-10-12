@@ -7,7 +7,6 @@ nonisolated enum ControlIslandDragFeedback: Equatable {
     case ready(ControlIslandDragTarget)
     case dragging(ControlIslandDragTarget)
     case unavailable
-
 }
 
 /// Reserves Option-drag before either native widgets or SwiftUI buttons receive a press.
@@ -42,7 +41,11 @@ struct ControlIslandOptionDrag: NSViewRepresentable {
 final class ControlIslandOptionDragView: NSView {
     var target: ControlIslandDragTarget = .panel
     var isEnabled = true {
-        didSet { if !isEnabled { finish() } }
+        didSet {
+            if !isEnabled {
+                finish()
+            }
+        }
     }
     var cornerRadius: CGFloat = 0
     var onFeedback: (ControlIslandDragFeedback) -> Void = { _ in }
@@ -59,14 +62,20 @@ final class ControlIslandOptionDragView: NSView {
     private var draggedTarget: ControlIslandDragTarget = .panel
     private static let threshold: CGFloat = 3
     private lazy var activityObserver = WindowActivityObserver { [weak self] active in
-        if !active { self?.finish() }
+        if !active {
+            self?.finish()
+        }
     }
 
-    override func hitTest(_: NSPoint) -> NSView? { nil }
+    override func hitTest(_: NSPoint) -> NSView? {
+        nil
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let monitor { NSEvent.removeMonitor(monitor) }
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
         monitor = nil
         finish()
         activityObserver.observe(window)
@@ -83,7 +92,9 @@ final class ControlIslandOptionDragView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
+        if let tracking {
+            removeTrackingArea(tracking)
+        }
         tracking = nil
         let rect = bounds.intersection(visibleRect)
         guard !rect.isEmpty else { return }
@@ -92,13 +103,23 @@ final class ControlIslandOptionDragView: NSView {
         addTrackingArea(area)
     }
 
-    override func mouseEntered(with event: NSEvent) { refreshFeedback(for: event) }
-    override func mouseExited(with event: NSEvent) { refreshFeedback(for: event) }
-    override func cursorUpdate(with event: NSEvent) { refreshFeedback(for: event) }
+    override func mouseEntered(with event: NSEvent) {
+        refreshFeedback(for: event)
+    }
+    override func mouseExited(with event: NSEvent) {
+        refreshFeedback(for: event)
+    }
+    override func cursorUpdate(with event: NSEvent) {
+        refreshFeedback(for: event)
+    }
 
     isolated deinit {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        if cursorIsPushed { NSCursor.pop() }
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if cursorIsPushed {
+            NSCursor.pop()
+        }
     }
 
     func handle(_ event: NSEvent) -> NSEvent? {
@@ -153,7 +174,9 @@ final class ControlIslandOptionDragView: NSView {
         origin = nil
         hasMoved = false
         setFeedback(.idle)
-        if wasDragging { onEnd() }
+        if wasDragging {
+            onEnd()
+        }
     }
 
     private var canMoveTarget: Bool {
@@ -182,8 +205,12 @@ final class ControlIslandOptionDragView: NSView {
     private func setFeedback(_ value: ControlIslandDragFeedback) {
         if feedback != value {
             feedback = value
-            if cursorIsPushed { NSCursor.pop(); cursorIsPushed = false }
-            if let cursor { cursor.push(); cursorIsPushed = true }
+            if cursorIsPushed {
+                NSCursor.pop(); cursorIsPushed = false
+            }
+            if let cursor {
+                cursor.push(); cursorIsPushed = true
+            }
             onFeedback(value)
         }
         applyCursor()

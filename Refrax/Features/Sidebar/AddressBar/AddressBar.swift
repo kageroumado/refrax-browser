@@ -3,7 +3,7 @@ import SwiftUI
 import WebKit
 
 struct AddressBar: View {
-    var onPresentationChange: ((Bool) -> Void)? = nil
+    var onPresentationChange: ((Bool) -> Void)?
 
     @Environment(WindowState.self) private var windowState: WindowState
     @Environment(TabManager.self) private var tabManager: TabManager
@@ -116,23 +116,33 @@ struct AddressBar: View {
         AddressBarLayout {
             navigationControls
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    if abs(navWidth - new) > 1 { navWidth = new }
+                    if abs(navWidth - new) > 1 {
+                        navWidth = new
+                    }
                 }
             urlDisplayView
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    if abs(urlWidth - new) > 1 { urlWidth = new }
+                    if abs(urlWidth - new) > 1 {
+                        urlWidth = new
+                    }
                 }
             hoverButtonsView
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    if abs(hoverButtonsWidth - new) > 1 { hoverButtonsWidth = new }
+                    if abs(hoverButtonsWidth - new) > 1 {
+                        hoverButtonsWidth = new
+                    }
                 }
             trailingControlsView
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-                    if abs(reloadWidth - new) > 1 { reloadWidth = new }
+                    if abs(reloadWidth - new) > 1 {
+                        reloadWidth = new
+                    }
                 }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { new in
-            if abs(availableWidth - new) > 1 { availableWidth = new }
+            if abs(availableWidth - new) > 1 {
+                availableWidth = new
+            }
         }
         .padding(.horizontal, 6)
         .frame(height: Constants.AddressBar.height)

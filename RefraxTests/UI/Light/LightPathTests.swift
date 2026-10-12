@@ -4,11 +4,11 @@ import SwiftUI
 import Testing
 @testable import Refrax
 
-@Suite
 struct LightPathTests {
     private let violet = Color.Components(red: 0.5, green: 0.2, blue: 0.9)
 
-    @Test func `length and points along an L-shaped path follow its segments`() {
+    @Test
+    func `length and points along an L-shaped path follow its segments`() {
         let path = LightPath(points: [CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 0), CGPoint(x: 30, y: 40)], color: violet)
         #expect(path.length == 70)
         #expect(path.segmentLengths == [30, 40])
@@ -19,20 +19,23 @@ struct LightPathTests {
         #expect(path.point(at: -1) == CGPoint(x: 0, y: 0))
     }
 
-    @Test func `a zero-length path is a spot at its point`() {
+    @Test
+    func `a zero-length path is a spot at its point`() {
         let path = LightPath(points: [CGPoint(x: 5, y: 5), CGPoint(x: 5, y: 5)], color: violet)
         #expect(path.length == 0)
         #expect(path.point(at: 0.5) == CGPoint(x: 5, y: 5))
     }
 
-    @Test func `a ray becomes its three points`() {
+    @Test
+    func `a ray becomes its three points`() {
         let ray = FloatingRayPath(start: CGPoint(x: 10, y: 10), bend: CGPoint(x: 50, y: 60), end: CGPoint(x: 60, y: 90))
         let path = LightPath(ray: ray, color: violet)
         #expect(path.points == [ray.start, ray.bend, ray.end])
         #expect(abs(path.length - ray.length) < 0.001)
     }
 
-    @Test func `dispersion bands sit on either side of the color's hue`() {
+    @Test
+    func `dispersion bands sit on either side of the color's hue`() {
         let bands = LightPath(points: [.zero, CGPoint(x: 1, y: 0)], color: violet).bandColors
         #expect(bands.low != violet)
         #expect(bands.high != violet)
@@ -48,7 +51,8 @@ struct LightPathTests {
         #expect(gray.rotatingHue(by: 34) == gray)
     }
 
-    @Test func `a frame sets progress and scales intensity and spot`() {
+    @Test
+    func `a frame sets progress and scales intensity and spot`() {
         var path = LightPath(points: [.zero, CGPoint(x: 10, y: 0)], color: violet)
         path.intensity = 0.5
         let lit = path.applying(LightTravel.Frame(progress: 0.25, intensity: 0.5, spotScale: 1.7, isFinished: false))
@@ -57,7 +61,8 @@ struct LightPathTests {
         #expect(lit.spotScale == 1.7)
     }
 
-    @Test func `packing lays out the header, the path record, and the segments`() {
+    @Test
+    func `packing lays out the header, the path record, and the segments`() {
         var path = LightPath(points: [CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 0), CGPoint(x: 30, y: 40)], color: violet)
         path.progress = 0.5
         path.dispersion = 0.25
@@ -81,7 +86,8 @@ struct LightPathTests {
         #expect(Array(data[segments + 8 ..< segments + 16]) == [30, 0, 30, 40, 30, 40, 0, 1])
     }
 
-    @Test func `packing writes the pulse in points along the path and leaves it off otherwise`() {
+    @Test
+    func `packing writes the pulse in points along the path and leaves it off otherwise`() {
         var path = LightPath(points: [CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 0), CGPoint(x: 30, y: 40)], color: violet)
         let record = LightPacking.headerLength
         let even = LightPacking.pack([path])
@@ -93,7 +99,8 @@ struct LightPathTests {
         #expect(pulsed[record + 22] == 1.5)
     }
 
-    @Test func `packing keeps whole paths up to the segment cap`() {
+    @Test
+    func `packing keeps whole paths up to the segment cap`() {
         let short = LightPath(points: [.zero, CGPoint(x: 1, y: 0)], color: violet)
         let long = LightPath(points: (0 ... 30).map { CGPoint(x: CGFloat($0), y: 0) }, color: violet)
         let data = LightPacking.pack([long, short, short, short])
@@ -103,11 +110,11 @@ struct LightPathTests {
     }
 }
 
-@Suite
 struct LightTravelTests {
     private let timing = LightTravel.Timing()
 
-    @Test func `the beam travels with an ease-out, pulses on hold, then fades out`() {
+    @Test
+    func `the beam travels with an ease-out, pulses on hold, then fades out`() {
         let start = timing.frame(at: 0, reduceMotion: false)
         #expect(start.progress == 0 && start.intensity == 1 && start.spotScale == 1 && !start.isFinished)
 
@@ -127,7 +134,8 @@ struct LightTravelTests {
         #expect(done.intensity == 0 && done.isFinished)
     }
 
-    @Test func `reduce motion shows the whole path at once and only fades`() {
+    @Test
+    func `reduce motion shows the whole path at once and only fades`() {
         let start = timing.frame(at: 0, reduceMotion: true)
         #expect(start.progress == 1 && start.intensity == 1 && start.spotScale == 1)
         let held = timing.frame(at: 0.3, reduceMotion: true)

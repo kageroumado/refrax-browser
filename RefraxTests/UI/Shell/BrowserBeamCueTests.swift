@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Refrax
 
-@Suite
 struct BrowserBeamCueTests {
     private let button = CGRect(x: 16, y: 336, width: 40, height: 32)
     private let lens = CGRect(x: 480, y: 180, width: 640, height: 300)
@@ -15,7 +14,8 @@ struct BrowserBeamCueTests {
         .init(isOpen: open, source: source, frame: frame)
     }
 
-    @Test func `the rail's lens button gets a ray once the lens has a frame, once per opening`() throws {
+    @Test
+    func `the rail's lens button gets a ray once the lens has a frame, once per opening`() throws {
         var cues = BrowserBeamCues()
         cues.reviewLens(lensReading(open: true, source: button, frame: .zero), tourIsActive: false)
         #expect(cues.lensRay == nil, "the lens frame arrives a frame after the lens")
@@ -39,7 +39,8 @@ struct BrowserBeamCueTests {
         #expect(cues.lensRay?.revision == ray.revision + 1, "the next opening lights again")
     }
 
-    @Test func `a lens opened by a key gets no ray`() {
+    @Test
+    func `a lens opened by a key gets no ray`() {
         var cues = BrowserBeamCues()
         cues.reviewLens(lensReading(open: true, source: nil, frame: lens), tourIsActive: false)
         #expect(cues.lensRay == nil)
@@ -47,7 +48,8 @@ struct BrowserBeamCueTests {
         #expect(cues.lensRay == nil)
     }
 
-    @Test func `closing the lens ends a ray in flight`() {
+    @Test
+    func `closing the lens ends a ray in flight`() {
         var cues = BrowserBeamCues()
         cues.reviewLens(lensReading(open: true, source: button, frame: lens), tourIsActive: false)
         #expect(cues.lensRay != nil)
@@ -55,7 +57,8 @@ struct BrowserBeamCueTests {
         #expect(cues.lensRay == nil)
     }
 
-    @Test func `the page icon's hover or click trails to the card once per unfold`() throws {
+    @Test
+    func `the page icon's hover or click trails to the card once per unfold`() throws {
         var cues = BrowserBeamCues()
         cues.reviewCard(.init(frame: .zero, isDeliberate: false, row: row), tourIsActive: false)
         #expect(cues.trail == nil, "a rail at rest draws nothing")
@@ -77,7 +80,8 @@ struct BrowserBeamCueTests {
         #expect(cues.trail?.revision == trail.revision + 1, "the next unfold trails again")
     }
 
-    @Test func `a card unfolded by a settled hover or the tab layer draws no trail`() {
+    @Test
+    func `a card unfolded by a settled hover or the tab layer draws no trail`() {
         var cues = BrowserBeamCues()
         cues.reviewCard(.init(frame: card, isDeliberate: false, row: row), tourIsActive: false)
         #expect(cues.trail == nil)
@@ -85,7 +89,8 @@ struct BrowserBeamCueTests {
         #expect(cues.trail == nil, "hovering the icon under a card already open is the same unfold")
     }
 
-    @Test func `the card folding ends a trail in flight`() {
+    @Test
+    func `the card folding ends a trail in flight`() {
         var cues = BrowserBeamCues()
         cues.reviewCard(.init(frame: card, isDeliberate: true, row: row), tourIsActive: false)
         #expect(cues.trail != nil)
@@ -93,7 +98,8 @@ struct BrowserBeamCueTests {
         #expect(cues.trail == nil)
     }
 
-    @Test func `while the tour runs its overlay draws the pair, so the cues stay quiet`() {
+    @Test
+    func `while the tour runs its overlay draws the pair, so the cues stay quiet`() {
         var cues = BrowserBeamCues()
         cues.reviewLens(lensReading(open: true, source: button, frame: lens), tourIsActive: true)
         cues.reviewCard(.init(frame: card, isDeliberate: true, row: row), tourIsActive: true)
@@ -106,7 +112,8 @@ struct BrowserBeamCueTests {
         #expect(cues.trail == nil)
     }
 
-    @Test func `a guide refracts into the lens and a trail runs straight to the card's near edge`() throws {
+    @Test
+    func `a guide refracts into the lens and a trail runs straight to the card's near edge`() throws {
         var cues = BrowserBeamCues()
         cues.reviewLens(lensReading(open: true, source: button, frame: lens), tourIsActive: false)
         cues.reviewCard(.init(frame: card, isDeliberate: true, row: row), tourIsActive: false)
@@ -120,7 +127,7 @@ struct BrowserBeamCueTests {
         #expect(trail == [CGPoint(x: row.midX, y: row.midY), CGPoint(x: card.minX, y: card.maxY)], "the near edge, level with the icon when the card allows")
         let mirrored = BrowserBeamCues.Request(style: .trail, from: row, to: CGRect(x: -500, y: 300, width: 416, height: 44), revision: 9)
         #expect(mirrored.points(in: area)[1] == CGPoint(x: -84, y: 320), "a card on the other side is entered from its trailing edge")
-        let paths = [ray, cues.trail!].map { $0.style.path($0.points(in: area), color: .init(red: 1, green: 1, blue: 1)) }
+        let paths = try [ray, #require(cues.trail)].map { $0.style.path($0.points(in: area), color: .init(red: 1, green: 1, blue: 1)) }
         #expect(Int(LightPacking.pack(paths)[1]) == 3)
     }
 }
@@ -128,11 +135,12 @@ struct BrowserBeamCueTests {
 @Suite(.serialized)
 @MainActor
 struct LensSourceTests {
-    @Test func `the rail passes its row as the lens's source and a key passes none`() throws {
+    @Test
+    func `the rail passes its row as the lens's source and a key passes none`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
-        _ = env.createActiveTab(url: try #require(URL(string: "about:blank#page")), in: space, for: window)
+        _ = try env.createActiveTab(url: #require(URL(string: "about:blank#page")), in: space, for: window)
         let button = CGRect(x: 16, y: 336, width: 40, height: 32)
 
         window.openCommandLens(source: button)

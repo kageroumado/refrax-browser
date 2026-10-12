@@ -1,7 +1,6 @@
 import Testing
 @testable import Refrax
 
-@Suite
 @MainActor
 struct MenuComposerTests {
     private func action(
@@ -39,7 +38,7 @@ struct MenuComposerTests {
 
     @Test
     func `a folded group without a primary is one submenu row`() {
-        let tree = MenuComposer.compose((1...4).map { action("a\($0)", .open) })
+        let tree = MenuComposer.compose((1 ... 4).map { action("a\($0)", .open) })
         #expect(tree.outline == ["Open ▸ (4)", "  a1", "  a2", "  a3", "  a4"])
         #expect(tree.rowCount == 1)
     }
@@ -113,7 +112,7 @@ struct MenuComposerTests {
 
     @Test
     func `a group nobody can click folds before any other`() {
-        var actions = (1...11).map { action("s\($0)", group($0)) }
+        var actions = (1 ... 11).map { action("s\($0)", group($0)) }
         actions += ["1", "2", "3"].map { action("open\($0)", .open, enabled: false) }
         actions += ["1", "2", "3"].map { action("copy\($0)", .copy) }
         let tree = MenuComposer.compose(actions)
@@ -126,7 +125,7 @@ struct MenuComposerTests {
     func `when every group is folded, primaries are demoted from the bottom up and close last`() {
         var actions: [MenuAction] = []
         for group in [MenuGroupID.tab, .open, .go, .reload, .move, .copy, .share, .read, .close] {
-            actions += (1...4).map { action("\(group.id)\($0)", group, primary: $0 == 1) }
+            actions += (1 ... 4).map { action("\(group.id)\($0)", group, primary: $0 == 1) }
         }
         let tree = MenuComposer.compose(actions)
         #expect(tree.rowCount == 16)
@@ -138,8 +137,8 @@ struct MenuComposerTests {
 
     @Test
     func `close gives up its primary only when nothing else can`() {
-        var actions = (1...15).map { action("s\($0)", group($0)) }
-        actions += (1...4).map { action("close\($0)", .close, primary: $0 == 1) }
+        var actions = (1 ... 15).map { action("s\($0)", group($0)) }
+        actions += (1 ... 4).map { action("close\($0)", .close, primary: $0 == 1) }
         let tree = MenuComposer.compose(actions)
         #expect(tree.rowCount == 16)
         #expect(Array(topLevel(tree).suffix(3)) == ["s15", "——", "Close ▸ (4)"])

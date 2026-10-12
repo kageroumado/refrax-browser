@@ -6,7 +6,8 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct SidebarTabMenuTests {
-    @MainActor private struct Fixture {
+    @MainActor
+    private struct Fixture {
         let env: TabManagerTestEnvironment
         let space: Space
         let window: WindowState
@@ -23,7 +24,7 @@ struct SidebarTabMenuTests {
             self.window = env.makeActiveWindowState(with: space)
             self.readerMode = ReaderModeManager(state: env.browserState)
             _ = try env.groupManager.createGroup(in: space, name: "Work")
-            self.tabs = (0..<3).map { index in
+            self.tabs = (0 ..< 3).map { index in
                 env.tabManager.createTab(url: URL(string: "https://example.com/\(index)")!, in: space, makeActive: false)
             }
         }
