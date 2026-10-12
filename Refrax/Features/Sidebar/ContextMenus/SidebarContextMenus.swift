@@ -34,10 +34,7 @@ import SwiftUI
 enum SidebarContextMenus {
     // MARK: - Environment Container
 
-    /// Provides shared environment access for all context menu content.
-    ///
-    /// Context menu views can't directly use @Environment, so we pass
-    /// the managers as parameters from the parent view.
+    /// The managers the sidebar menus share, with the lists they derive from the active space.
     struct Environment {
         let tabManager: TabManager
         let windowState: WindowState
