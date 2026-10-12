@@ -683,6 +683,14 @@ final class BrowserSettings {
         set { setFeatureFlag("app.canvasImpactSounds", enabled: newValue) }
     }
 
+    /// Keep Part Visible and Preview Zoom in a page's actions menu.
+    var floatingTabRegionsEnabled: Bool {
+        get { isFeatureFlagEnabled(Self.floatingTabRegionsFlagKey, default: false) }
+        set { setFeatureFlag(Self.floatingTabRegionsFlagKey, enabled: newValue) }
+    }
+
+    nonisolated static let floatingTabRegionsFlagKey = "app.floatingTabs.regionsEnabled"
+
     /// JSON-encoded dictionary of user feature flag overrides.
     ///
     /// Maps feature flag keys (e.g., `"LinkSanitizerEnabled"`) to boolean values.

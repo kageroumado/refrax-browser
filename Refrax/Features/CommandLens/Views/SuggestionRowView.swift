@@ -37,9 +37,9 @@ struct SuggestionRowView: View {
                 Button("Show Its Place", systemImage: "scope") { manager.showPlace(of: suggestion) }
             }
             if suggestion.url != nil {
-                Button("Look", systemImage: "eye") { manager.look(at: suggestion) }
+                Button(PageVisitState.lookActionTitle, systemImage: "eye") { manager.look(at: suggestion) }
             } else if case .openTab = suggestion.type {
-                Button("Look", systemImage: "eye") { manager.look(at: suggestion) }
+                Button(PageVisitState.lookActionTitle, systemImage: "eye") { manager.look(at: suggestion) }
             }
         }
         .buttonStyle(.plain)

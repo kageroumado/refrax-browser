@@ -65,4 +65,22 @@ struct PageVisitTests {
         #expect(window.activeTabID == reference.id)
         #expect(window.pageVisit.destination == nil)
     }
+
+    @Test
+    func `a look records when it began and holds the rail awake`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        _ = try env.createActiveTab(url: #require(URL(string: "about:blank#source")), in: space, for: window)
+        let reference = try env.tabManager.createTab(url: #require(URL(string: "about:blank#reference")), in: space, makeActive: false)
+        let before = Date()
+        #expect(!window.controlIsland.isEngaged)
+        env.tabManager.look(at: reference, in: window)
+        let beganAt = try #require(window.pageVisit.beganAt)
+        #expect(beganAt >= before)
+        #expect(window.controlIsland.isEngaged)
+        #expect(window.controlIsland.isHeldAwake(now: before.addingTimeInterval(ControlIslandState.visitHold - 0.5)))
+        #expect(env.tabManager.returnFromLook(in: window))
+        #expect(window.pageVisit.beganAt == nil)
+    }
 }
