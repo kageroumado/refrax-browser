@@ -506,7 +506,7 @@ struct ControlIsland: View {
     /// How many pages wait without a place of their own, in the corner of the tab control.
     @ViewBuilder
     private var unplacedBadge: some View {
-        let count = canvas.unplacedFloatingTabs.count
+        let count = canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
         if count > 0 {
             Text(count, format: .number)
                 .font(.caption2.weight(.semibold))

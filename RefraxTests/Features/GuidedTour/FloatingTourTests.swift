@@ -201,4 +201,16 @@ struct FloatingTourTests {
         let centered = FloatingTourLayout.cardOrigin(for: nil, cardSize: size, in: bounds)
         #expect(abs(centered.x + size.width / 2 - bounds.midX) < 1)
     }
+
+    @Test func `the card keeps clear of the rail when its target is a rail row`() {
+        let bounds = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+        let rail = CGRect(x: 12, y: 200, width: 48, height: 400)
+        let row = CGRect(x: 16, y: 360, width: 40, height: 32)
+        let size = CGSize(width: 360, height: 90)
+        let origin = FloatingTourLayout.cardOrigin(for: row, cardSize: size, in: bounds, avoiding: rail)
+        let card = CGRect(origin: origin, size: size)
+        #expect(!card.intersects(rail))
+        #expect(bounds.contains(card))
+        #expect(origin.x >= rail.maxX)
+    }
 }

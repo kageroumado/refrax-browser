@@ -27,8 +27,9 @@ nonisolated enum FloatingTourLayout {
     }
 
     /// Where the instruction card goes: beside a tall target, below or above a wide one,
-    /// and centered when the step points at nothing. The card always stays inside the window.
-    static func cardOrigin(for target: CGRect?, cardSize: CGSize, in bounds: CGRect) -> CGPoint {
+    /// and centered when the step points at nothing. The card always stays inside the window
+    /// and clear of `obstacle`, the rail, which is drawn above the overlay.
+    static func cardOrigin(for target: CGRect?, cardSize: CGSize, in bounds: CGRect, avoiding obstacle: CGRect = .null) -> CGPoint {
         let area = CGRect(
             x: bounds.minX + margin, y: bounds.minY + topInset,
             width: max(0, bounds.width - margin * 2), height: max(0, bounds.height - topInset - margin),
@@ -55,7 +56,12 @@ nonisolated enum FloatingTourLayout {
         } else {
             beside
         }
-        return clamp(origin, cardSize, area)
+        let placed = clamp(origin, cardSize, area)
+        guard !obstacle.isNull, CGRect(origin: placed, size: cardSize).intersects(obstacle.insetBy(dx: -gap, dy: -gap)) else { return placed }
+        let clear = obstacle.midX < bounds.midX
+            ? CGPoint(x: max(spot.maxX, obstacle.maxX) + gap, y: spot.midY - cardSize.height / 2)
+            : CGPoint(x: min(spot.minX, obstacle.minX) - gap - cardSize.width, y: spot.midY - cardSize.height / 2)
+        return clamp(clear, cardSize, area)
     }
 
     private static func clamp(_ origin: CGPoint, _ size: CGSize, _ area: CGRect) -> CGPoint {

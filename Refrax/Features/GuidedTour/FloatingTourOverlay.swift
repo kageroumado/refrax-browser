@@ -22,7 +22,8 @@ struct FloatingTourOverlay: View {
                 let bounds = CGRect(origin: .zero, size: geometry.size)
                 let spotlights = tour.spotlights(in: bounds).map(Layout.spotlight(around:))
                 let target = spotlights.reduce(CGRect.null) { $0.union($1) }
-                let origin = Layout.cardOrigin(for: target.isNull ? nil : target, cardSize: cardSize, in: bounds)
+                let origin = Layout.cardOrigin(for: target.isNull ? nil : target, cardSize: cardSize, in: bounds,
+                                               avoiding: windowState.controlIsland.railFrame.isEmpty ? .null : windowState.controlIsland.railFrame)
                 ZStack(alignment: .topLeading) {
                     if tour.dimsPage {
                         scrim(spotlights: spotlights)
