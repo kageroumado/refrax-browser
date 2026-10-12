@@ -15,9 +15,11 @@ struct SidebarTabMenuTests {
         let tabs: [Tab]
 
         init() throws {
-            self.env = try TabManagerTestEnvironment()
-            self.space = env.makeSpace()
+            let env = try TabManagerTestEnvironment()
+            let space = env.makeSpace()
             _ = env.makeSpace(name: "Research")
+            self.env = env
+            self.space = space
             self.window = env.makeActiveWindowState(with: space)
             self.readerMode = ReaderModeManager(state: env.browserState)
             _ = try env.groupManager.createGroup(in: space, name: "Work")
