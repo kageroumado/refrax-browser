@@ -142,7 +142,7 @@ struct MenuComposerTests {
         actions += (1...4).map { action("close\($0)", .close, primary: $0 == 1) }
         let tree = MenuComposer.compose(actions)
         #expect(tree.rowCount == 16)
-        #expect(Array(topLevel(tree).suffix(2)) == ["s15", "Close ▸ (4)"])
+        #expect(Array(topLevel(tree).suffix(3)) == ["s15", "——", "Close ▸ (4)"])
     }
 
     @Test

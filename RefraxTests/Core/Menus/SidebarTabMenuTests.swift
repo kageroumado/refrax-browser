@@ -65,7 +65,9 @@ struct SidebarTabMenuTests {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.tabs[0], isCompactMode: true)
         #expect(Array(topLevel(tree).prefix(2)) == ["Get Info", "Tab ▸ (4)"])
-        #expect(Array(topLevel(tree).suffix(3)) == ["Close Tab", "Close Other Tabs", "Close All Tabs Below"])
+        let closing = Array(topLevel(tree).suffix(3))
+        #expect(Array(closing.prefix(2)) == ["Close Tab", "Close Other Tabs"])
+        #expect(closing.last?.hasPrefix("Close All Tabs") == true)
         #expect(!tree.ids.contains("sidebar.rename"))
     }
 

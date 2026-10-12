@@ -55,7 +55,7 @@ struct PageActionsMenuTests {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "Keep Visible", "Select for Group", "Duplicate Tab", "Close Tab",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "Keep Visible", "——", "Select for Group", "Duplicate Tab", "Close Tab",
         ])
         #expect(tree.ids == [
             "page.copyAddress", "page.copyMarkdownLink", "page.share", "tab.look", "tab.keepVisible", "tab.select", "tab.duplicate", "tab.close",

@@ -251,8 +251,9 @@ struct FloatingTourTests {
         #expect(tour.beamRequests.isEmpty)
         #expect(tour.passThroughRegions(in: bounds) == [row.rect])
 
-        // Opening the lens again lights the beam again.
+        // Opening the lens again lights the beam again once the overlay reports its frame.
         stage.window.openCommandLens()
+        stage.window.commandLensFrame = lensFrame
         tour.review()
         #expect(tour.beamRequests.first?.revision == 2)
         #expect(tour.currentStep == .openSecondPage)
