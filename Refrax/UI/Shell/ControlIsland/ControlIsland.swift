@@ -14,6 +14,7 @@ struct ControlIsland: View {
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(SpaceManager.self) private var spaces
     @Environment(TabManager.self) private var tabManager
+    @Environment(FloatingTourManager.self) private var tour
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -90,10 +91,16 @@ struct ControlIsland: View {
                 || canvas.floatingVisibility.isRevealed)
     }
 
-    /// The glass clears and the symbols recede while nothing on the rail is in use.
+    /// The glass clears and the symbols recede while nothing on the rail is in use and the
+    /// tour points elsewhere.
     private var isResting: Bool {
         state.configuration.restsWhenIdle && (state.isQuiet || !appearsActive) && !state.isEngaged
-            && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut
+            && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut && !tourLightsRail
+    }
+
+    /// The tour points at the rail or one of its rows, which the rail lights above its glass.
+    private var tourLightsRail: Bool {
+        tour.highlightsRail || tour.highlightedItem != nil
     }
 
     /// At rest the glass is clear rather than frosted; the symbols stay opaque and step back one shade.
@@ -124,6 +131,7 @@ struct ControlIsland: View {
                     .background(spaceTint.opacity(isResting ? 0 : 1), in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
                     .glassEffectID("rail", in: glassNamespace)
+                    .overlay { if tour.highlightsRail { railHighlight } }
                     .offset(x: frame.minX, y: frame.minY)
                 if showsPageBranch, !canvas.recentIsOpen {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
@@ -204,6 +212,9 @@ struct ControlIsland: View {
             }
         }
         .onChange(of: pageBranchFrame, initial: true) { windowState.addressBarFrame = pageBranchFrame }
+        .onChange(of: showsPageBranch && !canvas.recentIsOpen ? pageBranchFrame : .zero, initial: true) { _, card in
+            state.pageCardFrame = card
+        }
         .sheet(isPresented: $state.showsCustomization) {
             ControlIslandCustomizationSheet(configuration: state.configuration)
         }
@@ -242,6 +253,8 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsPageBranch)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
         .onAppear { state.wake() }
         .task(id: state.isHovered) {
             hoverHasSettled = false
@@ -263,10 +276,12 @@ struct ControlIsland: View {
     private var controls: some View {
         VStack(spacing: 0) {
             ScrollView(.vertical) {
+                let highlightedItem = tour.highlightedItem
                 VStack(spacing: 0) {
                     ForEach(visibleItems) { item in
                         if hasSeparator(before: item) { sectionDivider }
                         itemControl(item)
+                            .background { if highlightedItem == item { rowHighlight } }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
                                 state.reportFrame($0, for: item)
                             }
@@ -367,6 +382,28 @@ struct ControlIsland: View {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
         }
+    }
+
+    /// The row the tour points at: a capsule inset in the cell, above the glass, with a glow around it.
+    private var rowHighlight: some View {
+        Capsule()
+            .fill(Color.appAccentColor.opacity(Layout.highlightFillOpacity))
+            .overlay { Capsule().strokeBorder(Color.appAccentColor, lineWidth: Layout.highlightLineWidth) }
+            .shadow(color: Color.appAccentColor.opacity(Layout.highlightGlowOpacity), radius: Layout.highlightGlowRadius)
+            .padding(Layout.highlightInset)
+            .transition(.opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// The whole rail lit for the tour, along its own corner.
+    private var railHighlight: some View {
+        RoundedRectangle(cornerRadius: Layout.cornerRadius)
+            .strokeBorder(Color.appAccentColor, lineWidth: Layout.highlightLineWidth)
+            .shadow(color: Color.appAccentColor.opacity(Layout.highlightGlowOpacity), radius: Layout.highlightGlowRadius)
+            .transition(.opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private var dragFeedback: ControlIslandDragFeedback { railDragFeedback }

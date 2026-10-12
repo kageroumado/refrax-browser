@@ -147,6 +147,7 @@ final class CommandLensManager {
         extensionManager: ExtensionManager,
         customSearchEngineManager: CustomSearchEngineManager,
         localNetworkSource: any LocalNetworkSnapshotSource,
+        floatingTour: FloatingTourManager? = nil,
     ) {
         self.tabManager = tabManager
         self.historyManager = historyManager
@@ -159,8 +160,7 @@ final class CommandLensManager {
         self.customSearchEngineManager = customSearchEngineManager
         self.localNetworkSource = localNetworkSource
 
-        // Initialize providers
-        self.suggestionProviders = [
+        var providers: [any CommandLensSuggestionProvider] = [
             SettingsControlProvider(settings: browserSettings),
             SiteControlProvider(siteSettingsManager: siteSettingsManager, browserSettings: browserSettings),
             ExtensionControlProvider(extensionManager: extensionManager),
@@ -172,6 +172,11 @@ final class CommandLensManager {
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
             ActionsProvider(),
         ]
+        // The tour's page comes before every other suggestion while a tour step asks for one.
+        if let floatingTour {
+            providers.insert(TourSuggestionProvider(tour: floatingTour), at: 0)
+        }
+        self.suggestionProviders = providers
 
         self.networkProvider = NetworkSearchProvider()
 
@@ -228,6 +233,10 @@ final class CommandLensManager {
             inlineCompletion = nil
             inlineCompletionRange = nil
             updateAvailableEmptyStateActions()
+            searchTask = Task { [weak self] in
+                try Task.checkCancellation()
+                await self?.showStandingSuggestions()
+            }
             return
         }
 
@@ -269,6 +278,16 @@ final class CommandLensManager {
                 suggestions.append(contentsOf: networkSuggestions)
             }
         }
+    }
+
+    /// Shows what providers offer before anything is typed, preselected: the tour's page while
+    /// a tour step asks for one. The lens calls this as it appears and whenever its text empties.
+    func showStandingSuggestions() async {
+        let standing = await fetchLocalSuggestions(context: createContext())
+        guard !Task.isCancelled, inputText.trimmingCharacters(in: .whitespaces).isEmpty, !standing.isEmpty else { return }
+        suggestions = standing
+        isPopupVisible = true
+        selection = CommandLensSelection(index: 0)
     }
 
     // MARK: - Empty State Actions
@@ -1483,7 +1502,7 @@ final class CommandLensManager {
         case let .searchProvider(engine):
             selectSearchProvider(engine)
 
-        case .url, .localDevice:
+        case .url, .localDevice, .tutorialPage:
             if let url = suggestion.url {
                 navigateToURL(url, makeActive: makeActive)
                 reset()

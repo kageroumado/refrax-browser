@@ -69,6 +69,11 @@ enum SuggestionType: Hashable, Sendable {
     ///
     /// - Parameter role: Whether the device is the default gateway or a Bonjour-advertised service.
     case localDevice(LocalDeviceRole)
+
+    /// One of the tour's tutorial pages, offered first while a tour step asks for a page.
+    ///
+    /// When selected, opens the page as a tab of its own, like ``url``.
+    case tutorialPage(FloatingTabsTutorial.Page)
 }
 
 /// What a local network device is to the user.

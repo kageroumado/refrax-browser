@@ -23,6 +23,8 @@ final class ControlIslandState {
     var railFrame: CGRect = .zero
     /// Each visible control's frame in window content coordinates.
     private(set) var itemFrames: [ControlIslandItem: CGRect] = [:]
+    /// The page card's frame in window content coordinates while it is unfolded; zero while it is away.
+    var pageCardFrame: CGRect = .zero
     @ObservationIgnored var hitRegions: [CGRect] = []
     @ObservationIgnored var pointerMoved: ((CGPoint) -> Void)?
     @ObservationIgnored var lastPointerMovement = Date.distantPast
@@ -94,6 +96,7 @@ final class ControlIslandState {
     func clearFrames() {
         railFrame = .zero
         itemFrames = [:]
+        pageCardFrame = .zero
     }
 
     func focus() {

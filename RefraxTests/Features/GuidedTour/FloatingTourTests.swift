@@ -26,6 +26,237 @@ struct FloatingTourTests {
         func openPage(_ fragment: String) throws -> Tab {
             try env.createActiveTab(url: #require(URL(string: "about:blank#\(fragment)")), in: space, for: window)
         }
+
+        /// The window's lens, with the tour's provider in place.
+        func makeLens() -> CommandLensManager {
+            CommandLensManager(
+                tabManager: env.tabManager, historyManager: env.historyManager, windowState: window, browserSettings: env.settings,
+                siteSettingsManager: env.siteSettingsManager, downloadManager: env.downloadManager, referencePaneManager: env.referencePaneManager,
+                extensionManager: env.extensionManager, customSearchEngineManager: env.customSearchEngineManager,
+                localNetworkSource: EmptyLocalNetworkSource(), floatingTour: tour,
+            )
+        }
+
+        /// A rail at the window's left edge with the lens, tab, and page rows reported.
+        static let rail = CGRect(x: 12, y: 200, width: 48, height: 400)
+        static let rows: [ControlIslandItem: CGRect] = [
+            .page: CGRect(x: 16, y: 304, width: 40, height: 32),
+            .commandLens: CGRect(x: 16, y: 336, width: 40, height: 32),
+            .floatingTabs: CGRect(x: 16, y: 368, width: 40, height: 32),
+        ]
+
+        func reportRail() {
+            window.controlIsland.railFrame = Self.rail
+            for (item, frame) in Self.rows { window.controlIsland.reportFrame(frame, for: item) }
+        }
+
+        /// Gives tabs a place of their own, as the window does when a page is displaced.
+        func placeTabs(_ tabs: [Tab]) {
+            for (index, tab) in tabs.enumerated() {
+                canvas.updateFloatingPlacement(.init(x: 0.2 + 0.3 * Double(index), y: 0.3, isCompact: true, isPinned: false), for: tab)
+            }
+        }
+
+        /// Starts the tour and performs each step's action until `step` is current.
+        func advance(to step: FloatingTourManager.Step) throws {
+            tour.start()
+            guard step.rawValue > FloatingTourManager.Step.openPage.rawValue else { return }
+            let first = try openPage("first")
+            tour.review()
+            guard step.rawValue > FloatingTourManager.Step.openSecondPage.rawValue else { return }
+            let second = try openPage("second")
+            placeTabs([first, second])
+            tour.review()
+            guard step.rawValue > FloatingTourManager.Step.revealPages.rawValue else { return }
+            canvas.revealFloatingTabs()
+            tour.review()
+            guard step.rawValue > FloatingTourManager.Step.placePage.rawValue else { return }
+            var moved = canvas.floatingPlacement(for: first)
+            moved.x = 0.7
+            canvas.updateFloatingPlacement(moved, for: first)
+            tour.review()
+            guard step.rawValue > FloatingTourManager.Step.keepVisible.rawValue else { return }
+            var kept = canvas.floatingPlacement(for: second)
+            kept.isPinned = true
+            canvas.updateFloatingPlacement(kept, for: second)
+            tour.review()
+            guard step.rawValue > FloatingTourManager.Step.pageCard.rawValue else { return }
+            canvas.releaseFloatingTabs()
+            canvas.dismissFloatingTabs()
+            window.controlIsland.showsAddress = false
+            tour.review()
+            window.controlIsland.showsAddress = true
+            tour.review()
+        }
+    }
+
+    private static let padding = FloatingTourLayout.spotlightPadding
+
+    @Test func `the lens offers the step's tutorial page first only while a step asks for a page`() async throws {
+        let stage = try Stage()
+        let lens = stage.makeLens()
+        let provider = TourSuggestionProvider(tour: stage.tour)
+        let typed = SuggestionContext(input: "anything", settings: stage.env.settings, currentTabID: nil, selectedSearchEngine: nil)
+        #expect(!provider.shouldProvide(for: typed))
+        await lens.showStandingSuggestions()
+        #expect(lens.suggestions.isEmpty)
+        #expect(!lens.isPopupVisible)
+
+        stage.tour.start()
+        await lens.showStandingSuggestions()
+        #expect(lens.suggestions.map(\.type) == [.tutorialPage(.tripDraft)])
+        #expect(lens.suggestions.first?.text == "Trip draft · tutorial page")
+        #expect(lens.suggestions.first?.url == FloatingTabsTutorial.Page.tripDraft.url)
+        #expect(lens.isPopupVisible)
+        #expect(lens.selection.index == 0)
+
+        // Typed text still lists the page; the lens's search row stays ahead of it.
+        #expect(provider.shouldProvide(for: typed))
+        #expect(await provider.suggestions(for: typed).map(\.type) == [.tutorialPage(.tripDraft)])
+
+        _ = try stage.openPage("first")
+        stage.tour.review()
+        #expect(stage.tour.currentStep == .openSecondPage)
+        #expect(stage.tour.requestedPage == .arrivalDetails)
+        #expect(await provider.suggestions(for: typed).first?.text == "Arrival details · tutorial page")
+
+        _ = try stage.openPage("second")
+        stage.tour.review()
+        #expect(stage.tour.currentStep == .revealPages)
+        #expect(stage.tour.requestedPage == nil)
+        #expect(!provider.shouldProvide(for: typed))
+        lens.reset()
+        await lens.showStandingSuggestions()
+        #expect(lens.suggestions.isEmpty)
+        #expect(!lens.isPopupVisible)
+        stage.tour.skip()
+    }
+
+    @Test(arguments: FloatingTourTarget.allCases)
+    func `a spotlight is concentric with its target`(kind: FloatingTourTarget) {
+        let target = CGRect(x: 100, y: 200, width: 40, height: 32)
+        let spot = FloatingTourLayout.spotlight(around: target, of: kind)
+        #expect(spot.cornerRadius == kind.cornerRadius + Self.padding)
+        #expect(spot.rect == target.insetBy(dx: -Self.padding, dy: -Self.padding))
+        let expected: CGFloat = switch kind {
+        case .railRow: 16
+        case .rail: 24
+        case .pageCard: 22
+        case .floatingCard: 12
+        case .lens: 26
+        }
+        #expect(kind.cornerRadius == expected)
+    }
+
+    @Test func `each step lights its target with that target's corners`() throws {
+        let stage = try Stage()
+        let tour = stage.tour
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
+        stage.reportRail()
+        let row = { (item: ControlIslandItem) in FloatingTourLayout.spotlight(around: Stage.rows[item]!, of: .railRow) }
+
+        tour.start()
+        let inlineLens = CGRect(x: 480, y: 150, width: 640, height: 52)
+        tour.startPageLensFrame = inlineLens
+        #expect(tour.spotlights(in: bounds) == [FloatingTourLayout.spotlight(around: inlineLens, of: .lens)])
+        #expect(tour.spotlights(in: bounds).map(\.cornerRadius) == [34])
+        #expect(tour.highlightedItem == nil)
+        #expect(!tour.highlightsRail)
+
+        let first = try stage.openPage("first")
+        tour.review()
+        #expect(tour.currentStep == .openSecondPage)
+        #expect(tour.spotlights(in: bounds) == [row(.commandLens)])
+        #expect(tour.spotlights(in: bounds).map(\.cornerRadius) == [24])
+        #expect(tour.highlightedItem == .commandLens)
+        #expect(tour.passThroughRegions(in: bounds) == [row(.commandLens).rect])
+
+        let second = try stage.openPage("second")
+        stage.placeTabs([first, second])
+        tour.review()
+        #expect(tour.currentStep == .revealPages)
+        #expect(tour.spotlights(in: bounds) == [row(.floatingTabs)])
+        #expect(tour.highlightedItem == .floatingTabs)
+
+        stage.canvas.revealFloatingTabs()
+        tour.review()
+        #expect(tour.currentStep == .placePage)
+        let cards = tour.spotlights(in: bounds)
+        #expect(cards.count == stage.canvas.visibleFloatingTabs.count)
+        #expect(!cards.isEmpty)
+        #expect(cards.allSatisfy { $0.cornerRadius == 20 })
+        #expect(tour.highlightedItem == nil)
+        tour.skip()
+    }
+
+    @Test func `the page card step lights the icon and the card together and anchors the card`() throws {
+        let stage = try Stage()
+        let tour = stage.tour
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
+        stage.reportRail()
+        try stage.advance(to: .pageCard)
+        #expect(tour.currentStep == .pageCard)
+        let icon = FloatingTourLayout.spotlight(around: Stage.rows[.page]!, of: .railRow)
+        #expect(tour.spotlights(in: bounds) == [icon])
+        #expect(tour.highlightedItem == .page)
+        #expect(tour.beamRequests.isEmpty)
+        let revisionBefore = tour.beamRevision
+
+        let card = CGRect(x: 68, y: 200, width: 416, height: 44)
+        stage.window.controlIsland.pageCardFrame = card
+        tour.review()
+        let lit = tour.spotlights(in: bounds)
+        #expect(lit == [icon, FloatingTourLayout.spotlight(around: card, of: .pageCard)])
+        #expect(lit.map(\.cornerRadius) == [24, 30])
+        #expect(tour.instructionAnchor(in: bounds) == FloatingTourLayout.spotlight(around: card))
+        let beam = try #require(tour.beamRequests.first)
+        #expect(beam.kind == .pageIconToCard)
+        #expect(beam.from == Stage.rows[.page]!)
+        #expect(beam.to == card)
+        #expect(beam.revision == revisionBefore + 1)
+        tour.skip()
+    }
+
+    @Test func `a lens opening during the tour moves the spotlight to the lens and asks for a beam`() throws {
+        let stage = try Stage()
+        let tour = stage.tour
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
+        stage.reportRail()
+        try stage.advance(to: .openSecondPage)
+        let row = FloatingTourLayout.spotlight(around: Stage.rows[.commandLens]!, of: .railRow)
+        #expect(tour.spotlights(in: bounds) == [row])
+        #expect(tour.beamRequests.isEmpty)
+
+        let lensFrame = CGRect(x: 480, y: 180, width: 640, height: 300)
+        stage.window.openCommandLens()
+        #expect(stage.window.showsCommandLens)
+        stage.window.commandLensFrame = lensFrame
+        tour.review()
+        let lens = FloatingTourLayout.spotlight(around: lensFrame, of: .lens)
+        #expect(tour.spotlights(in: bounds) == [lens])
+        #expect(lens.cornerRadius == 34)
+        #expect(tour.instructionAnchor(in: bounds) == lens.rect)
+        #expect(tour.passThroughRegions(in: bounds).isEmpty)
+        #expect(tour.highlightedItem == .commandLens)
+        #expect(tour.dimsPage)
+        let beam = try #require(tour.beamRequests.first)
+        #expect(beam.kind == .lensButtonToLens)
+        #expect(beam.from == Stage.rows[.commandLens]!)
+        #expect(beam.to == lensFrame)
+        #expect(beam.revision == 1)
+
+        stage.window.closeCommandLens()
+        tour.review()
+        #expect(tour.spotlights(in: bounds) == [row])
+        #expect(tour.beamRequests.isEmpty)
+        #expect(tour.passThroughRegions(in: bounds) == [row.rect])
+
+        // Opening the lens again lights the beam again.
+        stage.window.openCommandLens()
+        tour.review()
+        #expect(tour.beamRequests.first?.revision == 2)
+        #expect(tour.currentStep == .openSecondPage)
+        tour.skip()
     }
 
     @Test func `steps advance only on their own condition and never skip`() throws {
