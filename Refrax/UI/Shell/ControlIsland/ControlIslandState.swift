@@ -1,34 +1,21 @@
 import Foundation
 import Observation
 
-/// Per-window disclosure and placement state for the browser controls.
+/// Per-window disclosure, rest, and placement state for the browser controls.
 @Observable
 final class ControlIslandState {
-    enum Mode: String, CaseIterable {
-        case rail, button
-
-        var title: String {
-            switch self {
-            case .rail: "Icon rail"
-            case .button: "Unfolding button"
-            }
-        }
-    }
-
     var placement: ControlIslandPlacement
     let configuration: ControlIslandConfiguration
     let tabInfo = ControlIslandTabInfoState()
     var showsCustomization = false
-    var mode: Mode {
-        didSet { defaults?.set(mode.rawValue, forKey: Self.modeKey) }
-    }
     var isHovered = false
     var hasKeyboardFocus = false
-    var isLatched = false
     var isPresenting = false
     var showsAddress = false
     var isDragging = false
     var isReorderingFavorites = false
+    /// The pointer is far from the controls or has been still: the glass clears and the glyphs recede.
+    private(set) var isQuiet = false
     var focusRequest = 0
     var dismissalRequest = 0
     var pageFocusRequest = 0
@@ -36,22 +23,28 @@ final class ControlIslandState {
     @ObservationIgnored var pointerMoved: ((CGPoint) -> Void)?
     @ObservationIgnored var lastPointerMovement = Date.distantPast
     @ObservationIgnored private var hoverPath = ControlIslandHoverPath()
+    @ObservationIgnored private var quietTask: Task<Void, Never>?
 
     @ObservationIgnored private let defaults: UserDefaults?
     private static let placementKey = "controlIsland.placement"
-    private static let modeKey = "controlIsland.presentation.v3"
+
+    /// Pointer travel this close to the controls keeps them awake.
+    static let nearDistance: CGFloat = 160
+    /// A pointer resting past this distance after waking the controls lets them rest again.
+    static let farDistance: CGFloat = 220
+    static let stillDelay: TimeInterval = 2.5
 
     init(defaults: UserDefaults? = .standard, configuration: ControlIslandConfiguration = .shared) {
         self.defaults = defaults
         self.configuration = configuration
-        let savedMode = defaults?.string(forKey: Self.modeKey).flatMap(Mode.init(rawValue:))
-        self.mode = savedMode ?? .rail
         self.placement = defaults?.data(forKey: Self.placementKey)
             .flatMap { try? JSONDecoder().decode(ControlIslandPlacement.self, from: $0) } ?? .init()
     }
 
-    var isRevealed: Bool {
-        mode == .rail || isHovered || hasKeyboardFocus || isLatched || isPresenting || isDragging || showsAddress || showsCustomization || tabInfo.isVisible
+    /// Work in progress on the controls, which keeps the glass present and the pointer grace alive.
+    var isEngaged: Bool {
+        isHovered || hasKeyboardFocus || isPresenting || isDragging || showsAddress || showsCustomization
+            || isReorderingFavorites || tabInfo.isVisible
     }
 
     func savePlacement() {
@@ -71,17 +64,52 @@ final class ControlIslandState {
 
     func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
         lastPointerMovement = now
-        return hoverPath.phase(at: point, regions: hitRegions, now: now)
+        let phase = hoverPath.phase(at: point, regions: hitRegions, now: now)
+        let reach = isQuiet ? Self.nearDistance : Self.farDistance
+        let near = phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
+        setQuiet(!near)
+        if near { watchForStillness() }
+        return phase
+    }
+
+    /// Rests the controls once the pointer has stayed still for `stillDelay`.
+    @discardableResult
+    func quietIfStill(now: Date = Date()) -> Bool {
+        guard !isQuiet, now.timeIntervalSince(lastPointerMovement) >= Self.stillDelay else { return false }
+        setQuiet(true)
+        return true
+    }
+
+    func wake() {
+        setQuiet(false)
+        watchForStillness()
+    }
+
+    private func setQuiet(_ quiet: Bool) {
+        if quiet { quietTask?.cancel(); quietTask = nil }
+        guard isQuiet != quiet else { return }
+        isQuiet = quiet
+    }
+
+    private func watchForStillness() {
+        guard quietTask == nil else { return }
+        quietTask = Task(name: "Rest browser controls") { [weak self] in
+            while !Task.isCancelled {
+                let elapsed = Date().timeIntervalSince(self?.lastPointerMovement ?? .distantPast)
+                try? await Task.sleep(for: .seconds(max(0.1, Self.stillDelay - elapsed)))
+                guard let self, !Task.isCancelled else { return }
+                if quietIfStill() { quietTask = nil; return }
+            }
+        }
     }
 
     func dismissIfOutside(_ point: CGPoint) {
         guard !isPresenting, !tabInfo.isMenuPresented, !showsCustomization, !isDragging, !hitRegions.contains(where: { $0.contains(point) }),
-              isHovered || hasKeyboardFocus || isLatched || showsAddress || tabInfo.isVisible else { return }
+              isHovered || hasKeyboardFocus || showsAddress || tabInfo.isVisible else { return }
         dismiss(returnsFocusToPage: false)
     }
 
     func dismiss(returnsFocusToPage: Bool = true) {
-        isLatched = false
         isHovered = false
         hasKeyboardFocus = false
         showsAddress = false

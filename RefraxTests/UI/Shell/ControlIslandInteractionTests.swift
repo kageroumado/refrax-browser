@@ -9,17 +9,35 @@ struct ControlIslandInteractionTests {
     private let area = CGRect(x: 0, y: 0, width: 900, height: 650)
 
     @Test(arguments: [0.0, 0.5, 1.0], [0.0, 0.5, 1.0])
-    func `unfolding preserves its anchor and stays within the window`(x: Double, y: Double) {
+    func `the page branch unfolds beside the rail's top row within the window`(x: Double, y: Double) {
         let placement = ControlIslandPlacement(x: x, y: y)
-        let hub = placement.railFrame(in: area, height: ControlIslandPlacement.railWidth)
-        let panel = placement.buttonPanelFrame(in: area, height: 520)
-        let page = placement.pageBranchFrame(in: area, anchor: hub, height: 40)
-        #expect(area.contains(panel))
+        let rail = placement.railFrame(in: area, height: 520)
+        let top = CGRect(x: rail.minX, y: rail.minY, width: rail.width, height: ControlIslandPlacement.railWidth)
+        let page = placement.pageBranchFrame(in: area, anchor: top, height: 40)
+        #expect(area.contains(rail))
         #expect(area.contains(page))
-        #expect(hub.intersects(panel) == false)
-        #expect(hub.intersects(page) == false)
-        #expect(panel.intersects(page) == false)
-        #expect(panel.minX == hub.minX)
+        #expect(rail.intersects(page) == false)
+        #expect(page.minY == rail.minY)
+    }
+
+    @Test
+    func `the rail rests when the pointer is far or still and wakes as it approaches`() {
+        let state = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
+        state.hitRegions = [CGRect(x: 12, y: 12, width: 48, height: 400)]
+        let start = Date(timeIntervalSince1970: 1_000)
+        _ = state.tracksPointer(CGPoint(x: 100, y: 100), now: start)
+        #expect(!state.isQuiet)
+        #expect(!state.quietIfStill(now: start.addingTimeInterval(1)))
+        #expect(state.quietIfStill(now: start.addingTimeInterval(ControlIslandState.stillDelay)))
+        #expect(state.isQuiet)
+        _ = state.tracksPointer(CGPoint(x: 700, y: 500), now: start.addingTimeInterval(4))
+        #expect(state.isQuiet)
+        _ = state.tracksPointer(CGPoint(x: 150, y: 200), now: start.addingTimeInterval(5))
+        #expect(!state.isQuiet)
+        _ = state.tracksPointer(CGPoint(x: 250, y: 200), now: start.addingTimeInterval(6))
+        #expect(!state.isQuiet)
+        _ = state.tracksPointer(CGPoint(x: 300, y: 200), now: start.addingTimeInterval(7))
+        #expect(state.isQuiet)
     }
 
     @Test
@@ -87,12 +105,12 @@ struct ControlIslandInteractionTests {
     @Test
     func `pointer bookkeeping leaves observation quiet until disclosure changes`() {
         let state = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
-        state.mode = .button
         let notifications = Mutex(0)
         withObservationTracking {
             _ = state.hitRegions
             _ = state.lastPointerMovement
-            _ = state.isRevealed
+            _ = state.isQuiet
+            _ = state.isEngaged
         } onChange: {
             notifications.withLock { $0 += 1 }
         }
@@ -109,13 +127,13 @@ struct ControlIslandInteractionTests {
         let defaults = try #require(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
         let config = ControlIslandConfiguration(defaults: defaults)
-        let state = ControlIslandState(defaults: defaults, configuration: config)
-        #expect(state.mode == .rail)
-        state.mode = .button
-        config.apply(config.items, optionDragTarget: .window, avoidsPageControls: false)
+        #expect(config.restsWhenIdle)
+        #expect(config.tintsWithSpaceColor)
+        config.apply(config.items, optionDragTarget: .window, avoidsPageControls: false, restsWhenIdle: false, tintsWithSpaceColor: false)
         let restored = ControlIslandConfiguration(defaults: defaults)
         #expect(restored.avoidsPageControls == false)
         #expect(restored.optionDragTarget == .window)
-        #expect(ControlIslandState(defaults: defaults, configuration: restored).mode == .button)
+        #expect(restored.restsWhenIdle == false)
+        #expect(restored.tintsWithSpaceColor == false)
     }
 }

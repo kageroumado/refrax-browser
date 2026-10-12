@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 /// A movable, fixed-width rail of browser controls.
+///
+/// The rail rests while the pointer is far away or still: its glass clears and its
+/// symbols recede, so the page shows through. Pointer travel toward it wakes it.
 struct ControlIsland: View {
     let area: CGRect
 
@@ -11,12 +14,14 @@ struct ControlIsland: View {
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(SpaceManager.self) private var spaces
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.appearsActive) private var appearsActive
+    @Namespace private var glassNamespace
     @FocusState private var focusedControl: String?
     @GestureState private var isDraggingWindow = false
     @GestureState private var isDraggingPanel = false
     @State private var isOptionDragging = false
     @State private var railDragFeedback: ControlIslandDragFeedback = .idle
-    @State private var buttonDragFeedback: ControlIslandDragFeedback = .idle
     @State private var dragOrigin: CGPoint?
     @State private var showsFavorites = false
     @State private var showsAddressTools = false
@@ -24,8 +29,6 @@ struct ControlIsland: View {
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
     @State private var avoidancePlacement: ControlIslandPlacement?
-    @State private var showsInvitation = false
-    @AppStorage("controlIsland.hasOpened") private var hasOpened = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
     private typealias Layout = ControlIslandPlacement
 
@@ -35,21 +38,18 @@ struct ControlIsland: View {
     private var favorites: [FavoriteItem] {
         bookmarks.favorites.filter { $0.tab != nil }
     }
-    private var visibleItems: [ControlIslandItem] { visibleItems(in: state.mode) }
-
-    private func visibleItems(in mode: ControlIslandState.Mode) -> [ControlIslandItem] {
+    private var visibleItems: [ControlIslandItem] {
         state.configuration.visibleItems.filter { item in
-            if mode == .button, [.navigation, .address, .reload].contains(item) { return false }
-            return switch item {
+            switch item {
             case .spaces: !spaces.spaces.isEmpty
             case .favoriteTabs: !favorites.isEmpty
             default: true
             }
         }
     }
-    private var height: CGFloat { height(for: visibleItems) }
 
-    private func height(for items: [ControlIslandItem]) -> CGFloat {
+    private var height: CGFloat {
+        let items = visibleItems
         let rowCount = items.reduce(1) { count, item in
             switch item {
             case .windowControls: count + 3
@@ -70,25 +70,33 @@ struct ControlIsland: View {
         guard let index = visibleItems.firstIndex(of: item), index > 0 else { return false }
         return item.isGroup || visibleItems[index - 1].isGroup
     }
-    private var frame: CGRect {
-        state.mode == .button
-            ? effectivePlacement.buttonPanelFrame(in: area, height: height)
-            : effectivePlacement.railFrame(in: area, height: height)
-    }
+    private var frame: CGRect { effectivePlacement.railFrame(in: area, height: height) }
     private var effectivePlacement: ControlIslandPlacement { avoidancePlacement ?? state.placement }
     private var opensLeft: Bool {
         effectivePlacement.opensLeft(in: area)
     }
     private var pageBranchFrame: CGRect {
-        let anchor = state.mode == .button ? buttonFrame : CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: Layout.railWidth)
+        let anchor = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: Layout.railWidth)
         return effectivePlacement.pageBranchFrame(in: area, anchor: anchor,
             height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37))
     }
     private var showsPageBranch: Bool {
         windowState.activePage != nil && dragFeedback == .idle && !state.isDragging
-            && (state.tabInfo.isVisible || state.showsAddress || state.isHovered || windowState.pageVisit.destination != nil
-                || (state.mode == .button && state.isRevealed))
+            && (state.tabInfo.isVisible || state.showsAddress || state.isHovered || windowState.pageVisit.destination != nil)
     }
+
+    /// The glass clears and the symbols recede while nothing on the rail is in use.
+    private var isResting: Bool {
+        state.configuration.restsWhenIdle && (state.isQuiet || !appearsActive) && !state.isEngaged
+            && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut
+    }
+
+    private var glass: Glass {
+        guard !isResting || reduceTransparency else { return .identity }
+        guard state.configuration.tintsWithSpaceColor, let color = windowState.activeSpace?.color else { return .regular }
+        return .regular.tint(color.opacity(Layout.spaceTintOpacity))
+    }
+    private var restAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.4) }
     private var recentFrame: CGRect {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
@@ -99,62 +107,49 @@ struct ControlIsland: View {
 
     var body: some View {
         @Bindable var state = windowState.controlIsland
-        GlassEffectContainer(spacing: 6) {
+        GlassEffectContainer(spacing: Layout.adjacentGap) {
             ZStack(alignment: .topLeading) {
-                if state.mode == .button {
-                    revealButton
-                }
-                if showsInvitation, !state.isRevealed, state.mode == .button {
-                    Button {
-                        hasOpened = true
-                        showsInvitation = false
-                        windowState.openCommandLens()
-                    } label: {
-                        Image(systemName: "sparkle.magnifyingglass")
-                            .frame(width: Layout.railWidth, height: Layout.rowHeight)
-                            .contentShape(Rectangle())
-                    }
-                        .glassEffect(.regular, in: Capsule())
-                        .offset(x: frame.minX, y: frame.minY)
-                        .accessibilityLabel("Command Lens")
-                }
-                if state.isRevealed {
-                    controls
-                        .frame(width: frame.width, height: frame.height)
-                        .glassEffect(.regular, in: .rect(cornerRadius: Layout.cornerRadius))
-                        .offset(x: frame.minX, y: frame.minY)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: frame.midY > buttonFrame.midY ? .top : .bottom)))
-                }
+                controls
+                    .frame(width: frame.width, height: frame.height)
+                    .opacity(isResting ? Layout.restingOpacity : 1)
+                    .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
+                    .glassEffectID("rail", in: glassNamespace)
+                    .offset(x: frame.minX, y: frame.minY)
                 if showsPageBranch, !canvas.recentIsOpen {
                     ControlIslandPageBranch(area: area, onPresentationChange: { presented in
                         showsAddressTools = presented
                     })
                     .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
-                    .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                    .glassEffect(glass, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                    .glassEffectID("pageBranch", in: glassNamespace)
                     .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
                     .transition(.opacity)
                 }
                 if canvas.recentIsOpen {
                     FloatingRecentTabs(area: area)
                         .frame(width: recentFrame.width, height: recentFrame.height)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                        .glassEffect(glass, in: .rect(cornerRadius: 20))
+                        .glassEffectID("recent", in: glassNamespace)
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
+                        .transition(.opacity)
                 }
-                if showsShortcut, state.isRevealed {
+                if showsShortcut {
                     Button { canvas.toggleFloatingTabs() } label: {
                         Text(revealKey.glyph).font(.system(size: 16, weight: .medium))
                             .frame(width: shortcutFrame.width, height: shortcutFrame.height)
                             .contentShape(Rectangle())
                     }
-                    .glassEffect(.regular, in: .rect(cornerRadius: 7))
+                    .glassEffect(glass, in: .rect(cornerRadius: 7))
+                    .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
+                    .transition(.opacity)
                     .help("Hold \(revealKey.title) to reveal tabs; release to hide")
                     .accessibilityLabel("Tabs shortcut: hold \(revealKey.title)")
                 }
                 if state.isDragging {
-                    let snap = state.placement.snapped(in: area, height: anchorHeight)
+                    let snap = state.placement.snapped(in: area, height: height)
                     if snap != state.placement {
-                        let target = snap.railFrame(in: area, height: anchorHeight)
+                        let target = snap.railFrame(in: area, height: height)
                         RoundedRectangle(cornerRadius: Layout.cornerRadius)
                             .strokeBorder(.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                             .frame(width: target.width, height: target.height)
@@ -169,14 +164,6 @@ struct ControlIsland: View {
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
         .onChange(of: state.placement) { avoidancePlacement = nil }
-        .onChange(of: state.mode) { oldMode, _ in
-            state.dismiss(returnsFocusToPage: false)
-            avoidancePlacement = nil
-            let oldHeight = oldMode == .button ? Layout.railWidth : height(for: visibleItems(in: oldMode))
-            let origin = state.placement.railFrame(in: area, height: oldHeight).origin
-            state.placement.move(to: origin, in: area, height: anchorHeight)
-            savePlacement()
-        }
         .onChange(of: windowState.activeTabID) { state.showsAddress = false }
         .onChange(of: windowState.activeSpaceID) {
             state.showsAddress = false
@@ -229,7 +216,6 @@ struct ControlIsland: View {
             state.showsAddress = false
             state.hasKeyboardFocus = false
             state.isPresenting = false
-            state.isLatched = false
             state.isDragging = false
             state.tabInfo.dismiss()
             dragOrigin = nil
@@ -237,15 +223,12 @@ struct ControlIsland: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Browser controls")
         .accessibilityIdentifier("browser-control-island")
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: state.isRevealed)
-        .task(id: state.mode) {
-            guard state.mode == .button, !hasOpened else { return }
-            showsInvitation = true
-            guard !reduceMotion else { return }
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            showsInvitation = false
-        }
+        .animation(restAnimation, value: isResting)
+        .animation(restAnimation, value: windowState.activeSpaceID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsPageBranch)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
+        .onAppear { state.wake() }
         .task(id: avoidanceRevision) { await yieldToPageControl() }
         .task(id: keepsHoverOpen ? .inside : pointerPhase) { await settleHover() }
         .task(id: showsShortcut) {
@@ -279,7 +262,7 @@ struct ControlIsland: View {
         .padding(.vertical, Layout.contentInset)
         .padding(.horizontal, Layout.horizontalInset)
         .background { dragSurface }
-        .background { optionDrag(isTrigger: false) }
+        .background { optionDrag }
         .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
         .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
         .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
@@ -354,9 +337,7 @@ struct ControlIsland: View {
         }
     }
 
-    private var dragFeedback: ControlIslandDragFeedback {
-        railDragFeedback == .idle ? buttonDragFeedback : railDragFeedback
-    }
+    private var dragFeedback: ControlIslandDragFeedback { railDragFeedback }
 
     private var dragSurface: some View {
         draggableBackground(Color.clear.contentShape(Rectangle()))
@@ -368,39 +349,8 @@ struct ControlIsland: View {
         else { content.gesture(windowDrag) }
     }
 
-    private var anchorHeight: CGFloat { state.mode == .button ? Layout.railWidth : height }
-
-    private var buttonFrame: CGRect { effectivePlacement.railFrame(in: area, height: Layout.railWidth) }
-
     private var sectionDivider: some View {
         draggableBackground(Divider().frame(height: Layout.sectionGap).contentShape(Rectangle()))
-    }
-
-    private var revealButton: some View {
-        Button {
-            hasOpened = true
-            showsInvitation = false
-            if state.isLatched { state.dismiss() } else { state.isLatched = true }
-        } label: {
-            Image(systemName: "square.grid.2x2.fill")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: Layout.railWidth, height: Layout.railWidth)
-                .contentShape(Circle())
-        }
-        .buttonStyle(ControlIslandButtonStyle())
-        .glassEffect(.regular, in: Circle())
-        .background { optionDrag(isTrigger: true) }
-        .offset(x: buttonFrame.minX, y: buttonFrame.minY)
-        .contextMenu { ControlIslandAppearanceMenu() }
-        .focusable()
-        .focused($focusedControl, equals: "Reveal")
-        .focusEffectDisabled()
-        .accessibilityLabel(state.isLatched ? "Dismiss browser controls" : "Show browser controls")
-        .help("Hover to reveal · Click to keep open or dismiss · Option-drag to move \(state.configuration.optionDragTarget == .panel ? "controls" : "window")")
-        .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
-        .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
-        .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
-        .accessibilityAction(named: "Move controls down") { moveBy(dx: 0, dy: 32) }
     }
 
     private var moveGesture: some Gesture {
@@ -419,9 +369,9 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    private func optionDrag(isTrigger: Bool) -> some View {
+    private var optionDrag: some View {
         ControlIslandOptionDrag(target: state.configuration.optionDragTarget, isEnabled: !state.isReorderingFavorites, onFeedback: { feedback in
-            if isTrigger { buttonDragFeedback = feedback } else { railDragFeedback = feedback }
+            railDragFeedback = feedback
         }, onBegin: {
             isOptionDragging = true
             state.isDragging = true
@@ -433,18 +383,18 @@ struct ControlIsland: View {
     }
 
     private func movePanel(by translation: CGSize) {
-        let origin = dragOrigin ?? effectivePlacement.railFrame(in: area, height: anchorHeight).origin
+        let origin = dragOrigin ?? effectivePlacement.railFrame(in: area, height: height).origin
         avoidancePlacement = nil
         dragOrigin = origin
         state.isDragging = true
-        state.placement.move(to: CGPoint(x: origin.x + translation.width, y: origin.y + translation.height), in: area, height: anchorHeight)
+        state.placement.move(to: CGPoint(x: origin.x + translation.width, y: origin.y + translation.height), in: area, height: height)
     }
 
     private func finishPanelDrag() {
         guard dragOrigin != nil else { return }
         dragOrigin = nil
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) {
-            state.placement = state.placement.snapped(in: area, height: anchorHeight)
+            state.placement = state.placement.snapped(in: area, height: height)
         }
         savePlacement()
     }
@@ -540,8 +490,6 @@ struct ControlIsland: View {
         pointerPhase = phase
         if phase == .inside {
             state.isHovered = true
-            hasOpened = true
-            showsInvitation = false
         }
     }
 
@@ -561,24 +509,19 @@ struct ControlIsland: View {
     }
 
     private var interactionRegions: [CGRect] {
-        var regions: [CGRect] = []
-        if state.mode == .button { regions.append(buttonFrame) }
-        if showsInvitation, !state.isRevealed, state.mode == .button {
-            regions.append(CGRect(x: frame.minX, y: frame.minY, width: Layout.railWidth, height: Layout.rowHeight))
-        }
-        if state.isRevealed { regions.append(frame) }
+        var regions = [frame]
         if showsPageBranch, !canvas.recentIsOpen { regions.append(pageBranchFrame) }
         if canvas.recentIsOpen { regions.append(recentFrame) }
-        if showsShortcut, state.isRevealed { regions.append(shortcutFrame) }
+        if showsShortcut { regions.append(shortcutFrame) }
         return regions
     }
 
     private var avoidanceRevision: String {
-        "\(windowState.activePageID?.uuidString ?? "")-\(windowState.activeWebPage?.documentRevision.uuidString ?? "")-\(windowState.activeWebPage?.isLoading ?? false)-\(state.configuration.avoidsPageControls)-\(state.mode.rawValue)"
+        "\(windowState.activePageID?.uuidString ?? "")-\(windowState.activeWebPage?.documentRevision.uuidString ?? "")-\(windowState.activeWebPage?.isLoading ?? false)-\(state.configuration.avoidsPageControls)"
     }
 
     private var canYield: Bool {
-        guard state.configuration.avoidsPageControls, !state.isHovered, !state.isDragging, !state.isLatched,
+        guard state.configuration.avoidsPageControls, !state.isHovered, !state.isDragging,
               !state.hasKeyboardFocus, !state.isPresenting, !state.showsCustomization, !state.tabInfo.isVisible,
               !showsPageBranch, !canvas.floatingVisibility.isRevealed, !canvas.recentIsOpen,
               !windowState.showsCommandLens, !windowState.showsAddressLens,
@@ -587,8 +530,7 @@ struct ControlIsland: View {
               let content = window.contentView else { return false }
         let location = content.convert(window.mouseLocationOutsideOfEventStream, from: nil)
         let point = CGPoint(x: location.x, y: content.isFlipped ? location.y : content.bounds.height - location.y)
-        let anchor = effectivePlacement.railFrame(in: area, height: anchorHeight)
-        return !anchor.insetBy(dx: -96, dy: -96).contains(point)
+        return !frame.insetBy(dx: -96, dy: -96).contains(point)
     }
 
     private func yieldToPageControl() async {
@@ -602,20 +544,20 @@ struct ControlIsland: View {
               !Task.isCancelled, canYield, state.placement == placement,
               windowState.activeWebPage === page, revision == page.documentRevision,
               window.contentView?.bounds.size == area.size else { return }
-        let source = placement.railFrame(in: area, height: anchorHeight)
+        let source = placement.railFrame(in: area, height: height)
         var adjusted: ControlIslandPlacement?
         if let origin = ControlIslandAvoidance.proposedOrigin(for: source, in: area, obstacles: obstacles) {
             var next = placement
-            next.move(to: origin, in: area, height: anchorHeight)
+            next.move(to: origin, in: area, height: height)
             adjusted = next
         }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { avoidancePlacement = adjusted }
     }
 
     private func moveBy(dx: CGFloat, dy: CGFloat) {
-        let origin = effectivePlacement.railFrame(in: area, height: anchorHeight).origin
+        let origin = effectivePlacement.railFrame(in: area, height: height).origin
         avoidancePlacement = nil
-        state.placement.move(to: CGPoint(x: origin.x + dx, y: origin.y + dy), in: area, height: anchorHeight)
+        state.placement.move(to: CGPoint(x: origin.x + dx, y: origin.y + dy), in: area, height: height)
         savePlacement()
     }
 

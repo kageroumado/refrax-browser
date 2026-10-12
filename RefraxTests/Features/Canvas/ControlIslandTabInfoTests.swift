@@ -78,7 +78,6 @@ struct ControlIslandTabInfoTests {
     @Test
     func `outside clicks dismiss the card while menu tracking preserves it`() {
         let controls = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
-        controls.mode = .button
         controls.hitRegions = [CGRect(x: 10, y: 10, width: 48, height: 500), CGRect(x: 66, y: 10, width: 304, height: 136)]
         controls.tabInfo.show()
         controls.dismissIfOutside(CGPoint(x: 90, y: 60))
@@ -89,7 +88,7 @@ struct ControlIslandTabInfoTests {
         controls.tabInfo.isMenuPresented = false
         controls.dismissIfOutside(CGPoint(x: 800, y: 600))
         #expect(!controls.tabInfo.isVisible)
-        #expect(!controls.isRevealed)
+        #expect(!controls.isEngaged)
     }
 
     @Test(arguments: [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0.5, y: 0.5)])

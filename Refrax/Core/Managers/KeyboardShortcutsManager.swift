@@ -175,7 +175,7 @@ final class KeyboardShortcutsManager: Sendable {
             let controls = controller.windowState.controlIsland
             if controller.tabCanvasManager.showsFloatingControls,
                !controls.isPresenting,
-               controls.isLatched || controls.hasKeyboardFocus || controls.showsAddress || controls.isHovered || controls.tabInfo.isVisible {
+               controls.hasKeyboardFocus || controls.showsAddress || controls.isHovered || controls.tabInfo.isVisible {
                 controls.dismiss()
                 return nil
             }

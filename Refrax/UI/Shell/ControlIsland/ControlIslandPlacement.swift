@@ -20,6 +20,9 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let pageBranchHeight: CGFloat = 40
     static let adjacentGap: CGFloat = 8
     static let magnetDistance: CGFloat = 24
+    /// Symbol presence while the controls rest: present enough to find, faint enough to read through.
+    static let restingOpacity: Double = 0.42
+    static let spaceTintOpacity: Double = 0.14
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
         let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
@@ -33,21 +36,6 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
 
     func opensLeft(in bounds: CGRect) -> Bool {
         railFrame(in: bounds, height: 1).midX > bounds.midX
-    }
-
-    /// Opens beside the circular target so disclosure cannot put an action under the pointer.
-    func buttonPanelFrame(in bounds: CGRect, height: CGFloat) -> CGRect {
-        let area = bounds.insetBy(dx: Self.margin, dy: Self.margin)
-        let button = railFrame(in: bounds, height: Self.railWidth)
-        let below = max(0, area.maxY - button.maxY - Self.adjacentGap)
-        let above = max(0, button.minY - area.minY - Self.adjacentGap)
-        let opensDown = below >= above
-        let panelHeight = min(height, max(1, max(below, above)))
-        return CGRect(
-            x: button.minX,
-            y: opensDown ? button.maxY + Self.adjacentGap : button.minY - Self.adjacentGap - panelHeight,
-            width: button.width, height: panelHeight,
-        )
     }
 
     func pageBranchFrame(in bounds: CGRect, anchor: CGRect, height: CGFloat) -> CGRect {

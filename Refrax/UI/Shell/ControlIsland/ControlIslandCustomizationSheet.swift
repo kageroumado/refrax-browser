@@ -7,10 +7,12 @@ struct ControlIslandCustomizationSheet: View {
     @State private var items: [ControlIslandItemPreference]
     @State private var optionDragTarget: ControlIslandDragTarget
     @State private var avoidsPageControls: Bool
+    @State private var restsWhenIdle: Bool
+    @State private var tintsWithSpaceColor: Bool
 
     private enum Layout {
         static let width: CGFloat = 480
-        static let height: CGFloat = 610
+        static let height: CGFloat = 670
         static let padding: CGFloat = 20
     }
 
@@ -19,6 +21,8 @@ struct ControlIslandCustomizationSheet: View {
         _items = State(initialValue: configuration.items)
         _optionDragTarget = State(initialValue: configuration.optionDragTarget)
         _avoidsPageControls = State(initialValue: configuration.avoidsPageControls)
+        _restsWhenIdle = State(initialValue: configuration.restsWhenIdle)
+        _tintsWithSpaceColor = State(initialValue: configuration.tintsWithSpaceColor)
     }
 
     var body: some View {
@@ -48,6 +52,10 @@ struct ControlIslandCustomizationSheet: View {
             .listStyle(.inset)
 
             VStack(alignment: .leading, spacing: 16) {
+                Toggle("Rest when the pointer is away or still", isOn: $restsWhenIdle)
+                    .help("The glass clears and the symbols fade; moving toward the controls brings them back")
+                Toggle("Carry the space color", isOn: $tintsWithSpaceColor)
+                    .help("The glass takes on the active space's color")
                 Toggle("Move aside when covering a page control", isOn: $avoidsPageControls)
                     .help("Makes a small adjustment after a page loads, while the pointer is away")
                 Picker("Option-drag moves", selection: $optionDragTarget) {
@@ -63,12 +71,15 @@ struct ControlIslandCustomizationSheet: View {
                         items = ControlIslandConfiguration.defaultItems
                         optionDragTarget = .panel
                         avoidsPageControls = true
+                        restsWhenIdle = true
+                        tintsWithSpaceColor = true
                     }
                     Spacer()
                     Button("Cancel", role: .cancel) { dismiss() }
                         .keyboardShortcut(.cancelAction)
                     Button("Done") {
-                        configuration.apply(items, optionDragTarget: optionDragTarget, avoidsPageControls: avoidsPageControls)
+                        configuration.apply(items, optionDragTarget: optionDragTarget, avoidsPageControls: avoidsPageControls,
+                                            restsWhenIdle: restsWhenIdle, tintsWithSpaceColor: tintsWithSpaceColor)
                         dismiss()
                     }
                     .keyboardShortcut(.defaultAction)

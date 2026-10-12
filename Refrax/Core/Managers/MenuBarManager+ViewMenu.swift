@@ -248,17 +248,6 @@ extension MenuBarManager {
         let customizeControlsItem = NSMenuItem(title: "Customize Controls…", action: #selector(customizeControls(_:)), keyEquivalent: "")
         customizeControlsItem.target = self
         viewMenu.addItem(customizeControlsItem)
-        let controlAppearance = NSMenu(title: "Control Appearance")
-        controlAppearance.delegate = self
-        for mode in ControlIslandState.Mode.allCases {
-            let item = NSMenuItem(title: mode.title, action: #selector(setControlAppearance(_:)), keyEquivalent: "")
-            item.representedObject = mode.rawValue
-            item.target = self
-            controlAppearance.addItem(item)
-        }
-        let appearanceItem = NSMenuItem(title: "Control Appearance", action: nil, keyEquivalent: "")
-        appearanceItem.submenu = controlAppearance
-        viewMenu.addItem(appearanceItem)
         let resetControlsItem = NSMenuItem(title: "Reset Control Position", action: #selector(resetControlPosition(_:)), keyEquivalent: "")
         resetControlsItem.target = self
         viewMenu.addItem(resetControlsItem)
@@ -457,13 +446,6 @@ extension MenuBarManager {
         ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()
     }
 
-    @objc func setControlAppearance(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let mode = ControlIslandState.Mode(rawValue: rawValue) else { return }
-        activeWindowController?.useFloatingTabs()
-        activeWindowController?.windowState.controlIsland.mode = mode
-    }
-
     // MARK: - Sidebar Mode Actions
 
     @objc
@@ -480,13 +462,6 @@ extension MenuBarManager {
 
     /// Updates sidebar mode menu item checkmarks based on current setting.
     func updateViewMenu(_ menu: NSMenu) {
-        if menu.title == "Control Appearance" {
-            let mode = activeWindowController?.windowState.controlIsland.mode
-            for item in menu.items {
-                item.state = (item.representedObject as? String) == mode?.rawValue ? .on : .off
-            }
-            return
-        }
         guard menu.title == "View" || menu.title == "Sidebar Mode" else { return }
 
         if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {

@@ -56,13 +56,12 @@ struct ControlIslandTests {
         configuration.apply(configuration.items.map { .init(item: $0.item, isVisible: false) })
         #expect(first.configuration.visibleItems.isEmpty)
         #expect(second.configuration.visibleItems.isEmpty)
-        first.mode = .button
         first.showsCustomization = true
         first.dismissIfOutside(CGPoint(x: 800, y: 800))
-        #expect(first.isRevealed)
+        #expect(first.isEngaged)
         #expect(!second.showsCustomization)
         first.showsCustomization = false
-        #expect(!first.isRevealed)
+        #expect(!first.isEngaged)
         configuration.apply(ControlIslandConfiguration.defaultItems)
         #expect(second.configuration.visibleItems.contains(.address))
     }
@@ -86,15 +85,12 @@ struct ControlIslandTests {
     }
 
     @Test(arguments: [0.0, 0.3, 0.7, 1.0], [0.0, 0.5, 1.0])
-    func `circular disclosure stays in the window and leaves its trigger uncovered`(x: Double, y: Double) {
+    func `a tall rail stays in the window at every anchor`(x: Double, y: Double) {
         let placement = ControlIslandPlacement(x: x, y: y)
         for bounds in [area, CGRect(x: 20, y: 40, width: 650, height: 400)] {
-            let button = placement.railFrame(in: bounds, height: ControlIslandPlacement.railWidth)
-            let panel = placement.buttonPanelFrame(in: bounds, height: 560)
-            #expect(bounds.contains(button))
-            #expect(bounds.contains(panel))
-            #expect(!panel.intersects(button))
-            #expect(button.width == button.height)
+            let rail = placement.railFrame(in: bounds, height: 560)
+            #expect(bounds.insetBy(dx: ControlIslandPlacement.margin, dy: ControlIslandPlacement.margin).contains(rail))
+            #expect(rail.width == ControlIslandPlacement.railWidth)
         }
     }
 
@@ -112,55 +108,51 @@ struct ControlIslandTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let state = ControlIslandState(defaults: defaults)
-        state.mode = .button
-        state.isLatched = true
+        state.placement = ControlIslandPlacement(x: 1, y: 0.5)
+        state.savePlacement()
         state.isPresenting = true
+        state.focus()
         let restored = ControlIslandState(defaults: defaults)
-        #expect(restored.mode == .button)
-        #expect(!restored.isLatched)
+        #expect(restored.placement == ControlIslandPlacement(x: 1, y: 0.5))
         #expect(!restored.isPresenting)
+        #expect(!restored.hasKeyboardFocus)
     }
 
     @Test @MainActor
-    func `popover and click disclosure survive pointer exit`() {
+    func `popover and keyboard use keep the rail engaged after the pointer leaves`() {
         let state = ControlIslandState(defaults: nil)
-        state.mode = .button
         state.isPresenting = true
-        #expect(state.isRevealed)
+        #expect(state.isEngaged)
         state.isPresenting = false
-        #expect(!state.isRevealed)
-        state.isLatched = true
-        #expect(state.isRevealed)
-        state.isLatched = false
-        #expect(!state.isRevealed)
+        #expect(!state.isEngaged)
+        state.focus()
+        #expect(state.isEngaged)
+        state.dismiss()
+        #expect(!state.isEngaged)
     }
 
     @Test @MainActor
-    func `dismissal clears temporary disclosure and preserves the compact rail`() {
+    func `dismissal clears temporary disclosure`() {
         let state = ControlIslandState(defaults: nil)
-        state.mode = .button
-        state.isLatched = true
         state.isHovered = true
         state.showsAddress = true
         state.focus()
         state.dismiss()
-        #expect(!state.isRevealed)
+        #expect(!state.isEngaged)
         #expect(state.dismissalRequest == 1)
-        state.mode = .rail
-        #expect(state.isRevealed)
+        #expect(state.pageFocusRequest == 1)
     }
 
     @Test @MainActor
-    func `single button supports keyboard access and dismisses on page interaction`() {
+    func `keyboard access ends on page interaction outside the controls`() {
         let state = ControlIslandState(defaults: nil)
-        state.mode = .button
         state.hitRegions = [CGRect(x: 12, y: 12, width: 48, height: 400)]
         state.focus()
-        #expect(state.isRevealed)
+        #expect(state.isEngaged)
         state.dismissIfOutside(CGPoint(x: 20, y: 50))
-        #expect(state.isRevealed)
+        #expect(state.isEngaged)
         state.dismissIfOutside(CGPoint(x: 500, y: 500))
-        #expect(!state.isRevealed)
+        #expect(!state.isEngaged)
         #expect(!state.hasKeyboardFocus)
         #expect(state.dismissalRequest == 1)
         #expect(state.pageFocusRequest == 0)
