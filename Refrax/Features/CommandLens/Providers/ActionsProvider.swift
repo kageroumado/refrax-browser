@@ -26,8 +26,16 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
         ]
         for (terms, title, icon, action) in pageActions where FuzzyMatcher.match(query: query, against: [terms]) >= FuzzyMatcher.minimumMatchScore {
-            results.append(CommandLensSuggestion(type: .appAction(action), text: title,
-                description: "Current page", iconName: icon, groupHeader: groupHeader, isRemovable: false, keywordAction: nil, url: nil))
+            results.append(CommandLensSuggestion(
+                type: .appAction(action),
+                text: title,
+                description: "Current page",
+                iconName: icon,
+                groupHeader: groupHeader,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
         }
 
         // Feedback is always shown when user has typed anything
@@ -94,6 +102,26 @@ struct ActionsProvider: CommandLensSuggestionProvider {
                 text: "Tab Canvas",
                 description: "Every tab of this space on one desk  ⌘⇧\\",
                 iconName: TabCanvasManager.symbolName,
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
+
+        // Arrange the floating tabs
+        let arrangements: [(String, FloatingArrangement, String)] = [
+            ("arrange grid tidy tabs lay out columns", .grid, "Every card in columns from the island's side"),
+            ("stack by site stacks domain sweep tabs", .stacksBySite, "One stack per site, named by the site"),
+            ("stack by group stacks fold groups", .stacksByGroup, "Every group folded to its header"),
+        ]
+        for (terms, arrangement, description) in arrangements
+            where FuzzyMatcher.match(query: query, against: [terms, arrangement.commandTitle.lowercased()]) >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.arrange(arrangement)),
+                text: arrangement.commandTitle,
+                description: description,
+                iconName: arrangement.symbol,
                 groupHeader: nil,
                 isRemovable: false,
                 keywordAction: nil,

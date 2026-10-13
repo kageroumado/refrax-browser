@@ -500,10 +500,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             if windowState.controlIsland.hitRegions.contains(where: { $0.contains(point) }) {
                 return
             }
-            if tabCanvasManager.floatingVisibility.isRevealed, tabCanvasManager.floatingGroups.contains(where: {
-                let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
-                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24).contains(point)
-            }) {
+            if tabCanvasManager.floatingControlRegions(in: floatingView.bounds).contains(where: { $0.contains(point) }) {
                 return
             }
             if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds).contains(point) }) {
@@ -523,13 +520,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             if tabCanvasManager.draggedRecentTabID != nil {
                 return [floatingView.bounds]
             }
-            let groups: [CGRect] = tabCanvasManager.floatingVisibility.isRevealed ? tabCanvasManager.floatingGroups.map {
-                let frame = tabCanvasManager.floatingGroupFrame($0, in: floatingView.bounds)
-                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24)
-            } : []
-            return groups + tabCanvasManager.visibleFloatingTabs.map {
-                tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds)
-            }
+            return tabCanvasManager.floatingHitRegions(in: floatingView.bounds)
         }
         contentView.addSubview(floatingView)
         floatingView.translatesAutoresizingMaskIntoConstraints = false
@@ -572,12 +563,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                windowState.controlIsland.hitRegions.contains(where: { $0.contains(topLeft) }) {
                 return true
             }
-            return tabCanvasManager.visibleFloatingTabs.contains {
-                tabCanvasManager.floatingFrame(for: $0, in: content.bounds).contains(topLeft)
-            } || (tabCanvasManager.floatingVisibility.isRevealed && tabCanvasManager.floatingGroups.contains {
-                let frame = tabCanvasManager.floatingGroupFrame($0, in: content.bounds)
-                return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: 24).contains(topLeft)
-            })
+            return tabCanvasManager.floatingHitRegions(in: content.bounds).contains { $0.contains(topLeft) }
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in

@@ -123,7 +123,7 @@ final class TabCanvasManager {
     unowned let pagePool: WebPagePool
 
     @ObservationIgnored
-    private unowned let groupManager: TabGroupManager
+    unowned let groupManager: TabGroupManager
 
     // MARK: - Public State
 
@@ -149,6 +149,17 @@ final class TabCanvasManager {
     var draggedRecentTabID: Tab.ID?
     var menuTabID: Tab.ID?
     var selectedFloatingTabIDs: Set<Tab.ID> = []
+    /// The group a dragged card joins if it is let go now; its outline brightens.
+    var floatingDropGroupID: UUID?
+    /// A group whose header shows its name field, as it does right after Group.
+    var floatingRenamingGroupID: UUID?
+    /// Group header widths as the layer drew them, for hit-testing headers.
+    @ObservationIgnored var floatingHeaderWidths: [UUID: CGFloat] = [:]
+    /// The selection's options capsule as the layer drew it, for hit-testing.
+    @ObservationIgnored var floatingSelectionCapsuleFrame: CGRect = .zero
+    /// Where each card of a moving card, group, or selection started.
+    @ObservationIgnored var floatingMoveOrigins: [Tab.ID: CGPoint] = [:]
+    @ObservationIgnored var floatingMoveBounds: CGRect?
 
     /// The ray the layer draws toward a page that just left the window.
     private(set) var rayRequest: FloatingRayRequest?
@@ -170,6 +181,7 @@ final class TabCanvasManager {
             isCompact: tab.boardFrame == nil || tab.boardIsCompact,
         ) else { return }
         updateFloatingPlacement(placement, for: tab)
+        fileIntoSiteStack(tab)
         rayRevision += 1
         rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
     }
@@ -192,7 +204,7 @@ final class TabCanvasManager {
     }
 
     /// The window area floating tabs are placed in, in the layer's coordinates.
-    private var floatingArea: CGRect {
+    var floatingArea: CGRect {
         guard let bounds = windowState.window?.contentView?.bounds, !bounds.isEmpty else { return Layout.nominalFloatingArea }
         return CGRect(origin: .zero, size: bounds.size)
     }
@@ -212,7 +224,7 @@ final class TabCanvasManager {
         floatingTabs.filter { storedFloatingPlacement(for: $0) == nil }
     }
 
-    private func storedFloatingPlacement(for tab: Tab) -> FloatingTabPlacement? {
+    func storedFloatingPlacement(for tab: Tab) -> FloatingTabPlacement? {
         windowState.floatingPlacements[tab.id] ?? (tab.space?.dataStoreMode == .private ? nil : tab.floatingPlacement)
     }
 
@@ -230,6 +242,9 @@ final class TabCanvasManager {
         return floatingTabs.filter { tab in
             // The rail's page card is the current tab's place; a second card for it would float elsewhere.
             if showsFloatingControls, tab.id == windowState.activeTabID {
+                return false
+            }
+            if isFolded(tab), tab.id != retainedInputTabID {
                 return false
             }
             return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
@@ -280,9 +295,19 @@ final class TabCanvasManager {
     }
     func dismissFloatingTabs() {
         recentIsOpen = false
+        selectedFloatingTabIDs = []
+        floatingDropGroupID = nil
+        floatingRenamingGroupID = nil
         retainedInputTabID = nil
         floatingVisibility.dismiss()
         windowState.controlIsland.tabInfo.dismiss()
+    }
+
+    /// Keeps the layer up once the reveal key is let go, for work that takes typing.
+    func latchFloatingTabs() {
+        if !floatingVisibility.isLatched {
+            floatingVisibility.toggle()
+        }
     }
     var spaceToReveal: Space.ID?
 
@@ -342,43 +367,6 @@ final class TabCanvasManager {
         tabManager.setActiveTab(tab, in: windowState)
     }
 
-    var floatingGroups: [[Tab]] {
-        Dictionary(grouping: visibleFloatingTabs.filter { $0.group != nil }, by: { $0.group!.id })
-            .sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value)
-    }
-
-    func floatingGroupFrame(_ members: [Tab], in area: CGRect) -> CGRect {
-        let bounds = members.reduce(CGRect.null) { $0.union(floatingFrame(for: $1, in: area)) }
-        return CGRect(
-            x: max(0, bounds.minX - 8),
-            y: max(0, bounds.minY - 28),
-            width: min(area.width, bounds.width + 16),
-            height: min(area.height, bounds.height + 36),
-        )
-    }
-
-    func groupFloatingSelection() {
-        let members = floatingTabs.filter { selectedFloatingTabIDs.contains($0.id) && !$0.isLiveFavorite && $0.space?.id == windowState.activeSpaceID }
-        guard members.count > 1, let group = try? groupManager.createGroup(in: windowState.activeSpace, name: "Group") else { return }
-        for tab in members {
-            groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
-        }
-        selectedFloatingTabIDs = []
-    }
-
-    func ungroupFloatingTabs(_ members: [Tab]) {
-        for tab in members {
-            groupManager.moveTabToGroup(tab, group: nil, in: tab.space)
-        }
-    }
-
-    func renameFloatingGroup(_ members: [Tab], to name: String) {
-        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        members.first?.group?.name = name
-        tabManager.state.scheduleSave()
-    }
-
     func showFloatingPlace(of tab: Tab) {
         if !floatingVisibility.isRevealed {
             toggleFloatingTabs()
@@ -404,6 +392,10 @@ final class TabCanvasManager {
             updateFloatingPlacement(placement, for: tab)
             occupied.append(placement)
         }
+        for tab in floatingTabs where tab.group == nil && storedFloatingPlacement(for: tab) != nil {
+            fileIntoSiteStack(tab)
+        }
+        dissolveLoneSiteStacks()
         tabManager.state.scheduleSave()
     }
 
@@ -1037,7 +1029,7 @@ final class TabCanvasManager {
     private static let groupColors: [GroupColor] = [.pelorus, .coral, .emerald, .violet, .flamingo, .turquoise, .orchid, .avocado]
     private static var nextColorIndex = 0
 
-    private static func nextGroupColor() -> String {
+    static func nextGroupColor() -> String {
         let color = groupColors[nextColorIndex % groupColors.count]
         nextColorIndex += 1
         return color.rawValue

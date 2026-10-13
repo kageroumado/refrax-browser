@@ -118,6 +118,13 @@ private struct CanvasToolbar: View {
             }
 
             toolbarButton("Fit", systemImage: "square.grid.2x2") { manager.zoomToEverything() }
+            FloatingArrangeMenu()
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .font(.callout)
+                .padding(.horizontal, Layout.buttonPadding)
+                .help("Arrange the floating tabs of this space")
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.vertical, Layout.verticalPadding)
