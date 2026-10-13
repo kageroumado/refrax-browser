@@ -37,7 +37,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let gripColumns = 3
     static let gripRows = 2
     static let gripDot: CGFloat = 4
-    static let gripDotSpacing: CGFloat = 5
+    static let gripDotSpacing: CGFloat = 2
     static let gripSize = CGSize(
         width: CGFloat(gripColumns) * gripDot + CGFloat(gripColumns - 1) * gripDotSpacing,
         height: CGFloat(gripRows) * gripDot + CGFloat(gripRows - 1) * gripDotSpacing,

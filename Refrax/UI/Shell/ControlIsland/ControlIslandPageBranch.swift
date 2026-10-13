@@ -20,7 +20,9 @@ struct ControlIslandPageBranch: View {
     @State private var showsCopiedFeedback = false
 
     private enum Layout {
-        static let faviconSize: CGFloat = 18
+        /// Spans the identity's ink: from the top of the title's capitals to the bottom of the
+        /// domain line, about 24 points for 12.5-point over 11-point text.
+        static let faviconSize: CGFloat = 24
         static let titleSize: CGFloat = 12.5
         static let domainSize: CGFloat = 11
         /// From the card's leading edge to the favicon.
