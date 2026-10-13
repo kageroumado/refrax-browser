@@ -23,9 +23,6 @@ struct ControlIslandSpaces: View {
         static let iconSize: CGFloat = 14
         static let trackOpacity: Double = 0.10
         static let selectionOpacity: Double = 0.70
-        /// At rest the track and the selected segment keep this share of their opacity, so the
-        /// picker steps back with the clear glass instead of standing out against the page.
-        static let restingEmphasis: Double = 0.2
         static let shadowOpacity: Double = 0.12
         static let cornerRadius = ControlIslandPlacement.contentWidth / 2
     }
@@ -105,13 +102,19 @@ struct ControlIslandSpaces: View {
         }
     }
 
-    /// Full while the island is awake; a trace of itself while it rests.
+    /// The track and the selected segment show only while the island is awake; at rest they
+    /// fade out with the glass and the icons alone say which space is current.
     private var emphasis: Double {
-        isResting ? Layout.restingEmphasis : 1
+        isResting ? 0 : 1
     }
 
+    /// Awake: the current space at full label strength, the others one shade back. At rest,
+    /// with no segment behind it, the current space keeps two shades over the others.
     private func iconColor(selected: Bool) -> Color {
-        if appearsActive, !isResting {
+        if isResting {
+            return Color(nsColor: selected ? .secondaryLabelColor : .quaternaryLabelColor)
+        }
+        if appearsActive {
             return Color(nsColor: selected ? .labelColor : .secondaryLabelColor)
         }
         return Color(nsColor: selected ? .secondaryLabelColor : .tertiaryLabelColor)
