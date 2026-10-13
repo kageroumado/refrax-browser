@@ -193,47 +193,6 @@ struct UndoRedoRegisterBatchTests {
     }
 }
 
-// MARK: - UndoRedoManager Register Reference Tab Tests
-
-@Suite("UndoRedoManager Register Reference Tab", .tags(.undoRedoManager), .serialized)
-@MainActor
-struct UndoRedoRegisterReferenceTabTests {
-    @Test("Register close reference tab adds to recently closed")
-    func registerRefTabAdds() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let refTab = env.referencePaneManager.addReferenceTab(
-            url: URL(string: "https://reference.com")!,
-            in: space,
-        )!
-        let closedInfo = ClosedTabInfo(tab: refTab)
-
-        env.undoRedoManager.registerCloseReferenceTab(closedInfo)
-
-        #expect(env.undoRedoManager.recentlyClosedTabs.count == 1)
-        #expect(env.undoRedoManager.recentlyClosedTabs.first?.isReferenceTab == true)
-    }
-
-    @Test("Register close reference tab sets action name")
-    func registerRefTabSetsActionName() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let refTab = env.referencePaneManager.addReferenceTab(
-            url: URL(string: "https://reference.com")!,
-            title: "Reference Doc",
-            in: space,
-        )!
-        let closedInfo = ClosedTabInfo(tab: refTab)
-
-        env.undoRedoManager.registerCloseReferenceTab(closedInfo)
-
-        #expect(env.undoRedoManager.undoManager.undoActionName == "Close Reference Tab \"Reference Doc\"")
-    }
-}
 
 // MARK: - UndoRedoManager Register Delete Group Tests
 
@@ -394,25 +353,6 @@ struct UndoRedoReopenTests {
         env.undoRedoManager.reopenClosedTab(at: 5)
 
         #expect(env.undoRedoManager.recentlyClosedTabs.count == 1)
-    }
-
-    @Test("Reopen reference tab uses reference restore path")
-    func reopenReferenceTab() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let refTab = env.referencePaneManager.addReferenceTab(
-            url: URL(string: "https://reference.com")!,
-            in: space,
-        )!
-        let closedInfo = ClosedTabInfo(tab: refTab)
-
-        env.undoRedoManager.registerCloseReferenceTab(closedInfo)
-
-        env.undoRedoManager.reopenLastClosedTab()
-
-        #expect(env.undoRedoManager.recentlyClosedTabs.isEmpty)
     }
 }
 

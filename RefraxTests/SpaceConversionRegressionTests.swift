@@ -192,44 +192,6 @@ struct SpaceConversionRegressionTests {
         #expect(space.tabs.contains { $0.id == tab3.id })
     }
 
-    @Test("Space mainTabs excludes reference tabs")
-    func spaceMainTabsExcludesReferenceTabs() throws {
-        let env = try TabManagerTestEnvironment()
-        let context = env.modelContext
-        let space = env.makeSpace()
-
-        // Add a main tab
-        let mainTab = try Tab(space: space, url: #require(URL(string: "https://main.com")))
-        context.insert(mainTab)
-
-        // Add a reference tab
-        let refTab = try Tab(space: space, url: #require(URL(string: "https://ref.com")), isReferenceTab: true)
-        context.insert(refTab)
-
-        try context.save()
-
-        #expect(space.tabs.count == 2)
-        #expect(space.mainTabs.count == 1)
-        #expect(space.mainTabs.first?.id == mainTab.id)
-    }
-
-    @Test("Space referenceTabs only includes reference tabs")
-    func spaceReferenceTabsOnlyReferenceTabs() throws {
-        let env = try TabManagerTestEnvironment()
-        let context = env.modelContext
-        let space = env.makeSpace()
-
-        let mainTab = try Tab(space: space, url: #require(URL(string: "https://main.com")))
-        context.insert(mainTab)
-
-        let refTab = try Tab(space: space, url: #require(URL(string: "https://ref.com")), isReferenceTab: true)
-        context.insert(refTab)
-
-        try context.save()
-
-        #expect(space.referenceTabs.count == 1)
-        #expect(space.referenceTabs.first?.id == refTab.id)
-    }
 
     // MARK: - Space Group Tests
 

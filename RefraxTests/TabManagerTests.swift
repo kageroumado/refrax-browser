@@ -29,7 +29,6 @@ struct TabManagerTestEnvironment {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let undoRedoManager: UndoRedoManager
     let tabManager: TabManager
     let windowManager: WindowManager
@@ -94,19 +93,12 @@ struct TabManagerTestEnvironment {
         groupManager.undoRedoManager = undoRedoManager
         groupManager.pagePool = pagePool
 
-        self.referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
 
         self.tabManager = TabManager(
             state: browserState,
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         // Create managers that are implicitly unwrapped on BrowserState
@@ -184,7 +176,6 @@ struct TabManagerTestEnvironment {
         #if REFRAX_TESTS
             tabManager.testActiveWindowState = windowState
             groupManager.testActiveWindowState = windowState
-            referencePaneManager.testActiveWindowState = windowState
         #endif
         return windowState
     }

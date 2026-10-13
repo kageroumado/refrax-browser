@@ -130,7 +130,7 @@ struct SyncRoundTripTests {
         tab.encodeToRecord(record)
 
         #expect(record["status"] as? String == "pinned")
-        #expect(record["isReferenceTab"] as? Bool == false)
+
         #expect(record["isUnread"] as? Bool == true)
         #expect(record["unreadFromBadge"] as? Bool == true)
         #expect(record["position"] as? Int == 5)

@@ -81,15 +81,8 @@ struct ConcurrencyTestEnvironment {
         // Create supporting managers for TabManager
         let spaceManager = SpaceManager(state: browserState)
         let groupManager = TabGroupManager(state: browserState)
-        let undoRedoManager = UndoRedoManager()
         self.spaceDataStoreManager = SpaceDataStoreManager()
         self.windowManager = WindowManager(modelContainer: container)
-        let referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
 
         // Wire up cross-references
         pagePool.spaceDataStoreManager = spaceDataStoreManager
@@ -102,7 +95,6 @@ struct ConcurrencyTestEnvironment {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
         pagePool.tabManager = tabManager
         pagePool.windowManager = windowManager
