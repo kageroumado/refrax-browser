@@ -17,6 +17,9 @@ final class PageTranslation {
     var pendingRequests: [TranslationSession.Request] = []
     /// A translation is being prepared or run; the control waits for it.
     var isInProgress = false
+    /// The document the pending requests were read from. A result is written back only into
+    /// that same document, so one page's text never lands in the next one.
+    @ObservationIgnored private var preparedDocument: Document?
     @ObservationIgnored private var hasAutoTranslated = false
     @ObservationIgnored private var isCheckingLanguage = false
 
@@ -45,6 +48,7 @@ final class PageTranslation {
 
     fileprivate func follow(_ page: WebPage?) {
         guard page !== webPage else { return }
+        translationEnded()
         webPage = page
         detectedLanguage = nil
         hasAutoTranslated = false
@@ -54,6 +58,7 @@ final class PageTranslation {
         if let oldURL {
             manager.clearCache(for: oldURL)
         }
+        translationEnded()
         hasAutoTranslated = false
         detectedLanguage = nil
     }
@@ -62,6 +67,31 @@ final class PageTranslation {
         pendingRequests = []
         configuration = nil
         isInProgress = false
+        preparedDocument = nil
+    }
+
+    /// Reads the page's text into requests and starts the session, unless the page moved to
+    /// another document while its text was read.
+    func prepare(_ webPage: WebPage, from source: Locale.Language, to target: Locale.Language, manager: TranslationManager) async throws {
+        let document = Document(webPage)
+        isInProgress = true
+        let requests: [TranslationSession.Request]
+        do {
+            requests = try await manager.prepareTranslationRequests(for: webPage)
+        } catch {
+            manager.cancelTranslation(for: webPage)
+            throw error
+        }
+        guard self.webPage === webPage, Document(webPage) == document else {
+            manager.cancelTranslation(for: webPage)
+            if self.webPage === webPage {
+                translationEnded()
+            }
+            return
+        }
+        preparedDocument = document
+        pendingRequests = requests
+        configuration = TranslationSession.Configuration(source: source, target: target)
     }
 
     /// Detects the page's language and translates it when the site or the language is set to
@@ -71,8 +101,11 @@ final class PageTranslation {
         isCheckingLanguage = true
         defer { isCheckingLanguage = false }
 
-        detectedLanguage = await manager.detectPageLanguage(webPage: webPage)
-        webPage.detectedLanguage = detectedLanguage
+        let document = Document(webPage)
+        let language = await manager.detectPageLanguage(webPage: webPage)
+        guard self.webPage === webPage, Document(webPage) == document else { return }
+        detectedLanguage = language
+        webPage.detectedLanguage = language
         await translateAutomatically(manager: manager, siteSettings: siteSettings)
     }
 
@@ -95,11 +128,11 @@ final class PageTranslation {
         }
         guard await manager.canTranslate(from: detected, to: target) else { return }
 
+        guard self.webPage === webPage, webPage.url == url else { return }
+
         hasAutoTranslated = true
-        isInProgress = true
         do {
-            pendingRequests = try await manager.prepareTranslationRequests(for: webPage)
-            configuration = TranslationSession.Configuration(source: detected, target: target)
+            try await prepare(webPage, from: detected, to: target, manager: manager)
         } catch {
             Logger.error("Auto-translate failed: \(error.localizedDescription)", category: Logger.tabs)
             isInProgress = false
@@ -112,20 +145,31 @@ final class PageTranslation {
     private nonisolated struct WorkItem: @unchecked Sendable {
         let requests: [TranslationSession.Request]
         let page: WebPage
+        let document: Document
         let manager: TranslationManager
     }
 
     /// Runs the pending requests through the session and writes the result into the page.
     fileprivate func translate(with session: TranslationSession, manager: TranslationManager) async {
         let workItem = await MainActor.run {
-            guard let webPage, !pendingRequests.isEmpty else { return nil as WorkItem? }
-            return WorkItem(requests: pendingRequests, page: webPage, manager: manager)
+            guard let webPage, let preparedDocument, !pendingRequests.isEmpty,
+                  Document(webPage) == preparedDocument else { return nil as WorkItem? }
+            return WorkItem(requests: pendingRequests, page: webPage, document: preparedDocument, manager: manager)
         }
         guard let workItem else { return }
         let targetLanguage = session.targetLanguage
 
         do {
             let responses = try await session.translations(from: workItem.requests)
+            let isSameDocument = await MainActor.run {
+                // A navigation start clears isTranslating before the address changes.
+                workItem.page.isTranslating && Document(workItem.page) == workItem.document
+            }
+            guard isSameDocument else {
+                await MainActor.run { workItem.manager.cancelTranslation(for: workItem.page) }
+                await MainActor.run { translationEnded() }
+                return
+            }
             try await workItem.manager.completeTranslation(responses: responses, for: workItem.page, targetLanguage: targetLanguage)
         } catch {
             Logger.error("Translation failed: \(error.localizedDescription)", category: Logger.tabs)
@@ -133,6 +177,22 @@ final class PageTranslation {
         }
 
         await MainActor.run { translationEnded() }
+    }
+}
+
+extension PageTranslation {
+    /// One document in one page: the page, its address, and the load that brought the address.
+    /// Two documents are the same only when all three match.
+    nonisolated struct Document: Equatable, Sendable {
+        let page: ObjectIdentifier
+        let url: URL?
+        let navigation: UInt64
+    }
+}
+
+extension PageTranslation.Document {
+    init(_ webPage: WebPage) {
+        self.init(page: ObjectIdentifier(webPage), url: webPage.url, navigation: webPage.navigationGeneration)
     }
 }
 
@@ -374,11 +434,9 @@ struct TranslationPopoverContent: View {
               let target = selectedTargetLanguage else { return }
 
         isPreparingTranslation = true
-        translation.isInProgress = true
 
         do {
-            translation.pendingRequests = try await translationManager.prepareTranslationRequests(for: webPage)
-            translation.configuration = TranslationSession.Configuration(source: source, target: target)
+            try await translation.prepare(webPage, from: source, to: target, manager: translationManager)
             dismiss()
         } catch {
             Logger.error("Failed to prepare translation: \(error.localizedDescription)", category: Logger.tabs)
