@@ -171,7 +171,7 @@ struct ControlIslandTests {
         #expect(canvas.showsFloatingControls)
     }
 
-    @Test
+    @Test @MainActor
     func `the default rail starts without a recent-tabs row and keeps the update badge`() {
         let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
         #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs, .updates])
