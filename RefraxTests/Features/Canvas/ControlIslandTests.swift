@@ -194,9 +194,10 @@ struct ControlIslandTests {
         let layout = ControlIslandRailLayout(visibleItems: [.history, .navigation, .reload, .spaces, .favoriteTabs, .settings, .page])
         #expect(layout.elements == [
             .row(.navigation), .line(before: .spaces), .row(.spaces), .grip, .row(.favoriteTabs),
-            .line(before: .history), .row(.history), .row(.reload), .row(.settings), .row(.page),
+            .line(before: .page), .row(.page),
+            .line(before: .history), .row(.history), .row(.reload), .row(.settings),
         ])
-        #expect(layout.rows == [.navigation, .spaces, .favoriteTabs, .history, .reload, .settings, .page])
+        #expect(layout.rows == [.navigation, .spaces, .favoriteTabs, .page, .history, .reload, .settings])
     }
 
     @Test
