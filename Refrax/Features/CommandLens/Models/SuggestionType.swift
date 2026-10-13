@@ -111,6 +111,10 @@ nonisolated enum AppAction: Hashable, Sendable {
     case moveCurrentTabToSpace(UUID)
     /// Move the current page into a new window.
     case moveCurrentTabToNewWindow
+    /// Dock the current page to a side of the window.
+    case dockCurrentPage(FloatingDockEdge)
+    /// Return the page docked to a side to its floating place.
+    case undockPage(FloatingDockEdge)
     /// Open New Space beside the island's space picker.
     case newSpace
 }

@@ -60,7 +60,7 @@ struct CanvasCommand: AsyncParsableCommand {
     struct Floating: AsyncParsableCommand {
         static let configuration = CommandConfiguration(commandName: "floating", abstract: "Reveal, place, and pin floating tabs")
 
-        @Argument(help: "show, hide, hold, release, pin, unpin, compact, preview, move, resize")
+        @Argument(help: "show, hide, hold, release, pin, unpin, compact, preview, move, resize, dock-left, dock-right, undock")
         var action: String
         @Option(name: .long, help: "Tab ref for a presentation or position change")
         var tab: String?
@@ -75,7 +75,7 @@ struct CanvasCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard let action = ControlRequest.FloatingTabsParams.Action(rawValue: action) else {
-                throw ValidationError("Use show, hide, hold, release, pin, unpin, compact, preview, move, or resize")
+                throw ValidationError("Use show, hide, hold, release, pin, unpin, compact, preview, move, resize, dock-left, dock-right, or undock")
             }
             var x: Double?
             var y: Double?

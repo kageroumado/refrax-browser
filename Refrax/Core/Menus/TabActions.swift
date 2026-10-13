@@ -27,6 +27,7 @@ struct TabActions {
         }
         if surface.isCard, let canvas {
             actions += placementActions(canvas: canvas)
+            actions += dockActions(canvas: canvas)
             actions += selectionActions(canvas: canvas)
         }
         if surface.isCard, let bookmark = tab.linkedBookmark, behaviors.isFavorite {

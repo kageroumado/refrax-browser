@@ -1636,6 +1636,10 @@ final class CommandLensManager {
                 if let tab = windowState.activeTab {
                     tabManager.moveTabToNewWindow(tab, from: windowState)
                 }
+            case let .dockCurrentPage(edge):
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.dockCurrentPage(to: edge)
+            case let .undockPage(edge):
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.undockPage(on: edge)
             case .newSpace:
                 windowState.controlIsland.spaceRequest = .create
             }
