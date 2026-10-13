@@ -91,6 +91,18 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         move(to: origin, in: bounds)
     }
 
+    /// Moves the card sideways off `obstacle` until `gap` separates them at their closest
+    /// approach, on the side its center is on; a card already that far away stays put.
+    mutating func keepClear(of obstacle: CGRect, gap: CGFloat, in bounds: CGRect) {
+        let frame = frame(in: bounds)
+        let horizontal = max(obstacle.minX - frame.maxX, frame.minX - obstacle.maxX)
+        let vertical = max(obstacle.minY - frame.maxY, frame.minY - obstacle.maxY)
+        // Half a point of slack absorbs the rounding of the normalized position.
+        guard !obstacle.isEmpty, horizontal < gap - 0.5, vertical < gap - 0.5 else { return }
+        let x = frame.midX >= obstacle.midX ? obstacle.maxX + gap : obstacle.minX - gap - frame.width
+        move(to: CGPoint(x: x, y: frame.minY), in: bounds)
+    }
+
     private static func dimension(_ value: Double?, fallback: Double, minimum: Double) -> Double {
         guard let value, value.isFinite else { return fallback }
         return max(minimum, value)

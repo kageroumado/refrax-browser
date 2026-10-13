@@ -113,7 +113,11 @@ struct TabActions {
         var actions: [MenuAction] = []
         if !tab.isLiveFavorite, tab.space != nil {
             actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option]), group: .window) {
-                tabs.moveTabToNewWindow(tab, from: windowState)
+                if surface.isCard, let canvas {
+                    canvas.moveFloatingTabToNewWindow(tab, in: area)
+                } else {
+                    tabs.moveTabToNewWindow(tab, from: windowState)
+                }
             })
         }
         actions.append(MenuAction("tab.reflectedWindow", "Open Reflected Window", symbol: "rectangle.inset.filled.on.rectangle", group: .window) {
