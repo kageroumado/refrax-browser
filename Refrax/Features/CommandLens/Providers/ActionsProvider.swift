@@ -1,12 +1,15 @@
 import Foundation
 
-/// Provides app-level action suggestions: Send Feedback, open Passwords,
-/// Import from Another Browser, and Check for Updates.
+/// Provides action suggestions: the current page's verbs (favorite, move to a space or a new
+/// window), New Space, Send Feedback, open Passwords, Import from Another Browser, and Check
+/// for Updates.
 ///
-/// These are global actions not tied to any tab or page context.
 /// Uses fuzzy matching against natural language terms so users can
 /// discover actions by typing related words.
 struct ActionsProvider: CommandLensSuggestionProvider {
+    let spaces: SpaceManager
+    weak var windowState: WindowState?
+
     let id = "actions"
     let priority = 45
     let groupHeader: String? = "Actions"
@@ -26,9 +29,18 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
         ]
         for (terms, title, icon, action) in pageActions where FuzzyMatcher.match(query: query, against: [terms]) >= FuzzyMatcher.minimumMatchScore {
-            results.append(CommandLensSuggestion(type: .appAction(action), text: title,
-                description: "Current page", iconName: icon, groupHeader: groupHeader, isRemovable: false, keywordAction: nil, url: nil))
+            results.append(CommandLensSuggestion(
+                type: .appAction(action),
+                text: title,
+                description: "Current page",
+                iconName: icon,
+                groupHeader: groupHeader,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
         }
+        results += tabPlacementSuggestions(for: query)
 
         // Feedback is always shown when user has typed anything
         results.append(CommandLensSuggestion(
@@ -142,6 +154,42 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
+        return results
+    }
+
+    /// "move to <space>", "move to new window", and "new space".
+    private func tabPlacementSuggestions(for query: String) -> [CommandLensSuggestion] {
+        func matches(_ terms: [String]) -> Bool {
+            FuzzyMatcher.match(query: query, against: terms) >= FuzzyMatcher.minimumMatchScore
+        }
+        func suggestion(_ action: AppAction, _ title: String, _ description: String, _ icon: String) -> CommandLensSuggestion {
+            CommandLensSuggestion(
+                type: .appAction(action),
+                text: title,
+                description: description,
+                iconName: icon,
+                groupHeader: groupHeader,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            )
+        }
+
+        var results: [CommandLensSuggestion] = []
+        if let tab = windowState?.activeTab, !tab.isLiveFavorite, let current = tab.space {
+            for space in spaces.spaces where space.id != current.id {
+                let name = space.name.lowercased()
+                if matches(["move to \(name)", "move tab to \(name)", "send to \(name)"]) {
+                    results.append(suggestion(.moveCurrentTabToSpace(space.id), "Move to \(space.name)", "Current page", "square.stack.3d.up"))
+                }
+            }
+            if matches(["move to new window", "move tab to new window", "tear off tab", "own window"]) {
+                results.append(suggestion(.moveCurrentTabToNewWindow, "Move to New Window", "Current page  ⌥⌘N", "macwindow.badge.plus"))
+            }
+        }
+        if matches(["new space", "create space", "add space"]) {
+            results.append(suggestion(.newSpace, "New Space…", "A place for its own set of tabs  ⌃⌘N", "plus.square.on.square"))
+        }
         return results
     }
 }

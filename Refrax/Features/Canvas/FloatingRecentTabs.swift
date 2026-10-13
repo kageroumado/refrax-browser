@@ -42,6 +42,7 @@ struct FloatingRecentTabs: View {
                             PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
                                 .frame(width: 28, height: 28)
                         }
+                        .closesOnMiddleClick(tab)
                     }
                 }
             }

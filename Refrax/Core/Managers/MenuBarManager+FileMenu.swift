@@ -19,6 +19,16 @@ extension MenuBarManager {
         newWindowItem.target = self
         fileMenu.addItem(newWindowItem)
 
+        let newSpaceItem = NSMenuItem(
+            title: "New Space…",
+            action: #selector(openNewSpace(_:)),
+            keyEquivalent: "n",
+        )
+        newSpaceItem.keyEquivalentModifierMask = [.command, .control]
+        newSpaceItem.image = NSImage(systemSymbolName: "plus.square.on.square", accessibilityDescription: nil)
+        newSpaceItem.target = self
+        fileMenu.addItem(newSpaceItem)
+
         // New Tab
         let newTabItem = NSMenuItem(
             title: "Open Command Lens",
@@ -174,6 +184,12 @@ extension MenuBarManager {
         windowManager.createWindow()
     }
 
+    /// Opens New Space beside the control island's space picker.
+    @objc
+    func openNewSpace(_: Any?) {
+        activeWindowController?.windowState.controlIsland.spaceRequest = .create
+    }
+
     @objc
     func openCommandLens(_: Any?) {
         windowManager.openCommandLens()
@@ -211,7 +227,9 @@ extension MenuBarManager {
               let tab = controller.windowState.focusedPage?.tab ?? controller.windowState.activeTab else { return }
         if tab.status == .liveFavorite {
             windowManager.tabManager.closeLiveFavoriteTab(tab)
-            if controller.windowState.activeTabID == tab.id { controller.windowState.clearActiveLiveFavorite() }
+            if controller.windowState.activeTabID == tab.id {
+                controller.windowState.clearActiveLiveFavorite()
+            }
         } else {
             windowManager.tabManager.closeTab(tab)
         }

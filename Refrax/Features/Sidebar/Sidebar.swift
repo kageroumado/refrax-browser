@@ -32,7 +32,6 @@ struct Sidebar: View {
   @Environment(TabManager.self) private var tabManager
   @Environment(SpaceManager.self) private var spaceManager
   @Environment(BookmarksManager.self) private var bookmarksManager
-  @Environment(TabGroupManager.self) private var groupManager
   @Environment(UndoRedoManager.self) private var undoRedoManager
   @Environment(WindowState.self) private var windowState
   @Environment(BrowserState.self) private var browserState
@@ -172,7 +171,7 @@ struct Sidebar: View {
         }
       } else {
         Button("Clear All Tabs", role: .destructive) {
-          handleLastSpaceClear(space)
+          tabManager.clearSpace(space)
           spaceToDelete = nil
         }
       }
@@ -714,28 +713,6 @@ struct Sidebar: View {
 
   private var deleteAlertTitle: String {
     tabManager.hasMultipleSpaces ? "Delete Space" : "Clear Space"
-  }
-
-  private func handleLastSpaceClear(_ space: Space) {
-    // Close all tabs
-    let tabsToClose = browserState.tabs(in: space)
-    for tab in tabsToClose {
-      tabManager.closeTab(tab)
-    }
-
-    // Delete all groups (tabs already closed, so don't delete contained tabs again)
-    let groupsToDelete = browserState.groups(in: space)
-    for group in groupsToDelete {
-      groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
-    }
-
-    // Reset space to default configuration
-    spaceManager.updateSpace(
-      space,
-      name: SpaceManager.DefaultSpaceConfig.name,
-      iconName: SpaceManager.DefaultSpaceConfig.iconName,
-      color: SpaceManager.DefaultSpaceConfig.color,
-    )
   }
 
   // MARK: - Helper Methods

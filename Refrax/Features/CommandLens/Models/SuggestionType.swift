@@ -107,6 +107,12 @@ nonisolated enum AppAction: Hashable, Sendable {
     case favoriteCurrentPage
     case returnFromLook
     case keepPartVisible
+    /// Move the current page to the space with this identifier.
+    case moveCurrentTabToSpace(UUID)
+    /// Move the current page into a new window.
+    case moveCurrentTabToNewWindow
+    /// Open New Space beside the island's space picker.
+    case newSpace
 }
 
 /// Scope of a setting (global or per-site).

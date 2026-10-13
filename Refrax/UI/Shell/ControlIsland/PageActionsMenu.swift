@@ -6,7 +6,7 @@ import SwiftUI
 /// it tracks. The page card beside the rail opens ``PageCardOptionsPopover`` instead.
 struct PageActionsMenu: NSViewRepresentable {
     /// Group order on the cards: the page's own verbs first, then placement, then the tab as an object.
-    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .close]
+    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .window, .close]
 
     let tab: Tab
     let surface: MenuSurface
@@ -52,7 +52,12 @@ struct PageActionsMenu: NSViewRepresentable {
         sharing: SharingCoordinator,
     ) -> MenuTree {
         let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, sharing: sharing)
-        let object = TabActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area)
+        // A card on screen edits its own title; a row in Recent has none to edit.
+        let editsInPlace = canvas.visibleFloatingTabs.contains { $0.id == tab.id }
+        let object = TabActions(
+            tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
+            onRename: editsInPlace ? { canvas.renamingTabID = tab.id } : nil,
+        )
         return MenuComposer.compose(page.actions() + object.actions(), groupOrder: groupOrder)
     }
 }

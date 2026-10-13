@@ -173,7 +173,7 @@ final class CommandLensManager {
             BaseDomainSynthesisProvider(frequentDestinations: historyManager.frequentDestinations),
             HistoryProvider(historyManager: historyManager),
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
-            ActionsProvider(),
+            ActionsProvider(spaces: tabManager.spaceManager, windowState: windowState),
         ]
         // The tour's page comes before every other suggestion while a tour step asks for one.
         if let floatingTour {
@@ -1631,6 +1631,17 @@ final class CommandLensManager {
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
                     (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.beginRegionSelection(for: tab)
                 }
+            case let .moveCurrentTabToSpace(spaceID):
+                if let tab = windowState.activeTab, !tab.isLiveFavorite,
+                   let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
+                    tabManager.moveTabs([tab], to: space)
+                }
+            case .moveCurrentTabToNewWindow:
+                if let tab = windowState.activeTab {
+                    tabManager.moveTabToNewWindow(tab, from: windowState)
+                }
+            case .newSpace:
+                windowState.controlIsland.spaceRequest = .create
             }
             closeCurrentLens()
             reset()

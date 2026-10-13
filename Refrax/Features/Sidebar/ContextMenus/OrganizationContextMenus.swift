@@ -277,12 +277,6 @@ extension SidebarContextMenus {
             return browserState.tabs(in: space)
         }
 
-        /// Groups in the target space (for markdown export).
-        private var groupsInSpace: [TabGroup] {
-            guard let space = currentSpace else { return [] }
-            return browserState.groups(in: space)
-        }
-
         var body: some View {
             if let space = currentSpace {
                 if isSpaceLocked {
@@ -428,7 +422,7 @@ extension SidebarContextMenus {
                 }
 
                 Button {
-                    let markdown = formatSpaceAsMarkdown(space)
+                    let markdown = SpaceActions.markdown(for: space, tabs: tabManager)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(markdown, forType: .string)
                 } label: {
@@ -455,55 +449,6 @@ extension SidebarContextMenus {
             }
 
             Divider()
-        }
-
-        /// Formats a space's tabs and groups as a nicely structured Markdown document.
-        private func formatSpaceAsMarkdown(_ space: Refrax.Space) -> String {
-            var lines: [String] = []
-            lines.append("# \(space.displayNameWithIcon)")
-            lines.append("")
-
-            // Get tabs organized by group
-            let ungroupedTabs = tabsInSpace.filter { $0.groupID == nil && !$0.isPinned }
-            let pinnedTabs = tabsInSpace.filter(\.isPinned)
-            let groups = groupsInSpace.sorted { $0.position < $1.position }
-
-            // Pinned tabs
-            if !pinnedTabs.isEmpty {
-                lines.append("## Pinned")
-                for tab in pinnedTabs.sorted(by: { $0.position < $1.position }) {
-                    let url = tabManager.copyableURL(for: tab)
-                    lines.append("- [\(tab.displayTitle)](\(url))")
-                }
-                lines.append("")
-            }
-
-            // Groups
-            for group in groups {
-                let tabsInGroup = tabsInSpace.filter { $0.groupID == group.id }
-                    .sorted { $0.position < $1.position }
-                if !tabsInGroup.isEmpty {
-                    lines.append("## \(group.displayNameWithIcon)")
-                    for tab in tabsInGroup {
-                        let url = tabManager.copyableURL(for: tab)
-                        lines.append("- [\(tab.displayTitle)](\(url))")
-                    }
-                    lines.append("")
-                }
-            }
-
-            // Ungrouped tabs
-            if !ungroupedTabs.isEmpty {
-                if !groups.isEmpty || !pinnedTabs.isEmpty {
-                    lines.append("## Other")
-                }
-                for tab in ungroupedTabs.sorted(by: { $0.position < $1.position }) {
-                    let url = tabManager.copyableURL(for: tab)
-                    lines.append("- [\(tab.displayTitle)](\(url))")
-                }
-            }
-
-            return lines.joined(separator: "\n")
         }
     }
 }
