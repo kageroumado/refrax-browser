@@ -496,13 +496,13 @@ struct ControlAccessManagerAutoAllowTests {
         #expect(countAfterFirst == countAfterSecond)
     }
 
-    @Test("All auto-allowed clients have display name 'refrax-ctl'")
+    @Test("Auto-allowed clients are named for refrax-ctl, with the debug build's suffix")
     func displayNames() throws {
         let env = try ControlAccessTestEnvironment()
         env.manager.autoAllowRefraxCTL()
 
         for client in env.manager.allowedClients {
-            #expect(client.displayName == "refrax-ctl")
+            #expect(["refrax-ctl", "refrax-ctl-debug"].contains(client.displayName))
         }
     }
 }

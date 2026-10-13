@@ -211,7 +211,11 @@ struct WindowStateLensTests {
     @Test
     func `Command lens binding works`() throws {
         let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
         let windowState = env.makeWindowState()
+        env.spaceManager.switchToSpaceSync(space, for: windowState)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://example.com")), in: space, makeActive: false)
+        windowState.setActiveTabID(tab.id, for: space.id)
 
         let binding = windowState.commandLensBinding
         #expect(binding.wrappedValue == false)
@@ -368,11 +372,11 @@ struct WindowStateToastTests {
 @MainActor
 struct WindowStateSidebarInspectorTests {
     @Test
-    func `Sidebar starts expanded`() throws {
+    func `Sidebar starts collapsed beside the Control Island`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
-        #expect(windowState.isSidebarCollapsed == false)
+        #expect(windowState.isSidebarCollapsed)
     }
 
     @Test
@@ -380,13 +384,11 @@ struct WindowStateSidebarInspectorTests {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
+        windowState.toggleSidebar()
         #expect(windowState.isSidebarCollapsed == false)
 
         windowState.toggleSidebar()
         #expect(windowState.isSidebarCollapsed == true)
-
-        windowState.toggleSidebar()
-        #expect(windowState.isSidebarCollapsed == false)
     }
 }
 
