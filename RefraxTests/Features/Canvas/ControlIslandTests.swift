@@ -217,9 +217,24 @@ struct ControlIslandTests {
         let rows = ControlIslandPlacement.rowHeight * 8
         let gaps = ControlIslandPlacement.sectionGap * 2
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
-        let grip = ControlIslandPlacement.contentInset + ControlIslandPlacement.gripSize.height
-        #expect(height == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces + grip)
-        #expect(ControlIslandPlacement.gripSize == CGSize(width: 24, height: 4))
+        let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
+        let bottom = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
+        #expect(height == ControlIslandPlacement.contentInset + bottom + rows + gaps + spaces + grip)
+        #expect(ControlIslandPlacement.gripSize == CGSize(width: 22, height: 4))
+    }
+
+    @Test
+    func `the grip's bottom inset grows by the corner sag at its ends`() {
+        let half = ControlIslandPlacement.gripSize.width / 2
+        let railSag = ControlIslandPlacement.cornerSag(radius: ControlIslandPlacement.cornerRadius, offset: half)
+        #expect(abs(railSag - 2.67) < 0.05)
+        #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 0) == 0)
+        #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 20) == 20)
+        let underSpaces = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
+        let underRow = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
+        #expect(abs(underSpaces - 10) < 0.1)
+        #expect(abs(underRow - 6.67) < 0.05)
+        #expect(underSpaces > underRow)
     }
 
     @Test @MainActor
@@ -227,12 +242,13 @@ struct ControlIslandTests {
         let main: [ControlIslandItem] = [.navigation, .spaces, .favoriteTabs]
         let base = ControlIslandPlacement.railHeight(items: main, spaceCount: 1, favoriteCount: 2)
         let withExtras = ControlIslandPlacement.railHeight(items: main + [.history, .settings], spaceCount: 1, favoriteCount: 2)
-        let grip = ControlIslandPlacement.contentInset + ControlIslandPlacement.gripSize.height
-        #expect(base == ControlIslandPlacement.contentInset * 2 + ControlIslandPlacement.rowHeight
+        let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
+        let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
+        #expect(base == ControlIslandPlacement.contentInset + flatBottom + ControlIslandPlacement.rowHeight
             + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2) + grip)
         #expect(withExtras - base == ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)
         let empty = ControlIslandPlacement.railHeight(items: [], spaceCount: 0, favoriteCount: 0)
-        #expect(empty == ControlIslandPlacement.contentInset * 2 + grip)
+        #expect(empty == ControlIslandPlacement.contentInset + flatBottom + grip)
     }
 
     @Test

@@ -34,7 +34,25 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let highlightGlowRadius: CGFloat = 8
     /// The handle in the gap under the space picker that moves the controls: a 3 × 18-point
     /// vertical capsule, whose hit area reaches into the padding of its neighbors.
-    static let gripSize = CGSize(width: 24, height: 4)
+    static let gripSize = CGSize(width: 22, height: 4)
+    /// The straight distance between the grip and the shape above it, measured at the grip's ends.
+    static let gripGap: CGFloat = 4
+
+    /// How far a rounded edge of `radius` has receded from its straight tangent at a horizontal
+    /// `offset` from the corner's center line: `r − √(r² − x²)`. Shapes that meet near a corner
+    /// are read by their closest approach, so an inset that ignores this looks too tight.
+    static func cornerSag(radius: CGFloat, offset: CGFloat) -> CGFloat {
+        guard radius > 0, offset < radius else { return radius }
+        return radius - (radius * radius - offset * offset).squareRoot()
+    }
+
+    /// The rail's bottom inset under the grip: the grip's ends sit `gripGap` from the rail's
+    /// curved edge, and the same `gripGap` from the shape above once that shape's own corner
+    /// (the space picker's track, or none for a flat row) is accounted for.
+    static func gripBottomInset(aboveRadius: CGFloat) -> CGFloat {
+        let half = gripSize.width / 2
+        return gripGap + cornerSag(radius: aboveRadius, offset: half) + cornerSag(radius: cornerRadius, offset: half)
+    }
 
     /// The rail's height: one row per action, three for the window controls, the space and
     /// favorite columns at their own heights, a gap for every divider and for the grip, and
@@ -42,14 +60,15 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     @MainActor
     static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int) -> CGFloat {
         let layout = ControlIslandRailLayout(visibleItems: items)
-        return layout.elements.reduce(contentInset * 2) { height, element in
+        let bottom = gripBottomInset(aboveRadius: layout.rows.last == .spaces ? spaceRowHeight / 2 : 0)
+        return layout.elements.reduce(contentInset + bottom) { height, element in
             switch element {
             case .row(.windowControls): height + rowHeight * 3
             case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
             case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount)
             case .row: height + rowHeight
             case .line, .gap: height + sectionGap
-            case .grip: height + contentInset + gripSize.height
+            case .grip: height + gripGap + gripSize.height
             }
         }
     }

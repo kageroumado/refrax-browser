@@ -361,7 +361,8 @@ struct ControlIsland: View {
             .scrollIndicators(.automatic)
             .scrollBounceBehavior(.basedOnSize)
         }
-        .padding(.vertical, Layout.contentInset)
+        .padding(.top, Layout.contentInset)
+        .padding(.bottom, Layout.gripBottomInset(aboveRadius: railLayout.rows.last == .spaces ? Layout.spaceRowHeight / 2 : 0))
         .padding(.horizontal, Layout.horizontalInset)
         .background { dragSurface }
         .popover(isPresented: $showsFavorites, arrowEdge: opensLeft ? .leading : .trailing) {
@@ -581,15 +582,15 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    /// A 24 × 4-point capsule closing the rail, the grabber macOS and iOS use for things that
-    /// move: one content inset below the last row and one above the rail's edge. It fades with the
-    /// glass at rest.
+    /// A 22 × 4-point capsule closing the rail, the grabber macOS and iOS use for things that
+    /// move. Its ends sit `gripGap` from the shape above and from the rail's curved edge, by
+    /// closest approach rather than center line. It fades with the glass at rest.
     private var grip: some View {
         Capsule()
             .fill(.secondary)
             .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
             .opacity(isResting ? 0 : 1)
-            .frame(width: Layout.contentWidth, height: Layout.contentInset + Layout.gripSize.height, alignment: .bottom)
+            .frame(width: Layout.contentWidth, height: Layout.gripGap + Layout.gripSize.height, alignment: .bottom)
             .contentShape(Rectangle())
             .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
             .gesture(moveGesture)
