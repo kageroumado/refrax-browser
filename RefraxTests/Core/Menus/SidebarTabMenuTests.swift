@@ -45,9 +45,9 @@ struct SidebarTabMenuTests {
         let fixture = try Fixture()
         fixture.env.settings.archiveEnabled = true
         let tree = fixture.tree(for: fixture.tabs[1])
-        #expect(tree.rowCount == 11)
+        #expect(tree.rowCount == 12)
         #expect(topLevel(tree) == [
-            "Rename Tab", "Tab ▸ (5)", "——", "Move to Group ▸ (1)", "Move ▸ (3)", "——", "Copy Address", "Copy as Markdown Link", "——",
+            "Rename Tab", "Tab ▸ (5)", "——", "Move to Group ▸ (1)", "Add to New Group…", "Move to Space ▸ (1)", "——", "Copy Address", "Copy as Markdown Link", "——",
             "Share…", "Sort Tabs ▸ (8)", "Open Reflected Window", "——", "Archive Tab", "Close ▸ (7)",
         ])
         let close = Array(tree.outline.drop { $0 != "Close ▸ (7)" }.dropFirst().prefix(7))
@@ -84,7 +84,7 @@ struct SidebarTabMenuTests {
         fixture.env.groupManager.moveTabToGroup(grouped, group: group)
         let groupedTree = fixture.tree(for: grouped)
         #expect(!groupedTree.outline.contains("  Pin"))
-        #expect(groupedTree.outline.contains("  Remove from Group"))
+        #expect(topLevel(groupedTree).contains("Remove from Group"))
         #expect(!groupedTree.ids.contains("sidebar.moveToGroup"))
     }
 }
