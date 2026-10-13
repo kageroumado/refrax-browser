@@ -21,6 +21,23 @@ struct ControlIslandTabInfoTests {
     }
 
     @Test
+    func `Copy Address shows while the pointer is on the card or its options are up`() {
+        let state = ControlIslandTabInfoState()
+        #expect(!state.showsHoverExtras)
+        state.isHovered = true
+        #expect(state.showsHoverExtras)
+        state.isHovered = false
+        state.isMenuPresented = true
+        #expect(state.showsHoverExtras)
+        state.dismiss()
+        #expect(!state.showsHoverExtras)
+        state.show()
+        state.hold()
+        #expect(state.isVisible)
+        #expect(!state.showsHoverExtras)
+    }
+
+    @Test
     func `native menu survives Control release and clears when it closes`() {
         let state = ControlIslandTabInfoState()
         state.hold()

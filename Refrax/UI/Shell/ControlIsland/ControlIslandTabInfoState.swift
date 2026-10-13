@@ -1,6 +1,6 @@
 import Observation
 
-/// Keeps current-tab actions reachable while the pointer or a native menu uses them.
+/// Keeps current-tab actions reachable while the pointer or a presented menu uses them.
 @Observable
 final class ControlIslandTabInfoState {
     private(set) var isHeld = false
@@ -8,11 +8,25 @@ final class ControlIslandTabInfoState {
     var isHovered = false
     var isMenuPresented = false
 
-    var isVisible: Bool { isHeld || isLatched || isHovered || isMenuPresented }
+    var isVisible: Bool {
+        isHeld || isLatched || isHovered || isMenuPresented
+    }
 
-    func hold() { isHeld = true }
-    func release() { isHeld = false }
-    func show() { isLatched = true }
+    /// The card's hover-only controls (Copy Address) show while the pointer is on the card or
+    /// its options are up; a card that is merely latched or held rests with its three controls.
+    var showsHoverExtras: Bool {
+        isHovered || isMenuPresented
+    }
+
+    func hold() {
+        isHeld = true
+    }
+    func release() {
+        isHeld = false
+    }
+    func show() {
+        isLatched = true
+    }
 
     func dismiss() {
         isHeld = false

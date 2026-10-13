@@ -2,10 +2,12 @@ import SwiftUI
 
 // MARK: - Anchored Lens Overlay
 
-/// The Command Lens beside the page card, small style, with the page address in it.
+/// The Command Lens in the page card's place, small style, with the page address in it.
 ///
 /// Opening starts at the anchor's size and springs to the lens's width; closing springs back
-/// to the anchor and then disappears.
+/// to the anchor and then disappears. The island hides the card for as long as the lens is up
+/// (``PageCardLensHandoff``), so the lens glass that springs from the card's frame is the only
+/// object there.
 struct AnchoredLensOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(WindowState.self) private var windowState

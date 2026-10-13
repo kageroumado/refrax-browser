@@ -92,7 +92,7 @@ struct TabActions {
         var actions: [MenuAction] = []
         if !tab.isLiveFavorite, tab.space?.id == windowState.activeSpaceID {
             let isSelected = canvas.selectedFloatingTabIDs.contains(tab.id)
-            actions.append(MenuAction("tab.select", isSelected ? "Deselect for Group" : "Select for Group", group: .move) {
+            actions.append(MenuAction("tab.select", isSelected ? "Deselect for Group" : "Select for Group", symbol: "checkmark.circle", group: .move) {
                 if isSelected {
                     canvas.selectedFloatingTabIDs.remove(tab.id)
                 } else {
@@ -100,13 +100,13 @@ struct TabActions {
                 }
             })
             if canvas.selectedFloatingTabIDs.count > 1 {
-                actions.append(MenuAction("tab.groupSelection", "Group Selected Tabs", group: .move) { canvas.groupFloatingSelection() })
+                actions.append(MenuAction("tab.groupSelection", "Group Selected Tabs", symbol: "rectangle.3.group", group: .move) { canvas.groupFloatingSelection() })
             }
         }
         let placement = canvas.floatingPlacement(for: tab)
         if placement.isPinned, tab.space?.dataStoreMode != .private {
             let everywhere = placement.showsInEverySpace == true
-            actions.append(MenuAction("tab.everySpace", everywhere ? "Show in This Space" : "Show in Every Space", group: .move) {
+            actions.append(MenuAction("tab.everySpace", everywhere ? "Show in This Space" : "Show in Every Space", symbol: "square.on.square", group: .move) {
                 var next = placement
                 next.showsInEverySpace = !everywhere
                 canvas.updateFloatingPlacement(next, for: tab)
