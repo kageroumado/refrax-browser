@@ -50,7 +50,7 @@ enum ScreenBeam {
         let ray = FloatingRayPath(from: local(source, in: frame), to: local(destination, in: frame), in: bounds)
         let panel = PassThroughPanel(frame: frame, hasShadow: false)
         let id = ObjectIdentifier(panel)
-        let beam = LightTravel(paths: [style.path(ray: ray, color: style.color(space: nil))], timing: style.timing) {
+        let beam = LightTravel(paths: [style.path(ray: ray, color: LightStyle.color)], timing: style.timing) {
             panels.removeValue(forKey: id)?.close()
         }
         panel.contentView = NSHostingView(rootView: beam.frame(width: frame.width, height: frame.height).accessibilityHidden(true))
