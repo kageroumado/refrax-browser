@@ -30,6 +30,9 @@ struct ControlIsland: View {
     @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
+    /// Option is down: controls with a second meaning show it in place.
+    @State private var optionIsDown = false
+    @State private var flagsMonitor: Any?
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
@@ -296,7 +299,18 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
-        .onAppear { state.wake() }
+        .onAppear {
+            state.wake()
+            flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+                optionIsDown = event.modifierFlags.contains(.option)
+                return event
+            }
+        }
+        .onDisappear {
+            if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
+            flagsMonitor = nil
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: optionIsDown)
         .task(id: state.isHovered) {
             hoverHasSettled = false
             guard state.isHovered else { return }
@@ -333,6 +347,8 @@ struct ControlIsland: View {
                                 }
                         case .line:
                             sectionDivider
+                        case .gap:
+                            draggableBackground(Color.clear.frame(height: Layout.sectionGap).contentShape(Rectangle()))
                         case .grip:
                             grip
                         }
@@ -385,7 +401,10 @@ struct ControlIsland: View {
             }
             .help("Command Lens · ⌘T")
         case .floatingTabs:
-            control(item.title, symbol: canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol) {
+            let showsRecent = optionIsDown
+            control(showsRecent ? "Recent tabs" : item.title,
+                    symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
+                    enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher) {
                 if optionIsHeld {
                     showRecentTabs()
                 } else {
@@ -394,17 +413,13 @@ struct ControlIsland: View {
                     showsShortcut = canvas.floatingVisibility.isRevealed
                 }
             }
-            .overlay(alignment: .bottomTrailing) { unplacedBadge }
+            .contentTransition(.symbolEffect(.replace))
+            .overlay(alignment: .bottomTrailing) { if !showsRecent { unplacedBadge } }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
-            .help("Show tabs · ⌥ for recent tabs · hold \(revealKey.glyph) to peek")
-        case .recentTabs:
-            control(item.title, symbol: item.symbol, enabled: tabSwitcher.isActive || tabSwitcher.canShowSwitcher) {
-                showRecentTabs()
-            }
-            .help(item.detail)
+            .help(showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold ⌥ for recent tabs · hold \(revealKey.glyph) to peek")
         case .desk:
             deskControl(item)
         case .spaces:
@@ -563,17 +578,15 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    /// A 3 × 18-point capsule centered in the gap under the space picker: the handle that moves the
-    /// controls. It fades with the glass at rest. Its hit area reaches into the neighbors' padding,
-    /// above them in hit order, so the thin gap is still an easy target.
+    /// A 3 × 18-point capsule closing the rail: the handle that moves the controls, one content
+    /// inset below the last row and one above the rail's edge. It fades with the glass at rest.
     private var grip: some View {
         Capsule()
             .fill(.secondary)
             .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
             .opacity(isResting ? 0 : 1)
-            .frame(width: Layout.contentWidth, height: Layout.sectionGap)
-            .contentShape(Rectangle().inset(by: (Layout.sectionGap - Layout.gripHitHeight) / 2))
-            .zIndex(1)
+            .frame(width: Layout.contentWidth, height: Layout.contentInset + Layout.gripSize.height, alignment: .bottom)
+            .contentShape(Rectangle())
             .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
             .gesture(moveGesture)
             .help("Move controls")

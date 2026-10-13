@@ -177,7 +177,7 @@ struct AppearanceSettingsView: View {
 // MARK: - Settings Color Picker
 
 /// A labeled color picker with preset swatches and custom color option.
-private struct SettingsColorPicker: View {
+struct SettingsColorPicker: View {
     let label: String
     @Binding var selectedColor: Color.Components?
     let systemColor: Color

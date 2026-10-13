@@ -9,7 +9,7 @@ nonisolated enum ControlIslandRailMenuItem: CaseIterable {
     var title: String {
         switch self {
         case .favorites: "Favorites…"
-        case .customizeControls: "Customize Controls…"
+        case .customizeControls: "Customize…"
         case .resetPosition: "Reset Control Position"
         }
     }

@@ -4,19 +4,24 @@ import Foundation
 ///
 /// The main section comes first in its customized order, then the additional controls
 /// in theirs. A gap carries a divider line around a group and at the boundary between
-/// the sections; the gap under the space picker carries the grip instead.
+/// the sections, except between the space picker and the favorites, which share a plain
+/// gap. The grip closes the rail, as far from the last row as from the rail's edge.
 nonisolated struct ControlIslandRailLayout: Equatable {
     enum Element: Equatable, Identifiable {
         case row(ControlIslandItem)
         /// A 12-point gap with a divider line.
         case line(before: ControlIslandItem)
-        /// A 12-point gap holding the handle that moves the rail.
+        /// A 12-point gap without a line.
+        case gap(before: ControlIslandItem)
+        /// The handle that moves the rail, after the last row, inset from it and from the
+        /// rail's edge by the content inset.
         case grip
 
         var id: String {
             switch self {
             case let .row(item): item.rawValue
             case let .line(item): "line-\(item.rawValue)"
+            case let .gap(item): "gap-\(item.rawValue)"
             case .grip: "grip"
             }
         }
@@ -38,18 +43,19 @@ nonisolated struct ControlIslandRailLayout: Equatable {
         let main = visibleItems.filter { $0.section == .main }
         let additional = visibleItems.filter { $0.section == .additional }
         let rows = main + additional
-        let gripSlot = main.firstIndex(of: .spaces).map { $0 + 1 } ?? main.count
         var elements: [Element] = []
-        for index in 0 ... rows.count {
-            if index == gripSlot {
-                elements.append(.grip)
-            } else if index > 0, index < rows.count, Self.needsLine(between: rows[index - 1], and: rows[index]) {
-                elements.append(.line(before: rows[index]))
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                let previous = rows[index - 1]
+                if previous == .spaces, row == .favoriteTabs {
+                    elements.append(.gap(before: row))
+                } else if Self.needsLine(between: previous, and: row) {
+                    elements.append(.line(before: row))
+                }
             }
-            if index < rows.count {
-                elements.append(.row(rows[index]))
-            }
+            elements.append(.row(row))
         }
+        elements.append(.grip)
         self.elements = elements
     }
 

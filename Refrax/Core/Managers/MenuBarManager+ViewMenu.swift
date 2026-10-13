@@ -245,7 +245,7 @@ extension MenuBarManager {
         let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
         controlsItem.target = self
         viewMenu.addItem(controlsItem)
-        let customizeControlsItem = NSMenuItem(title: "Customize Controls…", action: #selector(customizeControls(_:)), keyEquivalent: "")
+        let customizeControlsItem = NSMenuItem(title: "Customize Control Island…", action: #selector(customizeControls(_:)), keyEquivalent: "")
         customizeControlsItem.target = self
         viewMenu.addItem(customizeControlsItem)
         let resetControlsItem = NSMenuItem(title: "Reset Control Position", action: #selector(resetControlPosition(_:)), keyEquivalent: "")

@@ -4,14 +4,14 @@ import Testing
 struct ControlIslandMenuTests {
     @Test
     func `the rail's own menu holds Favorites, then its setup`() {
-        #expect(ControlIslandRailMenuItem.allCases.map(\.title) == ["Favorites…", "Customize Controls…", "Reset Control Position"])
+        #expect(ControlIslandRailMenuItem.allCases.map(\.title) == ["Favorites…", "Customize…", "Reset Control Position"])
         #expect(ControlIslandRailMenuItem.allCases.map(\.symbol) == ["star", "slider.horizontal.3", "arrow.counterclockwise"])
     }
 
     @Test
     func `the optional destinations keep their rail controls`() {
         let additional = ControlIslandItem.allCases.filter { $0.section == .additional }
-        #expect(additional == [.recentTabs, .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates])
+        #expect(additional == [.reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates])
         #expect(Set(ControlIslandItem.defaultOrder) == Set(ControlIslandItem.allCases))
     }
 }

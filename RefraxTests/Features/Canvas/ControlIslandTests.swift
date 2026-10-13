@@ -172,20 +172,19 @@ struct ControlIslandTests {
     }
 
     @Test @MainActor
-    func `the default rail starts without a recent-tabs row and keeps the update badge`() {
+    func `the default rail keeps the update badge`() {
         let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
         #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs, .updates])
-        #expect(!visible.contains(.recentTabs))
         #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0 == .updates })
     }
 
     @Test
-    func `the grip takes the gap under the space picker and favorites follow it`() {
+    func `the space picker and favorites share a plain gap and the grip closes the rail`() {
         let layout = ControlIslandRailLayout(visibleItems: [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs])
         #expect(layout.elements == [
             .row(.windowControls), .line(before: .navigation),
             .row(.navigation), .row(.page), .row(.commandLens), .row(.floatingTabs), .row(.desk),
-            .line(before: .spaces), .row(.spaces), .grip, .row(.favoriteTabs),
+            .line(before: .spaces), .row(.spaces), .gap(before: .favoriteTabs), .row(.favoriteTabs), .grip,
         ])
     }
 
@@ -193,20 +192,20 @@ struct ControlIslandTests {
     func `additional controls gather at the bottom in their customized order`() {
         let layout = ControlIslandRailLayout(visibleItems: [.history, .navigation, .reload, .spaces, .favoriteTabs, .settings, .page])
         #expect(layout.elements == [
-            .row(.navigation), .line(before: .spaces), .row(.spaces), .grip, .row(.favoriteTabs),
+            .row(.navigation), .line(before: .spaces), .row(.spaces), .gap(before: .favoriteTabs), .row(.favoriteTabs),
             .line(before: .page), .row(.page),
-            .line(before: .history), .row(.history), .row(.reload), .row(.settings),
+            .line(before: .history), .row(.history), .row(.reload), .row(.settings), .grip,
         ])
         #expect(layout.rows == [.navigation, .spaces, .favoriteTabs, .page, .history, .reload, .settings])
     }
 
     @Test
-    func `without a space picker the grip ends the main section and never doubles a gap`() {
+    func `the grip closes the rail whatever the rows and a section break is one line`() {
         #expect(ControlIslandRailLayout(visibleItems: [.navigation, .commandLens, .history]).elements
-            == [.row(.navigation), .row(.commandLens), .grip, .row(.history)])
+            == [.row(.navigation), .row(.commandLens), .line(before: .history), .row(.history), .grip])
         #expect(ControlIslandRailLayout(visibleItems: [.navigation, .favoriteTabs, .history]).elements
-            == [.row(.navigation), .line(before: .favoriteTabs), .row(.favoriteTabs), .grip, .row(.history)])
-        #expect(ControlIslandRailLayout(visibleItems: [.history, .settings]).elements == [.grip, .row(.history), .row(.settings)])
+            == [.row(.navigation), .line(before: .favoriteTabs), .row(.favoriteTabs), .line(before: .history), .row(.history), .grip])
+        #expect(ControlIslandRailLayout(visibleItems: [.history, .settings]).elements == [.row(.history), .row(.settings), .grip])
         #expect(ControlIslandRailLayout(visibleItems: [.navigation]).elements == [.row(.navigation), .grip])
         #expect(ControlIslandRailLayout(visibleItems: []).elements == [.grip])
     }
@@ -216,11 +215,11 @@ struct ControlIslandTests {
         let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces]
         let height = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0)
         let rows = ControlIslandPlacement.rowHeight * 8
-        let gaps = ControlIslandPlacement.sectionGap * 3
+        let gaps = ControlIslandPlacement.sectionGap * 2
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
-        #expect(height == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces)
+        let grip = ControlIslandPlacement.contentInset + ControlIslandPlacement.gripSize.height
+        #expect(height == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces + grip)
         #expect(ControlIslandPlacement.gripSize == CGSize(width: 3, height: 18))
-        #expect(ControlIslandPlacement.gripHitHeight > ControlIslandPlacement.sectionGap)
     }
 
     @Test @MainActor
@@ -228,17 +227,18 @@ struct ControlIslandTests {
         let main: [ControlIslandItem] = [.navigation, .spaces, .favoriteTabs]
         let base = ControlIslandPlacement.railHeight(items: main, spaceCount: 1, favoriteCount: 2)
         let withExtras = ControlIslandPlacement.railHeight(items: main + [.history, .settings], spaceCount: 1, favoriteCount: 2)
+        let grip = ControlIslandPlacement.contentInset + ControlIslandPlacement.gripSize.height
         #expect(base == ControlIslandPlacement.contentInset * 2 + ControlIslandPlacement.rowHeight
-            + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2))
+            + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2) + grip)
         #expect(withExtras - base == ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)
         let empty = ControlIslandPlacement.railHeight(items: [], spaceCount: 0, favoriteCount: 0)
-        #expect(empty == ControlIslandPlacement.contentInset * 2 + ControlIslandPlacement.sectionGap)
+        #expect(empty == ControlIslandPlacement.contentInset * 2 + grip)
     }
 
     @Test
     func `Option-click meanings are written into the catalog`() {
         #expect(ControlIslandItem.navigation.detail.contains("⌥-click shows history"))
-        #expect(ControlIslandItem.floatingTabs.detail.contains("⌥-click for recent tabs"))
+        #expect(ControlIslandItem.floatingTabs.detail.contains("Recent tabs"))
         #expect(ControlIslandItem.desk.detail.contains("⌥-click"))
         #expect(ControlIslandItem.updates.symbol == "arrow.down.circle.fill")
     }

@@ -4,6 +4,7 @@ import SwiftUI
 struct ControlIslandCustomizationSheet: View {
     let configuration: ControlIslandConfiguration
     @Environment(\.dismiss) private var dismiss
+    @Environment(BrowserSettings.self) private var settings
     @State private var items: [ControlIslandItemPreference]
     @State private var avoidsPageControls: Bool
     @State private var restsWhenIdle: Bool
@@ -11,7 +12,7 @@ struct ControlIslandCustomizationSheet: View {
 
     private enum Layout {
         static let width: CGFloat = 480
-        static let height: CGFloat = 640
+        static let height: CGFloat = 780
         static let padding: CGFloat = 20
     }
 
@@ -26,9 +27,9 @@ struct ControlIslandCustomizationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Customize Controls")
+                Text("Control Island")
                     .font(.title2.weight(.semibold))
-                Text("Choose what appears. Drag rows to change their order. Additional controls gather below a divider at the bottom; the grip under the spaces moves the rail.")
+                Text("Choose what appears. Drag rows to change their order. Additional controls gather below a divider; the grip at the bottom moves the island.")
                     .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(.secondary)
             }
@@ -51,6 +52,8 @@ struct ControlIslandCustomizationSheet: View {
             .listStyle(.inset)
 
             VStack(alignment: .leading, spacing: 16) {
+                backgroundEditor
+                Divider()
                 Toggle("Rest when the pointer is away or still", isOn: $restsWhenIdle)
                     .help("The glass clears and the symbols fade; moving toward the controls brings them back")
                 Toggle("Carry the space color", isOn: $tintsWithSpaceColor)
@@ -85,6 +88,31 @@ struct ControlIslandCustomizationSheet: View {
         .font(.body)
         .foregroundStyle(.primary)
         .buttonStyle(.automatic)
+    }
+
+    /// The window background behind the island: the same choices as Settings › Appearance.
+    private var backgroundEditor: some View {
+        @Bindable var settings = settings
+        return VStack(alignment: .leading, spacing: 10) {
+            SettingsColorPicker(
+                label: "Window background",
+                selectedColor: $settings.customWindowBackgroundColor,
+                systemColor: Color(.windowBackgroundColor),
+            )
+            Toggle("Tint the window with the space color", isOn: $settings.enableSpaceWindowColoring)
+            Toggle("Tint the window with the website color", isOn: $settings.enableWebsiteWindowColoring)
+            HStack {
+                Text("Blend strength")
+                Spacer()
+                Slider(value: $settings.windowBackgroundMixAmount, in: 0 ... 1)
+                    .frame(width: 200)
+                Text("\(Int(settings.windowBackgroundMixAmount * 100))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 36, alignment: .trailing)
+            }
+        }
     }
 
     private func move(_ id: ControlIslandItem, by offset: Int) {

@@ -6,7 +6,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case navigation
     case commandLens
     case floatingTabs
-    case recentTabs
     case desk
     case spaces
     case favoriteTabs
@@ -37,7 +36,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
         .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs,
-        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .recentTabs, .updates,
+        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates,
     ]
 
     var title: String {
@@ -48,7 +47,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "Copy Link"
         case .commandLens: "Command Lens"
         case .floatingTabs: "Floating tabs"
-        case .recentTabs: "Recent tabs"
         case .desk: "Desk"
         case .spaces: "Spaces"
         case .favoriteTabs: "Favorite tabs"
@@ -70,7 +68,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "link"
         case .commandLens: "sparkle.magnifyingglass"
         case .floatingTabs: "square.on.square"
-        case .recentTabs: "clock.arrow.circlepath"
         case .desk: "rectangle.3.group"
         case .spaces: "square.stack"
         case .favoriteTabs: "star.square.on.square"
@@ -91,8 +88,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
         case .copyLink: "Copy the page address"
         case .commandLens: "Search pages, tabs, and commands · ⌘T"
-        case .floatingTabs: "Reveal your tabs · ⌥-click for recent tabs · Hold Control to peek"
-        case .recentTabs: "Switch between recent tabs · ⌃Tab"
+        case .floatingTabs: "Reveal your tabs · hold ⌥ and it becomes Recent tabs · hold Control to peek"
         case .desk: "Organize tabs on the desk · ⌘⇧\\ · ⌥-click opens the desk with the lab menu in debug builds"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Live favorite tabs as a scrolling column of site icons"
@@ -113,7 +109,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     var section: Section {
         switch self {
         case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs: .main
-        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .recentTabs, .updates: .additional
+        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates: .additional
         }
     }
 

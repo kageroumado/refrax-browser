@@ -35,7 +35,6 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     /// The handle in the gap under the space picker that moves the controls: a 3 × 18-point
     /// vertical capsule, whose hit area reaches into the padding of its neighbors.
     static let gripSize = CGSize(width: 3, height: 18)
-    static let gripHitHeight: CGFloat = 20
 
     /// The rail's height: one row per action, three for the window controls, the space and
     /// favorite columns at their own heights, a gap for every divider and for the grip, and
@@ -49,7 +48,8 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
             case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
             case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount)
             case .row: height + rowHeight
-            case .line, .grip: height + sectionGap
+            case .line, .gap: height + sectionGap
+            case .grip: height + contentInset + gripSize.height
             }
         }
     }

@@ -194,7 +194,7 @@ struct ControlIslandPageBranch: View {
         let asMarkdown = modifierKeys.isOptionPressed
         return control(
             asMarkdown ? "Copy as Markdown Link" : "Copy Address",
-            symbol: showsCopiedFeedback ? "checkmark" : "doc.on.doc",
+            symbol: showsCopiedFeedback ? "checkmark" : "link",
             confirms: showsCopiedFeedback,
         ) {
             if asMarkdown {
