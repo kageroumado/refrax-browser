@@ -122,8 +122,9 @@ struct ControlIsland: View {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
     private var shortcutFrame: CGRect {
-        let x = opensLeft ? frame.minX - 38 : frame.maxX + 8
-        return CGRect(x: x, y: (shortcutRowMidY ?? frame.midY) - 14, width: 30, height: 28)
+        let width: CGFloat = 64
+        let x = opensLeft ? frame.minX - Layout.adjacentGap - width : frame.maxX + Layout.adjacentGap
+        return CGRect(x: x, y: (shortcutRowMidY ?? frame.midY) - 14, width: width, height: 28)
     }
     /// Beside the hand: level with the pointer, on the rail's open side.
     private var dragHintFrame: CGRect {
@@ -168,7 +169,8 @@ struct ControlIsland: View {
                 }
                 if showsShortcut {
                     Button { canvas.toggleFloatingTabs() } label: {
-                        Text(revealKey.glyph).font(.system(size: 16, weight: .medium))
+                        Text("hold \(revealKey.glyph)").font(.system(size: 12, weight: .medium))
+                            .padding(.horizontal, 8)
                             .frame(width: shortcutFrame.width, height: shortcutFrame.height)
                             .contentShape(Rectangle())
                     }

@@ -28,6 +28,10 @@ final class CommandLensManager {
     var inputText: String = ""
     var suggestions: [CommandLensSuggestion] = []
     var selection: CommandLensSelection = .none
+    /// The person chose the selected row with the arrow keys or a click, rather than the lens
+    /// preselecting the first result. While editing the current page's address, Return follows
+    /// the typed text unless the choice was theirs.
+    private(set) var selectionIsExplicit = false
     var isPopupVisible: Bool = false
     var isLoading: Bool = false
     var hoveredSuggestionID: UUID?
@@ -202,6 +206,7 @@ final class CommandLensManager {
     /// In category search mode, only searches within the selected category.
     func onInputChanged(_ text: String) {
         inputText = text
+        selectionIsExplicit = false
 
         searchTask?.cancel()
 
@@ -962,7 +967,7 @@ final class CommandLensManager {
     }
 
     private func calculateInlineCompletion(for input: String, from suggestions: [CommandLensSuggestion]) {
-        guard !input.isEmpty else {
+        guard !input.isEmpty, !isAddressMode else {
             inlineCompletion = nil
             inlineCompletionRange = nil
             return
@@ -1382,6 +1387,14 @@ final class CommandLensManager {
 
         let newIndex = (selection.index + offset + suggestions.count) % suggestions.count
         selection = CommandLensSelection(index: newIndex)
+        selectionIsExplicit = true
+    }
+
+    /// Selects a row the person clicked.
+    func choose(_ suggestion: CommandLensSuggestion) {
+        guard let index = suggestions.firstIndex(where: { $0.id == suggestion.id }) else { return }
+        selection = CommandLensSelection(index: index)
+        selectionIsExplicit = true
     }
 
     func selectNextButton() {
@@ -1431,7 +1444,8 @@ final class CommandLensManager {
         commandKeyHeldDuringCommit = commandKeyHeld
         optionKeyHeldDuringCommit = optionKeyHeld
 
-        guard selection.index != -1, let suggestion = suggestions[safe: selection.index] else {
+        guard selection.index != -1, let suggestion = suggestions[safe: selection.index],
+              !(isAddressMode && !selectionIsExplicit && !inputText.isEmpty) else {
             if !inputText.isEmpty {
                 commitInput(inputText)
             }
