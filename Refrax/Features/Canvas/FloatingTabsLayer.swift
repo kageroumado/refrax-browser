@@ -86,6 +86,11 @@ struct FloatingTabsLayer: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "floatingTabs")
+            // A card never rests against the rail, wherever it was put or the rail has moved since.
+            .onChange(of: RailClearanceKey(isRevealed: canvas.floatingVisibility.isRevealed, rail: windowState.controlIsland.railFrame), initial: true) { _, key in
+                guard key.isRevealed else { return }
+                canvas.keepClearOfRail(canvas.visibleFloatingTabs, in: bounds)
+            }
             .dropDestination(for: FloatingTabDrag.self) { items, point in
                 guard let item = items.first, let tab = canvas.floatingTabs.first(where: { $0.id == item.id }) else { return false }
                 var placement = canvas.floatingPlacement(for: tab)
@@ -107,6 +112,12 @@ struct FloatingTabsLayer: View {
             }
         }
     }
+}
+
+/// What decides whether cards must be pushed clear of the rail: the layer showing, and the rail's frame.
+private struct RailClearanceKey: Equatable {
+    let isRevealed: Bool
+    let rail: CGRect
 }
 
 private struct FloatingTabCard: View {
