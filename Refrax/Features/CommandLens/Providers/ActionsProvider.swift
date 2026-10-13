@@ -24,10 +24,26 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ("favorite current page", "Favorite Current Page", "star", .favoriteCurrentPage),
             ("return look go back activity", "Return to Activity", "arrow.uturn.backward", .returnFromLook),
             ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
+            ("mute this tab silence sound quiet audio", "Mute This Tab", "speaker.slash", .setCurrentTabMuted(true)),
+            ("unmute this tab sound audio", "Unmute This Tab", "speaker.wave.2", .setCurrentTabMuted(false)),
+            ("mute other tabs silence everything else", "Mute Other Tabs", "speaker.slash", .muteOtherTabs),
         ]
         for (terms, title, icon, action) in pageActions where FuzzyMatcher.match(query: query, against: [terms]) >= FuzzyMatcher.minimumMatchScore {
-            results.append(CommandLensSuggestion(type: .appAction(action), text: title,
-                description: "Current page", iconName: icon, groupHeader: groupHeader, isRemovable: false, keywordAction: nil, url: nil))
+            let description = switch action {
+            case .setCurrentTabMuted: "Current tab  ⌃M"
+            case .muteOtherTabs: "Silence every other tab"
+            default: "Current page"
+            }
+            results.append(CommandLensSuggestion(
+                type: .appAction(action),
+                text: title,
+                description: description,
+                iconName: icon,
+                groupHeader: groupHeader,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
         }
 
         // Feedback is always shown when user has typed anything

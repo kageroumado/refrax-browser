@@ -265,6 +265,13 @@ extension MenuBarManager {
         videoViewerItem.target = self
         viewMenu.addItem(videoViewerItem)
 
+        let muteItem = NSMenuItem(title: "Mute Tab", action: #selector(toggleMuteCurrentTab(_:)), keyEquivalent: "m")
+        muteItem.keyEquivalentModifierMask = [.control]
+        muteItem.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: nil)
+        muteItem.tag = MenuItemTag.muteTab.rawValue
+        muteItem.target = self
+        viewMenu.addItem(muteItem)
+
         // Full Screen
         let fullScreenItem = NSMenuItem(
             title: "Enter Full Screen",
@@ -358,6 +365,13 @@ extension MenuBarManager {
         // Needs an active playback session (a video that has started playing);
         // without one the SPI is a silent no-op.
         webPage.toggleInWindowVideo()
+    }
+
+    /// Mutes the current tab, or unmutes it when it is muted.
+    @objc
+    func toggleMuteCurrentTab(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.activeTab else { return }
+        TabMediaControl(tab: tab, pagePool: controller.tabManager.pagePool).toggleMute()
     }
 
     // MARK: - Detail Tray Actions
@@ -477,6 +491,14 @@ extension MenuBarManager {
             let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
             engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
             engineItem.isHidden = target == nil
+        }
+
+        if let muteItem = menu.item(withTag: MenuItemTag.muteTab.rawValue) {
+            let isMuted = activeWindowController.flatMap { controller in
+                controller.windowState.activeTab.map { TabMediaControl(tab: $0, pagePool: controller.tabManager.pagePool).isMuted }
+            } ?? false
+            muteItem.title = isMuted ? "Unmute Tab" : "Mute Tab"
+            muteItem.image = NSImage(systemSymbolName: isMuted ? "speaker.wave.2" : "speaker.slash", accessibilityDescription: nil)
         }
 
         // Find sidebar mode submenu

@@ -1631,6 +1631,14 @@ final class CommandLensManager {
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
                     (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.beginRegionSelection(for: tab)
                 }
+            case let .setCurrentTabMuted(muted):
+                if let tab = windowState.activeTab {
+                    TabMediaControl(tab: tab, pagePool: tabManager.pagePool).setMuted(muted)
+                }
+            case .muteOtherTabs:
+                if let tab = windowState.activeTab {
+                    TabMediaControl.muteOthers(than: tab, in: tabManager.pagePool)
+                }
             }
             closeCurrentLens()
             reset()

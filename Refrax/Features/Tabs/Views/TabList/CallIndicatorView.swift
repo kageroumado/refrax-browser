@@ -41,7 +41,7 @@ struct CallIndicatorView: View {
     @State private var isExpanded = false
     @State private var collapseTask: Task<Void, Never>?
 
-    let callStates: [TabStatusIndicators.CallPageState]
+    let callStates: [TabMediaState.CallPage]
     let webPages: [WebPage]
     let pagesWithIDs: [(TabPage.ID, WebPage)]
 
@@ -246,9 +246,15 @@ struct CallIndicatorView: View {
 
     private func accessibilityDeviceList(_ state: CallState) -> String {
         var devices: [String] = []
-        if state.hasCamera { devices.append("camera") }
-        if state.hasMic { devices.append("microphone") }
-        if state.hasAudio { devices.append("audio") }
+        if state.hasCamera {
+            devices.append("camera")
+        }
+        if state.hasMic {
+            devices.append("microphone")
+        }
+        if state.hasAudio {
+            devices.append("audio")
+        }
 
         if devices.count == 1 {
             return devices[0]

@@ -222,7 +222,12 @@ struct MediaSectionView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(SpaceManager.self) private var spaceManager
     @Environment(TabManager.self) private var tabManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let section: MediaSection
+    /// Go to Tab and Picture in Picture stay open instead of waiting for a click on the row.
+    var showsDetails = false
+    /// Runs after Go to Tab, so a popover can close.
+    var onNavigate: () -> Void = {}
 
     @State private var isExpanded = false
 
@@ -252,16 +257,10 @@ struct MediaSectionView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
         .accessibilityAction(.default) {
-            mediaControlsManager.resetCollapseTimer()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                isExpanded.toggle()
-            }
+            toggleDetails()
         }
         .onTapGesture {
-            mediaControlsManager.resetCollapseTimer()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                isExpanded.toggle()
-            }
+            toggleDetails()
         }
         .opacity(section.isFromCurrentSpace ? 1.0 : 0.7)
         .task {
@@ -273,7 +272,7 @@ struct MediaSectionView: View {
         }
 
         // Expanded details
-        if isExpanded {
+        if isExpanded || showsDetails {
             expandedDetails
                 .transition(.opacity.combined(with: .move(edge: .top)))
         }
@@ -303,23 +302,22 @@ struct MediaSectionView: View {
 
     // MARK: - Artwork
 
+    @ViewBuilder
     private var artworkView: some View {
-        Group {
-            if let artworkURL = section.artworkURL {
-                AsyncImage(url: artworkURL) { phase in
-                    if case let .success(image) = phase {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: Constants.artworkSize, height: Constants.artworkSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    } else {
-                        faviconFallback
-                    }
+        if let artworkURL = section.artworkURL {
+            AsyncImage(url: artworkURL) { phase in
+                if case let .success(image) = phase {
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: Constants.artworkSize, height: Constants.artworkSize)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    faviconFallback
                 }
-            } else {
-                faviconFallback
             }
+        } else {
+            faviconFallback
         }
     }
 
@@ -347,6 +345,21 @@ struct MediaSectionView: View {
 
     private var mediaControls: some View {
         HStack(spacing: 2) {
+            Button {
+                mediaControlsManager.resetCollapseTimer()
+                section.webPage.setAudioMuted(!section.effectivelyMuted)
+            } label: {
+                Image(systemName: section.effectivelyMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(section.effectivelyMuted ? "Unmute" : "Mute")
+            .accessibilityLabel(section.effectivelyMuted ? "Unmute" : "Mute")
+
             // Volume slider (compact)
             Slider(
                 value: Binding(
@@ -388,6 +401,7 @@ struct MediaSectionView: View {
             }
             .buttonStyle(.plain)
             .help(section.isPlaying ? "Pause" : "Play")
+            .accessibilityLabel(section.isPlaying ? "Pause" : "Play")
         }
     }
 
@@ -477,7 +491,7 @@ struct MediaSectionView: View {
                         let page = section.webPage
                         Task { await page.togglePiP() }
                     } label: {
-                        Label("PiP", systemImage: "pip.enter")
+                        Label("Picture in Picture", systemImage: "pip.enter")
                             .font(.system(size: 10))
                     }
                     .disabled(!section.webPage.canTogglePiP)
@@ -491,7 +505,16 @@ struct MediaSectionView: View {
 
     // MARK: - Actions
 
+    private func toggleDetails() {
+        guard !showsDetails else { return }
+        mediaControlsManager.resetCollapseTimer()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            isExpanded.toggle()
+        }
+    }
+
     private func navigateToTab() {
+        defer { onNavigate() }
         if !section.isFromCurrentSpace, let spaceID = section.tab.space?.id {
             Task {
                 await spaceManager.switchToSpace(id: spaceID, for: windowState)
