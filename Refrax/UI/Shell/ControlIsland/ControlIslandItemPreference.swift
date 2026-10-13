@@ -5,5 +5,7 @@ nonisolated struct ControlIslandItemPreference: Codable, Equatable, Identifiable
     let item: ControlIslandItem
     var isVisible: Bool
 
-    var id: ControlIslandItem { item }
+    var id: ControlIslandItem {
+        item
+    }
 }

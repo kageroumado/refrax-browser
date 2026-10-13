@@ -4,7 +4,9 @@ import Foundation
 /// Preserves disclosure while the pointer crosses the space between related controls.
 nonisolated struct ControlIslandHoverPath {
     enum Phase: Equatable {
-        case inside, crossing, outside
+        case inside
+        case crossing
+        case outside
     }
     private var departure: CGPoint?
     private var lastInside = Date.distantPast
@@ -21,8 +23,12 @@ nonisolated struct ControlIslandHoverPath {
     }
 
     static func bridges(_ point: CGPoint, from origin: CGPoint, to target: CGRect) -> Bool {
-        let corners = [CGPoint(x: target.minX, y: target.minY), CGPoint(x: target.maxX, y: target.minY),
-                       CGPoint(x: target.maxX, y: target.maxY), CGPoint(x: target.minX, y: target.maxY)]
+        let corners = [
+            CGPoint(x: target.minX, y: target.minY),
+            CGPoint(x: target.maxX, y: target.minY),
+            CGPoint(x: target.maxX, y: target.maxY),
+            CGPoint(x: target.minX, y: target.maxY),
+        ]
         return corners.indices.contains { index in
             let a = corners[index]
             let b = corners[(index + 1) % corners.count]

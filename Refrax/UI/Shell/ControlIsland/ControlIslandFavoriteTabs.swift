@@ -59,7 +59,11 @@ struct ControlIslandFavoriteTabs: View {
         .onChange(of: windowState.activeTabID) { revealSelection() }
         .onChange(of: favorites.map(\.id)) { finishDrag() }
         .onChange(of: windowState.controlIsland.dismissalRequest) { finishDrag() }
-        .onChange(of: appearsActive) { _, active in if !active { finishDrag() } }
+        .onChange(of: appearsActive) {
+            _, active in if !active {
+                finishDrag()
+            }
+        }
         .onDisappear(perform: finishDrag)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Favorite tabs")
@@ -83,8 +87,10 @@ struct ControlIslandFavoriteTabs: View {
             Capsule()
                 .fill(.primary)
                 .frame(width: Layout.insertionWidth, height: Layout.insertionHeight)
-                .offset(y: min(Self.height(for: favorites.count) - Layout.insertionHeight,
-                               max(0, CGFloat(index) * CompactTabButton.Layout.buttonHeight - scrollOffset)))
+                .offset(y: min(
+                    Self.height(for: favorites.count) - Layout.insertionHeight,
+                    max(0, CGFloat(index) * CompactTabButton.Layout.buttonHeight - scrollOffset),
+                ))
                 .allowsHitTesting(false)
         }
     }
@@ -136,7 +142,9 @@ struct ControlIslandFavoriteTabs: View {
             draggedID = favoriteID
             windowState.controlIsland.isReorderingFavorites = true
         case .ended, .dataTransferCompleted:
-            if dragSessionID == session.id { finishDrag() }
+            if dragSessionID == session.id {
+                finishDrag()
+            }
         @unknown default:
             finishDrag()
         }
@@ -156,7 +164,9 @@ struct ControlIslandFavoriteTabs: View {
             tabSwitcher.cancel()
             windowState.closeCommandLens()
             canvas.openFloatingTab(tab)
-            if let bookmark = favorite.bookmark { bookmarks.recordVisit(for: bookmark) }
+            if let bookmark = favorite.bookmark {
+                bookmarks.recordVisit(for: bookmark)
+            }
         } label: {
             ControlIslandFavoriteIcon(favorite: favorite, tab: tab, isSelected: selected)
         }
@@ -189,5 +199,4 @@ struct ControlIslandFavoriteTabs: View {
         Button("Move Down", action: { moveFavorite(favorite.id, by: 1) })
             .disabled(isLast)
     }
-
 }

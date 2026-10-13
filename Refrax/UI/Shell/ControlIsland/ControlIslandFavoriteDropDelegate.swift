@@ -11,7 +11,9 @@ struct ControlIslandFavoriteDropDelegate: DropDelegate {
         isActive && info.hasItemsConforming(to: [ControlIslandFavoriteDrag.contentType])
     }
 
-    func dropEntered(info: DropInfo) { onUpdate(info.location) }
+    func dropEntered(info: DropInfo) {
+        onUpdate(info.location)
+    }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .cancel) }
@@ -19,7 +21,9 @@ struct ControlIslandFavoriteDropDelegate: DropDelegate {
         return DropProposal(operation: .move)
     }
 
-    func dropExited(info _: DropInfo) { onExit() }
+    func dropExited(info _: DropInfo) {
+        onExit()
+    }
 
     func performDrop(info: DropInfo) -> Bool {
         validateDrop(info: info) && onDrop(info.location)

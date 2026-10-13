@@ -16,9 +16,9 @@ enum ControlIslandAvoidance {
 
         let padded = visible.map { $0.insetBy(dx: -clearance, dy: -clearance) }
         let horizontal = padded.filter { $0.minY < frame.maxY && $0.maxY > frame.minY }
-            .map { ($0.minX - frame.width)...$0.maxX }
+            .map { ($0.minX - frame.width) ... $0.maxX }
         let vertical = padded.filter { $0.minX < frame.maxX && $0.maxX > frame.minX }
-            .map { ($0.minY - frame.height)...$0.maxY }
+            .map { ($0.minY - frame.height) ... $0.maxY }
         let candidates = clearBoundaries(around: frame.minX, intervals: horizontal).map { CGPoint(x: $0, y: frame.minY) }
             + clearBoundaries(around: frame.minY, intervals: vertical).map { CGPoint(x: frame.minX, y: $0) }
         let area = bounds.insetBy(dx: ControlIslandPlacement.margin, dy: ControlIslandPlacement.margin)
@@ -34,9 +34,11 @@ enum ControlIslandAvoidance {
         guard var merged = sorted.first else { return [] }
         for interval in sorted.dropFirst() {
             if interval.lowerBound < merged.upperBound {
-                merged = merged.lowerBound...max(merged.upperBound, interval.upperBound)
+                merged = merged.lowerBound ... max(merged.upperBound, interval.upperBound)
             } else {
-                if merged.lowerBound < position && position < merged.upperBound { break }
+                if merged.lowerBound < position, position < merged.upperBound {
+                    break
+                }
                 merged = interval
             }
         }
@@ -75,8 +77,12 @@ enum ControlIslandAvoidance {
         let scaleY = native.height / sample.height
         return sample.rects.compactMap { rect in
             guard rect.count == 4, rect.allSatisfy(\.isFinite) else { return nil }
-            return CGRect(x: origin.x + rect[0] * scaleX, y: origin.y + rect[1] * scaleY,
-                          width: rect[2] * scaleX, height: rect[3] * scaleY)
+            return CGRect(
+                x: origin.x + rect[0] * scaleX,
+                y: origin.y + rect[1] * scaleY,
+                width: rect[2] * scaleX,
+                height: rect[3] * scaleY,
+            )
         }
     }
 

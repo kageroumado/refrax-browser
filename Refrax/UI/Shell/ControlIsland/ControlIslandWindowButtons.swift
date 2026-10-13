@@ -27,7 +27,9 @@ final class ControlIslandWindowButtonGroup: NSView {
         self?.refreshRolloverFromPointer()
     }
 
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
 
     init() {
         super.init(frame: .zero)
@@ -45,40 +47,61 @@ final class ControlIslandWindowButtonGroup: NSView {
         setAccessibilityElement(false)
     }
 
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     override func layout() {
         super.layout()
         for (index, button) in buttons.enumerated() {
-            let frame = CGRect(x: 0, y: CGFloat(index) * ControlIslandPlacement.rowHeight,
-                               width: bounds.width, height: ControlIslandPlacement.rowHeight)
-            if button.frame != frame { button.frame = frame }
+            let frame = CGRect(
+                x: 0,
+                y: CGFloat(index) * ControlIslandPlacement.rowHeight,
+                width: bounds.width,
+                height: ControlIslandPlacement.rowHeight,
+            )
+            if button.frame != frame {
+                button.frame = frame
+            }
         }
         refreshRolloverFromPointer()
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let groupTrackingArea { removeTrackingArea(groupTrackingArea) }
+        if let groupTrackingArea {
+            removeTrackingArea(groupTrackingArea)
+        }
         groupTrackingArea = nil
         let rect = bounds.intersection(visibleRect)
         guard !rect.isEmpty else {
             refreshRolloverFromPointer()
             return
         }
-        let area = NSTrackingArea(rect: rect,
-                                  options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways], owner: self)
+        let area = NSTrackingArea(
+            rect: rect,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
+            owner: self,
+        )
         addTrackingArea(area)
         groupTrackingArea = area
         refreshRolloverFromPointer()
     }
 
-    override func mouseEntered(with event: NSEvent) { updateRollover(at: event.locationInWindow) }
-    override func mouseMoved(with event: NSEvent) { updateRollover(at: event.locationInWindow) }
-    override func mouseExited(with event: NSEvent) { updateRollover(at: event.locationInWindow) }
+    override func mouseEntered(with event: NSEvent) {
+        updateRollover(at: event.locationInWindow)
+    }
+    override func mouseMoved(with event: NSEvent) {
+        updateRollover(at: event.locationInWindow)
+    }
+    override func mouseExited(with event: NSEvent) {
+        updateRollover(at: event.locationInWindow)
+    }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        if let pointerMonitor {
+            NSEvent.removeMonitor(pointerMonitor)
+        }
         pointerMonitor = nil
         isPointerInside = false
         setRollover(false)
@@ -105,7 +128,9 @@ final class ControlIslandWindowButtonGroup: NSView {
     }
 
     isolated deinit {
-        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        if let pointerMonitor {
+            NSEvent.removeMonitor(pointerMonitor)
+        }
     }
 
     private func refreshRolloverFromPointer() {
@@ -137,11 +162,10 @@ final class ControlIslandWindowButtonGroup: NSView {
 
     func updateAccessibilityLabels() {
         for button in buttons {
-            let title: String
-            switch NSWindow.ButtonType(rawValue: UInt(button.tag)) {
-            case .closeButton: title = "Close window"
-            case .miniaturizeButton: title = "Minimize window"
-            default: title = window?.styleMask.contains(.fullScreen) == true ? "Exit full screen" : "Full screen"
+            let title: String = switch NSWindow.ButtonType(rawValue: UInt(button.tag)) {
+            case .closeButton: "Close window"
+            case .miniaturizeButton: "Minimize window"
+            default: window?.styleMask.contains(.fullScreen) == true ? "Exit full screen" : "Full screen"
             }
             button.setAccessibilityLabel(title)
             button.toolTip = title
@@ -162,7 +186,8 @@ final class ControlIslandWindowButtonGroup: NSView {
         }
     }
 
-    @objc private func performWindowAction(_ sender: NSButton) {
+    @objc
+    private func performWindowAction(_ sender: NSButton) {
         switch NSWindow.ButtonType(rawValue: UInt(sender.tag)) {
         case .closeButton: window?.performClose(sender)
         case .miniaturizeButton: window?.miniaturize(sender)
