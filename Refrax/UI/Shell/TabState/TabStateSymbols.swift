@@ -81,6 +81,9 @@ struct TabStateSymbols: View {
             control.setCameraMuted(!isMuted)
         case let .capture(.microphone(isMuted)):
             control.setMicrophoneMuted(!isMuted)
+        case .capture(.cameraAndMicrophone):
+            control.setCameraMuted(true)
+            control.setMicrophoneMuted(true)
         case let .audio(isMuted):
             if !isMuted, NSEvent.modifierFlags.contains(.option) {
                 control.pauseMedia()

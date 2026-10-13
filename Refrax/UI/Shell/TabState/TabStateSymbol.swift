@@ -4,7 +4,8 @@ import Foundation
 nonisolated enum TabStateSymbol: Hashable, Identifiable {
     /// A page plays sound while it captures: the call's sound, muted or not. Click mutes it.
     case call(isMuted: Bool)
-    /// The camera, or the microphone when the camera is off, in use or muted. Click toggles it.
+    /// The camera or the microphone. A live device always wins the symbol; a muted one shows
+    /// only while nothing captures. Click turns a live device off and a muted one on.
     case capture(Capture)
     /// Sound plays, or the tab is muted. Click mutes or unmutes; ⌥-click pauses.
     case audio(isMuted: Bool)
@@ -18,6 +19,16 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
     nonisolated enum Capture: Hashable {
         case camera(isMuted: Bool)
         case microphone(isMuted: Bool)
+        /// Both devices are live. Click turns both off.
+        case cameraAndMicrophone
+
+        /// A device is recording now.
+        var isLive: Bool {
+            switch self {
+            case let .camera(isMuted), let .microphone(isMuted): !isMuted
+            case .cameraAndMicrophone: true
+            }
+        }
     }
 
     /// The most symbols a tab carries; more would crowd the title.
@@ -41,7 +52,10 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
     ) -> [Self] {
         symbols(
             call: state.isInCall ? state.isCallAudioMuted : nil,
-            capture: capture(for: state),
+            capture: capture(
+                isCameraLive: state.isCameraActive, isCameraMuted: state.isCameraMuted,
+                isMicrophoneLive: state.isMicrophoneActive, isMicrophoneMuted: state.isMicrophoneMuted,
+            ),
             audio: !state.isInCall && (state.isPlayingAudio || state.isTabMuted) ? (state.isTabMuted || state.isAudioMuted) : nil,
             isCrashed: state.recentlyCrashed || state.isUnresponsive,
             isSuspended: isSuspended,
@@ -49,7 +63,8 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
         )
     }
 
-    /// The priority rule on its own: `nil` means the state is absent.
+    /// The priority rule on its own: `nil` means the state is absent. A live capture is never
+    /// dropped by the cap: the call or sound symbol gives way to it.
     static func symbols(
         call: Bool?, capture: Capture?, audio: Bool?, isCrashed: Bool, isSuspended: Bool, isUnread: Bool,
     ) -> [Self] {
@@ -72,17 +87,42 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
         if isUnread {
             symbols.append(.unread)
         }
-        return Array(symbols.prefix(maximumCount))
+        var shown = Array(symbols.prefix(maximumCount))
+        if let capture, capture.isLive, !shown.contains(.capture(capture)) {
+            if let index = shown.lastIndex(where: {
+                if case .call = $0 {
+                    true
+                } else if case .audio = $0 {
+                    true
+                } else {
+                    false
+                }
+            }) {
+                shown.remove(at: index)
+            } else {
+                shown.removeLast()
+            }
+            shown.append(.capture(capture))
+        }
+        return shown
     }
 
-    private static func capture(for state: TabMediaState) -> Capture? {
-        if state.hasCamera {
-            return .camera(isMuted: !state.isCameraActive)
+    /// Which device the capture symbol shows: both when both are live, else the live one
+    /// (camera first), and a muted device only when nothing is live.
+    static func capture(isCameraLive: Bool, isCameraMuted: Bool, isMicrophoneLive: Bool, isMicrophoneMuted: Bool) -> Capture? {
+        switch (isCameraLive, isMicrophoneLive) {
+        case (true, true): .cameraAndMicrophone
+        case (true, false): .camera(isMuted: false)
+        case (false, true): .microphone(isMuted: false)
+        case (false, false):
+            if isCameraMuted {
+                .camera(isMuted: true)
+            } else if isMicrophoneMuted {
+                .microphone(isMuted: true)
+            } else {
+                nil
+            }
         }
-        if state.hasMicrophone {
-            return .microphone(isMuted: !state.isMicrophoneActive)
-        }
-        return nil
     }
 
     /// The SF Symbol; `optionIsDown` turns playing sound into the pause it offers.
@@ -93,6 +133,7 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
         case .capture(.camera(isMuted: true)): "video.slash.fill"
         case .capture(.microphone(isMuted: false)): "mic.fill"
         case .capture(.microphone(isMuted: true)): "mic.slash.fill"
+        case .capture(.cameraAndMicrophone): "video.fill"
         case .audio(isMuted: false): optionIsDown ? "pause.fill" : "speaker.wave.2.fill"
         case .audio(isMuted: true): "speaker.slash.fill"
         case .crashed: "exclamationmark.triangle.fill"
@@ -109,6 +150,7 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
         case .capture(.camera(isMuted: true)): "Camera off"
         case .capture(.microphone(isMuted: false)): "Microphone in use"
         case .capture(.microphone(isMuted: true)): "Microphone muted"
+        case .capture(.cameraAndMicrophone): "Camera and microphone in use"
         case .audio(isMuted: false): "Playing sound"
         case .audio(isMuted: true): "Muted"
         case .crashed: "Page stopped working"
@@ -126,6 +168,7 @@ nonisolated enum TabStateSymbol: Hashable, Identifiable {
         case .capture(.camera(isMuted: true)): "Turn on camera"
         case .capture(.microphone(isMuted: false)): "Mute microphone"
         case .capture(.microphone(isMuted: true)): "Unmute microphone"
+        case .capture(.cameraAndMicrophone): "Turn off camera and microphone"
         case .audio(isMuted: false): optionIsDown ? "Pause media" : "Mute\(muteKey) · ⌥-click to pause"
         case .audio(isMuted: true): "Unmute\(muteKey)"
         case .crashed: isCurrentTab ? "Reload · ⌘R" : "Reload"

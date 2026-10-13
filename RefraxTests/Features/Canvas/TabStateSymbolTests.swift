@@ -15,6 +15,37 @@ struct TabStateSymbolTests {
     }
 
     @Test
+    func `a live device always wins the capture symbol over a muted one`() {
+        #expect(TabStateSymbol.capture(isCameraLive: false, isCameraMuted: true, isMicrophoneLive: true, isMicrophoneMuted: false)
+            == .microphone(isMuted: false))
+        #expect(TabStateSymbol.capture(isCameraLive: true, isCameraMuted: false, isMicrophoneLive: false, isMicrophoneMuted: true)
+            == .camera(isMuted: false))
+        #expect(TabStateSymbol.capture(isCameraLive: true, isCameraMuted: false, isMicrophoneLive: true, isMicrophoneMuted: false)
+            == .cameraAndMicrophone)
+        #expect(TabStateSymbol.capture(isCameraLive: false, isCameraMuted: true, isMicrophoneLive: false, isMicrophoneMuted: true)
+            == .camera(isMuted: true))
+        #expect(TabStateSymbol.capture(isCameraLive: false, isCameraMuted: false, isMicrophoneLive: false, isMicrophoneMuted: true)
+            == .microphone(isMuted: true))
+        #expect(TabStateSymbol.capture(isCameraLive: false, isCameraMuted: false, isMicrophoneLive: false, isMicrophoneMuted: false) == nil)
+    }
+
+    @Test
+    func `both live devices are named together and turned off together`() {
+        let both = TabStateSymbol.capture(.cameraAndMicrophone)
+        #expect(both.label == "Camera and microphone in use")
+        #expect(both.help() == "Turn off camera and microphone")
+    }
+
+    @Test
+    func `a live capture is never dropped by the two-symbol cap`() {
+        for capture: TabStateSymbol.Capture in [.camera(isMuted: false), .microphone(isMuted: false), .cameraAndMicrophone] {
+            let shown = TabStateSymbol.symbols(call: false, capture: capture, audio: false, isCrashed: true, isSuspended: true, isUnread: true)
+            #expect(shown.count == 2)
+            #expect(shown.contains(.capture(capture)))
+        }
+    }
+
+    @Test
     func `sound offers mute, then pause under Option, and names the key only on the current tab`() {
         let playing = TabStateSymbol.audio(isMuted: false)
         #expect(playing.systemImage() == "speaker.wave.2.fill")
