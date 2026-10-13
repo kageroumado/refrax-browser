@@ -11,14 +11,10 @@ struct PageMenuExtension: Identifiable {
     let isEnabled: Bool
 }
 
-/// Popover content showing page information and actions.
+/// The page menu: zoom, copy and share, screenshots, recording, Find, Reader, Calm, the
+/// extensions' page actions, and the connection, website settings, and cookies.
 ///
-/// Displays:
-/// - Zoom controls
-/// - Quick actions (copy URL, share, screenshot)
-/// - Page tools (record, find, reader mode)
-/// - Extensions
-/// - Security & settings
+/// The sidebar's address bar shows it alone; the page card shows it above the tab's actions.
 struct PageMenuContent: View {
     let certificateInfo: CertificateInfo?
     let serverTrust: SecTrust?
@@ -45,7 +41,8 @@ struct PageMenuContent: View {
     let onShowCookies: () -> Void
     let onExtensionAction: (String) -> Void
 
-    private enum Layout {
+    /// The menu's measurements; the page card lays its tab rows out with the same ones.
+    nonisolated enum Layout {
         static let width: CGFloat = 280
         static let popoverPadding: CGFloat = 8
         static let groupSpacing: CGFloat = 6
@@ -428,15 +425,14 @@ private struct RecordingButton: View {
         .onHover { isHovered = $0 }
     }
 
+    @ViewBuilder
     private var buttonBackground: some View {
-        Group {
-            if isRecording {
-                Color.red.opacity(isHovered ? 0.2 : 0.1)
-            } else if isHovered {
-                Color.appAccentColor.opacity(0.1)
-            } else {
-                Color.clear
-            }
+        if isRecording {
+            Color.red.opacity(isHovered ? 0.2 : 0.1)
+        } else if isHovered {
+            Color.appAccentColor.opacity(0.1)
+        } else {
+            Color.clear
         }
     }
 
@@ -454,5 +450,55 @@ private struct RecordingButton: View {
         let minutes = Int(elapsed) / 60
         let seconds = Int(elapsed) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+extension PageMenuContent {
+    /// The menu bound to `actions`. `dismiss` closes the popover before an action runs. Find on
+    /// Page, Reader, Website Settings, and Cookies stay with the caller, which presents them.
+    init(
+        actions: PageMenuActions,
+        isReaderAvailable: Bool,
+        dismiss: @escaping () -> Void,
+        onFindOnPage: @escaping () -> Void,
+        onReaderMode: @escaping () -> Void,
+        onWebpageSettings: @escaping () -> Void,
+        onShowCookies: @escaping () -> Void,
+    ) {
+        func closing(_ action: @escaping () -> Void) -> () -> Void {
+            {
+                dismiss()
+                action()
+            }
+        }
+        self.init(
+            certificateInfo: actions.webPage?.certificateInfo,
+            serverTrust: actions.webPage?.serverTrust,
+            currentZoom: actions.currentZoom,
+            extensions: actions.installedExtensions,
+            isReaderAvailable: isReaderAvailable,
+            isReaderActive: actions.isReaderActive,
+            isRecording: actions.recording.isRecording,
+            recordingStartTime: actions.recording.recordingStartTime,
+            isPageCalmed: actions.isPageCalmed,
+            onZoomChanged: actions.setZoom,
+            onCopyURL: closing(actions.copyCleanURL),
+            onShare: closing(actions.share),
+            onScreenshotFullPage: closing { actions.takeScreenshot(mode: .fullPage) },
+            onScreenshotVisibleArea: closing { actions.takeScreenshot(mode: .visibleArea) },
+            onScreenshotSelection: closing { actions.takeScreenshot(mode: .selection) },
+            onScreenshotWindow: closing { actions.takeScreenshot(mode: .window) },
+            onStartRecording: closing(actions.startRecording),
+            onStopRecording: closing(actions.stopRecording),
+            onFindOnPage: closing(onFindOnPage),
+            onReaderMode: closing(onReaderMode),
+            onToggleCalm: closing(actions.toggleCalmPage),
+            onWebpageSettings: closing(onWebpageSettings),
+            onShowCookies: closing(onShowCookies),
+            onExtensionAction: { id in
+                dismiss()
+                actions.triggerExtension(id)
+            },
+        )
     }
 }

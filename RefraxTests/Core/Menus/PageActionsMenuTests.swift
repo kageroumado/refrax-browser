@@ -137,4 +137,18 @@ struct PageActionsMenuTests {
         #expect(Array(topLevel(tree).suffix(4)) == ["Update Saved Address", "Duplicate Tab", "——", "Close Tab"])
         #expect(!tree.ids.contains("tab.select"))
     }
+
+    @Test
+    func `the page card's options popover lists the tab actions as the page card menu ends`() throws {
+        let fixture = try Fixture()
+        _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
+        let rows = PageCardOptionsPopover.tabTree(
+            for: fixture.active, area: fixture.area, windowState: fixture.window, tabs: fixture.env.tabManager,
+            bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas,
+        )
+        #expect(rows.outline == ["Keep Visible", "Show as Preview", "——", "Select for Group", "Duplicate Tab", "Close Tab"])
+        let card = fixture.tree(for: fixture.active, surface: .pageCard)
+        #expect(Array(card.outline.suffix(rows.outline.count)) == rows.outline)
+        #expect(rows.ids.allSatisfy { $0.hasPrefix("tab.") })
+    }
 }

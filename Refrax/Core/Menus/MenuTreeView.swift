@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Renders a ``MenuTree`` as the content of a SwiftUI `Menu` or `.contextMenu`.
+/// Renders a ``MenuTree`` as SwiftUI rows: the content of a `Menu` or `.contextMenu`, or, under
+/// ``PageMenuRowButtonStyle`` and `.menuStyle(.button)`, the rows of a popover.
 ///
 /// Row identity is positional because every tree is rebuilt when its menu opens.
 struct MenuTreeView: View {

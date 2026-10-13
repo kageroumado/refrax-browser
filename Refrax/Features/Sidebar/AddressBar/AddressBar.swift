@@ -93,23 +93,21 @@ struct AddressBar: View {
         addressBarContext?.isLensVisible ?? windowState.showsAnchoredLens
     }
 
-    /// Extensions to display in the page menu.
-    private var pageMenuExtensions: [PageMenuExtension] {
-        extensionManager.installedExtensions
-            .filter(\.isEnabled)
-            .map { ext in
-                let icon: NSImage? = if let iconData = ext.iconData {
-                    NSImage(data: iconData)
-                } else {
-                    nil
-                }
-                return PageMenuExtension(
-                    id: ext.uniqueIdentifier,
-                    name: ext.displayName,
-                    icon: icon,
-                    isEnabled: true,
-                )
-            }
+    /// The page menu's actions, bound to the page this bar shows.
+    private var pageMenuActions: PageMenuActions {
+        PageMenuActions(
+            webPage: webPage,
+            url: url,
+            windowState: windowState,
+            sharing: sharingCoordinator,
+            screenshots: screenshotCoordinator,
+            recording: recordingCoordinator,
+            downloads: downloadManager,
+            extensions: extensionManager,
+            readerMode: readerModeManager,
+            siteSettings: siteSettingsManager,
+            pagePool: pagePool,
+        )
     }
 
     var body: some View {
@@ -329,18 +327,6 @@ struct AddressBar: View {
 
     // MARK: - Trailing Controls
 
-    private var certificateInfo: CertificateInfo? {
-        webPage?.certificateInfo
-    }
-
-    private var serverTrust: SecTrust? {
-        webPage?.serverTrust
-    }
-
-    private var currentZoom: Int {
-        webPage?.currentZoom ?? 100
-    }
-
     private var hasActivePage: Bool {
         url != nil
     }
@@ -364,78 +350,19 @@ struct AddressBar: View {
                     .if(showsPageMenu) { view in
                         view.popover(isPresented: $showsPageMenu, arrowEdge: .bottom) {
                             PageMenuContent(
-                                certificateInfo: certificateInfo,
-                                serverTrust: serverTrust,
-                                currentZoom: currentZoom,
-                                extensions: pageMenuExtensions,
+                                actions: pageMenuActions,
                                 isReaderAvailable: isReaderAvailable,
-                                isReaderActive: isReaderActive,
-                                isRecording: recordingCoordinator.isRecording,
-                                recordingStartTime: recordingCoordinator.recordingStartTime,
-                                isPageCalmed: url.map { siteSettingsManager.isCalmPage(for: $0) } ?? false,
-                                onZoomChanged: { newZoom in
-                                    webPage?.setZoom(newZoom)
-                                },
-                                onCopyURL: {
-                                    showsPageMenu = false
-                                    copyCleanURL()
-                                },
-                                onShare: {
-                                    showsPageMenu = false
-                                    shareCurrentPage()
-                                },
-                                onScreenshotFullPage: {
-                                    showsPageMenu = false
-                                    takeScreenshot(mode: .fullPage)
-                                },
-                                onScreenshotVisibleArea: {
-                                    showsPageMenu = false
-                                    takeScreenshot(mode: .visibleArea)
-                                },
-                                onScreenshotSelection: {
-                                    showsPageMenu = false
-                                    takeScreenshot(mode: .selection)
-                                },
-                                onScreenshotWindow: {
-                                    showsPageMenu = false
-                                    takeScreenshot(mode: .window)
-                                },
-                                onStartRecording: {
-                                    showsPageMenu = false
-                                    startRecording()
-                                },
-                                onStopRecording: {
-                                    showsPageMenu = false
-                                    stopRecording()
-                                },
+                                dismiss: { showsPageMenu = false },
                                 onFindOnPage: {
-                                    showsPageMenu = false
                                     if let context = addressBarContext {
                                         context.onShowFindNavigator()
                                     } else {
                                         windowState.showFindNavigator()
                                     }
                                 },
-                                onReaderMode: {
-                                    showsPageMenu = false
-                                    toggleReaderMode()
-                                },
-                                onToggleCalm: {
-                                    showsPageMenu = false
-                                    toggleCalmPage()
-                                },
-                                onWebpageSettings: {
-                                    showsPageMenu = false
-                                    showsWebpageSettings = true
-                                },
-                                onShowCookies: {
-                                    showsPageMenu = false
-                                    showsSiteCookies = true
-                                },
-                                onExtensionAction: { extensionID in
-                                    showsPageMenu = false
-                                    handleExtensionAction(extensionID)
-                                },
+                                onReaderMode: toggleReaderMode,
+                                onWebpageSettings: { showsWebpageSettings = true },
+                                onShowCookies: { showsSiteCookies = true },
                             )
                         }
                     }
@@ -451,7 +378,7 @@ struct AddressBar: View {
                     }
 
                 // Copy link button is always rightmost for easy access
-                AddressBarCopyLinkButton(copyURL: copyCleanURL, copyMarkdown: copyAsMarkdown)
+                AddressBarCopyLinkButton(copyURL: pageMenuActions.copyCleanURL, copyMarkdown: pageMenuActions.copyAsMarkdown)
             }
         }
     }
@@ -502,129 +429,17 @@ struct AddressBar: View {
 
     // MARK: - Actions
 
-    /// Copies the current URL to the clipboard with tracking parameters removed.
-    private func copyCleanURL() {
-        guard let url else { return }
-        let cleanURL = url.removingTrackingParameters()
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(cleanURL.absoluteString, forType: .string)
-    }
-
-    /// Copies the current URL as a Markdown link: `[Title](URL)`
-    private func copyAsMarkdown() {
-        guard let url else { return }
-        let cleanURL = url.removingTrackingParameters()
-        let title = webPage?.title ?? cleanURL.host ?? "Link"
-        let markdown = "[\(title)](\(cleanURL.absoluteString))"
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(markdown, forType: .string)
-    }
-
-    /// Shares the current page URL using the system share sheet.
-    private func shareCurrentPage() {
-        guard let url else { return }
-        let cleanURL = url.removingTrackingParameters()
-        let title = webPage?.title
-        sharingCoordinator.shareURL(cleanURL, title: title)
-    }
-
-    /// Takes a screenshot of the current page or window.
-    private func takeScreenshot(mode: ScreenshotMode) {
-        let window = windowState.window
-
-        // Window mode doesn't need a webPage — it captures the entire window.
-        if mode == .window {
-            let customPath = webPage?.tabPage.tab?.space?.customDownloadPath
-            let saveDirectory = downloadManager.downloadDirectory(for: customPath)
-
-            Task {
-                // Wait for popovers/menus to finish dismissing before capturing the window.
-                try? await Task.sleep(for: .milliseconds(500))
-
-                let result = await screenshotCoordinator.captureWindow(
-                    window: window,
-                    saveDirectory: saveDirectory,
-                )
-                if case let .failed(error) = result {
-                    Logger.error("Screenshot failed: \(error)", category: Logger.navigation)
-                }
-            }
-            return
-        }
-
-        guard let webPage else { return }
-
-        // Resolve save directory from space settings (same as downloads)
-        let customPath = webPage.tabPage.tab?.space?.customDownloadPath
-        let saveDirectory = downloadManager.downloadDirectory(for: customPath)
-
-        Task {
-            let result: ScreenshotResult = switch mode {
-            case .fullPage:
-                await screenshotCoordinator.captureFullPage(webPage: webPage, in: window, saveDirectory: saveDirectory)
-            case .visibleArea:
-                await screenshotCoordinator.captureVisibleArea(webPage: webPage, in: window, saveDirectory: saveDirectory)
-            case .selection:
-                await screenshotCoordinator.captureSelectedElement(webPage: webPage, in: window, saveDirectory: saveDirectory)
-            case .window:
-                preconditionFailure("Handled above")
-            }
-
-            if case let .failed(error) = result {
-                Logger.error("Screenshot failed: \(error)", category: Logger.navigation)
-            }
-        }
-    }
-
-    /// Starts recording the current tab.
-    private func startRecording() {
-        guard let webPage else { return }
-        let window = windowState.window
-
-        // Resolve save directory from space settings (same as downloads)
-        let customPath = webPage.tabPage.tab?.space?.customDownloadPath
-        let saveDirectory = downloadManager.downloadDirectory(for: customPath)
-
-        recordingCoordinator.startRecording(webPage: webPage, in: window, saveDirectory: saveDirectory)
-    }
-
-    /// Stops the current recording.
-    private func stopRecording() {
-        Task {
-            _ = await recordingCoordinator.stopRecording()
-        }
-    }
-
-    /// Handles an extension action from the page menu.
-    ///
-    /// Triggers the extension's page action, which may show a popup.
-    private func handleExtensionAction(_ extensionID: String) {
-        Task {
-            await extensionManager.triggerPageAction(for: extensionID, in: webPage)
-        }
-    }
-
     /// Toggles Reader Mode for the current page.
     private func toggleReaderMode() {
-        guard let webPage else { return }
-        Task {
-            await toggleReader(for: webPage)
+        Task(name: "Toggle Reader from the address bar") {
+            await toggleReader()
         }
     }
 
-    /// Toggles Reader Mode and, when the page is too long for Reader, hides the button and says so.
-    private func toggleReader(for webPage: WebPage) async {
-        guard await readerModeManager.toggleReader(for: webPage) == .tooLong else { return }
+    /// Toggles Reader Mode and, when the page is too long for Reader, hides the button.
+    private func toggleReader() async {
+        guard await pageMenuActions.toggleReader() == .tooLong else { return }
         isReaderAvailable = false
-        windowState.showToast("This page is too long for Reader")
-    }
-
-    /// Toggles "Calm This Page" for the current domain and applies it to
-    /// every live page of that domain.
-    private func toggleCalmPage() {
-        guard let url, let host = url.host else { return }
-        let calmed = siteSettingsManager.toggleCalmPage(for: url)
-        pagePool.applyCalm(calmed, toHost: host)
     }
 
     /// Checks if Reader Mode is available for the current page.
@@ -658,7 +473,7 @@ struct AddressBar: View {
                let url = webPage.url,
                let settings = siteSettingsManager.settings(for: url),
                settings.useReaderWhenAvailable {
-                await toggleReader(for: webPage)
+                await toggleReader()
             }
         }
     }

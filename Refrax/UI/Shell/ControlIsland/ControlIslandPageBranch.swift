@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The current page as one card beside the rail: its icon, title, and domain, with reload,
-/// favorite, and the page actions. Tapping the identity opens the Command Lens in the card's
-/// place with the address in it.
+/// The current page as one card beside the rail: its icon, title, and domain, then Reload,
+/// Favorite, Copy Address while the pointer is on the card, and the page options. Tapping the
+/// identity opens the Command Lens in the card's place with the address in it.
 struct ControlIslandPageBranch: View {
     let area: CGRect
     let frame: CGRect
@@ -11,15 +11,30 @@ struct ControlIslandPageBranch: View {
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(EngineRegistry.self) private var engineRegistry
+    @Environment(ModifierKeysState.self) private var modifierKeys
     @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsOptions = false
+    @State private var showsWebpageSettings = false
+    @State private var showsSiteCookies = false
+    @State private var showsCopiedFeedback = false
 
     private enum Layout {
         static let faviconSize: CGFloat = 18
         static let titleSize: CGFloat = 12.5
         static let domainSize: CGFloat = 11
+        /// From the card's leading edge to the favicon.
         static let leadingInset: CGFloat = 12
+        /// From the favicon to the title and domain.
+        static let faviconGap: CGFloat = 9
+        /// From the identity to the first control.
+        static let identityGap: CGFloat = 6
+        /// Every control is one square target of this size.
+        static let controlSize: CGFloat = 30
+        static let controlSpacing: CGFloat = 2
+        /// From the last control to the card's trailing edge.
         static let trailingInset: CGFloat = 6
-        static let actionSize: CGFloat = 30
+        static let copiedFeedback: TimeInterval = 1.5
     }
 
     private var tab: Tab? {
@@ -37,14 +52,19 @@ struct ControlIslandPageBranch: View {
     private var isLoading: Bool {
         page?.isLoading == true
     }
+    private var tabInfo: ControlIslandTabInfoState {
+        windowState.controlIsland.tabInfo
+    }
+    private var showsCopyAddress: Bool {
+        tabInfo.showsHoverExtras
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: Layout.identityGap) {
                 if let tab {
                     identity(tab)
-                    Spacer(minLength: 6)
-                    actions(tab)
+                    controls(tab)
                 }
             }
             .padding(.leading, Layout.leadingInset)
@@ -62,15 +82,26 @@ struct ControlIslandPageBranch: View {
         .focusEffectDisabled()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(tab?.id == windowState.activeTabID ? "Current page" : "Focused preview")
-        .onHover { windowState.controlIsland.tabInfo.isHovered = $0 }
+        .onHover { tabInfo.isHovered = $0 }
+        .onChange(of: showsOptions || showsWebpageSettings) { _, presented in
+            tabInfo.isMenuPresented = presented
+            canvas.menuTabID = presented ? tab?.id : nil
+        }
+        .onDisappear {
+            if showsOptions || showsWebpageSettings {
+                tabInfo.isMenuPresented = false
+                canvas.menuTabID = nil
+            }
+        }
     }
 
     private func identity(_ tab: Tab) -> some View {
         Button {
+            tabInfo.show()
             windowState.addressBarFrame = frame
             windowState.openCommandLens(prefill: url?.absoluteString ?? "", anchor: frame)
         } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: Layout.faviconGap) {
                 FaviconView(data: tab.activePage.faviconData, url: url, size: Layout.faviconSize)
                     .saturation(appearsActive ? 1 : 0)
                 VStack(alignment: .leading, spacing: 1) {
@@ -119,37 +150,104 @@ struct ControlIslandPageBranch: View {
         }
     }
 
-    private func actions(_ tab: Tab) -> some View {
+    // MARK: - Controls
+
+    /// Reload, Favorite, Copy Address (its slot reserved, shown while the card is hovered), and
+    /// the page options.
+    private func controls(_ tab: Tab) -> some View {
         let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
-        return HStack(spacing: 0) {
-            AddressBarReloadButton(
-                isLoading: isLoading,
-                onReload: {
-                    if isLoading {
-                        page?.stopLoading()
-                    } else {
-                        _ = page?.reload()
-                    }
-                },
-                onReloadFromOrigin: { _ = page?.reload(fromOrigin: true) },
-                onReloadWithoutContentBlockers: { page?.reloadWithoutContentBlockers() },
-                otherEngines: engineRegistry.descriptors.filter { $0.id != (page?.activeEngineID ?? .systemWebKit) },
-                onReloadInEngine: { page?.reload(in: $0, registry: engineRegistry) },
-            )
-            .disabled(page == nil)
-            action(actions.isFavorite ? "Remove from Favorites" : "Add to Favorites", symbol: actions.isFavorite ? "star.fill" : "star") {
+        return HStack(spacing: Layout.controlSpacing) {
+            reloadControl
+            control(actions.isFavorite ? "Remove from Favorites" : "Add to Favorites", symbol: actions.isFavorite ? "star.fill" : "star") {
                 actions.toggleFavorite()
             }
             .disabled(!actions.canFavorite)
-            PageActionsMenu(tab: tab, surface: .pageCard, area: area)
-                .frame(width: Layout.actionSize, height: Layout.actionSize)
+            copyControl(actions)
+                .opacity(showsCopyAddress ? 1 : 0)
+                .allowsHitTesting(showsCopyAddress)
+                .accessibilityHidden(!showsCopyAddress)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsCopyAddress)
+            optionsControl(tab)
         }
     }
 
-    private func action(_ title: String, symbol: String, perform: @escaping () -> Void) -> some View {
+    private var reloadControl: some View {
+        control(isLoading ? "Stop loading" : "Reload page", symbol: isLoading ? "xmark" : "arrow.clockwise") {
+            if isLoading {
+                page?.stopLoading()
+            } else {
+                _ = page?.reload()
+            }
+        }
+        .modifier(ReloadOptionsMenu(
+            onReload: { _ = page?.reload() },
+            onReloadFromOrigin: { _ = page?.reload(fromOrigin: true) },
+            onReloadWithoutContentBlockers: { page?.reloadWithoutContentBlockers() },
+            otherEngines: engineRegistry.descriptors.filter { $0.id != (page?.activeEngineID ?? .systemWebKit) },
+            onReloadInEngine: { page?.reload(in: $0, registry: engineRegistry) },
+        ))
+        .disabled(page == nil)
+    }
+
+    /// Copies the address; with Option, the page as a Markdown link. A checkmark confirms either.
+    private func copyControl(_ actions: ControlIslandTabActions) -> some View {
+        let asMarkdown = modifierKeys.isOptionPressed
+        return control(
+            asMarkdown ? "Copy as Markdown Link" : "Copy Address",
+            symbol: showsCopiedFeedback ? "checkmark" : "doc.on.doc",
+            confirms: showsCopiedFeedback,
+        ) {
+            if asMarkdown {
+                actions.copyMarkdownLink()
+            } else {
+                actions.copyLink()
+            }
+            showsCopiedFeedback = true
+            Task(name: "Clear copied feedback") {
+                try? await Task.sleep(for: .seconds(Layout.copiedFeedback))
+                showsCopiedFeedback = false
+            }
+        }
+    }
+
+    private func optionsControl(_ tab: Tab) -> some View {
+        control("Page options", symbol: "ellipsis") {
+            showsOptions = true
+        }
+        .if(showsOptions) { view in
+            view.popover(isPresented: $showsOptions, arrowEdge: .bottom) {
+                PageCardOptionsPopover(
+                    tab: tab,
+                    area: area,
+                    dismiss: { showsOptions = false },
+                    onWebpageSettings: { showsWebpageSettings = true },
+                    onShowCookies: { showsSiteCookies = true },
+                )
+            }
+        }
+        .if(showsWebpageSettings) { view in
+            view.popover(isPresented: $showsWebpageSettings, arrowEdge: .bottom) {
+                WebpageSettingsPopover(domain: domain, origin: url.flatMap(WebOrigin.init(url:)))
+            }
+        }
+        .sheet(isPresented: $showsSiteCookies) {
+            if let dataStore = page?.websiteDataStore {
+                SiteCookiesView(domain: domain, dataStore: dataStore)
+            }
+        }
+    }
+
+    /// One square control; `confirms` draws its symbol green while an action is being confirmed.
+    private func control(_ title: String, symbol: String, confirms: Bool = false, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
-            Image(systemName: symbol).frame(width: Layout.actionSize, height: Layout.actionSize).contentShape(Rectangle())
-        }.help(title).accessibilityLabel(title).focusEffectDisabled()
+            Image(systemName: symbol)
+                .if(confirms) { $0.foregroundStyle(.green) }
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
+                .contentShape(Rectangle())
+        }
+        .help(title)
+        .accessibilityLabel(title)
+        .focusEffectDisabled()
     }
 }
 

@@ -171,6 +171,7 @@ struct ControlIsland: View {
                         .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                         .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                         .glassEffectID("pageBranch", in: glassNamespace)
+                        .modifier(PageCardLensHandoff(lensIsUp: windowState.showsAnchoredLens, reduceMotion: reduceMotion))
                         .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
                         .transition(.opacity)
                 }
@@ -235,7 +236,7 @@ struct ControlIsland: View {
                 finishPanelDrag()
             }
         }
-        .onChange(of: showsFavorites || showsUpdate) { _, presented in
+        .onChange(of: showsFavorites || showsUpdate || windowState.showsAnchoredLens) { _, presented in
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
@@ -248,7 +249,7 @@ struct ControlIsland: View {
             }
         }
         .onChange(of: pageBranchFrame, initial: true) { windowState.addressBarFrame = pageBranchFrame }
-        .onChange(of: showsPageBranch && !canvas.recentIsOpen ? pageBranchFrame : .zero, initial: true) { _, card in
+        .onChange(of: showsPageBranch && !canvas.recentIsOpen && !windowState.showsAnchoredLens ? pageBranchFrame : .zero, initial: true) { _, card in
             state.pageCardFrame = card
         }
         .sheet(isPresented: $state.showsCustomization) {
@@ -290,6 +291,7 @@ struct ControlIsland: View {
         .animation(restAnimation, value: isResting)
         .animation(restAnimation, value: windowState.activeSpaceID)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsPageBranch)
+        .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: windowState.showsAnchoredLens)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
@@ -743,7 +745,7 @@ struct ControlIsland: View {
 
     private var interactionRegions: [CGRect] {
         var regions = [frame]
-        if showsPageBranch, !canvas.recentIsOpen {
+        if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
             regions.append(pageBranchFrame)
         }
         if canvas.recentIsOpen {

@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The ⋯ menu of a page card or floating card: page actions and tab actions, composed and
-/// shown as a native menu so the card's hover and "menu is up" state hold while it tracks.
+/// The ⋯ menu of a floating card on the desk or in Recent: page actions and tab actions,
+/// composed and shown as a native menu so the card's hover and "menu is up" state hold while
+/// it tracks. The page card beside the rail opens ``PageCardOptionsPopover`` instead.
 struct PageActionsMenu: NSViewRepresentable {
     /// Group order on the cards: the page's own verbs first, then placement, then the tab as an object.
     static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .close]
