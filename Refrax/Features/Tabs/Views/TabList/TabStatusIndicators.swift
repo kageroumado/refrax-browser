@@ -20,9 +20,12 @@ struct TabStatusIndicators: View {
     ///
     /// Computed directly in the view body so SwiftUI's observation system
     /// tracks changes to the underlying `@Observable` WebPage properties.
-    private var mediaState: MediaState {
-        let pages = tab.pages.compactMap { env.pagePool.existingPage(for: $0) }
-        return MediaState(pages: pages)
+    private var mediaState: TabMediaState {
+        control.state
+    }
+
+    private var control: TabMediaControl {
+        TabMediaControl(tab: tab, pagePool: env.pagePool, mediaControls: env.mediaControlsManager)
     }
 
     private enum Constants {
@@ -31,138 +34,9 @@ struct TabStatusIndicators: View {
         static let spacing: CGFloat = 2
     }
 
-    // MARK: - Call Page State
-
-    /// Per-page call state for call indicator grouping.
-    ///
-    /// Triggers only when a single page has audio + (mic OR camera) simultaneously.
-    struct CallPageState {
-        let pageIndex: Int
-        let hasAudio: Bool
-        let isAudioMuted: Bool
-        let hasMic: Bool
-        let isMicMuted: Bool
-        let hasCamera: Bool
-        let isCameraMuted: Bool
-    }
-
-    // MARK: - Media State
-
-    /// Consolidated media state computed in a single pass over all pages.
-    ///
-    /// Multi-page consolidation: OR for activity flags, AND for muted states.
-    private struct MediaState {
-        let isPlayingAudio: Bool
-        let isAudioMuted: Bool
-        let isInFullscreen: Bool
-        let isMediaSuspended: Bool
-        let isCameraActive: Bool
-        let isCameraMuted: Bool
-        let isMicrophoneActive: Bool
-        let isMicrophoneMuted: Bool
-        let needsReload: Bool
-        let isUnresponsive: Bool
-        let recentlyCrashed: Bool
-        let hasReflectedWindows: Bool
-        let isLoading: Bool
-
-        /// Per-page call state for call indicator grouping.
-        let callPageStates: [CallPageState]
-
-        init(pages: [WebPage]) {
-            guard !pages.isEmpty else {
-                self.isPlayingAudio = false
-                self.isAudioMuted = false
-                self.isInFullscreen = false
-                self.isMediaSuspended = false
-                self.isCameraActive = false
-                self.isCameraMuted = false
-                self.isMicrophoneActive = false
-                self.isMicrophoneMuted = false
-                self.needsReload = false
-                self.isUnresponsive = false
-                self.recentlyCrashed = false
-                self.hasReflectedWindows = false
-                self.isLoading = false
-                self.callPageStates = []
-                return
-            }
-
-            var playingAudio = false
-            var allMuted = true // Special: allSatisfy logic
-            var inFullscreen = false
-            var mediaSuspended = false
-            var cameraActive = false
-            var cameraMuted = false
-            var micActive = false
-            var micMuted = false
-            var unloaded = false
-            var unresponsive = false
-            var crashed = false
-            var reflected = false
-            var loading = false
-            var callStates: [CallPageState] = []
-
-            for (index, page) in pages.enumerated() {
-                let pageHasAudio = page.audioState.isPlayingAudio
-                let pageAudioMuted = page.audioState.isMuted
-                let pageHasMic = page.isMicrophoneActive || page.isMicrophoneMuted
-                let pageMicMuted = page.isMicrophoneMuted
-                let pageHasCamera = page.isCameraActive || page.isCameraMuted
-                let pageCameraMuted = page.isCameraMuted
-
-                playingAudio = playingAudio || pageHasAudio
-                allMuted = allMuted && pageAudioMuted
-                inFullscreen = inFullscreen || page.isInFullscreen
-                mediaSuspended = mediaSuspended || page.isMediaSuspended
-                cameraActive = cameraActive || page.isCameraActive
-                cameraMuted = cameraMuted || page.isCameraMuted
-                micActive = micActive || page.isMicrophoneActive
-                micMuted = micMuted || page.isMicrophoneMuted
-                unloaded = unloaded || page.needsReload
-                unresponsive = unresponsive || page.isUnresponsive
-                crashed = crashed || page.recentlyCrashed
-                reflected = reflected || page.hasReflectedWindows
-                loading = loading || page.isLoading
-
-                // Check for call state: audio + (mic OR camera) on same page
-                if pageHasAudio, pageHasMic || pageHasCamera {
-                    callStates.append(
-                        CallPageState(
-                            pageIndex: index,
-                            hasAudio: pageHasAudio,
-                            isAudioMuted: pageAudioMuted,
-                            hasMic: pageHasMic,
-                            isMicMuted: pageMicMuted,
-                            hasCamera: pageHasCamera,
-                            isCameraMuted: pageCameraMuted,
-                        ),
-                    )
-                }
-            }
-
-            self.isPlayingAudio = playingAudio
-            self.isAudioMuted = allMuted
-            self.isInFullscreen = inFullscreen
-            self.isMediaSuspended = mediaSuspended
-            self.isCameraActive = cameraActive
-            // Camera is "muted" only if not active but was muted
-            self.isCameraMuted = !cameraActive && cameraMuted
-            self.isMicrophoneActive = micActive
-            // Mic is "muted" only if not active but was muted
-            self.isMicrophoneMuted = !micActive && micMuted
-            self.needsReload = unloaded
-            self.isUnresponsive = unresponsive
-            self.recentlyCrashed = crashed
-            self.hasReflectedWindows = reflected
-            self.isLoading = loading
-            self.callPageStates = callStates
-        }
-    }
-
-    /// Web pages for button actions (mute, pause, etc.).
+    /// Web pages for button actions (fullscreen, reflected windows).
     private var webPages: [WebPage] {
-        tab.pages.compactMap { env.pagePool.existingPage(for: $0) }
+        control.pages
     }
 
     /// Helper to get (pageID, WebPage) pairs for MediaControlsManager calls.
@@ -180,7 +54,7 @@ struct TabStatusIndicators: View {
     }
 
     private var showCallIndicator: Bool {
-        !mediaState.callPageStates.isEmpty
+        mediaState.isInCall
     }
 
     private var showAudioIndicator: Bool {
@@ -208,9 +82,7 @@ struct TabStatusIndicators: View {
     /// Guards prevent false positives during WebView creation:
     /// needs reload, not loading, and tab existed for >500ms.
     private var showUnloadedIndicator: Bool {
-        mediaState.needsReload &&
-            !mediaState.isLoading &&
-            tab.createdAt.timeIntervalSinceNow < -0.5
+        mediaState.isSuspended(createdAt: tab.createdAt)
     }
 
     private var showUnresponsiveIndicator: Bool {
@@ -361,21 +233,9 @@ struct TabStatusIndicators: View {
         let state = mediaState
         return Button {
             if NSEvent.modifierFlags.contains(.option) {
-                // Option+Click: Pause all media (record pause to keep in panel)
-                Task {
-                    for (pageID, webPage) in pagesWithIDs {
-                        env.mediaControlsManager.recordManualPause(for: pageID)
-                        await webPage.pauseAllMediaPlayback()
-                        // Refresh playback state so media panel updates immediately
-                        await webPage.refreshPlaybackState()
-                    }
-                }
+                control.pauseMedia()
             } else {
-                // Click: Toggle mute (stays in panel, still playing)
-                let shouldMute = !state.isAudioMuted
-                for webPage in webPages {
-                    webPage.setAudioMuted(shouldMute)
-                }
+                control.setMuted(!state.isAudioMuted)
             }
         } label: {
             Image(systemName: audioIndicatorIcon(state))
@@ -389,19 +249,27 @@ struct TabStatusIndicators: View {
         .accessibilityLabel(audioIndicatorHelp(state))
     }
 
-    private func audioIndicatorIcon(_ state: MediaState) -> String {
-        if isOptionPressed { return "pause.fill" }
-        if state.isAudioMuted { return "speaker.slash.fill" }
+    private func audioIndicatorIcon(_ state: TabMediaState) -> String {
+        if isOptionPressed {
+            return "pause.fill"
+        }
+        if state.isAudioMuted {
+            return "speaker.slash.fill"
+        }
         return "speaker.wave.2.fill"
     }
 
-    private func audioIndicatorColor(_ state: MediaState) -> Color {
+    private func audioIndicatorColor(_ state: TabMediaState) -> Color {
         state.isAudioMuted ? .primary : .secondary
     }
 
-    private func audioIndicatorHelp(_ state: MediaState) -> String {
-        if isOptionPressed { return "Pause Media\nOption+Click to pause playback" }
-        if state.isAudioMuted { return "Audio Muted\nClick to unmute" }
+    private func audioIndicatorHelp(_ state: TabMediaState) -> String {
+        if isOptionPressed {
+            return "Pause Media\nOption+Click to pause playback"
+        }
+        if state.isAudioMuted {
+            return "Audio Muted\nClick to unmute"
+        }
         return "Playing Audio\nClick to mute"
     }
 
@@ -458,14 +326,7 @@ struct TabStatusIndicators: View {
     private var cameraIndicator: some View {
         let state = mediaState
         return Button {
-            Task {
-                let shouldMute = state.isCameraActive
-                await withTaskGroup(of: Void.self) { group in
-                    for webPage in webPages {
-                        group.addTask { await webPage.setCameraMuted(shouldMute) }
-                    }
-                }
-            }
+            control.setCameraMuted(state.isCameraActive)
         } label: {
             Image(systemName: state.isCameraMuted ? "video.slash.fill" : "video.fill")
                 .font(.system(size: Constants.iconSize, weight: .medium))
@@ -486,14 +347,7 @@ struct TabStatusIndicators: View {
     private var microphoneIndicator: some View {
         let state = mediaState
         return Button {
-            Task {
-                let shouldMute = state.isMicrophoneActive
-                await withTaskGroup(of: Void.self) { group in
-                    for webPage in webPages {
-                        group.addTask { await webPage.setMicrophoneMuted(shouldMute) }
-                    }
-                }
-            }
+            control.setMicrophoneMuted(state.isMicrophoneActive)
         } label: {
             Image(systemName: state.isMicrophoneMuted ? "mic.slash.fill" : "mic.fill")
                 .font(.system(size: Constants.iconSize, weight: .medium))
@@ -514,9 +368,7 @@ struct TabStatusIndicators: View {
 
     private var crashedIndicator: some View {
         Button {
-            for webPage in webPages {
-                _ = webPage.reload()
-            }
+            control.reload()
         } label: {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: Constants.iconSize, weight: .medium))
@@ -532,9 +384,7 @@ struct TabStatusIndicators: View {
 
     private var unresponsiveIndicator: some View {
         Button {
-            for webPage in webPages {
-                _ = webPage.reload()
-            }
+            control.reload()
         } label: {
             Image(systemName: "hourglass")
                 .font(.system(size: Constants.iconSize, weight: .medium))
@@ -550,9 +400,7 @@ struct TabStatusIndicators: View {
 
     private var unloadedIndicator: some View {
         Button {
-            for webPage in webPages where webPage.needsReload {
-                _ = webPage.reload()
-            }
+            control.wake()
         } label: {
             Image(systemName: "moon.zzz.fill")
                 .font(.system(size: Constants.iconSize, weight: .medium))
@@ -590,7 +438,7 @@ struct TabStatusIndicators: View {
 
     private var callIndicator: some View {
         CallIndicatorView(
-            callStates: mediaState.callPageStates,
+            callStates: mediaState.callPages,
             webPages: webPages,
             pagesWithIDs: pagesWithIDs,
         )

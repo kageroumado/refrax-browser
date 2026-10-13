@@ -51,48 +51,35 @@ struct CompactTabStatusBadge: View {
 
     /// Compute highest-priority badge state from web pages.
     private var badgeState: BadgeState? {
-        let pages = tab.pages.compactMap { pagePool.existingPage(for: $0) }
-        guard !pages.isEmpty else { return nil }
-
-        var crashed = false
-        var unresponsive = false
-        var playingAudio = false
-        var allMuted = true
-        var cameraActive = false
-        var micActive = false
-        var suspended = false
-        var fullscreen = false
-        var needsReload = false
-        var isLoading = false
-
-        for page in pages {
-            crashed = crashed || page.recentlyCrashed
-            unresponsive = unresponsive || page.isUnresponsive
-            playingAudio = playingAudio || page.audioState.isPlayingAudio
-            allMuted = allMuted && page.audioState.isMuted
-            cameraActive = cameraActive || page.isCameraActive
-            micActive = micActive || page.isMicrophoneActive
-            suspended = suspended || page.isMediaSuspended
-            fullscreen = fullscreen || page.isInFullscreen
-            needsReload = needsReload || page.needsReload
-            isLoading = isLoading || page.isLoading
-        }
+        let state = control.state
 
         // Priority order
-        if crashed { return .crashed }
-        if unresponsive { return .unresponsive }
-        if playingAudio { return allMuted ? .audioMuted : .playingAudio }
-        if cameraActive { return .cameraActive }
-        if micActive { return .micActive }
-        if needsReload, !isLoading, tab.createdAt.timeIntervalSinceNow < -0.5 {
+        if state.recentlyCrashed {
+            return .crashed
+        }
+        if state.isUnresponsive {
+            return .unresponsive
+        }
+        if state.isPlayingAudio {
+            return state.isAudioMuted ? .audioMuted : .playingAudio
+        }
+        if state.isCameraActive {
+            return .cameraActive
+        }
+        if state.isMicrophoneActive {
+            return .micActive
+        }
+        if state.isSuspended(createdAt: tab.createdAt) {
             return .suspended
         }
-        if fullscreen { return .fullscreen }
+        if state.isInFullscreen {
+            return .fullscreen
+        }
         return nil
     }
 
-    private var webPages: [WebPage] {
-        tab.pages.compactMap { pagePool.existingPage(for: $0) }
+    private var control: TabMediaControl {
+        TabMediaControl(tab: tab, pagePool: pagePool)
     }
 
     // MARK: - Body
@@ -121,39 +108,22 @@ struct CompactTabStatusBadge: View {
     private func performAction(for state: BadgeState) {
         switch state {
         case .crashed, .unresponsive, .suspended:
-            for webPage in webPages {
-                _ = webPage.reload()
-            }
+            control.reload()
 
         case .playingAudio:
-            for webPage in webPages {
-                webPage.setAudioMuted(true)
-            }
+            control.setMuted(true)
 
         case .audioMuted:
-            for webPage in webPages {
-                webPage.setAudioMuted(false)
-            }
+            control.setMuted(false)
 
         case .cameraActive:
-            Task {
-                await withTaskGroup(of: Void.self) { group in
-                    for webPage in webPages {
-                        group.addTask { await webPage.setCameraMuted(true) }
-                    }
-                }
-            }
+            control.setCameraMuted(true)
 
         case .micActive:
-            Task {
-                await withTaskGroup(of: Void.self) { group in
-                    for webPage in webPages {
-                        group.addTask { await webPage.setMicrophoneMuted(true) }
-                    }
-                }
-            }
+            control.setMicrophoneMuted(true)
 
         case .fullscreen:
+            let webPages = control.pages
             Task {
                 await withTaskGroup(of: Void.self) { group in
                     for webPage in webPages {

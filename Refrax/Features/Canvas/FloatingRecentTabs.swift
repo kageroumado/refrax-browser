@@ -33,6 +33,7 @@ struct FloatingRecentTabs: View {
                                 default: canvas.draggedRecentTabID = nil
                                 }
                             }
+                            TabStateSymbols(tab: tab)
                             Button("Place") {
                                 var placement = FloatingTabPlacement.initial(index: 0, count: 4)
                                 placement.move(to: CGPoint(x: area.midX - 125, y: area.midY), in: area)

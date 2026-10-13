@@ -205,6 +205,7 @@ private struct FloatingTabCard: View {
                     Image(systemName: "globe").frame(width: 16, height: 16)
                 }
                 Text(tab.displayTitle).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                TabStateSymbols(tab: tab)
                 Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
