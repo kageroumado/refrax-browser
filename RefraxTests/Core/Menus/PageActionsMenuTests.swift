@@ -54,11 +54,12 @@ struct PageActionsMenuTests {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "Keep Visible", "——", "Select for Group", "——",
-            "Rename…", "Mark as Read", "Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Keep Visible", "Dock Left", "Dock Right", "——",
+            "Select for Group", "——", "Rename…", "Mark as Read", "Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
+            "Close Tab",
         ])
         #expect(tree.ids == [
-            "page.copyAddress", "page.copyMarkdownLink", "page.share", "tab.look", "tab.keepVisible", "tab.select",
+            "page.copyAddress", "page.copyMarkdownLink", "page.share", "tab.look", "tab.keepVisible", "tab.dock.leading", "tab.dock.trailing", "tab.select",
             "tab.rename", "tab.unread", "tab.duplicate", "tab.moveToNewWindow", "tab.reflectedWindow", "tab.close",
         ])
     }
@@ -69,12 +70,12 @@ struct PageActionsMenuTests {
         _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
         let tree = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Show as Preview", "——",
-            "Select for Group", "——", "Rename…", "Mark as Unread", "Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
-            "Close Tab",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Preview ▸ (3)", "  Show as Preview",
+            "  Dock Left", "  Dock Right", "——", "Select for Group", "——", "Rename…", "Mark as Unread", "Duplicate Tab", "——", "Move to New Window",
+            "Open Reflected Window", "——", "Close Tab",
         ])
         #expect(!tree.ids.contains("tab.look"))
-        #expect(tree.ids.contains("tab.compact"))
+        #expect(tree.outline.contains("  Show as Preview"))
     }
 
     @Test
@@ -95,7 +96,7 @@ struct PageActionsMenuTests {
         fixture.canvas.selectedFloatingTabIDs = [fixture.other.id, fixture.active.id]
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "Hide Preview", "——",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Dock Left", "Dock Right", "——",
             "Deselect for Group", "Group Selected Tabs", "Show in Every Space", "——", "Rename…", "Mark as Read", "Duplicate Tab", "——",
             "Move to New Window", "Open Reflected Window", "——", "Close Tab",
         ])
@@ -110,7 +111,7 @@ struct PageActionsMenuTests {
         fixture.env.settings.floatingTabRegionsEnabled = true
         let floating = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(topLevel(floating) == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Adjust Region…", "Preview Zoom ▸ (6)", "——",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Preview ▸ (4)", "——",
             "Select for Group", "Show in Every Space", "——", "Rename…", "Mark as Read", "Duplicate Tab", "——",
             "Move to New Window", "Open Reflected Window", "——", "Close Tab",
         ])
@@ -118,7 +119,7 @@ struct PageActionsMenuTests {
         try fixture.keepRegion(on: fixture.active)
         let page = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(page.outline.contains("Hide Preview"))
-        #expect(page.outline.contains("Preview ▸ (3)"))
+        #expect(page.outline.contains("Preview ▸ (5)"))
         #expect(page.outline.contains("  Show as Compact Tab"))
         #expect(page.outline.contains("  Adjust Region…"))
         #expect(page.outline.contains("  Preview Zoom ▸ (6)"))
@@ -126,7 +127,7 @@ struct PageActionsMenuTests {
 
         let unplaced = try fixture.env.tabManager.createTab(url: #require(URL(string: "https://example.com/new")), in: fixture.space, makeActive: false)
         let fresh = fixture.tree(for: unplaced, surface: .floatingCard)
-        #expect(fresh.outline.contains("Keep Part Visible… (Experimental)"))
+        #expect(fresh.outline.contains("  Keep Part Visible… (Experimental)"))
         #expect(!fresh.ids.contains("tab.zoom"))
     }
 
@@ -152,12 +153,12 @@ struct PageActionsMenuTests {
             bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas,
         )
         #expect(rows.outline == [
-            "Keep Visible", "Show as Preview", "——", "Select for Group", "——", "Rename…", "Mark as Unread", "Duplicate Tab", "——",
-            "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Keep Visible", "Preview ▸ (3)", "  Show as Preview", "  Dock Left", "  Dock Right", "——", "Select for Group", "——", "Rename…",
+            "Mark as Unread", "Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
         ])
         let card = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(Array(card.outline.suffix(rows.outline.count)) == rows.outline)
-        #expect(rows.ids.allSatisfy { $0.hasPrefix("tab.") })
+        #expect(rows.ids.allSatisfy { $0.hasPrefix("tab.") || $0.hasPrefix("group.") })
     }
 
     @Test
