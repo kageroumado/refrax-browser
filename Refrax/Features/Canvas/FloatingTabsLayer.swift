@@ -61,6 +61,7 @@ struct FloatingTabsLayer: View {
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
             ZStack(alignment: .topLeading) {
+                FloatingDockLayer(area: bounds)
                 if canvas.floatingVisibility.isRevealed {
                     FloatingLassoSurface(area: bounds)
                     ForEach(canvas.flattenedFloatingGroupItems(in: bounds)) { item in
@@ -83,6 +84,7 @@ struct FloatingTabsLayer: View {
                     }
                     .id(request.revision)
                 }
+                FloatingDockBeams(area: bounds)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "floatingTabs")
