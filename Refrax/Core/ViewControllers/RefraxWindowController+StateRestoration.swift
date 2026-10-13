@@ -20,9 +20,15 @@ extension RefraxWindowController {
             guard let tab = tabManager.state.tab(for: id) else { return false }
             return tab.space?.dataStoreMode != .private
         }
-        if let data = try? JSONEncoder().encode(placements) { state.encode(data as NSData, forKey: "floatingPlacements") }
+        if let data = try? JSONEncoder().encode(placements) {
+            state.encode(data as NSData, forKey: "floatingPlacements")
+        }
         state.encode(windowState.controlIsland.placement.x as NSNumber, forKey: "controlIslandX")
         state.encode(windowState.controlIsland.placement.y as NSNumber, forKey: "controlIslandY")
+        if let placement = windowState.fileIsland.placement {
+            state.encode(placement.x as NSNumber, forKey: "fileIslandX")
+            state.encode(placement.y as NSNumber, forKey: "fileIslandY")
+        }
         // Encode window frame for explicit restoration.
         // AppKit's default NSWindow.restoreState doesn't reliably restore frame
         // when the window is created with .zero contentRect via NSWindowRestoration.
@@ -71,6 +77,10 @@ extension RefraxWindowController {
         if let x = state.decodeObject(of: NSNumber.self, forKey: "controlIslandX")?.doubleValue,
            let y = state.decodeObject(of: NSNumber.self, forKey: "controlIslandY")?.doubleValue {
             windowState.controlIsland.placement = ControlIslandPlacement(x: x, y: y)
+        }
+        if let x = state.decodeObject(of: NSNumber.self, forKey: "fileIslandX")?.doubleValue,
+           let y = state.decodeObject(of: NSNumber.self, forKey: "fileIslandY")?.doubleValue {
+            windowState.fileIsland.placement = ControlIslandPlacement(x: x, y: y)
         }
 
         // Restore window frame before split view positions, since divider

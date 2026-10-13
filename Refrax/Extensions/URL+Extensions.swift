@@ -155,6 +155,12 @@ extension URL {
     nonisolated static let blank = URL.staticRequired("about:blank")
 
     /// Whether this URL represents a blank page (`about:blank`).
+    /// An http or https address, the kind a browser tab opens.
+    nonisolated var isWebURL: Bool {
+        let scheme = scheme?.lowercased()
+        return scheme == "http" || scheme == "https"
+    }
+
     var isBlank: Bool {
         self == .blank || absoluteString == "about:blank"
     }

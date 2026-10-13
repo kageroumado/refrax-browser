@@ -362,7 +362,7 @@ extension MenuBarManager {
 
     @objc
     func showDownloads(_: Any?) {
-        activeWindowController?.windowState.toggleDetailTray(.downloads)
+        activeWindowController?.showDownloads()
     }
 
     @objc

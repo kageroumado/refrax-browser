@@ -95,7 +95,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     var isRestoringState = false
     var restoredReadingState: WindowReadingState?
 
-
     /// State machine for sidebar overlay animation
     var isAnimatingToVisible = false
     var isOverlayTriggered = false
@@ -280,12 +279,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             settings: appDelegate.settings,
         )
 
-        // Configure shelf manager with download dependencies
-        sidebarManagers.shelfManager.configure(
-            downloadManager: appDelegate.downloadManager,
-            dataStore: .default(),
-        )
-
         super.init(window: window)
 
         windowState.window = window
@@ -313,6 +306,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             tabPreviewProvider: tabPreviewProvider,
             tabPreviewManager: tabPreviewManager,
             downloadManager: appDelegate.downloadManager,
+            shelfManager: appDelegate.shelfManager,
             webInspectorManager: appDelegate.webInspectorManager,
             sharingCoordinator: appDelegate.sharingCoordinator,
             passwordsManager: appDelegate.passwordsManager,
@@ -376,6 +370,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupCanvasPageGestures(window: window)
         setupOverlayView(contentView: contentView)
         setupControlIslandLayer(contentView: contentView)
+        setupFileIslandLayer(contentView: contentView)
         setupSidebarTrackingRegion(contentView: contentView)
         setupToolbar(window: window)
         setupSidebarTrackingAdapters()
@@ -470,7 +465,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         floatingView.sizingOptions = []
         floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState] point in
             guard let floatingView, let tabCanvasManager, let windowState else { return }
-            if windowState.controlIsland.hitRegions.contains(where: { $0.contains(point) }) {
+            if (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) }) {
                 return
             }
             if tabCanvasManager.floatingControlRegions(in: floatingView.bounds).contains(where: { $0.contains(point) }) {
@@ -533,7 +528,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             let local = content.convert(point, from: nil)
             let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
             if tabCanvasManager.showsFloatingControls,
-               windowState.controlIsland.hitRegions.contains(where: { $0.contains(topLeft) }) {
+               (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(topLeft) }) {
                 return true
             }
             return tabCanvasManager.floatingHitRegions(in: content.bounds).contains { $0.contains(topLeft) }
@@ -953,7 +948,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             }
         }
     }
-
 
     /// Reloads the active page.
     /// Stops loading the active page.

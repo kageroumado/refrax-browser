@@ -107,6 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let bookmarksManager: BookmarksManager
     let siteSettingsManager: SiteSettingsManager
     let downloadManager: DownloadManager
+    /// The File Island's shelf, one store shared by every window.
+    let shelfManager = ShelfManager()
     let passwordsManager: PasswordsManager
     let undoRedoManager: UndoRedoManager
     let extensionManager: ExtensionManager

@@ -30,6 +30,7 @@ struct RefraxEnvironment {
     let tabPreviewProvider: TabPreviewProvider
     let tabPreviewManager: TabPreviewManager
     let downloadManager: DownloadManager
+    let shelfManager: ShelfManager
     let webInspectorManager: WebInspectorManager
     let sharingCoordinator: SharingCoordinator
     let passwordsManager: PasswordsManager
@@ -87,6 +88,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.tabPreviewProvider)
             .environment(environment.tabPreviewManager)
             .environment(environment.downloadManager)
+            .environment(environment.shelfManager)
             .environment(environment.webInspectorManager)
             .environment(environment.sharingCoordinator)
             .environment(environment.passwordsManager)
@@ -99,7 +101,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.sidebarManagers.filterManager)
             .environment(environment.sidebarManagers.selectionManager)
             .environment(environment.sidebarManagers.mediaControlsManager)
-            .environment(environment.sidebarManagers.shelfManager)
             .environment(environment.sidebarManagers.transitionCoordinator)
             .environment(environment.sidebarManagers.middleClickCoordinator)
             .environment(environment.sidebarManagers.dependencyContainer)
