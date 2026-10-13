@@ -19,7 +19,7 @@ struct ControlIslandPageBranch: View {
     @State private var showsSiteCookies = false
     @State private var showsCopiedFeedback = false
 
-    private enum Layout {
+    enum Layout {
         /// Spans the identity's ink: from the top of the title's capitals to the bottom of the
         /// domain line, about 24 points for 12.5-point over 11-point text.
         static let faviconSize: CGFloat = 24

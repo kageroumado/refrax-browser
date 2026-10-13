@@ -7,6 +7,7 @@ struct CommandLensView: View {
     @Environment(FloatingTourManager.self) private var tour
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.commandLensIsSmall) private var isSmallMode
+    @Environment(\.commandLensFieldStyle) private var fieldStyle
 
     @Namespace private var glassNamespace
 
@@ -40,13 +41,16 @@ struct CommandLensView: View {
                     suggestionsArea
                 }
                 .scaleEffect(providerSwitchScale)
+                .background(fieldStyle?.tint ?? .clear, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffectID("textField", in: glassNamespace)
                 .overlay {
-                    RoundedRectangle(cornerRadius: currentCornerRadius)
-                        .stroke(.secondary.opacity(0.7), lineWidth: 1)
-                        .shadow(color: .secondary.opacity(0.25), radius: 3, x: 0, y: 1)
-                        .shadow(color: .secondary.opacity(0.15), radius: 2, x: 0, y: 0)
+                    if fieldStyle == nil {
+                        RoundedRectangle(cornerRadius: currentCornerRadius)
+                            .stroke(.secondary.opacity(0.7), lineWidth: 1)
+                            .shadow(color: .secondary.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .shadow(color: .secondary.opacity(0.15), radius: 2, x: 0, y: 0)
+                    }
                 }
 
                 if showCategoryButtons {
@@ -90,15 +94,18 @@ struct CommandLensView: View {
 
     /// Corner radius based on mode.
     private var currentCornerRadius: CGFloat {
-        isSmallMode ? Layout.cornerRadiusSmall : Layout.cornerRadius
+        if let fieldStyle {
+            return fieldStyle.cornerRadius
+        }
+        return isSmallMode ? Layout.cornerRadiusSmall : Layout.cornerRadius
     }
 
     // MARK: - Text Field Capsule
 
     /// The main text input capsule.
     private var textFieldCapsule: some View {
-        HStack(spacing: isSmallMode ? 8 : 12) {
-            searchIcon
+        HStack(spacing: fieldStyle?.iconGap ?? (isSmallMode ? 8 : 12)) {
+            leadingIcon
             referenceTabIndicator
             layoutModeIndicator
             searchEngineBadge
@@ -106,8 +113,20 @@ struct CommandLensView: View {
             loadingIndicator
             clearButton
         }
-        .frame(height: isSmallMode ? Layout.heightSmall : Layout.height)
-        .padding(.horizontal, isSmallMode ? 8 : 16)
+        .frame(height: fieldStyle?.height ?? (isSmallMode ? Layout.heightSmall : Layout.height))
+        .padding(.leading, fieldStyle?.leadingInset ?? (isSmallMode ? 8 : 16))
+        .padding(.trailing, fieldStyle?.trailingInset ?? (isSmallMode ? 8 : 16))
+    }
+
+    /// The page's favicon where the page card shows it while the lens stands in for the card;
+    /// the search symbol everywhere else.
+    @ViewBuilder
+    private var leadingIcon: some View {
+        if let fieldStyle, let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+            FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: fieldStyle.iconSize)
+        } else {
+            searchIcon
+        }
     }
 
     private var searchIcon: some View {

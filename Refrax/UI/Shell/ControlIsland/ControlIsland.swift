@@ -139,9 +139,7 @@ struct ControlIsland: View {
     /// The window's resolved background, the same color the sidebar tints its blur with: the
     /// space color, the website color, or the custom color, whichever the window settings resolve.
     private var spaceTint: Color {
-        let background = windowState.resolvedBackground
-        guard state.configuration.tintsWithSpaceColor, background.source != .none else { return .clear }
-        return Color(background.color.color).opacity(Layout.spaceTintOpacity)
+        windowState.controlIslandTint
     }
     private var restAnimation: Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.4)
@@ -171,15 +169,16 @@ struct ControlIsland: View {
                         }
                     }
                     .offset(x: frame.minX, y: frame.minY)
-                if showsPageBranch, !canvas.recentIsOpen {
+                if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                         .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
                         .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                         .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
                         .glassEffectID("pageBranch", in: glassNamespace)
-                        .modifier(PageCardLensHandoff(lensIsUp: windowState.showsAnchoredLens, reduceMotion: reduceMotion))
                         .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
-                        .transition(.opacity)
+                        // The field opens on the card's exact frame, so the card leaves at once
+                        // and the field is what remains; it returns with a fade as the field folds.
+                        .transition(windowState.showsAnchoredLens ? .identity : .opacity)
                 }
                 if canvas.recentIsOpen {
                     FloatingRecentTabs(area: area)
@@ -853,4 +852,14 @@ extension ControlIslandPlacement {
     /// Back and forward use the address bar's 12-point chevrons, one weight heavier to match
     /// the 13-point symbols' presence.
     static let navigationSymbolWeight: Font.Weight = .medium
+}
+
+extension WindowState {
+    /// The color every island surface carries: the window's resolved background at the
+    /// island's tint opacity, or clear when tinting is off or the window has no color.
+    var controlIslandTint: Color {
+        let background = resolvedBackground
+        guard controlIsland.configuration.tintsWithSpaceColor, background.source != .none else { return .clear }
+        return Color(background.color.color).opacity(ControlIslandPlacement.spaceTintOpacity)
+    }
 }

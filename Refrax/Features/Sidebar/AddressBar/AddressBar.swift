@@ -484,9 +484,12 @@ struct AddressBar: View {
         GeometryReader { geo in
             Color.clear
                 .onAppear {
+                    guard !windowState.usesFloatingTabs else { return }
                     windowState.addressBarFrame = geo.frame(in: .global)
                 }
                 .onChange(of: geo.frame(in: .global)) { _, newFrame in
+                    // With the Control Island the page card owns the address anchor.
+                    guard !windowState.usesFloatingTabs else { return }
                     windowState.addressBarFrame = newFrame
                 }
         }

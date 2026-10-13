@@ -4,10 +4,11 @@ import SwiftUI
 
 /// The Command Lens in the page card's place, small style, with the page address in it.
 ///
-/// Opening starts at the anchor's size and springs to the lens's width; closing springs back
-/// to the anchor and then disappears. The island hides the card for as long as the lens is up
-/// (``PageCardLensHandoff``), so the lens glass that springs from the card's frame is the only
-/// object there.
+/// With the Control Island the lens is the card becoming a field: it opens on the card's exact
+/// frame with the card's height, radius, tint and favicon (``CommandLensFieldStyle``), while
+/// the island removes the card, then widens away from the rail. Closing narrows it back to
+/// the card's frame as the card returns. The overlay ignores the safe area because the island
+/// measures the card in full window coordinates.
 struct AnchoredLensOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(WindowState.self) private var windowState
@@ -27,8 +28,10 @@ struct AnchoredLensOverlay: View {
     private enum Constants {
         static let expandedWidthMultiplier: CGFloat = 2.5
         static let expandedCornerRadius: CGFloat = 16 // Match CommandLensView.Layout.cornerRadiusSmall
-        static let expandDuration: CGFloat = 0.25
+        static let expandDuration: CGFloat = 0.28
         static let collapseDuration: CGFloat = 0.2
+        /// The field's width once it has unfolded from the card.
+        static let fieldWidth: CGFloat = 640
     }
 
     private var anchorCornerRadius: CGFloat {
@@ -59,6 +62,7 @@ struct AnchoredLensOverlay: View {
 
                     CommandLensView()
                         .smallStyle()
+                        .environment(\.commandLensFieldStyle, fieldStyle)
                         .frame(width: lensWidth(in: geometry.size))
                         .frame(minHeight: currentHeight)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
@@ -67,6 +71,7 @@ struct AnchoredLensOverlay: View {
                         .allowsHitTesting(true)
                 }
             }
+            .ignoresSafeArea(edges: windowState.usesFloatingTabs ? .all : [])
         }
 
         Color.clear
@@ -81,15 +86,33 @@ struct AnchoredLensOverlay: View {
 
     private func lensWidth(in size: CGSize) -> CGFloat {
         guard windowState.usesFloatingTabs else { return currentWidth }
-        let preferred = isExpanded ? 640.0 : ControlIslandPlacement.pageBranchWidth
-        return min(preferred, max(1, size.width - 40))
+        let preferred = isExpanded ? max(Constants.fieldWidth, anchor.width) : anchor.width
+        return min(preferred, max(1, size.width - ControlIslandPlacement.margin * 2))
     }
 
+    /// The field keeps the card's edge nearest the rail and grows away from it.
     private func lensOrigin(in size: CGSize) -> CGSize {
         guard windowState.usesFloatingTabs else { return CGSize(width: anchor.minX, height: 0) }
+        let width = lensWidth(in: size)
+        let margin = ControlIslandPlacement.margin
+        let growsLeft = anchor.midX > size.width / 2
+        let x = growsLeft ? anchor.maxX - width : anchor.minX
         return CGSize(
-            width: min(max(20, anchor.minX), max(20, size.width - lensWidth(in: size) - 20)),
-            height: min(max(20, anchor.minY), max(20, size.height - contentHeight - 20)),
+            width: min(max(margin, x), max(margin, size.width - width - margin)),
+            height: min(max(margin, anchor.minY), max(margin, size.height - contentHeight - margin)),
+        )
+    }
+
+    private var fieldStyle: CommandLensFieldStyle? {
+        guard windowState.usesFloatingTabs else { return nil }
+        return CommandLensFieldStyle(
+            height: ControlIslandPlacement.pageBranchHeight,
+            cornerRadius: ControlIslandPlacement.pageBranchHeight / 2,
+            leadingInset: ControlIslandPageBranch.Layout.leadingInset,
+            trailingInset: ControlIslandPageBranch.Layout.leadingInset,
+            iconSize: ControlIslandPageBranch.Layout.faviconSize,
+            iconGap: ControlIslandPageBranch.Layout.faviconGap,
+            tint: windowState.controlIslandTint,
         )
     }
 
