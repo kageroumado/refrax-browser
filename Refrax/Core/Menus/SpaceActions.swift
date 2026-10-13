@@ -80,17 +80,21 @@ struct SpaceActions {
     }
 
     /// Convert to Group lists the spaces that can take the tabs; a space with its own data
-    /// says that its tabs lose it.
+    /// says that its tabs lose it, and a locked target asks to be unlocked first.
     private func organizeActions(_ space: Space) -> [MenuAction] {
         let targets = tabs.spaceManager.spaces.filter { $0.id != space.id }
         guard !targets.isEmpty else { return [] }
         let losesData = !space.dataStoreMode.isGlobal
         let children = targets.map { target in
-            MenuAction("space.convert.\(target.id)", target.name, symbol: target.isEmoji ? nil : target.iconName, group: .move) {
-                do {
-                    _ = try tabs.groupManager.convertSpaceToGroup(space, in: target)
-                } catch {
-                    Logger.debug("Couldn't convert space to group: \(error)", category: Logger.tabs)
+            let isLocked = lockManager.requiresAuth(for: target)
+            return MenuAction("space.convert.\(target.id)", target.name, symbol: isLocked ? "lock" : target.isEmoji ? nil : target.iconName, group: .move) {
+                Task(name: "Convert space to group") {
+                    guard await tabs.unlock([space, target]) else { return }
+                    do {
+                        _ = try tabs.groupManager.convertSpaceToGroup(space, in: target)
+                    } catch {
+                        Logger.debug("Couldn't convert space to group: \(error)", category: Logger.tabs)
+                    }
                 }
             }
         }

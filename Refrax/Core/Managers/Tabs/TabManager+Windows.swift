@@ -38,6 +38,27 @@ extension TabManager {
     }
 }
 
+// MARK: - Unlocking Before a Move
+
+extension TabManager {
+    /// Unlocks every locked space in `spaces`, one prompt each, and reports whether all of
+    /// them are now open. A canceled or failed prompt stops at that space.
+    func unlock(_ spaces: [Space]) async -> Bool {
+        var seen: Set<Space.ID> = []
+        for space in spaces where seen.insert(space.id).inserted && state.spaceLockManager.requiresAuth(for: space) {
+            guard await state.spaceLockManager.authenticate(for: space) == .success else { return false }
+        }
+        return true
+    }
+
+    /// Moves `tabs` to `space` after unlocking the spaces they leave and the one they enter;
+    /// a lock left closed moves nothing.
+    func moveTabsUnlocking(_ tabs: [Tab], to space: Space) async {
+        guard await unlock([space] + tabs.compactMap(\.space)) else { return }
+        moveTabs(tabs, to: space)
+    }
+}
+
 // MARK: - Clearing a Space
 
 extension TabManager {

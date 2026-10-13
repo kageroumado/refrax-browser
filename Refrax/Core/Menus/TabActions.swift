@@ -69,14 +69,17 @@ struct TabActions {
         ]
     }
 
-    /// Move to Space lists every other space; favorites belong to every space and stay put.
+    /// Move to Space lists every other space; favorites belong to every space and stay put. A
+    /// locked space shows a lock and asks to be unlocked before the tab moves in.
     private func spaceActions() -> [MenuAction] {
-        guard !tab.isLiveFavorite, let current = tab.space else { return [] }
+        let lock = tabs.state.spaceLockManager
+        guard !tab.isLiveFavorite, let current = tab.space, !lock.requiresAuth(for: current) else { return [] }
         let destinations = tabs.spaceManager.spaces.filter { $0.id != current.id }
         guard !destinations.isEmpty else { return [] }
         let targets = destinations.map { space in
-            MenuAction("tab.moveToSpace.\(space.id)", space.name, symbol: space.isEmoji ? nil : space.iconName, group: .move) {
-                tabs.moveTabs([tab], to: space)
+            let isLocked = lock.requiresAuth(for: space)
+            return MenuAction("tab.moveToSpace.\(space.id)", space.name, symbol: isLocked ? "lock" : space.isEmoji ? nil : space.iconName, group: .move) {
+                Task(name: "Move tab to space") { await tabs.moveTabsUnlocking([tab], to: space) }
             }
         }
         return [MenuAction("tab.moveToSpace", "Move to Space", symbol: "square.stack.3d.up", group: .move, children: targets)]

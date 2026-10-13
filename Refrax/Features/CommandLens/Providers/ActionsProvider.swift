@@ -7,7 +7,7 @@ import Foundation
 /// Uses fuzzy matching against natural language terms so users can
 /// discover actions by typing related words.
 struct ActionsProvider: CommandLensSuggestionProvider {
-    let spaces: SpaceManager
+    let tabs: TabManager
     weak var windowState: WindowState?
 
     let id = "actions"
@@ -176,8 +176,10 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         }
 
         var results: [CommandLensSuggestion] = []
-        if let tab = windowState?.activeTab, !tab.isLiveFavorite, let current = tab.space {
-            for space in spaces.spaces where space.id != current.id {
+        // A locked space's name stays out of the suggestions until it is unlocked.
+        let lock = tabs.state.spaceLockManager
+        if let tab = windowState?.activeTab, !tab.isLiveFavorite, let current = tab.space, !lock.requiresAuth(for: current) {
+            for space in tabs.spaceManager.spaces where space.id != current.id && !lock.requiresAuth(for: space) {
                 let name = space.name.lowercased()
                 if matches(["move to \(name)", "move tab to \(name)", "send to \(name)"]) {
                     results.append(suggestion(.moveCurrentTabToSpace(space.id), "Move to \(space.name)", "Current page", "square.stack.3d.up"))

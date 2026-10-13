@@ -212,6 +212,12 @@ extension TabManager {
         guard !tabs.isEmpty else { return }
 
         spaceManager.ensureLoaded(space)
+        // A live page keeps the data store it was created with, so a tab crossing into or out
+        // of a space with its own data loses its pages and reloads in the destination's store.
+        let crossingDataStores = tabs.filter { tab in
+            guard let source = tab.space, source.id != space.id else { return false }
+            return !source.dataStoreMode.isGlobal || !space.dataStoreMode.isGlobal
+        }
 
         mutationPipeline.withMutation { effects in
             var affectedSourceSpaceIDs: Set<Space.ID> = []
@@ -258,6 +264,10 @@ extension TabManager {
             }
             effects.spaceIDsToNormalize.insert(space.id)
             effects.didChangeList = true
+        }
+
+        for tab in crossingDataStores {
+            pagePool.removePages(for: tab)
         }
 
         Logger.info("Moved \(tabs.count) tabs to space: \(space.name)", category: Logger.tabs)
