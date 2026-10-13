@@ -98,6 +98,8 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Show or hide the tab canvas in this window.
     case toggleTabCanvas
+    /// Arrange the floating tabs of this window's space.
+    case arrange(FloatingArrangement)
     case favoriteCurrentPage
     case returnFromLook
     case keepPartVisible

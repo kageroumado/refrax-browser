@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension Space: Syncable {
-    nonisolated static var ckRecordType: String { "Space" }
+    nonisolated static var ckRecordType: String {
+        "Space"
+    }
 
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Scalars
@@ -12,6 +14,7 @@ extension Space: Syncable {
         record["position"] = position as NSNumber
         record["dataStoreMode"] = dataStoreMode.rawValue as NSString
         record["isLockEnabled"] = isLockEnabled as NSNumber
+        record["stacksBySite"] = stacksBySite as NSNumber
 
         // Dates
         record["createdAt"] = createdAt as NSDate
@@ -60,6 +63,7 @@ extension Space: Syncable {
         space.dataStoreMode = (record["dataStoreMode"] as? String)
             .flatMap(DataStoreMode.init(rawValue:)) ?? .global
         space.isLockEnabled = (record["isLockEnabled"] as? Bool) ?? false
+        space.stacksBySite = (record["stacksBySite"] as? Bool) ?? false
 
         // Optionals
         space.spaceDescription = record["spaceDescription"] as? String

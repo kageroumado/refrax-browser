@@ -117,6 +117,26 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
+        // Arrange the floating tabs
+        let arrangements: [(String, FloatingArrangement, String)] = [
+            ("arrange grid tidy tabs lay out columns", .grid, "Every card in columns from the island's side"),
+            ("stack by site stacks domain sweep tabs", .stacksBySite, "One stack per site, named by the site"),
+            ("stack by group stacks fold groups", .stacksByGroup, "Every group folded to its header"),
+        ]
+        for (terms, arrangement, description) in arrangements
+            where FuzzyMatcher.match(query: query, against: [terms, arrangement.commandTitle.lowercased()]) >= FuzzyMatcher.minimumMatchScore {
+            results.append(CommandLensSuggestion(
+                type: .appAction(.arrange(arrangement)),
+                text: arrangement.commandTitle,
+                description: description,
+                iconName: arrangement.symbol,
+                groupHeader: nil,
+                isRemovable: false,
+                keywordAction: nil,
+                url: nil,
+            ))
+        }
+
         // Import from Another Browser
         let importTerms = [
             "import", "import browser", "import bookmarks", "import passwords",

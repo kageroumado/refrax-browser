@@ -116,12 +116,22 @@ final class Space {
     /// When a command-line tool last read this space's gated cookie data.
     var lastCookieControlAccess: Date?
 
+    // MARK: - Floating Layer
+
+    /// Whether the floating layer keeps this space's cards in stacks by site: new tabs from a
+    /// stacked site fall into its stack.
+    var stacksBySite: Bool = false
+
     /// Whether control-server clients may read this space's HttpOnly cookies and cookie values.
     ///
     /// A shared-store (`.global`) space never does: its store is the one every other shared
     /// space uses, so exposing it would expose the user's ordinary browsing.
     var exposesCookiesToControlServer: Bool {
-        if case .global = dataStoreMode { false } else { exposesCookiesToControl }
+        if case .global = dataStoreMode {
+            false
+        } else {
+            exposesCookiesToControl
+        }
     }
 
     // MARK: - Relationships

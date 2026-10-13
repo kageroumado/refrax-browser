@@ -81,13 +81,13 @@ final class CanvasPageGestures {
         self.floatingEligible = floatingEligible
         self.floatingContains = floatingContains
         self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
-        resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+        self.resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.interruptControl()
                 self?.canvas.dismissFloatingTabs()
             }
         }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
+        self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .scrollWheel, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
             guard let self else { return event }
             return handle(event)
         }
@@ -95,7 +95,9 @@ final class CanvasPageGestures {
 
     isolated deinit {
         pendingPeek?.cancel()
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        if let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+        }
         if let monitor {
             NSEvent.removeMonitor(monitor)
         }
@@ -107,9 +109,19 @@ final class CanvasPageGestures {
         if !canvas.isPanningFromPage {
             isMoveMode = false
         }
-        if [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp,
-            .rightMouseDragged, .otherMouseDown, .otherMouseUp, .otherMouseDragged,
-            .scrollWheel, .magnify].contains(event.type), floatingContains(event.locationInWindow) {
+        if [
+            .leftMouseDown,
+            .leftMouseUp,
+            .leftMouseDragged,
+            .rightMouseDown,
+            .rightMouseUp,
+            .rightMouseDragged,
+            .otherMouseDown,
+            .otherMouseUp,
+            .otherMouseDragged,
+            .scrollWheel,
+            .magnify,
+        ].contains(event.type), floatingContains(event.locationInWindow) {
             cancelPeek()
             controlDownAt = nil
             lastControlTap = nil
@@ -163,9 +175,18 @@ final class CanvasPageGestures {
             canvas.dismissFloatingTabs()
             return event
         }
+        if canvas.floatingRenamingGroupID != nil, event.keyCode != Constants.escapeKeyCode {
+            return event
+        }
         if canvas.floatingVisibility.isRevealed, event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus() {
             interruptControl()
-            canvas.dismissFloatingTabs()
+            if canvas.floatingRenamingGroupID != nil {
+                canvas.floatingRenamingGroupID = nil
+            } else if canvas.selectedFloatingTabIDs.isEmpty {
+                canvas.dismissFloatingTabs()
+            } else {
+                canvas.selectedFloatingTabIDs = []
+            }
             return nil
         }
         if floatingHasKeyboardFocus(), canvas.floatingVisibility.isHeld {
@@ -292,7 +313,9 @@ final class CanvasPageGestures {
             lastControlTap = nil
             if UserDefaults.standard.bool(forKey: "floatingTabs.toggleReveal") {
                 canvas.toggleFloatingTabs()
-                if canvas.floatingVisibility.isLatched { canvas.revealFloatingTabs() }
+                if canvas.floatingVisibility.isLatched {
+                    canvas.revealFloatingTabs()
+                }
             } else {
                 canvas.revealFloatingTabs()
             }
@@ -339,7 +362,9 @@ final class CanvasPageGestures {
             }
 
         default:
-            if case .opening = pinch { return nil }
+            if case .opening = pinch {
+                return nil
+            }
             return event
         }
     }

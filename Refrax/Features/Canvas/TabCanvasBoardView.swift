@@ -52,8 +52,7 @@ final class TabCanvasBoardView: NSView {
     private(set) var navigationTabID: Tab.ID?
     private(set) var originTabID: Tab.ID?
 
-    private var lassoPoints: [CGPoint] = []
-    private var isLassoing = false
+    private var lasso: LassoSelection?
     /// The current drag on the bare desk moves the camera rather than drawing a lasso.
     private var isPanningCamera = false
     private var didDrag = false
@@ -66,8 +65,7 @@ final class TabCanvasBoardView: NSView {
     private enum Constants {
         static let deskCornerRadius: CGFloat = 40
         static let deskThickness: CGFloat = 10
-        static let lassoThreshold: CGFloat = 4
-        static let lassoDash: [NSNumber] = [8, 6]
+        static let lassoDash = LassoSelection.dash.map { NSNumber(value: Double($0)) }
         static let selectionInset: CGFloat = 12
         static let selectionCornerRadius: CGFloat = 18
         static let antsPeriod: CFTimeInterval = 0.6
@@ -116,13 +114,13 @@ final class TabCanvasBoardView: NSView {
 
         for shape in [lassoLayer, selectionLayer] {
             shape.fillColor = nil
-            shape.lineWidth = 2
+            shape.lineWidth = LassoSelection.lineWidth
             shape.lineDashPattern = Constants.lassoDash
             shape.lineCap = .round
             shape.lineJoin = .round
             shape.isHidden = true
         }
-        lassoLayer.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
+        lassoLayer.fillColor = NSColor.controlAccentColor.withAlphaComponent(LassoSelection.fillOpacity).cgColor
         applyColors()
     }
 
@@ -538,8 +536,7 @@ final class TabCanvasBoardView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard isInteractionEnabled else { return }
-        lassoPoints = [convert(event.locationInWindow, from: nil)]
-        isLassoing = false
+        lasso = LassoSelection(at: convert(event.locationInWindow, from: nil))
         didDrag = false
         isPanningCamera = !event.modifierFlags.contains(.shift)
     }
@@ -551,34 +548,26 @@ final class TabCanvasBoardView: NSView {
             onPanCamera?(CGPoint(x: event.deltaX, y: event.deltaY))
             return
         }
-        guard let start = lassoPoints.first else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        if !isLassoing {
-            guard hypot(point.x - start.x, point.y - start.y) >= Constants.lassoThreshold else { return }
-            isLassoing = true
-            lassoLayer.isHidden = false
-        }
-        lassoPoints.append(point)
-        let path = CGMutablePath()
-        path.addLines(between: lassoPoints)
+        guard var lasso, lasso.extend(to: convert(event.locationInWindow, from: nil)) else { return }
+        self.lasso = lasso
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        lassoLayer.path = path
+        lassoLayer.isHidden = false
+        lassoLayer.path = lasso.path
         CATransaction.commit()
     }
 
     override func mouseUp(with event: NSEvent) {
         guard isInteractionEnabled else { return }
         defer {
-            lassoPoints = []
-            isLassoing = false
+            lasso = nil
             isPanningCamera = false
             lassoLayer.isHidden = true
         }
         if isPanningCamera, didDrag {
             return
         }
-        guard isLassoing, lassoPoints.count > 2 else {
+        guard let lasso, lasso.canCatch else {
             if hasSelection {
                 onClearSelection?()
             } else if event.clickCount == 1 {
@@ -586,16 +575,11 @@ final class TabCanvasBoardView: NSView {
             }
             return
         }
-        let path = CGMutablePath()
-        path.addLines(between: lassoPoints)
-        path.closeSubpath()
-        let caught = tiles.values
-            .filter { path.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
-            .map(\.tab.id)
+        let caught = lasso.caught(tiles.values.map { (id: $0.tab.id, frame: $0.frame) })
         if caught.isEmpty {
             onClearSelection?()
         } else {
-            onLasso?(Set(caught))
+            onLasso?(caught)
         }
     }
 

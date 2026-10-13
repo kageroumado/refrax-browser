@@ -431,6 +431,7 @@ struct ControlIsland: View {
             }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
+                FloatingArrangeMenu()
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
             .help(showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold ⌥ for recent tabs · hold \(revealKey.glyph) to peek")

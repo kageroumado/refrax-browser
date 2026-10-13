@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension TabGroup: Syncable {
-    nonisolated static var ckRecordType: String { "TabGroup" }
+    nonisolated static var ckRecordType: String {
+        "TabGroup"
+    }
 
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Scalars
@@ -21,12 +23,13 @@ extension TabGroup: Syncable {
         record["parentGroupID"] = parentGroupID?.uuidString as NSString?
         record["boardFrameData"] = boardFrameData as NSData?
         record["boardAnchorData"] = boardAnchorData as NSData?
+        record["stackSite"] = stackSite as NSString?
 
         // Relationships
         // TabGroup → Space: CASCADE (TabGroup is deleted when Space is deleted)
         if let spaceID = space?.id {
             record["spaceRef"] = RecordMapper.reference(
-                to: spaceID, recordType: Space.ckRecordType, action: .deleteSelf
+                to: spaceID, recordType: Space.ckRecordType, action: .deleteSelf,
             )
         } else {
             record["spaceRef"] = nil
@@ -58,7 +61,7 @@ extension TabGroup: Syncable {
             }
 
             var spaceDescriptor = FetchDescriptor<Space>(
-                predicate: #Predicate { $0.id == spaceUUID }
+                predicate: #Predicate { $0.id == spaceUUID },
             )
             spaceDescriptor.fetchLimit = 1
             guard let space = try? context.fetch(spaceDescriptor).first else {
@@ -84,14 +87,14 @@ extension TabGroup: Syncable {
             .flatMap(UUID.init(uuidString:))
         group.boardFrameData = record["boardFrameData"] as? Data
         group.boardAnchorData = record["boardAnchorData"] as? Data
+        group.stackSite = record["stackSite"] as? String
 
         // Resolve space relationship
         if let spaceRef = record["spaceRef"] as? CKRecord.Reference,
-           let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID)
-        {
+           let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID) {
             if group.space?.id != spaceUUID {
                 var spaceDescriptor = FetchDescriptor<Space>(
-                    predicate: #Predicate { $0.id == spaceUUID }
+                    predicate: #Predicate { $0.id == spaceUUID },
                 )
                 spaceDescriptor.fetchLimit = 1
                 group.space = try? context.fetch(spaceDescriptor).first

@@ -62,17 +62,21 @@ struct FloatingTabsLayer: View {
             let bounds = CGRect(origin: .zero, size: geometry.size)
             ZStack(alignment: .topLeading) {
                 if canvas.floatingVisibility.isRevealed {
-                    ForEach(canvas.floatingGroups, id: \.first?.group?.id) { members in
-                        FloatingTabGroup(tabs: members, area: bounds)
+                    FloatingLassoSurface(area: bounds)
+                    ForEach(canvas.flattenedFloatingGroupItems(in: bounds)) { item in
+                        FloatingTabGroup(item: item, area: bounds)
                     }
                 }
                 ForEach(canvas.visibleFloatingTabs) { tab in
                     let placement = canvas.floatingPlacement(for: tab)
                     let frame = canvas.floatingFrame(for: tab, in: bounds)
+                    let fold = canvas.foldOrigin(for: tab, in: bounds)
                     FloatingTabCard(tab: tab, placement: placement, area: bounds)
                         .frame(width: frame.width, height: frame.height)
                         .offset(x: frame.minX, y: frame.minY)
+                        .transition(.fold(toward: fold.map { CGSize(width: $0.x - frame.minX, height: $0.y - frame.minY) }))
                 }
+                FloatingSelectionCapsule(area: bounds)
                 if let request = canvas.rayRequest, let tab = canvas.floatingTabs.first(where: { $0.id == request.tabID }) {
                     FloatingRayView(path: FloatingRayPath(from: request.source, to: canvas.floatingFrame(for: tab, in: bounds), in: bounds)) {
                         canvas.finishRay(request.revision)
@@ -87,6 +91,7 @@ struct FloatingTabsLayer: View {
                 var placement = canvas.floatingPlacement(for: tab)
                 placement.move(to: point, in: bounds)
                 canvas.updateFloatingPlacement(placement, for: tab)
+                canvas.joinGroup(at: point, tabs: [tab], in: bounds)
                 canvas.draggedRecentTabID = nil
                 canvas.recentIsOpen = false
                 return true
@@ -111,7 +116,6 @@ private struct FloatingTabCard: View {
 
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(WindowState.self) private var windowState
-    @State private var dragOrigin: CGPoint?
     @State private var resizeOrigin: CGSize?
 
     private enum Layout {
@@ -222,17 +226,10 @@ private struct FloatingTabCard: View {
             }
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named("floatingTabs"))
                 .onChanged { value in
-                    canvas.beginFloatingManipulation()
-                    let origin = dragOrigin ?? placement.frame(in: area).origin
-                    dragOrigin = origin
-                    var next = placement
-                    next.move(to: CGPoint(x: origin.x + value.translation.width, y: origin.y + value.translation.height), in: area)
-                    canvas.updateFloatingPlacement(next, for: tab)
+                    canvas.dragFloatingCard(tab, translation: value.translation, pointer: value.location, in: area)
                 }
                 .onEnded { _ in
-                    dragOrigin = nil
-                    canvas.endFloatingManipulation()
-                    canvas.confirmFloatingPlacement()
+                    canvas.endFloatingCardDrag(tab)
                 })
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { canvas.openFloatingTab(tab) }
