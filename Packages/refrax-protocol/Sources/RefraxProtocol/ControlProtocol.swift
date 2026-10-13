@@ -677,7 +677,9 @@ public extension ControlRequest {
 
     struct FloatingTabsParams: Codable, Sendable {
         public enum Action: String, Codable, Sendable {
-            case show, hide, hold, release, pin, unpin, compact, preview, move, resize
+            case show, hide, hold, release, pin, unpin, compact, preview, move, resize, undock
+            case dockLeft = "dock-left"
+            case dockRight = "dock-right"
         }
         public var action: Action
         public var tab: String?

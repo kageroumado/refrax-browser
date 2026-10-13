@@ -217,8 +217,31 @@ struct ActionsProvider: CommandLensSuggestionProvider {
                 results.append(suggestion(.moveCurrentTabToNewWindow, "Move to New Window", "Current page  ⌥⌘N", "macwindow.badge.plus"))
             }
         }
+        results += dockSuggestions(matching: matches, suggestion: suggestion)
         if matches(["new space", "create space", "add space"]) {
             results.append(suggestion(.newSpace, "New Space…", "A place for its own set of tabs  ⌃⌘N", "plus.square.on.square"))
+        }
+        return results
+    }
+
+    /// Dock the current page to a side, and Undock for each side that holds a page.
+    private func dockSuggestions(
+        matching matches: ([String]) -> Bool,
+        suggestion: (AppAction, String, String, String) -> CommandLensSuggestion,
+    ) -> [CommandLensSuggestion] {
+        guard let windowState, windowState.activeTab != nil,
+              let canvas = (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager else { return [] }
+        var results: [CommandLensSuggestion] = []
+        for edge in FloatingDockEdge.allCases {
+            let side = edge.title.lowercased()
+            let key = edge == .leading ? "⌃⌥←" : "⌃⌥→"
+            if matches(["dock \(side)", "dock page \(side)", "dock to \(side)", "side by side \(side)", "tile \(side)", "reference \(side)"]) {
+                let symbol = edge == .leading ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled"
+                results.append(suggestion(.dockCurrentPage(edge), "Dock \(edge.title)", "Current page  \(key)", symbol))
+            }
+            if let docked = canvas.dockedTab(on: edge), matches(["undock", "undock \(side)", "undock page"]) {
+                results.append(suggestion(.undockPage(edge), "Undock \(docked.displayTitle)", "Docked \(side)", "arrow.uturn.backward"))
+            }
         }
         return results
     }

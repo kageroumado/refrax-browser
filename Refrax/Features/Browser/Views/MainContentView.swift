@@ -4,8 +4,10 @@ struct MainContentView: View {
     @Environment(BrowserSettings.self) private var settings
     @Environment(ClipboardMonitor.self) private var clipboardMonitor
     @Environment(WindowState.self) private var windowState
+    @Environment(TabCanvasManager.self) private var canvas
 
     @State private var showClipboardToast = false
+    @State private var size: CGSize = .zero
 
     /// Calculates leading padding based on sidebar state and mode.
     ///
@@ -35,6 +37,13 @@ struct MainContentView: View {
         return Constants.cornerRadius
     }
 
+    /// The page's area beside pages docked to the window's sides.
+    private var dockedPageFrame: CGRect {
+        let bounds = CGRect(origin: .zero, size: size)
+        guard windowState.usesFloatingTabs, !bounds.isEmpty else { return bounds }
+        return canvas.dockedPageFrame(in: bounds)
+    }
+
     /// Whether compact sidebar mode is active (collapsed + compact mode).
     private var isCompactModeActive: Bool {
         !windowState.usesFloatingTabs && windowState.effectiveSidebarMode == .compact && windowState.isSidebarCollapsed
@@ -49,8 +58,11 @@ struct MainContentView: View {
         }
         .clipShape(contentShape)
         .padding(.leading, leadingPadding)
+        .padding(.leading, dockedPageFrame.minX)
+        .padding(.trailing, max(0, size.width - dockedPageFrame.maxX))
         .ignoresSafeArea(edges: .vertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         // Note: Space swipe gesture is now sidebar-only via sidebarSpaceSwipeGesture()
         // The main content area is reserved for page back/forward navigation
         .overlay(alignment: .bottom) {

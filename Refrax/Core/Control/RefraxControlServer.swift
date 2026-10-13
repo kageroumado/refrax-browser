@@ -2456,6 +2456,17 @@ final class RefraxControlServer {
         case .hide: canvas.dismissFloatingTabs()
         case .hold: canvas.revealFloatingTabs()
         case .release: canvas.releaseFloatingTabs()
+        case .dockLeft, .dockRight, .undock:
+            guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
+            let tab = try resolveTabRef(ref)
+            guard canvas.floatingTabs.contains(where: { $0.id == tab.id }) else {
+                throw ControlError.invalidParams("The tab must belong to the active space")
+            }
+            switch params.action {
+            case .dockLeft: canvas.dock(tab, to: .leading)
+            case .dockRight: canvas.dock(tab, to: .trailing)
+            default: canvas.undock(tab)
+            }
         case .pin, .unpin, .compact, .preview, .move, .resize:
             guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
             let tab = try resolveTabRef(ref)

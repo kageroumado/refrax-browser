@@ -11,6 +11,20 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     var previewHeight: Double?
     var region: FloatingPageRegion?
     var showsInEverySpace: Bool?
+    /// The window side the tab fills at full height. A docked tab is always visible, and its
+    /// floating frame stays where it was so undocking returns it there.
+    var dock: FloatingDockEdge?
+    /// The docked column's share of the window's width, before ``FloatingDockLayout`` clamps it.
+    var dockFraction: Double?
+
+    var isDocked: Bool {
+        dock != nil
+    }
+
+    /// The docked column's requested share of the window's width.
+    var dockWidthFraction: Double {
+        dockFraction ?? FloatingDockLayout.defaultFraction
+    }
 
     static func initial(index: Int, count: Int = 10, isCompact: Bool = true) -> Self {
         let columns = max(2, Int(ceil(Double(count) / 5)))

@@ -38,7 +38,7 @@ extension TabCanvasManager {
     func floatingGroupItems(in area: CGRect) -> [FloatingGroupItem] {
         guard let space = windowState.activeSpace else { return [] }
         let placed = floatingTabs.filter {
-            $0.space?.id == space.id && $0.group != nil && storedFloatingPlacement(for: $0) != nil
+            $0.space?.id == space.id && $0.group != nil && storedFloatingPlacement(for: $0).map { !$0.isDocked } == true
         }
         let byGroup = Dictionary(grouping: placed) { $0.group!.id }
         let groups = space.groups.filter { !$0.isArchive && displaysAsGroup($0) }
@@ -246,14 +246,18 @@ extension TabCanvasManager {
     }
 
     /// Follows a drag on a card's header: the card, or its selection, moves, and the group under
-    /// the pointer becomes the drop target.
+    /// the pointer becomes the drop target, or the window side under it the dock target.
     func dragFloatingCard(_ tab: Tab, translation: CGSize, pointer: CGPoint, in area: CGRect) {
         let moving = cardsMoved(with: tab)
         moveFloatingTabs(moving, by: translation, in: area)
         updateFloatingDropTarget(at: pointer, dragging: moving, in: area)
+        updateDockTarget(at: pointer, dragging: moving, in: area)
     }
 
     func endFloatingCardDrag(_ tab: Tab) {
+        if dockDraggedCard(tab) {
+            return
+        }
         let moving = cardsMoved(with: tab)
         endFloatingMove()
         dropIntoTarget(moving)
@@ -339,8 +343,8 @@ extension TabCanvasManager {
         return regions
     }
 
-    /// Everywhere the floating layer takes the pointer: its controls and its cards.
+    /// Everywhere the floating layer takes the pointer: its controls, its cards, and the docked columns.
     func floatingHitRegions(in bounds: CGRect) -> [CGRect] {
-        floatingControlRegions(in: bounds) + visibleFloatingTabs.map { floatingFrame(for: $0, in: bounds) }
+        floatingControlRegions(in: bounds) + visibleFloatingTabs.map { floatingFrame(for: $0, in: bounds) } + dockHitRegions(in: bounds)
     }
 }

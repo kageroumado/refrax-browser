@@ -228,6 +228,18 @@ extension MenuBarManager {
         let keepItem = NSMenuItem(title: "Keep Part Visible…", action: #selector(keepCurrentRegion(_:)), keyEquivalent: "")
         keepItem.target = self
         viewMenu.addItem(keepItem)
+        for edge in FloatingDockEdge.allCases {
+            let key = TabActions.dockKey(edge)
+            let dockItem = NSMenuItem(
+                title: "Dock Current Page \(edge.title)",
+                action: edge == .leading ? #selector(dockCurrentPageLeft(_:)) : #selector(dockCurrentPageRight(_:)),
+                keyEquivalent: String(key.character),
+            )
+            dockItem.keyEquivalentModifierMask = key.modifiers
+            dockItem.image = NSImage(systemSymbolName: edge == .leading ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled", accessibilityDescription: nil)
+            dockItem.target = self
+            viewMenu.addItem(dockItem)
+        }
         let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
         favoriteItem.target = self
         viewMenu.addItem(favoriteItem)
@@ -443,6 +455,16 @@ extension MenuBarManager {
     func keepCurrentRegion(_: Any?) {
         guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab else { return }
         controller.tabCanvasManager.beginRegionSelection(for: tab)
+    }
+
+    @objc
+    func dockCurrentPageLeft(_: Any?) {
+        activeWindowController?.tabCanvasManager.dockCurrentPage(to: .leading)
+    }
+
+    @objc
+    func dockCurrentPageRight(_: Any?) {
+        activeWindowController?.tabCanvasManager.dockCurrentPage(to: .trailing)
     }
 
     @objc

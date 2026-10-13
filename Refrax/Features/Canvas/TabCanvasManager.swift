@@ -163,6 +163,12 @@ final class TabCanvasManager {
     @ObservationIgnored var floatingMoveOrigins: [Tab.ID: CGPoint] = [:]
     @ObservationIgnored var floatingMoveBounds: CGRect?
 
+    /// The side a dragged card docks to if it is let go now; the layer draws its silhouette.
+    var dockTarget: FloatingDockTarget?
+    /// Beams from where a page was docked or undocked to where it went.
+    var dockBeams: [FloatingDockBeam] = []
+    @ObservationIgnored var dockBeamRevision = 0
+
     /// The ray the layer draws toward a page that just left the window.
     private(set) var rayRequest: FloatingRayRequest?
     @ObservationIgnored private var rayRevision = 0
@@ -253,6 +259,10 @@ final class TabCanvasManager {
             if isFolded(tab), tab.id != retainedInputTabID {
                 return false
             }
+            // A docked page shows in its column, never as a card.
+            if storedFloatingPlacement(for: tab)?.isDocked == true {
+                return false
+            }
             return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
                 || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
                 || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
@@ -274,7 +284,7 @@ final class TabCanvasManager {
         if tab.space?.dataStoreMode != .private {
             tab.floatingPlacement = placement
         }
-        if placement.isPinned {
+        if placement.isPinned || placement.isDocked {
             tabManager.state.pipCoordinator.onTabActivated(tab, in: tabManager.state)
         }
         tabManager.state.scheduleSave()
