@@ -87,8 +87,9 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         tabPage?.url
     }
 
+    /// Favorites are the browser's pinned tabs.
     func isPinned(for _: WKWebExtensionContext) -> Bool {
-        tab?.isPinned ?? false
+        tab?.isFavorite ?? false
     }
 
     func isPlayingAudio(for _: WKWebExtensionContext) -> Bool {
@@ -257,8 +258,8 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     }
 
     func setPinned(_ pinned: Bool, for _: WKWebExtensionContext) async throws {
-        guard let tab else { return }
-        tab.isPinned = pinned
+        guard let tab, tab.isFavorite != pinned else { return }
+        pagePool?.tabManager?.toggleFavorite(tab)
     }
 
     // MARK: - Private Helpers

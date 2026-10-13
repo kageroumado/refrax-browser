@@ -99,7 +99,6 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         printStorageEntries(entries)
     case let .recentlyClosedTabs(tabs):
         printRecentlyClosedTabs(tabs)
-
     case let .settingsEntries(entries):
         printSettingsEntries(entries)
     case let .health(info):
@@ -144,21 +143,29 @@ func printBrowserState(_ state: CTL.BrowserStateInfo) {
             let title = tab.title.isEmpty ? "(untitled)" : tab.title
             let url = tab.url ?? ""
             var flags: [String] = []
-            if tab.isActive { flags.append("active") }
-            if tab.isLoading { flags.append("loading") }
-            if tab.isPinned { flags.append("pinned") }
-            if tab.pageCount > 1 { flags.append("\(tab.pageCount) pages") }
+            if tab.isActive {
+                flags.append("active")
+            }
+            if tab.isLoading {
+                flags.append("loading")
+            }
+            if tab.isFavorite {
+                flags.append("favorite")
+            }
+            if tab.pageCount > 1 {
+                flags.append("\(tab.pageCount) pages")
+            }
             let flagStr = flags.isEmpty ? "" : " [\(flags.joined(separator: ", "))]"
             print("\(prefix)\(title) - \(url)\(flagStr)")
         }
     }
 
-    // Tabs not associated with any space
+    // Favorites belong to no space
     let orphanTabs = state.tabs.filter { tab in
         !state.spaces.contains { $0.id == tab.spaceID }
     }
     if !orphanTabs.isEmpty {
-        print("Unassigned:")
+        print("Favorites:")
         for tab in orphanTabs {
             let prefix = tab.isActive ? "  * " : "    "
             let title = tab.title.isEmpty ? "(untitled)" : tab.title
@@ -182,13 +189,27 @@ func printTab(_ tab: CTL.TabInfo) {
     let title = tab.title.isEmpty ? "(untitled)" : tab.title
     let url = tab.url ?? ""
     var flags: [String] = []
-    if tab.isActive { flags.append("active") }
-    if tab.isLoading { flags.append("loading") }
-    if tab.isPinned { flags.append("pinned") }
-    if tab.isUnread == true { flags.append("unread") }
-    if tab.customName != nil { flags.append("renamed") }
-    if tab.groupID != nil { flags.append("grouped") }
-    if tab.pageCount > 1 { flags.append("\(tab.pageCount) pages") }
+    if tab.isActive {
+        flags.append("active")
+    }
+    if tab.isLoading {
+        flags.append("loading")
+    }
+    if tab.isFavorite {
+        flags.append("favorite")
+    }
+    if tab.isUnread == true {
+        flags.append("unread")
+    }
+    if tab.customName != nil {
+        flags.append("renamed")
+    }
+    if tab.groupID != nil {
+        flags.append("grouped")
+    }
+    if tab.pageCount > 1 {
+        flags.append("\(tab.pageCount) pages")
+    }
     let flagStr = flags.isEmpty ? "" : " [\(flags.joined(separator: ", "))]"
     print("\(prefix)\(tab.id)  \(title) - \(url)\(flagStr)")
 }
@@ -197,9 +218,15 @@ func printSpaces(_ spaces: [CTL.SpaceInfo]) {
     let modeWidth = spaces.map { ($0.dataStoreMode ?? "").count }.max() ?? 0
     for space in spaces {
         var markers: [String] = []
-        if space.isActive { markers.append("active") }
-        if space.isLocked == true { markers.append("locked") }
-        if space.exposesCookies == true { markers.append("cookies exposed") }
+        if space.isActive {
+            markers.append("active")
+        }
+        if space.isLocked == true {
+            markers.append("locked")
+        }
+        if space.exposesCookies == true {
+            markers.append("cookies exposed")
+        }
         let markerText = markers.isEmpty ? "" : " [\(markers.joined(separator: ", "))]"
         let mode = (space.dataStoreMode ?? "").padding(toLength: modeWidth, withPad: " ", startingAt: 0)
         print("\(space.id)  \(mode)  \(space.name) (\(space.tabCount) tabs)\(markerText)")
@@ -233,11 +260,21 @@ func printTabDetail(_ info: CTL.TabDetailInfo) {
     }
 
     var flags: [String] = []
-    if info.isActive { flags.append("active") }
-    if info.isLoading { flags.append("loading") }
-    if info.isPinned { flags.append("pinned") }
-    if info.isUnread { flags.append("unread") }
-    if info.isMuted { flags.append("muted") }
+    if info.isActive {
+        flags.append("active")
+    }
+    if info.isLoading {
+        flags.append("loading")
+    }
+    if info.isFavorite {
+        flags.append("favorite")
+    }
+    if info.isUnread {
+        flags.append("unread")
+    }
+    if info.isMuted {
+        flags.append("muted")
+    }
 
     if !flags.isEmpty {
         print("Flags: \(flags.joined(separator: ", "))")
@@ -270,9 +307,13 @@ func printGroups(_ groups: [CTL.GroupInfo]) {
 func printGroup(_ group: CTL.GroupInfo) {
     var details: [String] = []
     details.append(group.color)
-    if let icon = group.iconName { details.append(icon) }
+    if let icon = group.iconName {
+        details.append(icon)
+    }
     details.append("\(group.tabCount) tabs")
-    if group.isCollapsed { details.append("collapsed") }
+    if group.isCollapsed {
+        details.append("collapsed")
+    }
     let detailStr = details.joined(separator: ", ")
     print("\(group.id)  \(group.name) [\(detailStr)]")
 }
@@ -354,8 +395,12 @@ func printCookies(_ cookies: [CTL.CookieInfo]) {
     }
     for cookie in cookies {
         var flags: [String] = []
-        if cookie.isSecure { flags.append("secure") }
-        if cookie.isHTTPOnly { flags.append("httpOnly") }
+        if cookie.isSecure {
+            flags.append("secure")
+        }
+        if cookie.isHTTPOnly {
+            flags.append("httpOnly")
+        }
         flags.append(cookie.expiresDate.map { "expires \($0)" } ?? "session")
         print("\(cookie.name)=\(cookie.value ?? "•••") (\(cookie.domain)\(cookie.path)) [\(flags.joined(separator: ", "))]")
     }
@@ -383,7 +428,6 @@ func printRecentlyClosedTabs(_ tabs: [CTL.RecentlyClosedTabInfo]) {
         print("\(tab.closedAt)  \(tab.title) - \(tab.url)")
     }
 }
-
 
 func printSettingsEntries(_ entries: [CTL.SettingEntryInfo]) {
     if entries.isEmpty {

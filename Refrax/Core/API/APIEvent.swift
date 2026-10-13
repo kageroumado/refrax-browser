@@ -19,8 +19,8 @@ public enum APIEvent: Sendable {
     /// A tab was activated (focused).
     case tabActivated(TabInfo)
 
-    /// Tab pin state changed.
-    case tabPinStateChanged(TabInfo)
+    /// A tab was added to Favorites or removed.
+    case tabFavoriteChanged(TabInfo)
 
     /// Tab was moved (position changed).
     case tabMoved(TabInfo)
@@ -97,15 +97,15 @@ public struct APIEventFilter: OptionSet, Sendable {
     /// Tab activated events.
     public static let tabActivated = APIEventFilter(rawValue: 1 << 3)
 
-    /// Tab pin state changed events.
-    public static let tabPinStateChanged = APIEventFilter(rawValue: 1 << 4)
+    /// Favorite added or removed events.
+    public static let tabFavoriteChanged = APIEventFilter(rawValue: 1 << 4)
 
     /// Tab moved events.
     public static let tabMoved = APIEventFilter(rawValue: 1 << 5)
 
     /// All tab events.
     public static let allTabEvents: APIEventFilter = [
-        .tabOpened, .tabClosed, .tabUpdated, .tabActivated, .tabPinStateChanged, .tabMoved,
+        .tabOpened, .tabClosed, .tabUpdated, .tabActivated, .tabFavoriteChanged, .tabMoved,
     ]
 
     // MARK: - Navigation Filters
@@ -193,7 +193,7 @@ public extension APIEvent {
         case .tabClosed: .tabClosed
         case .tabUpdated: .tabUpdated
         case .tabActivated: .tabActivated
-        case .tabPinStateChanged: .tabPinStateChanged
+        case .tabFavoriteChanged: .tabFavoriteChanged
         case .tabMoved: .tabMoved
         case .navigationStarted: .navigationStarted
         case .navigationCommitted: .navigationCommitted

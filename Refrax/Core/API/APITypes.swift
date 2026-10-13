@@ -9,7 +9,7 @@ public struct TabInfo: Codable, Sendable, Identifiable {
     public let url: String
     public let title: String
     public let isSecure: Bool
-    public let isPinned: Bool
+    public let isFavorite: Bool
     public let isUnread: Bool
     public let groupID: UUID?
     public let position: Int
@@ -26,7 +26,7 @@ public struct TabInfo: Codable, Sendable, Identifiable {
         self.url = tab.activePage.url.absoluteString
         self.title = tab.displayTitle
         self.isSecure = tab.isSecure
-        self.isPinned = tab.isPinned
+        self.isFavorite = tab.isFavorite
 
         self.isUnread = tab.isUnread
         self.groupID = tab.groupID

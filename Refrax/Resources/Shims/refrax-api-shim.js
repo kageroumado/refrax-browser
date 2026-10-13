@@ -5,7 +5,7 @@
  * These APIs are only available in Refrax and require the appropriate permissions.
  *
  * Required permissions:
- * - "refrax.tabs": Access to favorites and pinned tab APIs
+ * - "refrax.tabs": Access to favorites APIs
  * - "refrax.spaces": Access to space listing APIs
  */
 
@@ -44,7 +44,7 @@
   /**
    * Refrax Tab APIs
    *
-   * Access to Refrax-specific tab features like favorites and pinned status.
+   * Access to Refrax-specific tab features like favorites.
    */
   const refraxTabs = {
     /**
@@ -65,27 +65,6 @@
       return callRefraxAPI("tabs.setFavorite", {
         tabId: tabId,
         isFavorite: isFavorite,
-      });
-    },
-
-    /**
-     * Gets all pinned tabs.
-     * @returns {Promise<Array<TabInfo>>} - Array of pinned tab info objects
-     */
-    getPinned: function () {
-      return callRefraxAPI("tabs.getPinned");
-    },
-
-    /**
-     * Sets the pinned status of a tab.
-     * @param {string} tabId - The tab ID (UUID string)
-     * @param {boolean} isPinned - Whether the tab should be pinned
-     * @returns {Promise<void>}
-     */
-    setPinned: function (tabId, isPinned) {
-      return callRefraxAPI("tabs.setPinned", {
-        tabId: tabId,
-        isPinned: isPinned,
       });
     },
   };
