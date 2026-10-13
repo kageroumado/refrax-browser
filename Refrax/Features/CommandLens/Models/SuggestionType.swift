@@ -107,6 +107,12 @@ nonisolated enum AppAction: Hashable, Sendable {
     case setCurrentTabMuted(Bool)
     /// Mute every other tab that plays sound.
     case muteOtherTabs
+    /// Move the current page to the space with this identifier.
+    case moveCurrentTabToSpace(UUID)
+    /// Move the current page into a new window.
+    case moveCurrentTabToNewWindow
+    /// Open New Space beside the island's space picker.
+    case newSpace
 }
 
 /// Scope of a setting (global or per-site).

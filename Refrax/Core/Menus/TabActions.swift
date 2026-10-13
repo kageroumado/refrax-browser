@@ -2,10 +2,12 @@ import AppKit
 import Foundation
 
 /// Menu actions on a tab as an object: its favorite, its floating placement, its selection on
-/// the desk, its sound, its duplicate, its close, and Look.
+/// the desk, its sound, its name and unread mark, the space and window it lives in, its
+/// duplicate, its close, and Look.
 ///
 /// Placement actions need the canvas and the area the card is laid out in, so they appear only
-/// on card surfaces that pass both.
+/// on card surfaces that pass both. The sidebar row brings its own identity, organization, and
+/// window verbs, so the card verbs appear only on cards.
 struct TabActions {
     let tab: Tab
     let surface: MenuSurface
@@ -14,6 +16,8 @@ struct TabActions {
     let bookmarks: BookmarksManager
     var canvas: TabCanvasManager?
     var area: CGRect = .zero
+    /// Rename… where the surface edits the name in place; without it, a sheet asks.
+    var onRename: (() -> Void)?
 
     func actions() -> [MenuAction] {
         let behaviors = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
@@ -33,8 +37,12 @@ struct TabActions {
             })
         }
         actions += mediaActions()
+        if surface.isCard {
+            actions += identityActions()
+        }
         actions.append(MenuAction("tab.duplicate", "Duplicate Tab", symbol: "plus.square.on.square", group: .tab) { behaviors.duplicate() })
         if surface.isCard {
+            actions += spaceActions() + windowActions()
             actions.append(MenuAction("tab.close", "Close Tab", symbol: "xmark", group: .close) { tabs.requestCloseTab(tab) })
         }
         return actions
@@ -62,6 +70,59 @@ struct TabActions {
 
     /// ⌃M, the menu bar's Mute Tab for the current tab.
     static let muteKey = MenuAction.KeyEquivalent("m", modifiers: .control)
+
+    // MARK: - Name, unread, space, and window
+
+    private func identityActions() -> [MenuAction] {
+        let unread = tab.isUnread
+        return [
+            MenuAction("tab.rename", "Rename…", symbol: "pencil", group: .tab) {
+                if let onRename {
+                    onRename()
+                } else {
+                    TabRenameAlert.present(for: tab, tabs: tabs, in: windowState.window)
+                }
+            },
+            MenuAction("tab.unread", unread ? "Mark as Read" : "Mark as Unread", symbol: unread ? "circlebadge" : "circlebadge.fill", group: .tab) {
+                if unread {
+                    tabs.markAsRead(tab)
+                } else {
+                    tabs.markAsUnread(tab)
+                }
+            },
+        ]
+    }
+
+    /// Move to Space lists every other space; favorites belong to every space and stay put. A
+    /// locked space shows a lock and asks to be unlocked before the tab moves in.
+    private func spaceActions() -> [MenuAction] {
+        let lock = tabs.state.spaceLockManager
+        guard !tab.isLiveFavorite, let current = tab.space, !lock.requiresAuth(for: current) else { return [] }
+        let destinations = tabs.spaceManager.spaces.filter { $0.id != current.id }
+        guard !destinations.isEmpty else { return [] }
+        let targets = destinations.map { space in
+            let isLocked = lock.requiresAuth(for: space)
+            return MenuAction("tab.moveToSpace.\(space.id)", space.name, symbol: isLocked ? "lock" : space.isEmoji ? nil : space.iconName, group: .move) {
+                Task(name: "Move tab to space") { await tabs.moveTabsUnlocking([tab], to: space) }
+            }
+        }
+        return [MenuAction("tab.moveToSpace", "Move to Space", symbol: "square.stack.3d.up", group: .move, children: targets)]
+    }
+
+    private func windowActions() -> [MenuAction] {
+        var actions: [MenuAction] = []
+        if !tab.isLiveFavorite, tab.space != nil {
+            actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option]), group: .window) {
+                tabs.moveTabToNewWindow(tab, from: windowState)
+            })
+        }
+        actions.append(MenuAction("tab.reflectedWindow", "Open Reflected Window", symbol: "rectangle.inset.filled.on.rectangle", group: .window) {
+            let pagePool = tabs.pagePool
+            guard let page = pagePool.existingPage(for: tab.activePage) ?? pagePool.page(for: tab.activePage) else { return }
+            tabs.windowManager.createReflectedWindow(for: page)
+        })
+        return actions
+    }
 
     /// Region placement (Keep Part Visible, Adjust Region, Preview Zoom) stays behind its flag.
     private var regionsEnabled: Bool {

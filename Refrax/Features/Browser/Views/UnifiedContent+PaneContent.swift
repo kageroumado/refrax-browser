@@ -26,7 +26,6 @@ struct PaneContentWrapper: View {
     @Environment(WindowState.self) private var windowState
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
-    @Environment(ReaderModeManager.self) private var readerModeManager
 
     private enum Constants {
         static let linkPreviewPadding: CGFloat = 8
@@ -60,21 +59,13 @@ struct PaneContentWrapper: View {
         ObjectIdentifier(windowState)
     }
 
-    /// Whether reader mode is active for this page's tab.
-    private var isReaderActive: Bool {
-        guard let tabPage else { return false }
-        return readerModeManager.isReaderActive(for: tabPage.id)
-    }
-
     /// Whether the webView should ignore all events.
     ///
-    /// Events are blocked during layout mode, space lock, reader mode,
-    /// or when globally disabled.
+    /// Events are blocked during layout mode, space lock, or when globally disabled.
     private var shouldIgnoreAllEvents: Bool {
         windowState.webViewsShouldIgnoreAllEvents
             || isLayoutMode
             || windowState.isSpaceLocked
-            || isReaderActive
     }
 
     var body: some View {
@@ -192,9 +183,6 @@ struct PaneContentWrapper: View {
         if tabPage.url.isDeepLink, let deepLink = DeepLink(url: tabPage.url) {
             DeepLinkView(deepLink: deepLink)
         }
-
-        // Reader mode overlay
-        ReaderOverlayContainer(tabID: tabPage.id)
 
         // Link hover preview
         LinkHoverPreviewView(url: $hoveredLinkURL)
@@ -482,9 +470,10 @@ private final class ClientIdentityPanelBridge: NSObject {
         self.candidates = candidates
     }
 
-    // The didEnd selector's first parameter is the sheet's *parent window*,
-    // not the SFChooseIdentityPanel — the panel is accessed via its singleton.
-    @objc func panelDidEnd(
+    /// The didEnd selector's first parameter is the sheet's *parent window*,
+    /// not the SFChooseIdentityPanel — the panel is accessed via its singleton.
+    @objc
+    func panelDidEnd(
         _: NSWindow,
         returnCode: Int,
         contextInfo: UnsafeMutableRawPointer?,
@@ -492,17 +481,15 @@ private final class ClientIdentityPanelBridge: NSObject {
         guard !didFire else { return }
         didFire = true
 
-        nonisolated(unsafe) let chosen: SecIdentity?
-        if returnCode == NSApplication.ModalResponse.OK.rawValue,
-           let panel = SFChooseIdentityPanel.shared(),
-           let picked = panel.identity()?.takeUnretainedValue()
-        {
+        nonisolated(unsafe) let chosen: SecIdentity? = if returnCode == NSApplication.ModalResponse.OK.rawValue,
+                                                          let panel = SFChooseIdentityPanel.shared(),
+                                                          let picked = panel.identity()?.takeUnretainedValue() {
             // Match by CF reference identity against our retained candidates
             // so the returned SecIdentity stays alive past this callback.
-            chosen = candidates.first { ($0 as AnyObject) === (picked as AnyObject) }
+            candidates.first { ($0 as AnyObject) === (picked as AnyObject) }
                 ?? picked
         } else {
-            chosen = nil
+            nil
         }
         continuation.resume(returning: chosen)
 

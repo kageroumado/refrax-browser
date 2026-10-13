@@ -92,8 +92,6 @@ struct SiteSettingDefinition: Sendable, Equatable {
             return siteSettings.popUpPolicy.displayName
         case "autoPlayPolicy":
             return siteSettings.autoPlayPolicy.displayName
-        case "useReaderWhenAvailable":
-            return siteSettings.useReaderWhenAvailable ? "On" : "Off"
         case "disableAutoConsent":
             return siteSettings.disableAutoConsent ? "Disabled" : "Enabled"
         default:
@@ -128,8 +126,6 @@ struct SiteSettingDefinition: Sendable, Equatable {
             case .allowAll:
                 siteSettings.autoPlayPolicy = .stopMediaWithSound
             }
-        case "useReaderWhenAvailable":
-            siteSettings.useReaderWhenAvailable.toggle()
         case "disableAutoConsent":
             siteSettings.disableAutoConsent.toggle()
         default:
@@ -166,12 +162,6 @@ extension SiteSettingDefinition {
             displayName: "Auto-play",
             synonyms: ["autoplay", "auto play", "video autoplay", "media autoplay"],
             icon: "play.fill",
-        ),
-        SiteSettingDefinition(
-            key: "useReaderWhenAvailable",
-            displayName: "Reader Mode",
-            synonyms: ["reader", "reading mode", "reader view", "auto reader"],
-            icon: "doc.text",
         ),
         SiteSettingDefinition(
             key: "disableAutoConsent",

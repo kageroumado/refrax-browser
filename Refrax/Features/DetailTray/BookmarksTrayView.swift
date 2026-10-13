@@ -323,10 +323,10 @@ struct BookmarksTrayView: View {
                     tabManager: tabManager,
                 )
             }
-        case .downloadingHTML, .downloadingReader:
+        case .downloadingHTML:
             Button("Saving...") {}
                 .disabled(true)
-        case .availableHTML, .availableReader:
+        case .availableHTML:
             if let savedAt = bookmark.offlineSavedAt {
                 Text("Saved \(savedAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)

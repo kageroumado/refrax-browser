@@ -533,19 +533,6 @@ final class BrowserSettings {
     /// Use ``enabledCalendarIDs`` computed property for type-safe access.
     var enabledCalendarIDsJSON: String
 
-    // MARK: - Widgets: Speed Reader
-
-    /// Default words per minute for Speed Reader.
-    ///
-    /// Valid range: 50-800 WPM. Default: 250.
-    var speedReaderWPM: Int
-
-    /// JSON-encoded dictionary mapping article URLs to resume word indices.
-    ///
-    /// Use ``speedReaderResumePositions`` computed property for type-safe access.
-    /// Entries older than 7 days are automatically cleaned up.
-    var speedReaderResumePositionsJSON: String
-
     // MARK: - Advanced: JavaScript
 
     /// Whether JavaScript is enabled globally.
@@ -783,8 +770,6 @@ final class BrowserSettings {
         self.calendarLookAheadHours = 24
         self.calendarAutoExpandOnImminent = true
         self.enabledCalendarIDsJSON = "[]"
-        self.speedReaderWPM = 250
-        self.speedReaderResumePositionsJSON = "{}"
         self.autoFillModeRaw = AutoFillMode.builtIn.rawValue
         self.requireAuthForAutoFill = false
         self.clipboardLinkMonitoring = false
@@ -940,73 +925,6 @@ final class BrowserSettings {
     /// Check if a calendar is enabled for the widget.
     func isCalendarEnabled(_ calendarID: String) -> Bool {
         enabledCalendarIDs.contains(calendarID)
-    }
-
-    // MARK: - Speed Reader Resume Positions
-
-    /// Resume position entry with timestamp for cleanup.
-    private struct ResumePosition: Codable {
-        let index: Int
-        let timestamp: Date
-    }
-
-    /// Gets the saved resume position for an article URL.
-    ///
-    /// Returns nil if no position is saved or if the saved position is older than 7 days.
-    func speedReaderResumePosition(for url: URL) -> Int? {
-        guard let data = speedReaderResumePositionsJSON.data(using: .utf8),
-              let positions = try? JSONDecoder().decode([String: ResumePosition].self, from: data),
-              let position = positions[url.absoluteString] else {
-            return nil
-        }
-
-        // Expire positions older than 7 days
-        let maxAge: TimeInterval = 7 * 24 * 60 * 60
-        guard Date().timeIntervalSince(position.timestamp) < maxAge else {
-            return nil
-        }
-
-        return position.index
-    }
-
-    /// Saves the resume position for an article URL.
-    ///
-    /// Also cleans up entries older than 7 days.
-    func setSpeedReaderResumePosition(_ index: Int, for url: URL) {
-        var positions: [String: ResumePosition] = [:]
-
-        // Decode existing positions
-        if let data = speedReaderResumePositionsJSON.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String: ResumePosition].self, from: data) {
-            positions = decoded
-        }
-
-        // Clean up old entries and add new one
-        let maxAge: TimeInterval = 7 * 24 * 60 * 60
-        let now = Date()
-        positions = positions.filter { now.timeIntervalSince($0.value.timestamp) < maxAge }
-        positions[url.absoluteString] = ResumePosition(index: index, timestamp: now)
-
-        // Encode and save
-        if let data = try? JSONEncoder().encode(positions),
-           let json = String(data: data, encoding: .utf8) {
-            speedReaderResumePositionsJSON = json
-        }
-    }
-
-    /// Clears the resume position for an article URL.
-    func clearSpeedReaderResumePosition(for url: URL) {
-        guard var positions = try? JSONDecoder().decode(
-            [String: ResumePosition].self,
-            from: speedReaderResumePositionsJSON.data(using: .utf8) ?? Data(),
-        ) else { return }
-
-        positions.removeValue(forKey: url.absoluteString)
-
-        if let data = try? JSONEncoder().encode(positions),
-           let json = String(data: data, encoding: .utf8) {
-            speedReaderResumePositionsJSON = json
-        }
     }
 
     /// Enable or disable an app shortcut type.

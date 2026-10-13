@@ -6,7 +6,7 @@ import SwiftUI
 /// it tracks. The page card beside the rail opens ``PageCardOptionsPopover`` instead.
 struct PageActionsMenu: NSViewRepresentable {
     /// Group order on the cards: the page's own verbs first, then placement, then the tab as an object.
-    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .close]
+    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .window, .close]
 
     let tab: Tab
     let surface: MenuSurface
@@ -15,7 +15,6 @@ struct PageActionsMenu: NSViewRepresentable {
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
-    @Environment(ReaderModeManager.self) private var readerMode
     @Environment(SharingCoordinator.self) private var sharing
     @Environment(\.appearsActive) private var appearsActive
 
@@ -27,7 +26,7 @@ struct PageActionsMenu: NSViewRepresentable {
         button.makeTree = {
             Self.tree(
                 for: tab, surface: surface, area: area, windowState: windowState, tabs: tabs,
-                bookmarks: bookmarks, canvas: canvas, readerMode: readerMode, sharing: sharing,
+                bookmarks: bookmarks, canvas: canvas, sharing: sharing,
             )
         }
         button.infoState = windowState.controlIsland.tabInfo
@@ -50,11 +49,15 @@ struct PageActionsMenu: NSViewRepresentable {
         tabs: TabManager,
         bookmarks: BookmarksManager,
         canvas: TabCanvasManager,
-        readerMode: ReaderModeManager,
         sharing: SharingCoordinator,
     ) -> MenuTree {
-        let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, readerMode: readerMode, sharing: sharing)
-        let object = TabActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area)
+        let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, sharing: sharing)
+        // A card on screen edits its own title; a row in Recent has none to edit.
+        let editsInPlace = canvas.visibleFloatingTabs.contains { $0.id == tab.id }
+        let object = TabActions(
+            tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
+            onRename: editsInPlace ? { canvas.renamingTabID = tab.id } : nil,
+        )
         return MenuComposer.compose(page.actions() + object.actions(), groupOrder: groupOrder)
     }
 }

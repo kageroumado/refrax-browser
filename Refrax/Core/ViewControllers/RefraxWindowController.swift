@@ -341,7 +341,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 autoArchiveManager: appDelegate.autoArchiveManager,
                 windowManager: appDelegate.windowManager,
             ),
-            readerModeManager: appDelegate.readerModeManager,
             undoRedoManager: appDelegate.undoRedoManager,
             calendarManager: appDelegate.calendarManager,
             clipboardMonitor: appDelegate.clipboardMonitor,

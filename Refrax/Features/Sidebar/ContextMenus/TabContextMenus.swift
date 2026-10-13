@@ -12,7 +12,6 @@ extension SidebarContextMenus {
         @SwiftUI.Environment(WebPagePool.self) private var pagePool
         @SwiftUI.Environment(BookmarksManager.self) private var bookmarksManager
         @SwiftUI.Environment(SharingCoordinator.self) private var sharingCoordinator
-        @SwiftUI.Environment(ReaderModeManager.self) private var readerModeManager
         @SwiftUI.Environment(WindowState.self) private var windowState
         @SwiftUI.Environment(BrowserSettings.self) private var settings
 
@@ -26,7 +25,7 @@ extension SidebarContextMenus {
             MenuTreeView(tree: Self.tree(
                 for: tab, isCompactMode: isCompactMode, onRename: onRename, onGetInfo: onGetInfo, onPreview: onPreview,
                 tabManager: tabManager, groupManager: groupManager, pagePool: pagePool, bookmarksManager: bookmarksManager,
-                sharingCoordinator: sharingCoordinator, readerModeManager: readerModeManager, windowState: windowState, settings: settings,
+                sharingCoordinator: sharingCoordinator, windowState: windowState, settings: settings,
             ))
         }
 
@@ -43,7 +42,6 @@ extension SidebarContextMenus {
             pagePool: WebPagePool,
             bookmarksManager: BookmarksManager,
             sharingCoordinator: SharingCoordinator,
-            readerModeManager: ReaderModeManager,
             windowState: WindowState,
             settings: BrowserSettings,
         ) -> MenuTree {
@@ -53,7 +51,7 @@ extension SidebarContextMenus {
                 tabManager: tabManager, groupManager: groupManager, pagePool: pagePool, windowState: windowState, settings: settings,
             )
             let page = PageActions(
-                tab: tab, surface: surface, windowState: windowState, tabs: tabManager, readerMode: readerModeManager, sharing: sharingCoordinator,
+                tab: tab, surface: surface, windowState: windowState, tabs: tabManager, sharing: sharingCoordinator,
             )
             let object = TabActions(tab: tab, surface: surface, windowState: windowState, tabs: tabManager, bookmarks: bookmarksManager)
             return MenuComposer.compose(sidebar.actions() + page.actions() + object.actions())

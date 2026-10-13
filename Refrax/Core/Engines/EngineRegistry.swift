@@ -18,7 +18,7 @@ final class EngineRegistry {
         contractVersion: .current,
         capabilities: [
             .javaScriptEvaluation, .findInPage, .zoom, .snapshots, .devTools, .downloads, .contentBlocking,
-            .userScripts, .webExtensions, .pictureInPicture, .mediaCapture, .readerMode, .agentPerception,
+            .userScripts, .webExtensions, .pictureInPicture, .mediaCapture, .agentPerception,
             .autoFill, .processInfo, .rendererControl, .notifications,
         ],
         isOutOfProcess: false,
@@ -54,11 +54,11 @@ final class EngineRegistry {
     }
 
     init(applicationSupport: URL) {
-        enginesDirectory = applicationSupport.appending(path: "Engines", directoryHint: .isDirectory)
-        dataDirectory = applicationSupport.appending(path: "EngineData", directoryHint: .isDirectory)
+        self.enginesDirectory = applicationSupport.appending(path: "Engines", directoryHint: .isDirectory)
+        self.dataDirectory = applicationSupport.appending(path: "EngineData", directoryHint: .isDirectory)
         refresh()
         if let catalog = EngineCatalog.cached(in: catalogCacheDirectory) {
-            securityFloors = catalog.securityFloors
+            self.securityFloors = catalog.securityFloors
         }
     }
 
@@ -191,7 +191,9 @@ final class EngineRegistry {
     /// An installed engine's icon (its bundle's `CFBundleIconFile`), read without loading the
     /// engine's code; nil for system WebKit and for engines without one.
     func icon(for id: EngineID) -> NSImage? {
-        if let cached = icons[id] { return cached }
+        if let cached = icons[id] {
+            return cached
+        }
         guard let url = bundles[id]?.url,
               let bundle = Bundle(url: url),
               let name = bundle.infoDictionary?["CFBundleIconFile"] as? String,

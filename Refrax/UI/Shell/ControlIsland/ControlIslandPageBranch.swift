@@ -166,6 +166,7 @@ struct ControlIslandPageBranch: View {
                 .allowsHitTesting(showsCopyAddress)
                 .accessibilityHidden(!showsCopyAddress)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsCopyAddress)
+            PageCardPromptControls(page: page)
             reloadControl
             control(actions.isFavorite ? "Remove from Favorites" : "Add to Favorites", symbol: actions.isFavorite ? "star.fill" : "star") {
                 actions.toggleFavorite()

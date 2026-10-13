@@ -11,7 +11,7 @@ import SwiftUI
 /// - **Tagged**: Multiple tags for flexible categorization
 /// - **Favorited**: Displayed as tiles in the sidebar for quick access
 /// - **Space-Assigned**: Optionally tied to a specific browsing space
-/// - **Offline-Ready**: Downloaded for offline reading (HTML or Reader mode)
+/// - **Offline-Ready**: Downloaded as HTML for offline reading
 ///
 /// ## Favorites System
 ///
@@ -28,10 +28,7 @@ import SwiftUI
 ///
 /// ## Offline Reading
 ///
-/// Bookmarks support two offline modes:
-/// - **Full HTML**: Complete page with styling and images
-/// - **Reader Mode**: Extracted article text only
-///
+/// A bookmark saves the complete page, with styling and images, for offline reading.
 /// Offline content is downloaded asynchronously and stored locally.
 @Model
 final class Bookmark {
@@ -259,12 +256,12 @@ final class Bookmark {
     
     /// Whether offline content is available for reading
     var isOfflineAvailable: Bool {
-        offlineStatus == .availableHTML || offlineStatus == .availableReader
+        offlineStatus == .availableHTML
     }
 
     /// Whether offline content is currently being downloaded
     var isDownloadingOffline: Bool {
-        offlineStatus == .downloadingHTML || offlineStatus == .downloadingReader
+        offlineStatus == .downloadingHTML
     }
 
     // MARK: - Modification Methods
@@ -362,14 +359,8 @@ enum OfflineStatus: String, Codable {
     /// Currently downloading full HTML
     case downloadingHTML
     
-    /// Currently downloading reader mode
-    case downloadingReader
-    
     /// Full HTML available offline
     case availableHTML
-    
-    /// Reader mode available offline
-    case availableReader
     
     /// Download failed
     case failed

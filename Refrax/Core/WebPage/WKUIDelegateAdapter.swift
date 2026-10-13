@@ -100,11 +100,6 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
                 pagePool.windowManager.activeWindowController?.windowState.showGifPicker(for: owner)
             }
 
-            contextMenuBuilder.onSpeedReadSelection = { [weak self] text in
-                guard let self, let pagePool else { return }
-                pagePool.windowManager.activeWindowController?.windowState.showSpeedReader(for: text)
-            }
-
             contextMenuBuilder.onDownloadFile = { [weak self] url in
                 guard let self, let pagePool else { return }
                 guard let downloadManager = pagePool.state.downloadManager else { return }
@@ -323,7 +318,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             return
         }
         Task.immediate(name: "Geolocation permission") {
-            decisionHandler(await owner.decidePermission(.geolocation, host: origin.host) ? .grant : .deny)
+            await decisionHandler(owner.decidePermission(.geolocation, host: origin.host) ? .grant : .deny)
         }
     }
 
@@ -341,7 +336,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             return
         }
         Task.immediate(name: "Notification permission") {
-            decisionHandler(await owner.requestNotificationPermission(for: origin))
+            await decisionHandler(owner.requestNotificationPermission(for: origin))
         }
     }
 

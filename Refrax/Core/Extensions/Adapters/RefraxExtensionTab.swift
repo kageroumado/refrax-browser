@@ -2,21 +2,21 @@ import AppKit
 import Foundation
 import WebKit
 
-/// Bridges a Refrax `TabPage` to WebKit's extension tab interface.
-///
-/// This adapter implements `WKWebExtensionTab` to expose Refrax's tab model
-/// to browser extensions. Extensions can query tab properties (URL, title, status)
-/// and perform actions (activate, reload, close).
-///
-/// ## Lifecycle
-///
-/// Tab adapters are created by `ExtensionManager.extensionTab(for:)` and cached
-/// for the lifetime of the `TabPage`. When the tab closes, `ExtensionManager`
-/// removes the adapter.
-///
-/// ## Thread Safety
-///
-/// All methods are called on the main actor by WebKit's extension system.
+// Bridges a Refrax `TabPage` to WebKit's extension tab interface.
+//
+// This adapter implements `WKWebExtensionTab` to expose Refrax's tab model
+// to browser extensions. Extensions can query tab properties (URL, title, status)
+// and perform actions (activate, reload, close).
+//
+// ## Lifecycle
+//
+// Tab adapters are created by `ExtensionManager.extensionTab(for:)` and cached
+// for the lifetime of the `TabPage`. When the tab closes, `ExtensionManager`
+// removes the adapter.
+//
+// ## Thread Safety
+//
+// All methods are called on the main actor by WebKit's extension system.
 
 final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     // MARK: - Properties
@@ -25,7 +25,9 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
     weak var tabPage: TabPage?
 
     /// The parent tab, derived from tabPage.
-    var tab: Tab? { tabPage?.tab }
+    var tab: Tab? {
+        tabPage?.tab
+    }
 
     /// The web page pool for accessing active WebViews.
     private weak var pagePool: WebPagePool?
@@ -87,16 +89,6 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
 
     func isPinned(for _: WKWebExtensionContext) -> Bool {
         tab?.isPinned ?? false
-    }
-
-    func isReaderModeAvailable(for _: WKWebExtensionContext) -> Bool {
-        guard let tabPage, let readerMode = manager?.readerModeManager else { return false }
-        return readerMode.cachedAvailability(for: tabPage.url)
-    }
-
-    func isReaderModeActive(for _: WKWebExtensionContext) -> Bool {
-        guard let tabPage, let readerMode = manager?.readerModeManager else { return false }
-        return readerMode.isReaderActive(for: tabPage.id)
     }
 
     func isPlayingAudio(for _: WKWebExtensionContext) -> Bool {
@@ -237,14 +229,6 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         }
     }
 
-    func setReaderModeActive(_ active: Bool, for _: WKWebExtensionContext) async throws {
-        guard let tabPage, let readerMode = manager?.readerModeManager,
-              let page = pagePool?.existingPage(for: tabPage.id),
-              readerMode.isReaderActive(for: tabPage.id) != active
-        else { return }
-        await readerMode.toggleReader(for: page)
-    }
-
     func detectWebpageLocale(for _: WKWebExtensionContext) async throws -> Locale? {
         guard let tabPage else { return nil }
         guard let page = pagePool?.existingPage(for: tabPage.id) else { return nil }
@@ -293,4 +277,3 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         return manager.installedExtensions.first { $0.uniqueIdentifier == extensionID }?.allowedInPrivateMode ?? false
     }
 }
-

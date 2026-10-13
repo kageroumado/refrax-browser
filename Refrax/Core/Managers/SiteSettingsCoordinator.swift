@@ -46,10 +46,6 @@ final class SiteSettingsCoordinator {
             webPage.reloadWithoutContentBlockersIfNeeded(for: url)
         }
 
-        // Note: Reader Mode (useReaderWhenAvailable) is handled by the UI layer.
-        // The AddressBar observes page loading state and checks ReaderModeManager
-        // for availability, automatically entering reader mode when the setting is enabled.
-
         // Note: Autoplay policy is enforced natively by WebKit via _autoplayPolicy
         // set on WKWebpagePreferences during navigation decisions. No need to apply here.
 
@@ -258,7 +254,9 @@ final class SiteSettingsCoordinator {
 
         // Check per-site setting
         let siteSettings = siteSettingsManager.settings(for: url)
-        if siteSettings?.badgeDetection == .disabled { return }
+        if siteSettings?.badgeDetection == .disabled {
+            return
+        }
 
         // Detect badge pattern and get count
         let newCount = BadgeDetector.detectBadge(in: title)

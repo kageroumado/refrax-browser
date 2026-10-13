@@ -148,6 +148,8 @@ final class TabCanvasManager {
     var recentIsOpen = false
     var draggedRecentTabID: Tab.ID?
     var menuTabID: Tab.ID?
+    /// The card whose title is being edited; it stays on screen until the edit ends.
+    var renamingTabID: Tab.ID?
     var selectedFloatingTabIDs: Set<Tab.ID> = []
     /// The group a dragged card joins if it is let go now; its outline brightens.
     var floatingDropGroupID: UUID?
@@ -171,6 +173,7 @@ final class TabCanvasManager {
     func tabDisplaced(_ tab: Tab) {
         guard showsFloatingControls, !tab.isLiveFavorite, !tab.isArchived,
               tab.space?.id == windowState.activeSpaceID, tab.id != windowState.activeTabID,
+              !tabManager.isShownInAnotherWindow(tab, besides: windowState),
               windowState.pageVisit.destination == nil,
               storedFloatingPlacement(for: tab) == nil else { return }
         let area = floatingArea
@@ -217,7 +220,9 @@ final class TabCanvasManager {
             let placement = windowState.floatingPlacements[tab.id] ?? tab.floatingPlacement
             return placement?.showsInEverySpace == true && placement?.isPinned == true
         }
-        return (windowState.activeSpaceTabs + tabManager.state.liveFavoriteTabs + retained).filter { !$0.isArchived }
+        return (windowState.activeSpaceTabs + tabManager.state.liveFavoriteTabs + retained).filter {
+            !$0.isArchived && !tabManager.isShownInAnotherWindow($0, besides: windowState)
+        }
     }
 
     var unplacedFloatingTabs: [Tab] {
@@ -250,6 +255,7 @@ final class TabCanvasManager {
             return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
                 || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
                 || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
+                || tab.id == renamingTabID
         }
     }
 

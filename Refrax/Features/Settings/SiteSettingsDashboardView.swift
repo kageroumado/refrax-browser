@@ -342,10 +342,6 @@ private struct SiteSettingsRow: View {
             chips.append("Autoplay \(site.autoPlayPolicy == .allowAll ? "All" : "None")")
         }
 
-        if site.useReaderWhenAvailable {
-            chips.append("Reader")
-        }
-
         if site.cameraPermission != .ask {
             chips.append("Camera \(site.cameraPermission == .allow ? "Allow" : "Deny")")
         }
@@ -427,7 +423,6 @@ struct SiteSettingsEditSheet: View {
     @State private var popUpPolicy: PopUpPolicy
     @State private var autoPlayPolicy: AutoPlayPolicy
     @State private var gpcHeaderOverride: GPCHeaderOverride
-    @State private var useReaderWhenAvailable: Bool
     @State private var cameraPermission: PermissionPolicy
     @State private var microphonePermission: PermissionPolicy
     @State private var screenSharingPermission: PermissionPolicy
@@ -465,7 +460,6 @@ struct SiteSettingsEditSheet: View {
         _popUpPolicy = State(initialValue: site.popUpPolicy)
         _autoPlayPolicy = State(initialValue: site.autoPlayPolicy)
         _gpcHeaderOverride = State(initialValue: site.gpcHeaderOverride)
-        _useReaderWhenAvailable = State(initialValue: site.useReaderWhenAvailable)
         _cameraPermission = State(initialValue: site.cameraPermission)
         _microphonePermission = State(initialValue: site.microphonePermission)
         _screenSharingPermission = State(initialValue: site.screenSharingPermission)
@@ -496,7 +490,6 @@ struct SiteSettingsEditSheet: View {
                     pageZoom: $pageZoom,
                     allowJavaScript: $allowJavaScript,
                     enableContentBlockers: $enableContentBlockers,
-                    useReaderWhenAvailable: $useReaderWhenAvailable,
                     popUpPolicy: $popUpPolicy,
                     autoPlayPolicy: $autoPlayPolicy,
                 )
@@ -600,7 +593,6 @@ struct SiteSettingsEditSheet: View {
         site.popUpPolicy = popUpPolicy
         site.autoPlayPolicy = autoPlayPolicy
         site.gpcHeaderOverride = gpcHeaderOverride
-        site.useReaderWhenAvailable = useReaderWhenAvailable
         site.cameraPermission = cameraPermission
         site.microphonePermission = microphonePermission
         site.screenSharingPermission = screenSharingPermission
@@ -633,7 +625,6 @@ struct SiteSettingsEditSheet: View {
         popUpPolicy = .blockAndNotify
         autoPlayPolicy = .stopMediaWithSound
         gpcHeaderOverride = .useAllowlist
-        useReaderWhenAvailable = false
         cameraPermission = .ask
         microphonePermission = .ask
         screenSharingPermission = .ask

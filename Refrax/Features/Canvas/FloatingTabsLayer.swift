@@ -162,6 +162,7 @@ private struct FloatingTabCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Floating tab, \(tab.displayTitle)")
         .accessibilityIdentifier("floating-tab-\(tab.id.uuidString)")
+        .closesOnMiddleClick(tab)
     }
 
     private var resizeHandle: some View {
@@ -208,7 +209,7 @@ private struct FloatingTabCard: View {
                 } else {
                     Image(systemName: "globe").frame(width: 16, height: 16)
                 }
-                Text(tab.displayTitle).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                FloatingTabTitle(tab: tab)
                 TabStateSymbols(tab: tab)
                 Spacer(minLength: 0)
             }

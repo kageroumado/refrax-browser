@@ -170,7 +170,7 @@ final class CommandLensManager {
             BaseDomainSynthesisProvider(frequentDestinations: historyManager.frequentDestinations),
             HistoryProvider(historyManager: historyManager),
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
-            ActionsProvider(),
+            ActionsProvider(tabs: tabManager, windowState: windowState),
         ]
         // The tour's page comes before every other suggestion while a tour step asks for one.
         if let floatingTour {
@@ -1627,6 +1627,17 @@ final class CommandLensManager {
                 if let tab = windowState.activeTab {
                     TabMediaControl.muteOthers(than: tab, in: tabManager.pagePool)
                 }
+            case let .moveCurrentTabToSpace(spaceID):
+                if let tab = windowState.activeTab, !tab.isLiveFavorite,
+                   let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
+                    Task(name: "Move tab to space from the lens") { await tabManager.moveTabsUnlocking([tab], to: space) }
+                }
+            case .moveCurrentTabToNewWindow:
+                if let tab = windowState.activeTab {
+                    tabManager.moveTabToNewWindow(tab, from: windowState)
+                }
+            case .newSpace:
+                windowState.controlIsland.spaceRequest = .create
             }
             closeCurrentLens()
             reset()

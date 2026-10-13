@@ -10,7 +10,6 @@ struct AddressBar: View {
     @Environment(BrowserSettings.self) private var settings: BrowserSettings
     @Environment(SharingCoordinator.self) private var sharingCoordinator: SharingCoordinator
     @Environment(ExtensionManager.self) private var extensionManager: ExtensionManager
-    @Environment(ReaderModeManager.self) private var readerModeManager: ReaderModeManager
     @Environment(AutoFillState.self) private var autoFillState: AutoFillState
     @Environment(SiteSettingsManager.self) private var siteSettingsManager: SiteSettingsManager
     @Environment(ScreenshotCoordinator.self) private var screenshotCoordinator: ScreenshotCoordinator
@@ -25,7 +24,6 @@ struct AddressBar: View {
     @State private var showsPageMenu = false
     @State private var showsWebpageSettings = false
     @State private var showsSiteCookies = false
-    @State private var isReaderAvailable = false
 
     // Layout measurements for compact mode detection
     @State private var availableWidth: CGFloat = 0
@@ -52,16 +50,6 @@ struct AddressBar: View {
 
     private var webPage: WebPage? {
         cachedWebPage
-    }
-
-    private var tabID: UUID? {
-        webPage?.tabPage.id
-    }
-
-    /// Whether reader mode is currently active for this page.
-    private var isReaderActive: Bool {
-        guard let tabID else { return false }
-        return readerModeManager.isReaderActive(for: tabID)
     }
 
     private var canGoBack: Bool {
@@ -104,7 +92,6 @@ struct AddressBar: View {
             recording: recordingCoordinator,
             downloads: downloadManager,
             extensions: extensionManager,
-            readerMode: readerModeManager,
             siteSettings: siteSettingsManager,
             pagePool: pagePool,
         )
@@ -169,28 +156,13 @@ struct AddressBar: View {
         .task {
             await PublicSuffixList.shared.loadIfNeeded()
         }
-        .onChange(of: url) { _, _ in
-            // Deactivate reader mode when URL changes (guard to avoid redundant mutations)
-            if let tabID, readerModeManager.isReaderActive(for: tabID) {
-                readerModeManager.deactivateReader(for: tabID)
-            }
-            checkReaderAvailability()
-        }
-        .onChange(of: isLoading) { wasLoading, nowLoading in
-            // Check reader availability when page finishes loading
-            if wasLoading, !nowLoading {
-                checkReaderAvailability()
-            }
-        }
         .onAppear {
             updateCachedWebPage()
-            checkReaderAvailability()
         }
         .task(id: windowState.focusedPageID) {
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
             updateCachedWebPage()
-            checkReaderAvailability()
         }
         .onChange(of: addressBarContext?.tabPage?.id) { _, _ in
             updateCachedWebPage()
@@ -339,19 +311,11 @@ struct AddressBar: View {
                 // Translation button - shows when foreign language detected
                 AddressBarTranslationButton(webPage: webPage)
 
-                if isReaderAvailable {
-                    AddressBarReaderButton(
-                        isActive: isReaderActive,
-                        action: toggleReaderMode,
-                    )
-                }
-
                 AddressBarPageMenuButton(showsMenu: $showsPageMenu)
                     .if(showsPageMenu) { view in
                         view.popover(isPresented: $showsPageMenu, arrowEdge: .bottom) {
                             PageMenuContent(
                                 actions: pageMenuActions,
-                                isReaderAvailable: isReaderAvailable,
                                 dismiss: { showsPageMenu = false },
                                 onFindOnPage: {
                                     if let context = addressBarContext {
@@ -360,7 +324,6 @@ struct AddressBar: View {
                                         windowState.showFindNavigator()
                                     }
                                 },
-                                onReaderMode: toggleReaderMode,
                                 onWebpageSettings: { showsWebpageSettings = true },
                                 onShowCookies: { showsSiteCookies = true },
                             )
@@ -427,58 +390,7 @@ struct AddressBar: View {
         }
     }
 
-    // MARK: - Actions
-
-    /// Toggles Reader Mode for the current page.
-    private func toggleReaderMode() {
-        Task(name: "Toggle Reader from the address bar") {
-            await toggleReader()
-        }
-    }
-
-    /// Toggles Reader Mode and, when the page is too long for Reader, hides the button.
-    private func toggleReader() async {
-        guard await pageMenuActions.toggleReader() == .tooLong else { return }
-        isReaderAvailable = false
-    }
-
-    /// Checks if Reader Mode is available for the current page.
-    ///
-    /// Also auto-activates reader mode if the site has `useReaderWhenAvailable` enabled.
-    /// Guards against redundant state mutations to prevent observation cascades.
-    private func checkReaderAvailability() {
-        guard let webPage else {
-            if isReaderAvailable {
-                isReaderAvailable = false
-            }
-            return
-        }
-
-        // First check cached availability (guard against redundant mutation)
-        let cached = readerModeManager.cachedAvailability(for: webPage.url)
-        if isReaderAvailable != cached {
-            isReaderAvailable = cached
-        }
-
-        // Then perform async check for fresh result
-        Task {
-            let available = await readerModeManager.checkAvailability(for: webPage)
-            if isReaderAvailable != available {
-                isReaderAvailable = available
-            }
-
-            // Auto-activate reader mode if site setting is enabled
-            if available,
-               !isReaderActive,
-               let url = webPage.url,
-               let settings = siteSettingsManager.settings(for: url),
-               settings.useReaderWhenAvailable {
-                await toggleReader()
-            }
-        }
-    }
-
-    // MARK: - Frame Reader
+    // MARK: - Frame Tracking
 
     private var frameReader: some View {
         GeometryReader { geo in

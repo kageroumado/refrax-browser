@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension BrowserSettings: Syncable {
-    nonisolated static var ckRecordType: String { "BrowserSettings" }
+    nonisolated static var ckRecordType: String {
+        "BrowserSettings"
+    }
 
     /// Well-known record name for the singleton BrowserSettings record.
     ///
@@ -160,11 +162,6 @@ extension BrowserSettings: Syncable {
         record["calendarLookAheadHours"] = calendarLookAheadHours as NSNumber
         record["calendarAutoExpandOnImminent"] = calendarAutoExpandOnImminent as NSNumber
         record["enabledCalendarIDsJSON"] = enabledCalendarIDsJSON as NSString
-
-        // MARK: - Widgets: Speed Reader
-
-        record["speedReaderWPM"] = speedReaderWPM as NSNumber
-        record["speedReaderResumePositionsJSON"] = speedReaderResumePositionsJSON as NSString
 
         // MARK: - Advanced: JavaScript
 
@@ -381,11 +378,6 @@ extension BrowserSettings: Syncable {
         settings.calendarLookAheadHours = (record["calendarLookAheadHours"] as? Int) ?? 24
         settings.calendarAutoExpandOnImminent = (record["calendarAutoExpandOnImminent"] as? Bool) ?? true
         settings.enabledCalendarIDsJSON = record["enabledCalendarIDsJSON"] as? String ?? "[]"
-
-        // MARK: - Widgets: Speed Reader
-
-        settings.speedReaderWPM = (record["speedReaderWPM"] as? Int) ?? 250
-        settings.speedReaderResumePositionsJSON = record["speedReaderResumePositionsJSON"] as? String ?? "{}"
 
         // MARK: - Advanced: JavaScript
 

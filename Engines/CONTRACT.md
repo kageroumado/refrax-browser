@@ -288,7 +288,7 @@ either direction.
 Declared in Info.plist; the browser hides or disables features an engine doesn't declare.
 `javaScriptEvaluation`, `findInPage`, `zoom`, `snapshots`, `devTools`, `downloads`,
 `contentBlocking`, `userScripts`, `webExtensions`, `pictureInPicture`, `mediaCapture`,
-`readerMode`, `agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
+`agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
 
 `notifications`: Refrax answers `permission` requests of kind `notifications` from its per-origin
 store, pushes the `notifications` policy, and delivers `notificationShown` (page or engine event)

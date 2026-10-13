@@ -299,7 +299,6 @@ struct SyncRoundTripTests {
         settings.doNotTrack = true
         settings.enableAutoConsent = true
         settings.defaultVideoSpeed = 1.5
-        settings.speedReaderWPM = 400
         settings.feedbackName = "Kiri"
         settings.feedbackEmail = "test@example.com"
         settings.archiveEnabled = true
@@ -317,7 +316,6 @@ struct SyncRoundTripTests {
         #expect(record["doNotTrack"] as? Bool == true)
         #expect(record["enableAutoConsent"] as? Bool == true)
         #expect(record["defaultVideoSpeed"] as? Double == 1.5)
-        #expect(record["speedReaderWPM"] as? Int == 400)
         #expect(record["feedbackName"] as? String == "Kiri")
         #expect(record["feedbackEmail"] as? String == "test@example.com")
         #expect(record["archiveEnabled"] as? Bool == true)
@@ -341,7 +339,6 @@ struct SyncRoundTripTests {
         record["feedbackName"] = "Updated" as NSString
         record["feedbackEmail"] = "updated@example.com" as NSString
         record["doNotTrack"] = false as NSNumber
-        record["speedReaderWPM"] = 350 as NSNumber
 
         let result = try BrowserSettings.applyRecord(record, into: context)
         try context.save()
@@ -349,7 +346,6 @@ struct SyncRoundTripTests {
         #expect(result.feedbackName == "Updated")
         #expect(result.feedbackEmail == "updated@example.com")
         #expect(result.doNotTrack == false)
-        #expect(result.speedReaderWPM == 350)
 
         let allSettings = try context.fetch(FetchDescriptor<BrowserSettings>())
         #expect(allSettings.count == 1, "BrowserSettings must remain a singleton")
@@ -365,7 +361,6 @@ struct SyncRoundTripTests {
         settings.doNotTrack = false
         settings.enableGlobalPrivacyControl = false
         settings.defaultVideoSpeed = 2.0
-        settings.speedReaderWPM = 500
         settings.feedbackName = "Tester"
         settings.archiveEnabled = true
         settings.archiveClearHours = 48
@@ -391,7 +386,6 @@ struct SyncRoundTripTests {
         #expect(decoded.doNotTrack == false)
         #expect(decoded.enableGlobalPrivacyControl == false)
         #expect(decoded.defaultVideoSpeed == 2.0)
-        #expect(decoded.speedReaderWPM == 500)
         #expect(decoded.feedbackName == "Tester")
         #expect(decoded.archiveEnabled == true)
         #expect(decoded.archiveClearHours == 48)

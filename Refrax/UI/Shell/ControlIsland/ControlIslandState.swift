@@ -14,6 +14,8 @@ final class ControlIslandState {
     var showsAddress = false
     var isDragging = false
     var isReorderingFavorites = false
+    /// The space sheet or confirmation the island shows next: New Space, Edit, Delete, Clear.
+    var spaceRequest: ControlIslandSpaceRequest?
     /// The pointer is far from the controls or has been still: the glass clears and the glyphs recede.
     private(set) var isQuiet = false
     var focusRequest = 0

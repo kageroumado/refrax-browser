@@ -113,7 +113,6 @@ struct RefraxPreviewModifier: PreviewModifier {
         )
 
         let extensionManager = ExtensionManager(state: browserState)
-        let readerModeManager = ReaderModeManager(state: browserState)
         let historyActivityManager = HistoryActivityManager()
 
         let windowState = WindowState(settings: settings, browserState: browserState)
@@ -268,7 +267,6 @@ struct RefraxPreviewModifier: PreviewModifier {
                 autoArchiveManager: autoArchiveManager,
                 windowManager: windowManager,
             ),
-            readerModeManager: readerModeManager,
             undoRedoManager: undoRedoManager,
             calendarManager: calendarManager,
             clipboardMonitor: clipboardMonitor,

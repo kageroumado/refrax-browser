@@ -222,6 +222,8 @@ struct ControlIsland: View {
         }
         .font(.system(size: 13, weight: Layout.symbolWeight))
         .buttonStyle(ControlIslandButtonStyle())
+        .pageCardOpensForPasswordSave()
+        .controlIslandSpaceSheets()
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
         .onChange(of: frame, initial: true) { _, frame in state.railFrame = frame }

@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// A vertical space selector with a recessed track and one selected segment.
+/// A vertical space selector with a recessed track and one selected segment. Right-clicking a
+/// space offers that space's verbs; the track offers New Space and Manage Spaces.
 struct ControlIslandSpaces: View {
     let destinations: [Space]
     var focusedControl: FocusState<String?>.Binding
 
     @Environment(WindowState.self) private var windowState
     @Environment(SpaceManager.self) private var spaces
+    @Environment(TabManager.self) private var tabs
     @Environment(TabSwitcherManager.self) private var tabSwitcher
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.appearsActive) private var appearsActive
@@ -50,12 +52,25 @@ struct ControlIslandSpaces: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Spaces")
         .contextMenu {
-            Button("Manage Spaces…") { showsSpaceManagement = true }
+            spaceMenu(for: nil)
         }
         .sheet(isPresented: $showsSpaceManagement) { SpaceManagementSheet() }
         .onChange(of: showsSpaceManagement) { _, presented in
             windowState.controlIsland.isPresenting = presented
         }
+    }
+
+    /// The verbs of `space`, or of the spaces as a whole for the track.
+    private func spaceMenu(for space: Space?) -> some View {
+        let actions = SpaceActions(
+            space: space,
+            tabs: tabs,
+            onEdit: { windowState.controlIsland.spaceRequest = .edit($0) },
+            onRemove: { windowState.controlIsland.spaceRequest = .remove($0) },
+            onNewSpace: { windowState.controlIsland.spaceRequest = .create },
+            onManageSpaces: { showsSpaceManagement = true },
+        )
+        return MenuTreeView(tree: MenuComposer.compose(actions.actions(), groupOrder: SpaceActions.groupOrder))
     }
 
     private var spaceButtons: some View {
@@ -146,6 +161,9 @@ struct ControlIslandSpaces: View {
         .focusable()
         .focused(focusedControl, equals: "space-\(space.id)")
         .focusEffectDisabled()
+        .contextMenu {
+            spaceMenu(for: space)
+        }
         .help("Switch to \(space.name)")
         .accessibilityLabel("Space: \(space.name)")
         .accessibilityValue(selected ? "Current space" : "")
