@@ -13,7 +13,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case copyLink
     case favorites
     case history
-    case downloads
     case bookmarks
     case settings
     /// Media playing in any tab, with a popover of per-tab controls. On the rail only while something plays.
@@ -38,7 +37,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
         .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs,
-        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .nowPlaying, .updates,
+        .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates,
     ]
 
     var title: String {
@@ -55,7 +54,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .reload: "Reload"
         case .favorites: "Favorites"
         case .history: "History"
-        case .downloads: "Downloads"
         case .bookmarks: "Bookmarks"
         case .settings: "Settings"
         case .nowPlaying: "Now Playing"
@@ -77,7 +75,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .reload: "arrow.clockwise"
         case .favorites: "star"
         case .history: "clock"
-        case .downloads: "arrow.down.circle"
         case .bookmarks: "bookmark"
         case .settings: "gearshape"
         case .nowPlaying: "speaker.wave.2"
@@ -99,7 +96,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .reload: "Reload the page or stop loading · ⌘R"
         case .favorites: "Open all your favorites"
         case .history: "Browse visited pages"
-        case .downloads: "See your downloads"
         case .bookmarks: "Manage saved pages and favorites"
         case .settings: "Open browser settings · ⌘,"
         case .nowPlaying: "Play, pause, and mute the tabs playing sound · ⌃M mutes this tab; on the rail only while something plays"
@@ -114,7 +110,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     var section: Section {
         switch self {
         case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs: .main
-        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .nowPlaying, .updates: .additional
+        case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates: .additional
         }
     }
 

@@ -461,8 +461,6 @@ struct ControlIsland: View {
             control(item.title, symbol: item.symbol) { showsFavorites = true }
         case .history:
             control(item.title, symbol: item.symbol) { windowState.showDetailTray(.history) }
-        case .downloads:
-            control(item.title, symbol: item.symbol) { windowState.showDetailTray(.downloads) }
         case .bookmarks:
             control(item.title, symbol: item.symbol) { windowState.showDetailTray(.bookmarks) }
         case .settings:
