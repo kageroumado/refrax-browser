@@ -184,6 +184,7 @@ final class TabCanvasManager {
             isCompact: tab.boardFrame == nil || tab.boardIsCompact,
         ) else { return }
         updateFloatingPlacement(placement, for: tab)
+        keepClearOfRail([tab], in: area)
         fileIntoSiteStack(tab)
         rayRevision += 1
         rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
@@ -396,7 +397,8 @@ final class TabCanvasManager {
                 nearest: nil, avoiding: occupied, in: area, isCompact: tab.boardFrame == nil || tab.boardIsCompact,
             ) else { break }
             updateFloatingPlacement(placement, for: tab)
-            occupied.append(placement)
+            keepClearOfRail([tab], in: area)
+            occupied.append(floatingPlacement(for: tab))
         }
         for tab in floatingTabs where tab.group == nil && storedFloatingPlacement(for: tab) != nil {
             fileIntoSiteStack(tab)
