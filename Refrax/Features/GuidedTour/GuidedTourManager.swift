@@ -12,7 +12,6 @@ final class GuidedTourManager {
         case openCommandLens
         case createFirstTab
         case createSecondTab
-        case openReferencePane
         case openTabCanvas
         case completed
     }
@@ -53,8 +52,7 @@ extension GuidedTourManager.Step {
             "Type a URL or search term, then press \(Text("Return").bold())"
         case .createSecondTab:
             "Open another tab with \(Text("⌘T").bold())"
-        case .openReferencePane:
-            "Click the reference pane button in the toolbar"
+
         case .openTabCanvas:
             "Pinch in on the page to see all your tabs, or press \(Text("⌘⇧\\").bold())"
         case .completed:
@@ -68,7 +66,7 @@ extension GuidedTourManager.Step {
         case .openCommandLens: "sparkle.magnifyingglass"
         case .createFirstTab: "globe"
         case .createSecondTab: "plus.square.on.square"
-        case .openReferencePane: "sidebar.right"
+
         case .openTabCanvas: TabCanvasManager.symbolName
         case .completed: "checkmark.circle.fill"
         }

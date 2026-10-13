@@ -46,12 +46,8 @@ public enum ControlRequest: Sendable {
     case windowMove(WindowMoveParams)
     case windowCenter
     case windowInfo
-    case refPaneShow
-    case refPaneHide
-    case refPaneToggle
     case hotkey(HotkeyParams)
     case sidebarToggle
-    case inspectorToggle
     case commandLens
     case addressLens
 
@@ -75,7 +71,6 @@ public enum ControlRequest: Sendable {
     case tabMoveToSpace(TabMoveToSpaceParams)
     case tabMoveToGroup(TabMoveToGroupParams)
     case tabRemoveFromGroup(TabIDParams)
-    case tabMoveToRefPane(TabIDParams)
     case tabReorder(TabReorderParams)
     case tabMarkRead(TabIDParams)
     case tabMarkUnread(TabIDParams)
@@ -115,13 +110,6 @@ public enum ControlRequest: Sendable {
     case canvasState
     case canvasDrag(CanvasDragParams)
     case canvasLab(CanvasLabParams)
-
-    // Tier 1D: Reference Pane Extended
-    case refPaneAddTab(RefPaneAddTabParams)
-    case refPaneCloseTab(RefPaneCloseTabParams)
-    case refPaneListTabs
-    case refPaneActivateTab(RefPaneActivateTabParams)
-    case refPaneMoveToMain(RefPaneMoveToMainParams)
 
     // Tier 1E: Visual Agent Features
     case visualHighlight(VisualHighlightParams)
@@ -754,42 +742,6 @@ public extension ControlRequest {
             self.action = action
             self.tabID = tabID
             self.pageID = pageID
-        }
-    }
-
-    // -- Tier 1D: Reference Pane params --
-
-    struct RefPaneAddTabParams: Codable, Sendable {
-        public var url: String
-        public var title: String?
-
-        public init(url: String, title: String? = nil) {
-            self.url = url
-            self.title = title
-        }
-    }
-
-    struct RefPaneCloseTabParams: Codable, Sendable {
-        public var id: String
-
-        public init(id: String) {
-            self.id = id
-        }
-    }
-
-    struct RefPaneActivateTabParams: Codable, Sendable {
-        public var id: String
-
-        public init(id: String) {
-            self.id = id
-        }
-    }
-
-    struct RefPaneMoveToMainParams: Codable, Sendable {
-        public var id: String
-
-        public init(id: String) {
-            self.id = id
         }
     }
 
@@ -1491,12 +1443,8 @@ extension ControlRequest: Codable {
         case windowMove
         case windowCenter
         case windowInfo
-        case refPaneShow
-        case refPaneHide
-        case refPaneToggle
         case hotkey
         case sidebarToggle
-        case inspectorToggle
         case commandLens
         case addressLens
 
@@ -1520,7 +1468,6 @@ extension ControlRequest: Codable {
         case tabMoveToSpace
         case tabMoveToGroup
         case tabRemoveFromGroup
-        case tabMoveToRefPane
         case tabReorder
         case tabMarkRead
         case tabMarkUnread
@@ -1560,13 +1507,6 @@ extension ControlRequest: Codable {
         case canvasState
         case canvasDrag
         case canvasLab
-
-        // Tier 1D
-        case refPaneAddTab
-        case refPaneCloseTab
-        case refPaneListTabs
-        case refPaneActivateTab
-        case refPaneMoveToMain
 
         // Tier 1E
         case visualHighlight
@@ -1695,12 +1635,8 @@ extension ControlRequest: Codable {
         case .windowMove: self = try .windowMove(WindowMoveParams(from: decoder))
         case .windowCenter: self = .windowCenter
         case .windowInfo: self = .windowInfo
-        case .refPaneShow: self = .refPaneShow
-        case .refPaneHide: self = .refPaneHide
-        case .refPaneToggle: self = .refPaneToggle
         case .hotkey: self = try .hotkey(HotkeyParams(from: decoder))
         case .sidebarToggle: self = .sidebarToggle
-        case .inspectorToggle: self = .inspectorToggle
         case .commandLens: self = .commandLens
         case .addressLens: self = .addressLens
         // UI Accessibility Tree
@@ -1722,7 +1658,6 @@ extension ControlRequest: Codable {
         case .tabMoveToSpace: self = try .tabMoveToSpace(TabMoveToSpaceParams(from: decoder))
         case .tabMoveToGroup: self = try .tabMoveToGroup(TabMoveToGroupParams(from: decoder))
         case .tabRemoveFromGroup: self = try .tabRemoveFromGroup(TabIDParams(from: decoder))
-        case .tabMoveToRefPane: self = try .tabMoveToRefPane(TabIDParams(from: decoder))
         case .tabReorder: self = try .tabReorder(TabReorderParams(from: decoder))
         case .tabMarkRead: self = try .tabMarkRead(TabIDParams(from: decoder))
         case .tabMarkUnread: self = try .tabMarkUnread(TabIDParams(from: decoder))
@@ -1759,12 +1694,6 @@ extension ControlRequest: Codable {
         case .canvasState: self = .canvasState
         case .canvasDrag: self = try .canvasDrag(CanvasDragParams(from: decoder))
         case .canvasLab: self = try .canvasLab(CanvasLabParams(from: decoder))
-        // Tier 1D
-        case .refPaneAddTab: self = try .refPaneAddTab(RefPaneAddTabParams(from: decoder))
-        case .refPaneCloseTab: self = try .refPaneCloseTab(RefPaneCloseTabParams(from: decoder))
-        case .refPaneListTabs: self = .refPaneListTabs
-        case .refPaneActivateTab: self = try .refPaneActivateTab(RefPaneActivateTabParams(from: decoder))
-        case .refPaneMoveToMain: self = try .refPaneMoveToMain(RefPaneMoveToMainParams(from: decoder))
         // Tier 1E
         case .visualHighlight: self = try .visualHighlight(VisualHighlightParams(from: decoder))
         case .visualCursor: self = try .visualCursor(VisualCursorParams(from: decoder))
@@ -1896,19 +1825,11 @@ extension ControlRequest: Codable {
             try container.encode("windowCenter", forKey: .type)
         case .windowInfo:
             try container.encode("windowInfo", forKey: .type)
-        case .refPaneShow:
-            try container.encode("refPaneShow", forKey: .type)
-        case .refPaneHide:
-            try container.encode("refPaneHide", forKey: .type)
-        case .refPaneToggle:
-            try container.encode("refPaneToggle", forKey: .type)
         case let .hotkey(params):
             try container.encode("hotkey", forKey: .type)
             try params.encode(to: encoder)
         case .sidebarToggle:
             try container.encode("sidebarToggle", forKey: .type)
-        case .inspectorToggle:
-            try container.encode("inspectorToggle", forKey: .type)
         case .commandLens:
             try container.encode("commandLens", forKey: .type)
         case .addressLens:
@@ -1961,9 +1882,6 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .tabRemoveFromGroup(params):
             try container.encode("tabRemoveFromGroup", forKey: .type)
-            try params.encode(to: encoder)
-        case let .tabMoveToRefPane(params):
-            try container.encode("tabMoveToRefPane", forKey: .type)
             try params.encode(to: encoder)
         case let .tabReorder(params):
             try container.encode("tabReorder", forKey: .type)
@@ -2063,21 +1981,6 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .canvasLab(params):
             try container.encode("canvasLab", forKey: .type)
-            try params.encode(to: encoder)
-        // Tier 1D
-        case let .refPaneAddTab(params):
-            try container.encode("refPaneAddTab", forKey: .type)
-            try params.encode(to: encoder)
-        case let .refPaneCloseTab(params):
-            try container.encode("refPaneCloseTab", forKey: .type)
-            try params.encode(to: encoder)
-        case .refPaneListTabs:
-            try container.encode("refPaneListTabs", forKey: .type)
-        case let .refPaneActivateTab(params):
-            try container.encode("refPaneActivateTab", forKey: .type)
-            try params.encode(to: encoder)
-        case let .refPaneMoveToMain(params):
-            try container.encode("refPaneMoveToMain", forKey: .type)
             try params.encode(to: encoder)
         // Tier 1E
         case let .visualHighlight(params):
@@ -2287,7 +2190,6 @@ public enum ControlResponse: Sendable {
     case cookies([CTL.CookieInfo])
     case storageEntries([CTL.StorageEntry])
     case recentlyClosedTabs([CTL.RecentlyClosedTabInfo])
-    case refPaneTabs([CTL.RefPaneTabInfo])
     case settingsEntries([CTL.SettingEntryInfo])
     case health(CTL.HealthInfo)
     case foundElements([CTL.FoundElementInfo])
@@ -2405,17 +2307,13 @@ public enum CTL {
         public let width: Int
         public let height: Int
         public let isSidebarCollapsed: Bool
-        public let isInspectorCollapsed: Bool
-        public let isReferencePaneVisible: Bool
 
-        public init(x: Int, y: Int, width: Int, height: Int, isSidebarCollapsed: Bool, isInspectorCollapsed: Bool, isReferencePaneVisible: Bool) {
+        public init(x: Int, y: Int, width: Int, height: Int, isSidebarCollapsed: Bool) {
             self.x = x
             self.y = y
             self.width = width
             self.height = height
             self.isSidebarCollapsed = isSidebarCollapsed
-            self.isInspectorCollapsed = isInspectorCollapsed
-            self.isReferencePaneVisible = isReferencePaneVisible
         }
     }
 
@@ -2453,14 +2351,13 @@ public enum CTL {
         public let groupID: String?
         public let groupName: String?
         public let spaceID: String?
-        public let isReferenceTab: Bool
         public let canGoBack: Bool
         public let canGoForward: Bool
         public let isMuted: Bool
         public let pageCount: Int
         public let pages: [PageInfo]
 
-        public init(id: String, title: String, url: String?, isActive: Bool, isLoading: Bool, isPinned: Bool, isUnread: Bool, customName: String?, groupID: String?, groupName: String?, spaceID: String?, isReferenceTab: Bool, canGoBack: Bool, canGoForward: Bool, isMuted: Bool, pageCount: Int, pages: [PageInfo]) {
+        public init(id: String, title: String, url: String?, isActive: Bool, isLoading: Bool, isPinned: Bool, isUnread: Bool, customName: String?, groupID: String?, groupName: String?, spaceID: String?, canGoBack: Bool, canGoForward: Bool, isMuted: Bool, pageCount: Int, pages: [PageInfo]) {
             self.id = id
             self.title = title
             self.url = url
@@ -2472,7 +2369,6 @@ public enum CTL {
             self.groupID = groupID
             self.groupName = groupName
             self.spaceID = spaceID
-            self.isReferenceTab = isReferenceTab
             self.canGoBack = canGoBack
             self.canGoForward = canGoForward
             self.isMuted = isMuted
@@ -2665,20 +2561,6 @@ public enum CTL {
             self.title = title
             self.url = url
             self.closedAt = closedAt
-        }
-    }
-
-    public struct RefPaneTabInfo: Codable, Sendable {
-        public let id: String
-        public let title: String
-        public let url: String?
-        public let isActive: Bool
-
-        public init(id: String, title: String, url: String?, isActive: Bool) {
-            self.id = id
-            self.title = title
-            self.url = url
-            self.isActive = isActive
         }
     }
 
@@ -2947,7 +2829,6 @@ extension ControlResponse: Codable {
         case cookies
         case storageEntries
         case recentlyClosedTabs
-        case refPaneTabs
         case settingsEntries
         case health
         case foundElements
@@ -3012,8 +2893,6 @@ extension ControlResponse: Codable {
             self = try .storageEntries(c.decode([CTL.StorageEntry].self, forKey: .data))
         case .recentlyClosedTabs:
             self = try .recentlyClosedTabs(c.decode([CTL.RecentlyClosedTabInfo].self, forKey: .data))
-        case .refPaneTabs:
-            self = try .refPaneTabs(c.decode([CTL.RefPaneTabInfo].self, forKey: .data))
         case .settingsEntries:
             self = try .settingsEntries(c.decode([CTL.SettingEntryInfo].self, forKey: .data))
         case .health:
@@ -3103,9 +2982,6 @@ extension ControlResponse: Codable {
             try container.encode(list, forKey: .data)
         case let .recentlyClosedTabs(list):
             try container.encode("recentlyClosedTabs", forKey: .type)
-            try container.encode(list, forKey: .data)
-        case let .refPaneTabs(list):
-            try container.encode("refPaneTabs", forKey: .type)
             try container.encode(list, forKey: .data)
         case let .settingsEntries(list):
             try container.encode("settingsEntries", forKey: .type)

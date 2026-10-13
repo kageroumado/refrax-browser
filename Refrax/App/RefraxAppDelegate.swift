@@ -60,7 +60,7 @@ import SwiftUI
 /// - ``DownloadManager``: HTTP and BitTorrent downloads with pause/resume
 ///
 /// Each window maintains its own ``WindowState`` for UI-specific state (sidebar width,
-/// inspector visibility) while sharing the same underlying data through the managers.
+/// lens visibility) while sharing the same underlying data through the managers.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Storage
 
@@ -83,7 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let archiveManager: TabArchiveManager
     let autoArchiveManager: TabAutoArchiveManager
 
@@ -390,13 +389,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windowManager: windowManager,
             undoRedoManager: undoRedoManager,
         )
-        
-        self.referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
 
         self.activationObserver = AppActivationObserver()
         self.systemSleepObserver = SystemSleepObserver()
@@ -413,7 +405,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         self.bookmarksManager = BookmarksManager(
@@ -526,7 +517,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spaceManager: spaceManager,
             pagePool: pagePool,
             browserState: browserState,
-            referencePaneManager: referencePaneManager,
             groupManager: groupManager,
             undoRedoManager: undoRedoManager,
             bookmarksManager: bookmarksManager,
@@ -1006,7 +996,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     frame: window.frame,
                     sidebarWidth: controller.windowState.sidebarThickness,
                     isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
-                    inspectorWidth: controller.windowState.referencePaneDockedWidth,
                 ),
                 screen: window.screen,
             )

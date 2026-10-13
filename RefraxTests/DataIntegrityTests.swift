@@ -264,7 +264,7 @@ struct SpaceRelationshipTests {
         #expect(space.tabs.contains { $0.id == tab.id })
     }
 
-    @Test("Space.mainTabs filters non-reference tabs")
+    @Test("Space.mainTabs excludes archived tabs")
     @MainActor
     func mainTabsFiltering() throws {
         let context = container.mainContext
@@ -275,15 +275,14 @@ struct SpaceRelationshipTests {
         let mainTab = Tab(space: space, url: URL(string: "https://main.com")!)
         context.insert(mainTab)
 
-        let refTab = Tab(space: space, url: URL(string: "https://ref.com")!, isReferenceTab: true)
-        context.insert(refTab)
+        let archivedTab = Tab(space: space, url: URL(string: "https://archived.com")!)
+        archivedTab.archivedAt = .now
+        context.insert(archivedTab)
 
         try context.save()
 
         #expect(space.mainTabs.count == 1)
         #expect(space.mainTabs.first?.id == mainTab.id)
-        #expect(space.referenceTabs.count == 1)
-        #expect(space.referenceTabs.first?.id == refTab.id)
     }
 
     @Test("TabGroup.space creates bidirectional relationship")

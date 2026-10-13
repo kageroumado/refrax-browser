@@ -42,7 +42,7 @@ import SwiftData
 ///
 /// ## Lifecycle
 ///
-/// - **Creation**: Via ``Tab/init(spaceID:url:title:isPinned:isFavorite:isReferenceTab:groupID:position:)``
+/// - **Creation**: Via ``Tab/init(spaceID:url:title:isPinned:isFavorite:groupID:position:)``
 ///   or when adding pages to an existing tab
 /// - **Activation**: ``TabManager/session(for:)`` creates a runtime session
 /// - **Persistence**: Automatic via SwiftData when properties change

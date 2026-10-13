@@ -69,8 +69,6 @@ struct TabMutationPipeline {
         /// Space IDs that need active tab synchronization.
         var spaceIDsToSyncActiveTab: Set<Space.ID> = []
 
-        /// Space IDs that need active reference tab synchronization.
-        var spaceIDsToSyncActiveRefTab: Set<Space.ID> = []
 
         /// Tabs that were added and need indexing.
         var tabsToIndex: [Tab] = []
@@ -181,12 +179,6 @@ struct TabMutationPipeline {
             }
         }
 
-        for spaceID in effects.spaceIDsToSyncActiveRefTab {
-            if let space = state.space(for: spaceID) {
-                // Pass nil for closedIndex - batch operations use last-tab fallback
-                windowSync.syncInvalidActiveReferenceTabIDs(for: space, closedIndex: nil)
-            }
-        }
 
         // Try incremental layout updates before incrementing version
         var handledIncrementally = false
@@ -271,11 +263,5 @@ extension TabMutationPipeline.MutationEffects {
         spaceIDsToNormalize.insert(sourceSpace.id)
         spaceIDsToNormalize.insert(targetSpace.id)
         spaceIDsToSyncActiveTab.insert(sourceSpace.id)
-    }
-
-    /// Marks a reference tab change.
-    func referenceTabChanged(in space: Space) {
-        didChangeList = true
-        spaceIDsToSyncActiveRefTab.insert(space.id)
     }
 }

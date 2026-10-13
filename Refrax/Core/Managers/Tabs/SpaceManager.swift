@@ -175,7 +175,7 @@ final class SpaceManager {
             duplicatedTab.customName = originalTab.customName
             duplicatedTab.activePage.faviconData = originalTab.activePage.faviconData
             duplicatedTab.activePage.largeFaviconData = originalTab.activePage.largeFaviconData
-            duplicatedTab.isReferenceTab = originalTab.isReferenceTab
+
             duplicatedTab.isUnread = true
 
             // Preserve group relationship
@@ -493,10 +493,9 @@ final class SpaceManager {
             state.extensionManager?.dispatchTabsRestored(space.tabs)
 
             // Note: active tab is tracked per-window in WindowState
-            // Note: active reference tab is per-window only
             // WindowState.setActiveSpace() handles restoration
 
-            Logger.info("Loaded \(space.mainTabs.count) tabs, \(space.referenceTabs.count) ref tabs for: \(space.name)", category: Logger.tabs)
+            Logger.info("Loaded \(space.mainTabs.count) tabs for: \(space.name)", category: Logger.tabs)
         } catch {
             Logger.error("Failed to load tabs for space: \(error)", category: Logger.tabs)
         }

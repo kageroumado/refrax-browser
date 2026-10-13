@@ -69,9 +69,6 @@ struct PageImportanceScorer {
 
         /// Maximum recency bonus (decays over time)
         static let maxRecencyBonus: Int = 100
-
-        /// Tab is a reference tab (usually kept for context)
-        static let referenceTab: Int = 150
     }
 
     // MARK: - Configuration
@@ -173,12 +170,6 @@ struct PageImportanceScorer {
             factors.append("pinned")
         }
 
-        // Reference tab
-        if let tab, tab.isReferenceTab {
-            score += Weight.referenceTab
-            factors.append("reference")
-        }
-
         // Recent visibility
         if let lastVisible = tab?.lastAccessed,
            Date().timeIntervalSince(lastVisible) < recentVisibilityThreshold {
@@ -244,12 +235,6 @@ struct PageImportanceScorer {
         if let tab, tab.isPinned {
             score += Weight.pinned
             factors.append("pinned")
-        }
-
-        // Reference tab
-        if let tab, tab.isReferenceTab {
-            score += Weight.referenceTab
-            factors.append("reference")
         }
 
         // Recent visibility

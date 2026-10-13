@@ -119,7 +119,6 @@ final class CommandLensManager {
     private let browserSettings: BrowserSettings
     private let siteSettingsManager: SiteSettingsManager
     private let downloadManager: DownloadManager
-    private let referencePaneManager: ReferencePaneManager
     private let extensionManager: ExtensionManager
     private let customSearchEngineManager: CustomSearchEngineManager
     private let localNetworkSource: any LocalNetworkSnapshotSource
@@ -146,7 +145,6 @@ final class CommandLensManager {
         browserSettings: BrowserSettings,
         siteSettingsManager: SiteSettingsManager,
         downloadManager: DownloadManager,
-        referencePaneManager: ReferencePaneManager,
         extensionManager: ExtensionManager,
         customSearchEngineManager: CustomSearchEngineManager,
         localNetworkSource: any LocalNetworkSnapshotSource,
@@ -158,7 +156,6 @@ final class CommandLensManager {
         self.browserSettings = browserSettings
         self.siteSettingsManager = siteSettingsManager
         self.downloadManager = downloadManager
-        self.referencePaneManager = referencePaneManager
         self.extensionManager = extensionManager
         self.customSearchEngineManager = customSearchEngineManager
         self.localNetworkSource = localNetworkSource
@@ -1526,17 +1523,6 @@ final class CommandLensManager {
                 reset()
             }
 
-        case let .referenceTab(tabID):
-            if let tab = tabManager.state.tab(for: tabID) {
-                // Open reference pane if closed
-                if windowState.isInspectorCollapsed {
-                    windowState.isInspectorCollapsed = false
-                }
-                // Activate the reference tab
-                referencePaneManager.setActiveReferenceTab(tab, in: windowState)
-                closeCurrentLens()
-                reset()
-            }
 
         case let .searchProvider(engine):
             selectSearchProvider(engine)
@@ -1670,12 +1656,6 @@ final class CommandLensManager {
         windowState.commandLensEntrance?.editsCurrentPage == true
     }
 
-    /// Whether the command lens is in reference pane address mode.
-    /// This is when the reference pane lens is shown but NOT for creating a new tab
-    /// (i.e., opened from the address bar, not the + button).
-    private var isReferencePaneAddressMode: Bool {
-        windowState.showsReferencePaneLens && !windowState.isCreatingReferenceTab
-    }
 
     private func navigateToURL(_ url: URL, makeActive: Bool) {
         // Deep links (sslError, focusBlocked) render in-tab — no special handling needed
@@ -1687,19 +1667,11 @@ final class CommandLensManager {
             return
         }
 
-        if windowState.isCreatingReferenceTab {
-            tabManager.addReferenceTab(url: url, title: url.host ?? "New Tab")
-            windowState.isCreatingReferenceTab = false
-        } else if let targetPosition = windowState.layoutModeTargetPosition,
-                  let activeTab = windowState.activeTab {
+        if let targetPosition = windowState.layoutModeTargetPosition,
+           let activeTab = windowState.activeTab {
             let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
             newPage.title = url.host ?? "New Page"
             windowState.layoutModeTargetPosition = nil
-        } else if isReferencePaneAddressMode,
-                  let refTab = windowState.activeReferenceTab,
-                  let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab when opened from address bar
-            webPage.load(url)
         } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
@@ -1711,17 +1683,7 @@ final class CommandLensManager {
     }
 
     private func navigateToMultipleURLs(_ urls: [URL], makeActive: Bool) {
-        if isReferencePaneAddressMode,
-           let firstURL = urls.first,
-           let refTab = windowState.activeReferenceTab,
-           let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab with first URL
-            webPage.load(firstURL)
-            // Additional URLs create main tabs
-            for url in urls.dropFirst() {
-                tabManager.createTab(url: url, makeActive: false, loadImmediately: true)
-            }
-        } else if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.focusedPage {
+        if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(firstURL)
             }
@@ -1747,19 +1709,11 @@ final class CommandLensManager {
             return
         }
 
-        if windowState.isCreatingReferenceTab {
-            tabManager.addReferenceTab(url: url, title: query)
-            windowState.isCreatingReferenceTab = false
-        } else if let targetPosition = windowState.layoutModeTargetPosition,
-                  let activeTab = windowState.activeTab {
+        if let targetPosition = windowState.layoutModeTargetPosition,
+           let activeTab = windowState.activeTab {
             let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
             newPage.title = query
             windowState.layoutModeTargetPosition = nil
-        } else if isReferencePaneAddressMode,
-                  let refTab = windowState.activeReferenceTab,
-                  let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab when opened from address bar
-            webPage.load(url)
         } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
@@ -1772,14 +1726,10 @@ final class CommandLensManager {
 
     private func closeCurrentLens() {
         // Clear contextual creation flags
-        windowState.isCreatingReferenceTab = false
         windowState.layoutModeTargetPosition = nil
 
         if windowState.showsCommandLens {
             windowState.closeCommandLens()
-        }
-        if windowState.showsReferencePaneLens {
-            windowState.closeReferencePaneLens()
         }
     }
 }

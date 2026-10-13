@@ -6,7 +6,7 @@ extension EnvironmentValues {
     /// Context for overriding AddressBar behavior in different contexts.
     ///
     /// When set, AddressBar uses this context instead of the default WindowState-based behavior.
-    /// This enables reusing AddressBar in contexts like the reference pane window.
+    /// This enables reusing AddressBar in Glimpse and Reflected windows.
     @Entry var addressBarContext: AddressBarContext? = nil
     
     /// Whether the AddressBar is floating over the main content instead of being inside the Sidebar.
@@ -80,8 +80,8 @@ extension EnvironmentValues {
     /// When `true` (default), WebKit monitors window position and titlebar adjacency
     /// to automatically compute content insets. This works well for main browser windows.
     ///
-    /// Set to `false` when manually providing content insets (e.g., in the reference pane
-    /// window) to prevent WebKit from overriding manual insets during window operations.
+    /// Set to `false` when manually providing content insets (e.g., in Glimpse and
+    /// Reflected windows) to prevent WebKit from overriding manual insets during window operations.
     @Entry var webViewAutomaticallyAdjustsContentInsets: Bool = true
 
     /// Whether WebKit should use the automatic content inset background fill system.
@@ -99,12 +99,6 @@ extension EnvironmentValues {
     /// (solid color) requiring manual color management.
     @Entry var webViewUsesAutomaticContentInsetBackgroundFill: Bool = false
 
-    /// Forces the web view to be inactive regardless of ownership state.
-    ///
-    /// Used when transitioning between docked and separate window modes for reference panes.
-    /// When `true`, any `WebViewContainer` in this hierarchy will not claim the WebView,
-    /// allowing another window to take ownership.
-    @Entry var webViewForcedInactive: Bool = false
 
     /// Custom ownership ID for multi-window scenarios.
     ///
@@ -344,7 +338,7 @@ struct ScrollPositionValue: Hashable, Sendable {
 
 /// Context for overriding AddressBar behavior in different contexts.
 ///
-/// This enables reusing the AddressBar component in contexts like the reference pane window,
+/// This enables reusing the AddressBar component in Glimpse and Reflected windows,
 /// where the web page source and lens behavior differ from the main window.
 ///
 /// ## Usage

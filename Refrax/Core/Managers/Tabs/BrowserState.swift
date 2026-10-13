@@ -21,10 +21,9 @@ import WebKit
 /// **Per-window** state is stored in `WindowState`:
 /// - `activeSpaceID`: Which space this window shows
 /// - `activeTabIDs`: Which tab is selected per space in this window
-/// - `isInspectorCollapsed`: Whether the reference pane is visible
 ///
-/// This allows multiple windows to view the same spaces with different tab and
-/// reference pane selections.
+/// This allows multiple windows to view the same spaces with different tab
+/// selections.
 ///
 /// ## Tab Index
 ///
@@ -95,7 +94,7 @@ final class BrowserState {
     /// Fast O(1) lookup for tabs by ID across all spaces and live favorites.
     ///
     /// Maintained via `indexTab(_:)` and `removeFromIndex(_:)`.
-    /// Includes main tabs, reference tabs, and live favorite tabs.
+    /// Includes space tabs and live favorite tabs.
     ///
     /// - Note: This index must be kept in sync with tab insertions/deletions.
     ///   Always use TabManager methods which handle index maintenance automatically.
@@ -346,10 +345,6 @@ final class BrowserState {
         space.tabs
     }
     
-    /// Gets reference tabs for a specific space.
-    func referenceTabs(in space: Space) -> [Tab] {
-        space.referenceTabs
-    }
     
     // MARK: - Tab Lookup
 
@@ -358,26 +353,11 @@ final class BrowserState {
     /// - Parameter id: The tab's unique identifier.
     /// - Returns: The tab if found in the index, nil otherwise.
     ///
-    /// - Note: This searches all tabs including space tabs, reference tabs, and live favorites.
+    /// - Note: This searches all tabs including space tabs and live favorites.
     func tab(for id: Tab.ID) -> Tab? {
         tabIndex[id]
     }
 
-    /// Finds a reference tab by ID using O(1) index lookup.
-    ///
-    /// - Parameters:
-    ///   - id: The reference tab's unique identifier.
-    ///   - spaceID: Optional space to filter by. If provided, only returns the tab
-    ///              if it belongs to that space.
-    /// - Returns: The reference tab if found, nil otherwise.
-    ///
-    /// - Note: Reference tabs are indexed alongside main tabs. This method
-    ///   verifies the tab is actually a reference tab before returning.
-    func referenceTab(for id: Tab.ID, spaceID: Space.ID? = nil) -> Tab? {
-        guard let tab = tabIndex[id], tab.isReferenceTab else { return nil }
-        if let spaceID { return tab.space?.id == spaceID ? tab : nil }
-        return tab
-    }
 
     /// Finds a live favorite tab by its linked bookmark ID.
     ///
@@ -513,9 +493,6 @@ final class BrowserState {
             for tab in space.tabs {
                 tabIndex[tab.id] = tab
             }
-            for tab in space.referenceTabs {
-                tabIndex[tab.id] = tab
-            }
         }
         for tab in liveFavoriteTabs {
             tabIndex[tab.id] = tab
@@ -540,9 +517,6 @@ final class BrowserState {
             var expectedTabs: Set<Tab.ID> = []
             for space in spaces {
                 for tab in space.tabs {
-                    expectedTabs.insert(tab.id)
-                }
-                for tab in space.referenceTabs {
                     expectedTabs.insert(tab.id)
                 }
             }
@@ -621,9 +595,6 @@ final class BrowserState {
         for tab in space.tabs {
             indexTab(tab)
         }
-        for tab in space.referenceTabs {
-            indexTab(tab)
-        }
         incrementListVersion()
     }
     
@@ -634,9 +605,6 @@ final class BrowserState {
         let space = spaces[index]
         // Remove tabs from index before removing space
         for tab in space.tabs {
-            removeFromIndex(tab)
-        }
-        for tab in space.referenceTabs {
             removeFromIndex(tab)
         }
         spaces.remove(at: index)
@@ -723,7 +691,6 @@ struct ClosedTabInfo: Identifiable, Equatable {
     let faviconData: Data?
     let customName: String?
     let isPinned: Bool
-    let isReferenceTab: Bool
     let groupID: UUID?
     let position: Int
     let spaceID: UUID
@@ -736,7 +703,6 @@ struct ClosedTabInfo: Identifiable, Equatable {
         self.faviconData = tab.activePage.faviconData
         self.customName = tab.customName
         self.isPinned = tab.isPinned
-        self.isReferenceTab = tab.isReferenceTab
         self.groupID = tab.groupID
         self.position = tab.position
         self.spaceID = tab.space?.id ?? UUID()

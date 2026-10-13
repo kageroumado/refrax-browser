@@ -241,8 +241,7 @@ struct TabPositioner {
         var tabsByGroup: [UUID: [Tab]] = [:]
         var rootItems: [RootItem] = []
 
-        // Only normalize main tabs, not reference tabs (which have their own simple 0-based indexing)
-        for tab in space.tabs where !tab.isReferenceTab {
+        for tab in space.tabs {
             if let groupID = tab.groupID {
                 tabsByGroup[groupID, default: []].append(tab)
             } else {

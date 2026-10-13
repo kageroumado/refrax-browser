@@ -380,11 +380,7 @@ final class TabAutoArchiveManager {
     private func collectActiveTabIDs() -> Set<UUID> {
         guard let windowManager else { return [] }
 
-        return Set(
-            windowManager.allWindowStates.flatMap { state in
-                [state.activeTab?.id, state.activeReferenceTab?.id].compactMap(\.self)
-            },
-        )
+        return Set(windowManager.allWindowStates.compactMap { $0.activeTab?.id })
     }
 
     // MARK: - Domain Matching

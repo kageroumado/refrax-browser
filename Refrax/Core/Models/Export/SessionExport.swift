@@ -125,7 +125,7 @@ extension ExportedSpace {
 
         // Separate grouped and ungrouped tabs
         let ungroupedFiltered = allTabs.filter { tab in
-            tab.groupID == nil && !tab.isReferenceTab && tab.status != TabStatus.liveFavorite
+            tab.groupID == nil && tab.status != TabStatus.liveFavorite
         }
         let ungroupedSorted = ungroupedFiltered.sorted { $0.position < $1.position }
         let ungroupedTabs = ungroupedSorted.map { ExportedTab(tab: $0) }

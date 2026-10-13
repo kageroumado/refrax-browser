@@ -31,7 +31,7 @@ struct FloatingTourTests {
         func makeLens() -> CommandLensManager {
             CommandLensManager(
                 tabManager: env.tabManager, historyManager: env.historyManager, windowState: window, browserSettings: env.settings,
-                siteSettingsManager: env.siteSettingsManager, downloadManager: env.downloadManager, referencePaneManager: env.referencePaneManager,
+                siteSettingsManager: env.siteSettingsManager, downloadManager: env.downloadManager,
                 extensionManager: env.extensionManager, customSearchEngineManager: env.customSearchEngineManager,
                 localNetworkSource: EmptyLocalNetworkSource(), floatingTour: tour,
             )

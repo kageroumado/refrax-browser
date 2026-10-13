@@ -71,7 +71,6 @@ final class UndoRedoManager {
     /// Recently closed tabs available for reopening.
     ///
     /// Ordered by close time (most recent first). Limited to `maxRecentlyClosedTabs`.
-    /// Includes both main tabs and reference tabs.
     private(set) var recentlyClosedTabs: [ClosedTabInfo] = []
 
     /// Recently deleted groups available for restoration.
@@ -195,21 +194,6 @@ final class UndoRedoManager {
         undoManager.setActionName(actionName)
     }
 
-    /// Registers a reference tab close for undo.
-    ///
-    /// Reference tabs are tracked separately but use the same undo system.
-    ///
-    /// - Parameter info: Information about the closed reference tab.
-    func registerCloseReferenceTab(_ info: ClosedTabInfo) {
-        addToRecentlyClosed(info)
-
-        let title = info.title
-        undoManager.registerUndo(withTarget: self) { [weak self] _ in
-            guard let self else { return }
-            restoreReferenceTabFromUndo(info)
-        }
-        undoManager.setActionName("Close Reference Tab \"\(title)\"")
-    }
 
     // MARK: - Group Undo Operations
 
@@ -240,11 +224,7 @@ final class UndoRedoManager {
     func reopenLastClosedTab() {
         guard let info = recentlyClosedTabs.first else { return }
 
-        if info.isReferenceTab {
-            tabManager.restoreReferenceTab(info)
-        } else {
-            tabManager.restoreTab(info)
-        }
+        tabManager.restoreTab(info)
         recentlyClosedTabs.removeFirst()
 
         Logger.info("Reopened last closed tab: \(info.title)", category: Logger.tabs)
@@ -260,11 +240,7 @@ final class UndoRedoManager {
 
         let info = recentlyClosedTabs.remove(at: index)
 
-        if info.isReferenceTab {
-            tabManager.restoreReferenceTab(info)
-        } else {
-            tabManager.restoreTab(info)
-        }
+        tabManager.restoreTab(info)
 
         Logger.info("Reopened closed tab at index \(index): \(info.title)", category: Logger.tabs)
     }
@@ -304,11 +280,6 @@ final class UndoRedoManager {
         recentlyClosedTabs.removeAll { $0.id == info.id }
     }
 
-    /// Restores a reference tab from an undo action.
-    private func restoreReferenceTabFromUndo(_ info: ClosedTabInfo) {
-        tabManager.restoreReferenceTab(info)
-        recentlyClosedTabs.removeAll { $0.id == info.id }
-    }
 
     /// Restores a group from an undo action.
     private func restoreGroupFromUndo(_ info: ClosedGroupInfo) {
@@ -393,14 +364,6 @@ final class UndoRedoManager {
             tab.position = index
         }
 
-        // Restore reference tabs
-        for tabInfo in info.referenceTabInfos {
-            if let tab = tabManager.state.tab(for: tabInfo.tabID) {
-                tab.space = restoredSpace
-                tab.isReferenceTab = true
-                tab.position = tabInfo.position
-            }
-        }
 
         // Delete the result group
         tabGroupManager.deleteGroup(group, in: targetSpace, deleteContainedTabs: false)
@@ -467,7 +430,6 @@ struct ConvertedSpaceInfo: Equatable {
     let dataStoreMode: DataStoreMode
     let position: Int
     let tabInfos: [ConvertedTabInfo]
-    let referenceTabInfos: [ConvertedTabInfo]
     let targetSpaceID: UUID
     var resultGroupID: UUID?
 }
@@ -492,5 +454,4 @@ struct ConvertedTabInfo: Equatable {
     let position: Int
     let groupID: UUID?
     let isPinned: Bool
-    let isReferenceTab: Bool
 }

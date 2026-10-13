@@ -276,17 +276,6 @@ extension View {
         environment(\.webViewTopContentInset, inset)
     }
 
-    /// Forces web views to be inactive regardless of ownership state.
-    ///
-    /// When `true`, any `WebViewContainer` in this view hierarchy will not claim the WebView,
-    /// allowing another window to take ownership. This is used when transitioning between
-    /// docked and separate window modes for reference panes.
-    ///
-    /// - Parameter isInactive: Whether to force web views to be inactive.
-    /// - Returns: A view with the forced inactive state configured.
-    func webViewForcedInactive(_ isInactive: Bool = true) -> some View {
-        environment(\.webViewForcedInactive, isInactive)
-    }
 
     /// Sets a custom ownership ID for multi-window scenarios.
     ///

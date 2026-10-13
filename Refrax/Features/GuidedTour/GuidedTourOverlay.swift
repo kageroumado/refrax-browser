@@ -38,11 +38,7 @@ struct GuidedTourOverlay: View {
                     tourManager.advance()
                 }
             }
-            .onChange(of: windowState.isInspectorCollapsed) { _, isCollapsed in
-                if !isCollapsed, tourManager.currentStep == .openReferencePane {
-                    tourManager.advance()
-                }
-            }
+
             .onChange(of: tourManager.currentStep) { _, newStep in
                 if let newStep, newStep != .completed {
                     recordTabCount()

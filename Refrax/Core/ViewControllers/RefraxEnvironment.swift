@@ -20,7 +20,6 @@ struct RefraxEnvironment {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let archiveManager: TabArchiveManager
     let autoArchiveManager: TabAutoArchiveManager
     let windowManager: WindowManager
@@ -80,7 +79,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.pagePool)
             .environment(environment.spaceManager)
             .environment(environment.groupManager)
-            .environment(environment.referencePaneManager)
             .environment(environment.archiveManager)
             .environment(environment.autoArchiveManager)
             .environment(environment.windowManager)

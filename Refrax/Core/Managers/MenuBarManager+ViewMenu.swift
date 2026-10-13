@@ -20,17 +20,6 @@ extension MenuBarManager {
         sidebarItem.target = self
         viewMenu.addItem(sidebarItem)
 
-        // Show/Hide Reference Pane (right sidebar)
-        let inspectorItem = NSMenuItem(
-            title: "Toggle Reference Pane",
-            action: #selector(toggleInspector(_:)),
-            keyEquivalent: "s",
-        )
-        inspectorItem.keyEquivalentModifierMask = [.command, .control]
-        inspectorItem.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
-        inspectorItem.target = self
-        viewMenu.addItem(inspectorItem)
-
         // Sidebar Mode submenu
         let sidebarModeItem = NSMenuItem(title: "Sidebar Mode", action: nil, keyEquivalent: "")
         sidebarModeItem.image = NSImage(systemSymbolName: "sidebar.squares.left", accessibilityDescription: nil)
@@ -288,11 +277,6 @@ extension MenuBarManager {
     @objc
     func toggleSidebar(_ sender: Any?) {
         activeWindowController?.toggleSidebar(sender)
-    }
-
-    @objc
-    func toggleInspector(_: Any?) {
-        activeWindowController?.toggleInspector()
     }
 
     @objc

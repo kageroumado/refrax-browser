@@ -13,7 +13,6 @@ extension RefraxWindowController: NSToolbarDelegate {
             .toggleSidebarGrouped,
             .toggleFloatingTabs,
             .toggleTabCanvas,
-            .toggleInspector,
             .sidebarTrackingSeparator,
             .flexibleSpace,
         ]
@@ -40,17 +39,6 @@ extension RefraxWindowController: NSToolbarDelegate {
             configureSidebarTracking(for: item)
             return item
 
-        case .toggleInspector:
-            let item = NSToolbarItem(itemIdentifier: .toggleInspector)
-            item.label = "Reference"
-            item.paletteLabel = "Reference Pane"
-            item.toolTip = "Show Reference Pane"
-            item.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
-            item.action = #selector(toggleInspectorAction(_:))
-            item.target = self
-            item.isBordered = true
-            configureSidebarTracking(for: item)
-            return item
 
         case .toggleFloatingTabs:
             let item = NSToolbarItem(itemIdentifier: .toggleFloatingTabs)
@@ -89,10 +77,6 @@ extension RefraxWindowController: NSToolbarDelegate {
         }
     }
 
-    @objc
-    private func toggleInspectorAction(_: Any?) {
-        toggleInspector()
-    }
 
     @objc
     func toggleFloatingTabs(_: Any?) {
@@ -195,7 +179,7 @@ extension RefraxWindowController {
 extension NSToolbarItem.Identifier {
     /// The sidebar toggle under an identifier AppKit does not single out; see the delegate.
     static let toggleSidebarGrouped = NSToolbarItem.Identifier("ToggleSidebar")
-    static let toggleInspector = NSToolbarItem.Identifier("ToggleInspector")
+
     static let toggleFloatingTabs = NSToolbarItem.Identifier("ToggleFloatingTabs")
     static let toggleTabCanvas = NSToolbarItem.Identifier("ToggleTabCanvas")
 }

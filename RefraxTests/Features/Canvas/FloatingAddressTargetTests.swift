@@ -19,7 +19,7 @@ struct FloatingAddressTargetTests {
         let manager = CommandLensManager(
             tabManager: env.tabManager, historyManager: env.historyManager, windowState: window,
             browserSettings: env.settings, siteSettingsManager: env.siteSettingsManager,
-            downloadManager: env.downloadManager, referencePaneManager: env.referencePaneManager,
+            downloadManager: env.downloadManager,
             extensionManager: env.extensionManager, customSearchEngineManager: env.customSearchEngineManager,
             localNetworkSource: EmptyLocalNetworkSource(),
         )

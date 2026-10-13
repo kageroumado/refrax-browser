@@ -36,18 +36,9 @@ struct RecentPagesEmptyStateAction: CommandLensEmptyStateAction {
 
             let openTabSuggestions = sortedTabs.enumerated().map { index, tab -> CommandLensSuggestion in
                 let timeLabel = tab.lastAccessed.map(relativeTimeString) ?? ""
-                let type: SuggestionType = tab.isReferenceTab
-                    ? .referenceTab(tabID: tab.id)
-                    : .openTab(tabID: tab.id)
-                let iconName = if tab.isReferenceTab {
-                    "sidebar.squares.right"
-                } else if tab.status == .pinned {
-                    "pin.fill"
-                } else {
-                    "rectangle.on.rectangle"
-                }
+                let iconName = tab.status == .pinned ? "pin.fill" : "rectangle.on.rectangle"
                 return CommandLensSuggestion(
-                    type: type,
+                    type: .openTab(tabID: tab.id),
                     text: tab.customName ?? tab.pages.map(\.title).joined(separator: " | "),
                     description: tab.displayURL + (timeLabel.isEmpty ? "" : " • \(timeLabel)"),
                     iconName: iconName,
@@ -69,7 +60,7 @@ struct RecentPagesEmptyStateAction: CommandLensEmptyStateAction {
                     type: .recentlyClosed(index: index),
                     text: tabInfo.customName ?? tabInfo.title,
                     description: tabInfo.url.absoluteString + (timeLabel.isEmpty ? "" : " • \(timeLabel)"),
-                    iconName: tabInfo.isReferenceTab ? "sidebar.squares.right" : "arrow.uturn.backward",
+                    iconName: "arrow.uturn.backward",
                     groupHeader: index == 0 ? "Recently Closed" : nil,
                     isRemovable: false,
                     keywordAction: nil,

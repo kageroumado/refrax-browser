@@ -146,7 +146,7 @@ struct TabInfoPopover: View {
         var parts: [String] = []
         if tab.isPinned { parts.append("Pinned") }
         if tab.isUnread { parts.append("Unread") }
-        if tab.isReferenceTab { parts.append("Reference") }
+
         if tab.status == .liveFavorite { parts.append("Live Favorite") }
         return parts.isEmpty ? "Regular" : parts.joined(separator: ", ")
     }

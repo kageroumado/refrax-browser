@@ -2,15 +2,14 @@ import Foundation
 
 /// Provides suggestions for switching to already-open tabs.
 ///
-/// This provider searches through the user's open tabs (including main tabs,
-/// reference tabs, and live favorites) and suggests matches based on tab title,
-/// custom name, or URL.
+/// This provider searches through the user's open tabs (including main tabs
+/// and live favorites) and suggests matches based on tab title, custom name,
+/// or URL.
 ///
 /// ## Tab Categories
 ///
 /// Tabs are categorized and displayed with different icons:
 /// - **Main tabs**: Regular tabs in the sidebar (`rectangle.on.rectangle`)
-/// - **Reference tabs**: Tabs in the reference pane (`sidebar.squares.right`)
 /// - **Live favorites**: Persistent favorites grid tabs (`star.fill`)
 struct OpenTabsProvider: CommandLensSuggestionProvider {
     let id = "open-tabs"
@@ -32,21 +31,11 @@ struct OpenTabsProvider: CommandLensSuggestionProvider {
         var suggestions: [CommandLensSuggestion] = []
         let query = context.input.lowercased()
 
-        // Search main tabs (non-reference) from current space
+        // Search main tabs from current space
         let matchingMainTabs = tabManager.tabs(matching: context.input)
-            .filter { !$0.isReferenceTab }
 
         for tab in matchingMainTabs.prefix(maxSuggestions) {
             suggestions.append(makeSuggestion(for: tab, category: .main))
-        }
-
-        // Search reference tabs from current space
-        if let space = tabManager.activeWindowState?.activeSpace {
-            let matchingRefTabs = space.referenceTabs.filter { matchesQuery($0, query: query) }
-
-            for tab in matchingRefTabs.prefix(maxSuggestions - suggestions.count) {
-                suggestions.append(makeSuggestion(for: tab, category: .reference))
-            }
         }
 
         // Search live favorite tabs
@@ -64,7 +53,6 @@ struct OpenTabsProvider: CommandLensSuggestionProvider {
 
     private enum TabCategory {
         case main
-        case reference
         case liveFavorite
     }
 
@@ -78,8 +66,7 @@ struct OpenTabsProvider: CommandLensSuggestionProvider {
         let (type, iconName, header): (SuggestionType, String, String?) = switch category {
         case .main:
             (.openTab(tabID: tab.id), "rectangle.on.rectangle", groupHeader)
-        case .reference:
-            (.referenceTab(tabID: tab.id), "sidebar.squares.right", "Reference Pane")
+
         case .liveFavorite:
             (.openTab(tabID: tab.id), "star.fill", "Favorites")
         }

@@ -10,9 +10,7 @@ enum Constants {
         static let sidebarMinWidth: CGFloat = 250
         static let sidebarDefaultWidth: CGFloat = 350
         static let sidebarMaxWidth: CGFloat = 600
-        static let inspectorMinWidth: CGFloat = 300
-        static let inspectorDefaultWidth: CGFloat = 400
-        static let inspectorMaxWidth: CGFloat = 600
+
         static let tabItemHeight: CGFloat = 36
         static let toolbarHeight: CGFloat = 48
         static let toolbarMargin: CGFloat = 16

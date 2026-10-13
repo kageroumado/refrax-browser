@@ -291,14 +291,6 @@ final class TabHealthProvider {
             ))
         }
 
-        // Reference tab
-        if tab?.isReferenceTab == true {
-            factors.append(ImportanceFactor(
-                name: "Reference Tab",
-                points: PageImportanceScorer.Weight.referenceTab,
-                icon: "doc.on.doc.fill",
-            ))
-        }
 
         // Recent visibility
         if let lastVisible = tab?.lastAccessed,

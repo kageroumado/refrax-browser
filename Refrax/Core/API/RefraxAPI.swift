@@ -585,10 +585,6 @@ extension RefraxAPI {
             }
             return .tab(TabInfo( tab))
 
-        case let .referenceTabs(spaceID):
-            let space = try resolveSpace(spaceID)
-            let tabs = space.referenceTabs.map { TabInfo( $0) }
-            return .tabs(tabs)
 
         case let .tabContent(tabID, includeHTML, includeText):
             guard let tab = state.tab(for: tabID) else {

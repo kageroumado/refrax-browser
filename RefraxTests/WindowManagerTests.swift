@@ -209,37 +209,6 @@ struct WindowStateLensTests {
     }
 
     @Test
-    func `Reference pane lens state`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        // Default (address bar mode): don't create new tab
-        windowState.openReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == true)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        windowState.closeReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        // Explicit forNewTab: true (+ button mode): create new tab
-        windowState.openReferencePaneLens(forNewTab: true)
-
-        #expect(windowState.showsReferencePaneLens == true)
-        #expect(windowState.isCreatingReferenceTab == true)
-
-        windowState.closeReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-    }
-
-    @Test
     func `Command lens binding works`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
@@ -407,14 +376,6 @@ struct WindowStateSidebarInspectorTests {
     }
 
     @Test
-    func `Inspector starts collapsed`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isInspectorCollapsed == true)
-    }
-
-    @Test
     func `Toggle sidebar changes state`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
@@ -426,20 +387,6 @@ struct WindowStateSidebarInspectorTests {
 
         windowState.toggleSidebar()
         #expect(windowState.isSidebarCollapsed == false)
-    }
-
-    @Test
-    func `Toggle inspector changes state`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isInspectorCollapsed == true)
-
-        windowState.toggleInspector()
-        #expect(windowState.isInspectorCollapsed == false)
-
-        windowState.toggleInspector()
-        #expect(windowState.isInspectorCollapsed == true)
     }
 }
 
@@ -462,7 +409,6 @@ struct WindowStateNavigationCleanupTests {
             makeActive: false,
         )
         windowState.setActiveTabID(tab.id, for: space.id)
-        windowState.activeReferenceTabID = tab.id
 
         // Create a live favorite tab to test live favorite clearing
         let liveFavoriteTab = try Tab(space: nil, url: #require(URL(string: "https://example.com")), status: .liveFavorite)
@@ -471,13 +417,11 @@ struct WindowStateNavigationCleanupTests {
 
         #expect(windowState.activeSpaceID != nil)
         #expect(windowState.activeTabID == liveFavoriteTab.id) // Live favorite takes priority
-        #expect(windowState.activeReferenceTabID != nil)
 
         windowState.clearNavigationState()
 
         #expect(windowState.activeSpaceID == nil)
         #expect(windowState.activeTabID == nil)
-        #expect(windowState.activeReferenceTabID == nil)
     }
 
     @Test
@@ -539,14 +483,6 @@ struct WindowStateOverlayTests {
     }
 
     @Test
-    func `Reference pane docked width has default`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.referencePaneDockedWidth == 400)
-    }
-
-    @Test
     func `Sidebar thickness has default`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
@@ -597,9 +533,7 @@ struct CommandLensEntranceTests {
 // 3. handleWindowClosed - Triggered by NSWindow.willCloseNotification
 // 4. frontmostWindowController - Uses NSApplication.shared.keyWindow
 // 5. mainWindowController - Uses NSApplication.shared.mainWindow
-// 6. createReferencePaneWindow - Creates separate window for reference pane
-// 7. closeReferencePaneWindow - Closes reference pane window
-// 8. lastActiveBrowserWindowController updates - From NSWindow.didBecomeKeyNotification
+// 6. lastActiveBrowserWindowController updates - From NSWindow.didBecomeKeyNotification
 //
 // These should be tested via integration tests or UI tests that have access to
 // the full AppKit environment.

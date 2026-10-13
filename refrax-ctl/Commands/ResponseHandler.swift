@@ -99,8 +99,7 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         printStorageEntries(entries)
     case let .recentlyClosedTabs(tabs):
         printRecentlyClosedTabs(tabs)
-    case let .refPaneTabs(tabs):
-        printRefPaneTabs(tabs)
+
     case let .settingsEntries(entries):
         printSettingsEntries(entries)
     case let .health(info):
@@ -211,8 +210,6 @@ func printWindowInfo(_ info: CTL.WindowInfoData) {
     print("Position: \(info.x), \(info.y)")
     print("Size: \(info.width)x\(info.height)")
     print("Sidebar: \(info.isSidebarCollapsed ? "collapsed" : "visible")")
-    print("Inspector: \(info.isInspectorCollapsed ? "collapsed" : "visible")")
-    print("Reference Pane: \(info.isReferencePaneVisible ? "visible" : "hidden")")
 }
 
 // MARK: - New Formatters
@@ -241,7 +238,7 @@ func printTabDetail(_ info: CTL.TabDetailInfo) {
     if info.isPinned { flags.append("pinned") }
     if info.isUnread { flags.append("unread") }
     if info.isMuted { flags.append("muted") }
-    if info.isReferenceTab { flags.append("reference") }
+
     if !flags.isEmpty {
         print("Flags: \(flags.joined(separator: ", "))")
     }
@@ -387,17 +384,6 @@ func printRecentlyClosedTabs(_ tabs: [CTL.RecentlyClosedTabInfo]) {
     }
 }
 
-func printRefPaneTabs(_ tabs: [CTL.RefPaneTabInfo]) {
-    if tabs.isEmpty {
-        print("No reference pane tabs")
-        return
-    }
-    for tab in tabs {
-        let prefix = tab.isActive ? "* " : "  "
-        let url = tab.url ?? ""
-        print("\(prefix)\(tab.id)  \(tab.title) - \(url)")
-    }
-}
 
 func printSettingsEntries(_ entries: [CTL.SettingEntryInfo]) {
     if entries.isEmpty {

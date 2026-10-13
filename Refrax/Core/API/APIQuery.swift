@@ -20,10 +20,6 @@ public enum APIQuery: Sendable {
     /// Gets the currently active tab in the active window.
     case activeTab
 
-    /// Gets tabs in the reference pane for a space.
-    ///
-    /// - Parameter spaceID: The space (uses active space if nil).
-    case referenceTabs(spaceID: UUID?)
 
     /// Gets page content (HTML/text) for a tab.
     ///
@@ -90,7 +86,7 @@ public extension APIQuery {
     /// Permission requirements for executing this query.
     var permissionRequirements: PermissionRequirements {
         switch self {
-        case .tabs, .tab, .activeTab, .referenceTabs:
+        case .tabs, .tab, .activeTab:
             .tabsRead
         case .tabContent:
             .contentRead

@@ -4,15 +4,13 @@ import Foundation
 ///
 /// `WindowStateSync` provides helper methods for synchronizing `WindowState`
 /// across all windows after tab operations. This ensures that active tab
-/// selections and reference tab states remain consistent when tabs are
-/// moved, closed, or modified.
+/// selections remain consistent when tabs are moved, closed, or modified.
 ///
 /// ## Why Centralize?
 ///
 /// Tab mutations can affect multiple windows simultaneously:
 /// - Moving a tab to another space may invalidate window selections
 /// - Closing the active tab requires selecting a new one
-/// - Reference tab removals may invalidate selections in some windows
 ///
 /// Centralizing this logic:
 /// 1. Prevents bugs from inconsistent sync across different operations
@@ -23,9 +21,6 @@ import Foundation
 ///
 /// - **Active tab** (`syncActiveTabID`): Broadcasts to all windows showing the space,
 ///   since main tabs are typically selected uniformly.
-/// - **Reference tab** (`setActiveReferenceTabIDInWindow`): Only updates the
-///   specified window (or active window if not specified), since reference tab
-///   selection is per-window by design.
 /// - **Invalid selection sync** (`syncInvalid...`): Only fixes windows where the
 ///   selected tab no longer exists.
 ///
@@ -36,12 +31,6 @@ import Foundation
 ///
 /// // After closing active tab - updates all windows
 /// sync.syncActiveTabID(for: space, newTabID: nextTab?.id)
-///
-/// // After adding reference tab - only specified/current window
-/// sync.setActiveReferenceTabIDInWindow(for: space, newTabID: newRefTab?.id, windowState: initiatingWindow)
-///
-/// // After removing reference tab - fix invalid selections with smart adjacent selection
-/// sync.syncInvalidActiveReferenceTabIDs(for: space, closedIndex: closedRefTabIndex)
 /// ```
 struct WindowStateSync {
     private let windowManager: WindowManager
@@ -87,7 +76,7 @@ struct WindowStateSync {
     ///   - space: The space to check.
     ///   - closedContext: Context about closed tabs for smart adjacent selection.
     func syncInvalidActiveTabIDs(for space: Space, closedContext: TabMutationPipeline.ClosedTabContext?) {
-        // Only main tabs are valid for active tab selection (not reference tabs)
+        // Only non-archived tabs are valid for active tab selection
         let validTabIDs = Set(space.mainTabs.map(\.id))
 
         for controller in windowManager.windowControllers {
@@ -156,96 +145,6 @@ struct WindowStateSync {
         return mainTabs.first?.id
     }
 
-    // MARK: - Active Reference Tab Synchronization
-
-    /// Sets the active reference tab ID for a specific window state.
-    ///
-    /// Active reference tab is per-window, so operations like adding or selecting
-    /// a reference tab should only affect the window where the action occurred.
-    ///
-    /// - Parameters:
-    ///   - windowState: The specific window state to update.
-    ///   - newTabID: The new active reference tab ID, or nil to clear.
-    func setActiveReferenceTabID(for windowState: WindowState, newTabID: Tab.ID?) {
-        windowState.activeReferenceTabID = newTabID
-    }
-
-    /// Sets the active reference tab ID for a specific window or the active window.
-    ///
-    /// Use this when an operation that affects reference tab selection is triggered
-    /// by the user (e.g., adding a reference tab, selecting one).
-    ///
-    /// - Parameters:
-    ///   - space: The space to verify (for validation only).
-    ///   - newTabID: The new active reference tab ID, or nil to clear.
-    ///   - windowState: The specific window to update. If nil, uses the active window.
-    func setActiveReferenceTabIDInWindow(for space: Space, newTabID: Tab.ID?, windowState: WindowState? = nil) {
-        if let windowState {
-            guard windowState.activeSpaceID == space.id else { return }
-            windowState.activeReferenceTabID = newTabID
-        } else {
-            guard let activeController = windowManager.activeWindowController,
-                  activeController.windowState.activeSpaceID == space.id else { return }
-            activeController.windowState.activeReferenceTabID = newTabID
-        }
-    }
-
-    /// Syncs the active reference tab ID only in windows where the current
-    /// selection is invalid (reference tab no longer exists in space).
-    ///
-    /// Uses smart selection to find the best replacement:
-    /// 1. Adjacent tab at the closed tab's position
-    /// 2. Last remaining reference tab
-    /// 3. nil if no reference tabs remain
-    ///
-    /// - Parameters:
-    ///   - space: The space to check.
-    ///   - closedIndex: The position of the closed reference tab (for adjacent selection).
-    func syncInvalidActiveReferenceTabIDs(for space: Space, closedIndex: Int?) {
-        let referenceTabs = space.referenceTabs
-        let validRefTabIDs = Set(referenceTabs.map(\.id))
-
-        for controller in windowManager.windowControllers {
-            guard controller.windowState.activeSpaceID == space.id else { continue }
-
-            if let currentID = controller.windowState.activeReferenceTabID,
-               !validRefTabIDs.contains(currentID) {
-                let newTabID = findBestReferenceTabToActivate(
-                    referenceTabs: referenceTabs,
-                    closedIndex: closedIndex,
-                )
-                controller.windowState.activeReferenceTabID = newTabID
-            }
-        }
-    }
-
-    /// Finds the best reference tab to activate after the current one becomes invalid.
-    ///
-    /// Selection priority:
-    /// 1. Adjacent tab at the closed tab's position
-    /// 2. Last remaining reference tab
-    /// 3. nil if no reference tabs remain
-    private func findBestReferenceTabToActivate(
-        referenceTabs: [Tab],
-        closedIndex: Int?,
-    ) -> Tab.ID? {
-        guard !referenceTabs.isEmpty else { return nil }
-
-        // Priority 1: Adjacent tab at closed position
-        if let closedIndex {
-            if closedIndex < referenceTabs.count {
-                // Tab at same index is now the "next" tab (items shifted up)
-                return referenceTabs[closedIndex].id
-            } else if closedIndex > 0, closedIndex - 1 < referenceTabs.count {
-                // Closed tab was at the end, use previous
-                return referenceTabs[closedIndex - 1].id
-            }
-        }
-
-        // Fallback: last reference tab (most recently added)
-        return referenceTabs.last?.id
-    }
-
     // MARK: - Batch Synchronization
 
     /// Syncs state for multiple affected spaces.
@@ -264,8 +163,6 @@ struct WindowStateSync {
 
             // Pass nil for closed context - batch operations use previous tab or first fallback
             syncInvalidActiveTabIDs(for: space, closedContext: nil)
-            // Pass nil for closedIndex - batch operations use last-tab fallback
-            syncInvalidActiveReferenceTabIDs(for: space, closedIndex: nil)
         }
     }
 

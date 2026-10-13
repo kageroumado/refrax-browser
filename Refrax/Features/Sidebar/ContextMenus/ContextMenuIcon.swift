@@ -37,7 +37,6 @@ enum ContextMenuIcon {
     case addToNewGroup
     case moveToGroup
     case moveToSpace
-    case moveToReferencePane
     case moveToSidebar
     case removeFromGroup
     case nestInGroup
@@ -119,7 +118,7 @@ enum ContextMenuIcon {
         case .addToNewGroup: "folder.badge.plus"
         case .moveToGroup: "arrow.forward.folder"
         case .moveToSpace: "square.stack.3d.up"
-        case .moveToReferencePane: "arrow.right.to.line.square"
+
         case .moveToSidebar: "arrow.left.to.line.square"
         case .removeFromGroup: "folder.badge.minus"
         case .nestInGroup: "folder.fill.badge.plus"

@@ -22,25 +22,12 @@ struct OpenTabsEmptyStateAction: CommandLensEmptyStateAction {
         }
 
         let suggestions: [CommandLensSuggestion] = tabs.map { tab in
-            let type: SuggestionType = tab.isReferenceTab
-                ? .referenceTab(tabID: tab.id)
-                : .openTab(tabID: tab.id)
-            let iconName = if tab.isReferenceTab {
-                "sidebar.squares.right"
-            } else {
-                "rectangle.on.rectangle"
-            }
-            let header = if tab.isReferenceTab {
-                "Reference Pane"
-            } else {
-                "Open Tabs"
-            }
-            return CommandLensSuggestion(
-                type: type,
+            CommandLensSuggestion(
+                type: .openTab(tabID: tab.id),
                 text: tab.customName ?? tab.pages.map(\.title).joined(separator: " | "),
                 description: tab.displayURL,
-                iconName: iconName,
-                groupHeader: header,
+                iconName: "rectangle.on.rectangle",
+                groupHeader: "Open Tabs",
                 isRemovable: false,
                 keywordAction: nil,
                 url: nil,

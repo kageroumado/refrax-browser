@@ -7,7 +7,6 @@ extension Tab: Syncable {
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Scalars
         record["status"] = status.rawValue as NSString
-        record["isReferenceTab"] = isReferenceTab as NSNumber
         record["isUnread"] = isUnread as NSNumber
         record["unreadFromBadge"] = unreadFromBadge as NSNumber
         record["position"] = position as NSNumber
@@ -81,7 +80,6 @@ extension Tab: Syncable {
         // Update all properties from record
         tab.status = (record["status"] as? String)
             .flatMap(TabStatus.init(rawValue:)) ?? .regular
-        tab.isReferenceTab = (record["isReferenceTab"] as? Bool) ?? false
         tab.isUnread = (record["isUnread"] as? Bool) ?? false
         tab.unreadFromBadge = (record["unreadFromBadge"] as? Bool) ?? false
         tab.position = (record["position"] as? Int) ?? 0

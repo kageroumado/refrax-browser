@@ -231,13 +231,6 @@ extension TabManager {
                 )
             }
 
-            // MARK: - Reference Pane
-
-            addReferenceTab(
-                url: URL.staticRequired("https://developer.apple.com/documentation/webkit"),
-                title: "WebKit Docs",
-                in: space,
-            )
 
             // MARK: - Bookmarks & Favorites
 

@@ -89,13 +89,6 @@ struct RefraxPreviewModifier: PreviewModifier {
         let windowManager = WindowManager(modelContainer: modelContainer)
         let undoRedoManager = UndoRedoManager()
 
-        let referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
-
         let archiveManager = TabArchiveManager(state: browserState, settings: settings)
         let autoArchiveManager = TabAutoArchiveManager(
             state: browserState,
@@ -108,7 +101,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         // MARK: - Dependent Managers
@@ -156,7 +148,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             browserSettings: settings,
             siteSettingsManager: siteSettingsManager,
             downloadManager: downloadManager,
-            referencePaneManager: referencePaneManager,
             extensionManager: extensionManager,
             customSearchEngineManager: customSearchEngineManager,
             localNetworkSource: LocalNetworkDirectory(),
@@ -240,7 +231,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
             archiveManager: archiveManager,
             autoArchiveManager: autoArchiveManager,
             windowManager: windowManager,

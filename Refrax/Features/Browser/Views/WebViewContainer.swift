@@ -35,7 +35,7 @@ struct WebViewContainer: View {
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
     @Environment(ReaderModeManager.self) private var readerModeManager
-    @Environment(\.webViewForcedInactive) private var isForcedInactive
+
     @Environment(\.webViewOwnershipID) private var customOwnershipID
 
     /// The URL currently being hovered over, displayed in the link preview overlay.
@@ -81,7 +81,7 @@ struct WebViewContainer: View {
         let ownerID = page.ownerWindowID
         let isCurrentOwner = ownerID == windowID
         let isWindowKey = windowState.window?.isKeyWindow ?? false
-        let isOwner = !isForcedInactive && (isCurrentOwner || (ownerID == nil && isWindowKey))
+        let isOwner = isCurrentOwner || (ownerID == nil && isWindowKey)
 
         ZStack(alignment: .bottomLeading) {
             content(isOwner: isOwner)
@@ -119,8 +119,7 @@ struct WebViewContainer: View {
         }
         .onAppear {
             // Claim ownership if we're the key window or no owner exists
-            // Don't claim if forced inactive (e.g., docked view when separate window is open)
-            if !isForcedInactive, !isCurrentOwner, !page.isInFloatingPreview,
+            if !isCurrentOwner, !page.isInFloatingPreview,
                page.ownerWindowID == nil || isWindowKey {
                 claimOwnership()
             }
@@ -159,13 +158,7 @@ struct WebViewContainer: View {
                 page.onBecameHidden()
             }
 
-            // Don't release ownership if a reference pane window is open (when using WindowState).
-            // The separate window shares the same WindowState, so releasing here
-            // would clear ownership needed by the separate window's WebViewContainer.
-            // For custom ownership IDs (reflected windows), always release.
-            if usesCustomOwnershipID || !windowState.hasReferencePaneWindow {
-                releaseOwnership()
-            }
+            releaseOwnership()
 
             // Clean up link hover callback only if we set it
             if page.ownerWindowID == nil || page.ownerWindowID == windowID {
@@ -199,8 +192,7 @@ struct WebViewContainer: View {
         // incorrectly re-stealing ownership back to the reflected window.
         guard !usesCustomOwnershipID, !page.isInFloatingPreview else { return }
 
-        guard !isForcedInactive,
-              let keyWindow = notification.object as? NSWindow,
+        guard let keyWindow = notification.object as? NSWindow,
               keyWindow === windowState.window else {
             return
         }

@@ -17,7 +17,7 @@ import SwiftUI
 ///
 /// ## Architecture
 ///
-/// Uses `ReferencePaneWindow` for consistent styling. The SwiftUI content view
+/// Uses `FloatingPageWindow` for consistent styling. The SwiftUI content view
 /// provides an address bar and space transfer button in a toolbar overlay.
 ///
 /// ## Lifecycle
@@ -99,8 +99,8 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
                 ?? tabManager.state.spaces.first,
         )
 
-        // Use the same window class as reference pane
-        let window = ReferencePaneWindow()
+        // Use the same window class as Reflected windows
+        let window = FloatingPageWindow()
         super.init(window: window)
 
         window.delegate = self
@@ -285,8 +285,8 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
 
     func windowWillResize(_: NSWindow, to frameSize: NSSize) -> NSSize {
         var newSize = frameSize
-        newSize.width = max(newSize.width, ReferencePaneWindow.minimumWidth)
-        newSize.height = max(newSize.height, ReferencePaneWindow.minimumHeight)
+        newSize.width = max(newSize.width, FloatingPageWindow.minimumWidth)
+        newSize.height = max(newSize.height, FloatingPageWindow.minimumHeight)
         return newSize
     }
 }

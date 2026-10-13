@@ -26,7 +26,7 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
     static let reload = MenuGroupID(id: "reload", title: "Reload", symbol: "arrow.clockwise", rank: 30)
     /// Mute Tab, Mute Other Tabs.
     static let media = MenuGroupID(id: "media", title: "Sound", symbol: "speaker.wave.2", rank: 35)
-    /// Groups, spaces, the reference pane, floating selection.
+    /// Groups, spaces, floating selection.
     static let move = MenuGroupID(id: "move", title: "Move", symbol: "folder", rank: 40)
     /// Floating placement: pinned, compact, region, zoom.
     static let preview = MenuGroupID(id: "preview", title: "Preview", symbol: "rectangle.on.rectangle", rank: 50)

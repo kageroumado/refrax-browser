@@ -77,38 +77,6 @@ extension RefraxWindowController {
             .store(in: &cancellables)
     }
 
-    /// Observes inspector collapse state and width, syncs to WindowState.
-    ///
-    /// ## Width Preservation
-    ///
-    /// The width is captured whenever the inspector is visible and resized.
-    /// This ensures when the user reopens the inspector, it returns to their
-    /// preferred width even if they closed it in between.
-    func observeInspectorState() {
-        guard splitViewController.splitViewItems.count > 2 else { return }
-        let inspectorItem = splitViewController.splitViewItems[2]
-
-        inspectorItem.viewController.view.publisher(for: \.frame)
-            .map(\.width)
-            .removeDuplicates()
-            .sink { [weak self] width in
-                guard let self,
-                      !self.isRestoringState,
-                      !self.isUpdatingInspectorProgrammatically else { return }
-                if !inspectorItem.isCollapsed, width > 0 {
-                    windowState.referencePaneDockedWidth = width
-                }
-            }
-            .store(in: &cancellables)
-
-        inspectorItem.publisher(for: \.isCollapsed)
-            .sink { [weak self] isCollapsed in
-                guard let self, !self.isRestoringState else { return }
-                windowState.isInspectorCollapsed = isCollapsed
-            }
-            .store(in: &cancellables)
-    }
-
     func observeWindowState() {
         // Observe settings that affect window background color
         let colorSettingsChanges = Observations {
@@ -152,40 +120,6 @@ extension RefraxWindowController {
             }
         }
         observationTasks.append(activeTabTask)
-
-        // Observe inspector collapsed state from external sources.
-        // When the reference pane is moved to a window, it sets isInspectorCollapsed = true
-        // directly on windowState. This observation syncs that to the actual split view.
-        let inspectorCollapseChanges = Observations {
-            self.windowState.isInspectorCollapsed
-        }
-        let inspectorCollapseTask = Task { @MainActor [weak self] in
-            for await isCollapsed in inspectorCollapseChanges {
-                guard let self else { return }
-                // Only update if the split view state differs from the desired state
-                // to avoid infinite loops with the reverse observation in observeInspectorState
-                guard splitViewController.splitViewItems.count > 2 else { continue }
-                let inspectorItem = splitViewController.splitViewItems[2]
-                if inspectorItem.isCollapsed != isCollapsed {
-                    updateInspectorCollapsed(isCollapsed, animated: true)
-                }
-            }
-        }
-        observationTasks.append(inspectorCollapseTask)
-
-        // Force inspector hosting view to display when reference tab content changes.
-        // NSSplitViewItem's hosting view doesn't always commit a display pass when
-        // SwiftUI content transitions between conditional branches (e.g., empty state
-        // to WebViewContainer). This observation ensures the hosting view re-renders.
-        let refTabChanges = Observations {
-            self.windowState.activeReferenceTabID
-        }
-        let refTabTask = Task { @MainActor [weak self] in
-            for await _ in refTabChanges {
-                self?.invalidateInspectorDisplay()
-            }
-        }
-        observationTasks.append(refTabTask)
     }
 
     /// Observes space lock state to hide/show toolbar and traffic lights.
@@ -523,89 +457,6 @@ extension RefraxWindowController {
         let multiplier = Constants.Opacity.tintOpacityMultiplier
         let alpha = settings.windowBackgroundMixAmount * multiplier
         glassView.tintColor = color.withAlphaComponent(alpha)
-    }
-
-    /// Update inspector item based on collapsed state.
-    ///
-    /// ## Width Preservation
-    ///
-    /// When expanding the inspector, we restore to the saved `referencePaneDockedWidth`
-    /// so it opens to the user's preferred width.
-    ///
-    /// ## NSSplitView Cache Priming
-    ///
-    /// NSSplitView caches the divider position when an item is collapsed and animates
-    /// back to that cached position when uncollapsing. During window restoration, this
-    /// cache can contain a stale value (e.g., the initial 300px from window setup)
-    /// instead of the user's saved width.
-    ///
-    /// To fix this, we "prime" the cache before animating: briefly uncollapse, set the
-    /// target position, and collapse again—all without animation. This updates the
-    /// internal cache so the subsequent animated uncollapse restores to the correct width.
-    ///
-    /// - Parameter collapsed: Whether the inspector should be collapsed.
-    /// - Parameter animated: Whether to animate the change. Set to false during restoration.
-    func updateInspectorCollapsed(_ collapsed: Bool, animated: Bool = true) {
-        guard splitViewController.splitViewItems.count > 2 else { return }
-        let inspectorItem = splitViewController.splitViewItems[2]
-
-        // Prevent the frame observer from updating referencePaneDockedWidth during animation
-        isUpdatingInspectorProgrammatically = true
-
-        if collapsed {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = animated ? 0.3 : 0
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-                inspectorItem.animator().isCollapsed = true
-            } completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.isUpdatingInspectorProgrammatically = false
-                }
-            }
-        } else {
-            let savedWidth = windowState.referencePaneDockedWidth
-            let targetPosition = splitViewController.view.bounds.width - savedWidth
-
-            // Prime the cache: uncollapse -> set position -> collapse (all instant, no animation)
-            NSAnimationContext.beginGrouping()
-            NSAnimationContext.current.allowsImplicitAnimation = false
-            NSAnimationContext.current.duration = 0
-
-            inspectorItem.isCollapsed = false
-            splitViewController.splitView.setPosition(targetPosition, ofDividerAt: 1)
-            inspectorItem.isCollapsed = true
-
-            NSAnimationContext.endGrouping()
-
-            // Now animate the uncollapse - it restores to our primed target position
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = animated ? 0.3 : 0
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-
-                inspectorItem.animator().isCollapsed = false
-            } completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.isUpdatingInspectorProgrammatically = false
-                    // Force display after expansion — the hosting view may not
-                    // commit a display pass after the cache-priming sequence.
-                    self?.invalidateInspectorDisplay()
-                }
-            }
-        }
-    }
-
-    /// Forces the inspector's hosting view to re-render.
-    ///
-    /// Works around an NSSplitViewItem issue where the hosting view doesn't
-    /// commit a display pass when SwiftUI content transitions between
-    /// conditional branches internally (e.g., empty state → WebViewContainer).
-    private func invalidateInspectorDisplay() {
-        guard splitViewController.splitViewItems.count > 2 else { return }
-        let inspectorView = splitViewController.splitViewItems[2].viewController.view
-        inspectorView.needsLayout = true
-        inspectorView.needsDisplay = true
     }
 }
 

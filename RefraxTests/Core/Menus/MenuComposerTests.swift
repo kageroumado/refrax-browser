@@ -192,7 +192,7 @@ struct MenuComposerTests {
             action("Go to Home", .go), action("Set Current Page as Home", .go),
             action("Reload", .reload), action("Duplicate", .reload),
             action("Remove from Group", .move), action("Move to Group", .move, primary: true, children: groups), action("Add to New Group…", .move),
-            action("Move to Space", .move, children: spaces), action("Move to Reference Pane", .move),
+            action("Move to Space", .move, children: spaces), action("Move to New Window", .move),
             action("Copy URL", .copy), action("Copy URL as Markdown", .copy),
             action("Share…", .share),
             action("Sort Tabs", .sort, children: sort),

@@ -25,7 +25,6 @@ final class RefraxControlServer {
     private unowned let spaceManager: SpaceManager
     private unowned let pagePool: WebPagePool
     private unowned let browserState: BrowserState
-    private unowned let referencePaneManager: ReferencePaneManager
     private unowned let groupManager: TabGroupManager
     private unowned let undoRedoManager: UndoRedoManager
     private unowned let bookmarksManager: BookmarksManager
@@ -52,7 +51,6 @@ final class RefraxControlServer {
         spaceManager: SpaceManager,
         pagePool: WebPagePool,
         browserState: BrowserState,
-        referencePaneManager: ReferencePaneManager,
         groupManager: TabGroupManager,
         undoRedoManager: UndoRedoManager,
         bookmarksManager: BookmarksManager,
@@ -68,7 +66,6 @@ final class RefraxControlServer {
         self.spaceManager = spaceManager
         self.pagePool = pagePool
         self.browserState = browserState
-        self.referencePaneManager = referencePaneManager
         self.groupManager = groupManager
         self.undoRedoManager = undoRedoManager
         self.bookmarksManager = bookmarksManager
@@ -165,18 +162,10 @@ final class RefraxControlServer {
             handleWindowCenter()
         case .windowInfo:
             handleWindowInfo()
-        case .refPaneShow:
-            handleRefPaneShow()
-        case .refPaneHide:
-            handleRefPaneHide()
-        case .refPaneToggle:
-            handleRefPaneToggle()
         case let .hotkey(params):
             handleHotkey(params)
         case .sidebarToggle:
             handleSidebarToggle()
-        case .inspectorToggle:
-            handleInspectorToggle()
         case .commandLens:
             handleCommandLens()
         case .addressLens:
@@ -217,8 +206,6 @@ final class RefraxControlServer {
             try handleTabMoveToGroup(params)
         case let .tabRemoveFromGroup(params):
             try handleTabRemoveFromGroup(params)
-        case let .tabMoveToRefPane(params):
-            try handleTabMoveToRefPane(params)
         case let .tabReorder(params):
             try handleTabReorder(params)
         case let .tabMarkRead(params):
@@ -288,17 +275,6 @@ final class RefraxControlServer {
             try await handleCanvasDrag(params)
         case let .canvasLab(params):
             try await handleCanvasLab(params)
-        // Tier 1D: Reference Pane Extended
-        case let .refPaneAddTab(params):
-            handleRefPaneAddTab(params)
-        case let .refPaneCloseTab(params):
-            handleRefPaneCloseTab(params)
-        case .refPaneListTabs:
-            handleRefPaneListTabs()
-        case let .refPaneActivateTab(params):
-            handleRefPaneActivateTab(params)
-        case let .refPaneMoveToMain(params):
-            handleRefPaneMoveToMain(params)
         // Tier 1E: Visual Agent Features
         case let .visualHighlight(params):
             try await handleVisualHighlight(params)
@@ -1260,40 +1236,7 @@ final class RefraxControlServer {
             width: Int(frame.width),
             height: Int(frame.height),
             isSidebarCollapsed: windowState.isSidebarCollapsed,
-            isInspectorCollapsed: windowState.isInspectorCollapsed,
-            isReferencePaneVisible: !windowState.isInspectorCollapsed,
         ))
-    }
-
-    // MARK: - Reference Pane
-
-    private func handleRefPaneShow() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        if windowState.isInspectorCollapsed {
-            windowState.toggleInspector()
-        }
-        return .ok("Reference pane shown")
-    }
-
-    private func handleRefPaneHide() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        if !windowState.isInspectorCollapsed {
-            windowState.toggleInspector()
-        }
-        return .ok("Reference pane hidden")
-    }
-
-    private func handleRefPaneToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleInspector()
-        let state = windowState.isInspectorCollapsed ? "hidden" : "shown"
-        return .ok("Reference pane \(state)")
     }
 
     // MARK: - Hotkey
@@ -1348,15 +1291,6 @@ final class RefraxControlServer {
         windowState.toggleSidebar()
         let state = windowState.isSidebarCollapsed ? "collapsed" : "expanded"
         return .ok("Sidebar \(state)")
-    }
-
-    private func handleInspectorToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleInspector()
-        let state = windowState.isInspectorCollapsed ? "collapsed" : "expanded"
-        return .ok("Inspector \(state)")
     }
 
     private func handleCommandLens() -> ControlResponse {
@@ -1711,7 +1645,6 @@ final class RefraxControlServer {
             groupID: tab.groupID.map { "\($0)" },
             groupName: tab.group?.name,
             spaceID: tab.space.map { "\($0.id)" },
-            isReferenceTab: tab.isReferenceTab,
             canGoBack: webPage?.canGoBack ?? false,
             canGoForward: webPage?.canGoForward ?? false,
             isMuted: webPage?.isAudioMuted ?? false,
@@ -1772,18 +1705,6 @@ final class RefraxControlServer {
         }
         groupManager.removeTabFromGroup(tab, in: space, spaceID: space.id)
         return .ok("Tab removed from group")
-    }
-
-    private func handleTabMoveToRefPane(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
-        let tab = try resolveTabRef(params.id)
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        let success = referencePaneManager.moveTabToReferencePane(tab, in: windowState)
-        if success {
-            return .ok("Tab moved to reference pane")
-        }
-        return .error(CTL.ErrorInfo(code: "move_failed", message: "Failed to move tab to reference pane"))
     }
 
     private func handleTabReorder(_ params: ControlRequest.TabReorderParams) throws -> ControlResponse {
@@ -2110,78 +2031,6 @@ final class RefraxControlServer {
         let result = try await webPage.callJavaScript("return document.documentElement.outerHTML")
         let html = result as? String ?? ""
         return .pageContent(html)
-    }
-
-    // MARK: - Tier 1D: Reference Pane Extended
-
-    private func handleRefPaneAddTab(_ params: ControlRequest.RefPaneAddTabParams) -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
-        }
-        guard let windowState = windowManager.activeWindowController?.windowState,
-              let space = windowState.activeSpace else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window or space"))
-        }
-
-        let title = params.title ?? "New Tab"
-        guard let tab = referencePaneManager.addReferenceTab(url: url, title: title, in: space, windowState: windowState) else {
-            return .error(CTL.ErrorInfo(code: "limit_reached", message: "Reference pane tab limit reached"))
-        }
-
-        let activeTabID = windowState.activeTabID
-        return .tab(buildTabInfo(tab, activeTabID: activeTabID))
-    }
-
-    private func handleRefPaneCloseTab(_ params: ControlRequest.RefPaneCloseTabParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        referencePaneManager.closeReferenceTab(tab)
-        return .ok("Reference tab closed")
-    }
-
-    private func handleRefPaneListTabs() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState,
-              let space = windowState.activeSpace else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window or space"))
-        }
-
-        let activeRefTabID = windowState.activeReferenceTabID
-        let tabs = space.referenceTabs.map { tab in
-            CTL.RefPaneTabInfo(
-                id: "\(tab.id)",
-                title: tab.displayTitle,
-                url: pagePool.existingPage(for: tab.activePage)?.url?.absoluteString ?? tab.activePage.url.absoluteString,
-                isActive: tab.id == activeRefTabID,
-            )
-        }
-        return .refPaneTabs(tabs)
-    }
-
-    private func handleRefPaneActivateTab(_ params: ControlRequest.RefPaneActivateTabParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        referencePaneManager.setActiveReferenceTab(tab, in: windowState)
-        return .ok("Reference tab activated")
-    }
-
-    private func handleRefPaneMoveToMain(_ params: ControlRequest.RefPaneMoveToMainParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        guard let space = tab.space else {
-            return .error(CTL.ErrorInfo(code: "no_space", message: "Tab has no space"))
-        }
-        let insertionIndex = space.mainTabs.count
-        let success = referencePaneManager.moveReferenceTabToMainArea(tab, insertionIndex: insertionIndex) { _ in }
-        if success {
-            return .ok("Reference tab moved to main area")
-        }
-        return .error(CTL.ErrorInfo(code: "move_failed", message: "Failed to move reference tab to main area"))
     }
 
     // MARK: - Tier 1E: Visual Agent Features
@@ -3367,11 +3216,6 @@ final class RefraxControlServer {
             }
         }
         return nil
-    }
-
-    /// Finds a reference tab by its string ID representation across all spaces.
-    private func findReferenceTab(byID stringID: String) -> Tab? {
-        browserState.spaces.flatMap(\.referenceTabs).first { stringID == "\($0.id)" }
     }
 
     /// Builds a ``GroupInfo`` from a ``TabGroup`` model.

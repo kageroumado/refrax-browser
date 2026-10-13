@@ -22,9 +22,9 @@ struct SidebarHintsView: View {
             // Top cluster: toolbar, address bar — left-aligned
             VStack(alignment: .leading, spacing: 0) {
                 hintBubble(
-                    icons: ["sidebar.left", TabCanvasManager.symbolName, "sidebar.right"],
+                    icons: ["sidebar.left", TabCanvasManager.symbolName],
                     title: "Toolbar",
-                    description: "Toggle sidebar visibility (\(Text("⌘S").bold())), lay every tab out on the canvas (\(Text("⌘⇧\\").bold()), or pinch in on the page), or show the reference pane for pages you keep beside the one you're reading. The sidebar has three modes: default, compact, and overlay — configurable in settings."
+                    description: "Toggle sidebar visibility (\(Text("⌘S").bold())), or lay every tab out on the canvas (\(Text("⌘⇧\\").bold()), or pinch in on the page). The sidebar has three modes: default, compact, and overlay — configurable in settings."
                 )
                 .padding(.bottom, Constants.clusterGap)
 
@@ -147,7 +147,7 @@ struct SidebarHintsView: View {
             shortcutEntry("⌘D", "Bookmark Page")
             shortcutEntry("⌘F", "Find in Page")
             shortcutEntry("⌘⌃T", "Split View")
-            shortcutEntry("⌘⌃S", "Reference Pane")
+
             shortcutEntry("⌘⌥I", "Web Inspector")
         }
     }

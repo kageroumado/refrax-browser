@@ -18,12 +18,6 @@ enum SuggestionType: Hashable, Sendable {
     /// - Parameter tabID: The unique identifier of the open tab.
     case openTab(tabID: UUID)
 
-    /// A reference pane tab to switch to.
-    ///
-    /// When selected, opens the reference pane (if closed) and activates the tab.
-    ///
-    /// - Parameter tabID: The unique identifier of the reference tab.
-    case referenceTab(tabID: UUID)
 
     /// A search engine to switch to before searching.
     ///
