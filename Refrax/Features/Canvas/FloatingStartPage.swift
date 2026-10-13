@@ -296,7 +296,7 @@ struct FloatingStartPage: View {
             let onLeft = anchor.midX <= bounds.midX
             let row = local(anchor)
             let text = VStack(alignment: onLeft ? .leading : .trailing, spacing: Layout.noteSpacing) {
-                noteText("Rests while you work. ⌥-drag moves it.")
+                noteText("Rests while you work. Drag its grip to move it.")
                     .multilineTextAlignment(onLeft ? .leading : .trailing)
                 Button("Customize…") { windowState.controlIsland.showsCustomization = true }
                     .buttonStyle(.bordered)

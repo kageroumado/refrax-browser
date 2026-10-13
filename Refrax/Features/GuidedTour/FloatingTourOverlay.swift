@@ -158,7 +158,6 @@ struct FloatingTourOverlay: View {
             hasPage: windowState.activeTab != nil,
             lensIsOpen: windowState.showsCommandLens,
             layerRevealed: canvas.floatingVisibility.isRevealed,
-            optionDragMovesPanel: windowState.controlIsland.configuration.optionDragTarget == .panel,
         )
     }
 

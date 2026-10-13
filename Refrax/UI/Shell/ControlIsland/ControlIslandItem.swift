@@ -17,8 +17,18 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case downloads
     case bookmarks
     case settings
+    /// A downloaded update waiting for a restart. On the rail only while one is ready.
+    case updates
     /// The current page's icon, which unfolds the page card. Stored under its original name.
     case page = "address"
+
+    /// Where an item renders on the rail.
+    enum Section: Equatable {
+        /// The browsing controls, in their customized order.
+        case main
+        /// Additional controls, after a divider at the bottom, in their customized order.
+        case additional
+    }
 
     var id: String {
         rawValue
@@ -26,8 +36,8 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
-        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .recentTabs, .desk, .spaces, .favoriteTabs,
-        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings,
+        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs,
+        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .recentTabs, .updates,
     ]
 
     var title: String {
@@ -48,6 +58,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "Downloads"
         case .bookmarks: "Bookmarks"
         case .settings: "Settings"
+        case .updates: "Update ready"
         }
     }
 
@@ -69,19 +80,20 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "arrow.down.circle"
         case .bookmarks: "bookmark"
         case .settings: "gearshape"
+        case .updates: "arrow.down.circle.fill"
         }
     }
 
     var detail: String {
         switch self {
         case .windowControls: "Close, minimize, and full screen"
-        case .navigation: "One row; Forward appears when available"
+        case .navigation: "One row; Forward appears when available · ⌥-click shows history"
         case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
         case .copyLink: "Copy the page address"
         case .commandLens: "Search pages, tabs, and commands · ⌘T"
-        case .floatingTabs: "Reveal your tabs · Hold Control to peek"
+        case .floatingTabs: "Reveal your tabs · ⌥-click for recent tabs · Hold Control to peek"
         case .recentTabs: "Switch between recent tabs · ⌃Tab"
-        case .desk: "Organize tabs on the desk · ⌘⇧\\"
+        case .desk: "Organize tabs on the desk · ⌘⇧\\ · ⌥-click opens the desk with the lab menu in debug builds"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Live favorite tabs as a scrolling column of site icons"
         case .reload: "Reload the page or stop loading · ⌘R"
@@ -90,6 +102,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "See your downloads"
         case .bookmarks: "Manage saved pages and favorites"
         case .settings: "Open browser settings · ⌘,"
+        case .updates: "Restart to install a downloaded update; on the rail only while one is ready"
         }
     }
 
@@ -97,10 +110,16 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         self == .windowControls || self == .spaces || self == .favoriteTabs
     }
 
-    var isDefault: Bool {
+    var section: Section {
         switch self {
-        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings: false
-        default: true
+        case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs: .main
+        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .recentTabs, .updates: .additional
         }
+    }
+
+    /// Shown before anyone customizes the rail. The update badge is on by default because it
+    /// occupies the rail only while an update is ready.
+    var isDefault: Bool {
+        section == .main || self == .updates
     }
 }

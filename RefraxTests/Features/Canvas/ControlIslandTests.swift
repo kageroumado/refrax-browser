@@ -20,14 +20,12 @@ struct ControlIslandTests {
         items.insert(history, at: 0)
         let addressIndex = try #require(items.firstIndex(where: { $0.item == .page }))
         items[addressIndex].isVisible = false
-        configuration.apply(items, optionDragTarget: .window)
+        configuration.apply(items)
 
         let restored = ControlIslandConfiguration(defaults: defaults)
         #expect(restored.items == items)
         #expect(restored.visibleItems.first == .history)
         #expect(!restored.visibleItems.contains(.page))
-        #expect(restored.optionDragTarget == .window)
-        #expect(restored.optionDragTarget.backgroundTarget == .panel)
     }
 
     @Test @MainActor
@@ -39,13 +37,11 @@ struct ControlIslandTests {
         [{"id":"futureControl","isVisible":true},{"id":"history","isVisible":false},{"id":"history","isVisible":true}]
         """.utf8)
         defaults.set(records, forKey: ControlIslandConfiguration.storageKey)
-        defaults.set("futureTarget", forKey: ControlIslandConfiguration.dragTargetKey)
         let configuration = ControlIslandConfiguration(defaults: defaults)
         #expect(configuration.items.count == ControlIslandItem.allCases.count)
         #expect(configuration.items.first?.item == .history)
         #expect(configuration.items.first?.isVisible == false)
         #expect(Set(configuration.items.map(\.item)).count == configuration.items.count)
-        #expect(configuration.optionDragTarget == .panel)
     }
 
     @Test @MainActor
@@ -175,36 +171,75 @@ struct ControlIslandTests {
         #expect(canvas.showsFloatingControls)
     }
 
-    @Test @MainActor
-    func `the grip adds one row of height only while it is shown`() {
-        let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .recentTabs, .desk, .spaces]
-        let resting = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0, showsGrip: false)
-        let awake = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0, showsGrip: true)
-        let rows = ControlIslandPlacement.rowHeight * 10
-        let gaps = ControlIslandPlacement.sectionGap * 3
-        let spaces = ControlIslandPlacement.spaceRowHeight * 2
-        #expect(resting == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces)
-        #expect(awake - resting == ControlIslandPlacement.gripRowHeight)
-        #expect(ControlIslandPlacement.gripRowHeight == 10)
-        #expect(ControlIslandPlacement.gripSize == CGSize(width: 18, height: 3))
+    @Test
+    func `the default rail starts without a recent-tabs row and keeps the update badge`() {
+        let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
+        #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs, .updates])
+        #expect(!visible.contains(.recentTabs))
+        #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0 == .updates })
     }
 
     @Test
-    func `the Option-drag chip shows once per install`() {
-        var hint = ControlIslandOptionDragHint(isExplained: false)
-        let idle = hint.shouldShow(for: .idle)
-        let dragging = hint.shouldShow(for: .dragging(.panel))
-        let unavailable = hint.shouldShow(for: .unavailable)
-        let ready = hint.shouldShow(for: .ready(.panel))
-        let again = hint.shouldShow(for: .ready(.window))
-        #expect(!idle && !dragging && !unavailable)
-        #expect(ready)
-        #expect(hint.isExplained)
-        #expect(!again)
-        var explained = ControlIslandOptionDragHint(isExplained: true)
-        let explainedShows = explained.shouldShow(for: .ready(.panel))
-        #expect(!explainedShows)
-        #expect(ControlIslandOptionDragHint.storageKey == "controlIsland.optionDragExplained")
+    func `the grip takes the gap under the space picker and favorites follow it`() {
+        let layout = ControlIslandRailLayout(visibleItems: [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs])
+        #expect(layout.elements == [
+            .row(.windowControls), .line(before: .navigation),
+            .row(.navigation), .row(.page), .row(.commandLens), .row(.floatingTabs), .row(.desk),
+            .line(before: .spaces), .row(.spaces), .grip, .row(.favoriteTabs),
+        ])
+    }
+
+    @Test
+    func `additional controls gather at the bottom in their customized order`() {
+        let layout = ControlIslandRailLayout(visibleItems: [.history, .navigation, .reload, .spaces, .favoriteTabs, .settings, .page])
+        #expect(layout.elements == [
+            .row(.navigation), .line(before: .spaces), .row(.spaces), .grip, .row(.favoriteTabs),
+            .line(before: .history), .row(.history), .row(.reload), .row(.settings), .row(.page),
+        ])
+        #expect(layout.rows == [.navigation, .spaces, .favoriteTabs, .history, .reload, .settings, .page])
+    }
+
+    @Test
+    func `without a space picker the grip ends the main section and never doubles a gap`() {
+        #expect(ControlIslandRailLayout(visibleItems: [.navigation, .commandLens, .history]).elements
+            == [.row(.navigation), .row(.commandLens), .grip, .row(.history)])
+        #expect(ControlIslandRailLayout(visibleItems: [.navigation, .favoriteTabs, .history]).elements
+            == [.row(.navigation), .line(before: .favoriteTabs), .row(.favoriteTabs), .grip, .row(.history)])
+        #expect(ControlIslandRailLayout(visibleItems: [.history, .settings]).elements == [.grip, .row(.history), .row(.settings)])
+        #expect(ControlIslandRailLayout(visibleItems: [.navigation]).elements == [.row(.navigation), .grip])
+        #expect(ControlIslandRailLayout(visibleItems: []).elements == [.grip])
+    }
+
+    @Test @MainActor
+    func `the rail's height counts every row and every gap, and is the same at rest and awake`() {
+        let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces]
+        let height = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0)
+        let rows = ControlIslandPlacement.rowHeight * 8
+        let gaps = ControlIslandPlacement.sectionGap * 3
+        let spaces = ControlIslandPlacement.spaceRowHeight * 2
+        #expect(height == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces)
+        #expect(ControlIslandPlacement.gripSize == CGSize(width: 3, height: 18))
+        #expect(ControlIslandPlacement.gripHitHeight > ControlIslandPlacement.sectionGap)
+    }
+
+    @Test @MainActor
+    func `the bottom section adds its divider and rows to the rail's height`() {
+        let main: [ControlIslandItem] = [.navigation, .spaces, .favoriteTabs]
+        let base = ControlIslandPlacement.railHeight(items: main, spaceCount: 1, favoriteCount: 2)
+        let withExtras = ControlIslandPlacement.railHeight(items: main + [.history, .settings], spaceCount: 1, favoriteCount: 2)
+        #expect(base == ControlIslandPlacement.contentInset * 2 + ControlIslandPlacement.rowHeight
+            + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2))
+        #expect(withExtras - base == ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)
+        let empty = ControlIslandPlacement.railHeight(items: [], spaceCount: 0, favoriteCount: 0)
+        #expect(empty == ControlIslandPlacement.contentInset * 2 + ControlIslandPlacement.sectionGap)
+    }
+
+    @Test
+    func `Option-click meanings are written into the catalog`() {
+        #expect(ControlIslandItem.navigation.detail.contains("⌥-click shows history"))
+        #expect(ControlIslandItem.floatingTabs.detail.contains("⌥-click for recent tabs"))
+        #expect(ControlIslandItem.desk.detail.contains("⌥-click"))
+        #expect(ControlIslandItem.updates.symbol == "arrow.down.circle.fill")
     }
 
     @Test @MainActor
@@ -347,209 +382,6 @@ struct ControlIslandTests {
         try expectWidgetHover(group, state: 0)
     }
 
-    @Test @MainActor
-    func `Option over a stationary pointer shows the target and restores the cursor on release`() throws {
-        let previousCursor = NSCursor.current
-        let window = ControlIslandTestWindow(contentRect: area, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 100, y: 100, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        window.pointerLocation = CGPoint(x: 124, y: 300)
-        var feedback: [ControlIslandDragFeedback] = []
-        drag.onFeedback = { feedback.append($0) }
-        for target in ControlIslandDragTarget.allCases {
-            drag.target = target
-            let option = try #require(NSEvent.keyEvent(
-                with: .flagsChanged,
-                location: .zero,
-                modifierFlags: .option,
-                timestamp: 0,
-                windowNumber: window.windowNumber,
-                context: nil,
-                characters: "",
-                charactersIgnoringModifiers: "",
-                isARepeat: false,
-                keyCode: 58,
-            ))
-            #expect(drag.handle(option) === option)
-            #expect(drag.feedback == .ready(target))
-            #expect(NSCursor.current == .openHand)
-            let release = try #require(NSEvent.keyEvent(
-                with: .flagsChanged,
-                location: .zero,
-                modifierFlags: [],
-                timestamp: 0,
-                windowNumber: window.windowNumber,
-                context: nil,
-                characters: "",
-                charactersIgnoringModifiers: "",
-                isARepeat: false,
-                keyCode: 58,
-            ))
-            _ = drag.handle(release)
-            #expect(drag.feedback == .idle)
-            #expect(NSCursor.current == previousCursor)
-        }
-        #expect(feedback == [.ready(.panel), .idle, .ready(.window), .idle])
-    }
-
-    @Test @MainActor
-    func `hand cursor stays inside the visible rounded panel and clears when detached`() throws {
-        let previousCursor = NSCursor.current
-        let window = ControlIslandTestWindow(contentRect: area, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 100, y: 100, width: 48, height: 500))
-        drag.cornerRadius = 24
-        window.contentView?.addSubview(drag)
-        drag.updateTrackingAreas()
-        for tracking in drag.trackingAreas {
-            #expect(drag.bounds.contains(tracking.rect))
-        }
-        let inside = CGPoint(x: 124, y: 300)
-        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
-        #expect(drag.feedback == .ready(.panel))
-        for outside in [CGPoint(x: 101, y: 101), CGPoint(x: 500, y: 500)] {
-            _ = try drag.handle(mouseEvent(.mouseMoved, at: outside, window: window, modifiers: .option))
-            #expect(drag.feedback == .idle)
-            #expect(NSCursor.current == previousCursor)
-        }
-        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
-        drag.isHidden = true
-        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
-        #expect(drag.feedback == .idle)
-        drag.isHidden = false
-        _ = try drag.handle(mouseEvent(.mouseMoved, at: inside, window: window, modifiers: .option))
-        drag.removeFromSuperview()
-        #expect(drag.feedback == .idle)
-        #expect(NSCursor.current == previousCursor)
-    }
-
-    @Test @MainActor
-    func `drag cursor captures its target through modifier changes and Escape releases it`() async throws {
-        let previousCursor = NSCursor.current
-        let window = ControlIslandTestWindow(contentRect: area, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 100, y: 100, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        let point = CGPoint(x: 124, y: 300)
-        _ = try drag.handle(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
-        #expect(drag.feedback == .dragging(.panel))
-        #expect(NSCursor.current == .closedHand)
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
-        let release = try #require(NSEvent.keyEvent(
-            with: .flagsChanged,
-            location: point,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
-            isARepeat: false,
-            keyCode: 58,
-        ))
-        _ = drag.handle(release)
-        NSCursor.arrow.set()
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
-        #expect(NSCursor.current == .closedHand)
-        drag.target = .window
-        _ = try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 500, y: 500), window: window))
-        #expect(drag.feedback == .dragging(.panel))
-        #expect(NSCursor.current == .closedHand)
-        let escape = try #require(NSEvent.keyEvent(
-            with: .keyDown,
-            location: point,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            characters: "\u{1b}",
-            charactersIgnoringModifiers: "\u{1b}",
-            isARepeat: false,
-            keyCode: 53,
-        ))
-        #expect(drag.handle(escape) == nil)
-        #expect(drag.feedback == .idle)
-        #expect(NSCursor.current == previousCursor)
-    }
-
-    @Test @MainActor
-    func `option drag consumes button presses and keeps its target after releasing Option`() throws {
-        let window = NSWindow(contentRect: area, styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 200, y: 200, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        var began = 0
-        var ended = 0
-        var translations: [CGSize] = []
-        drag.onBegin = { began += 1 }
-        drag.onMove = { translations.append($0) }
-        drag.onEnd = { ended += 1 }
-        let start = CGPoint(x: 224, y: 600)
-        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: start, window: window)) != nil)
-        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: CGPoint(x: 500, y: 500), window: window, modifiers: .option)) != nil)
-        #expect(began == 0)
-        #expect(try drag.handle(mouseEvent(.leftMouseDown, at: start, window: window, modifiers: .option)) == nil)
-        #expect(began == 1)
-        drag.target = .window
-        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 225, y: 600), window: window)) == nil)
-        #expect(translations.isEmpty)
-        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 254, y: 580), window: window)) == nil)
-        #expect(translations == [CGSize(width: 30, height: 20)])
-        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: CGPoint(x: 254, y: 580), window: window)) == nil)
-        #expect(ended == 1)
-        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: start, window: window)) != nil)
-    }
-
-    @Test @MainActor
-    func `option click stays inert and detaching ends a drag`() throws {
-        let window = NSWindow(contentRect: area, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 0, y: 0, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        var moves = 0
-        var ends = 0
-        drag.onMove = { _ in moves += 1 }
-        drag.onEnd = { ends += 1 }
-        let point = CGPoint(x: 24, y: 250)
-        try NSApp.sendEvent(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
-        try NSApp.sendEvent(mouseEvent(.leftMouseUp, at: point, window: window))
-        #expect(moves == 0)
-        #expect(ends == 1)
-        _ = try drag.handle(mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option))
-        drag.removeFromSuperview()
-        #expect(ends == 2)
-    }
-
-    @Test @MainActor
-    func `favorite reordering reserves the gesture from Option movement`() throws {
-        let window = ControlIslandTestWindow(contentRect: area, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 0, y: 0, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        let event = try mouseEvent(.leftMouseDown, at: CGPoint(x: 24, y: 250), window: window, modifiers: .option)
-        var began = 0
-        drag.onBegin = { began += 1 }
-        drag.isEnabled = false
-        #expect(drag.handle(event) === event)
-        #expect(drag.feedback == .idle)
-        #expect(began == 0)
-        drag.isEnabled = true
-        #expect(drag.handle(event) == nil)
-        #expect(began == 1)
-        drag.finish()
-    }
-
     @MainActor
     private func mouseEvent(
         _ type: NSEvent.EventType,
@@ -568,31 +400,6 @@ struct ControlIslandTests {
             clickCount: 1,
             pressure: 0,
         ))
-    }
-
-    @Test @MainActor
-    func `window option drag uses native movement and immovable windows consume the gesture`() throws {
-        let window = ControlIslandTestWindow(contentRect: area, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        defer { window.close() }
-        let drag = ControlIslandOptionDragView(frame: CGRect(x: 0, y: 0, width: 48, height: 500))
-        window.contentView?.addSubview(drag)
-        drag.target = .window
-        var panelMoves = 0
-        drag.onMove = { _ in panelMoves += 1 }
-        let point = CGPoint(x: 24, y: 200)
-        let press = try mouseEvent(.leftMouseDown, at: point, window: window, modifiers: .option)
-        #expect(drag.handle(press) == nil)
-        #expect(window.dragCount == 1)
-        #expect(window.cursorDuringDrag == .closedHand)
-        window.isMovable = false
-        #expect(drag.handle(press) == nil)
-        #expect(drag.feedback == .unavailable)
-        #expect(NSCursor.current == .operationNotAllowed)
-        #expect(try drag.handle(mouseEvent(.leftMouseDragged, at: CGPoint(x: 200, y: 200), window: window)) == nil)
-        #expect(try drag.handle(mouseEvent(.leftMouseUp, at: point, window: window)) == nil)
-        #expect(window.dragCount == 1)
-        #expect(panelMoves == 0)
     }
 
     @MainActor
@@ -644,14 +451,8 @@ struct ControlIslandTests {
 
 @MainActor
 private final class ControlIslandTestWindow: NSWindow {
-    var dragCount = 0
-    var cursorDuringDrag: NSCursor?
     var pointerLocation: CGPoint?
     override var mouseLocationOutsideOfEventStream: NSPoint {
         pointerLocation ?? super.mouseLocationOutsideOfEventStream
-    }
-    override func performDrag(with _: NSEvent) {
-        dragCount += 1
-        cursorDuringDrag = NSCursor.current
     }
 }

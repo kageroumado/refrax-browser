@@ -6,13 +6,11 @@ import Observation
 final class ControlIslandConfiguration {
     static let shared = ControlIslandConfiguration(defaults: .standard)
     static let storageKey = "controlIsland.items"
-    static let dragTargetKey = "controlIsland.optionDragTarget"
     static let avoidanceKey = "controlIsland.avoidsPageControls"
     static let restKey = "controlIsland.restsWhenIdle"
     static let tintKey = "controlIsland.tintsWithSpaceColor"
 
     private(set) var items: [ControlIslandItemPreference]
-    private(set) var optionDragTarget: ControlIslandDragTarget
     private(set) var avoidsPageControls: Bool
     /// The glass clears and the glyphs recede while the pointer is far away or still.
     private(set) var restsWhenIdle: Bool
@@ -29,8 +27,6 @@ final class ControlIslandConfiguration {
         self.avoidsPageControls = defaults?.object(forKey: Self.avoidanceKey) as? Bool ?? true
         self.restsWhenIdle = defaults?.object(forKey: Self.restKey) as? Bool ?? true
         self.tintsWithSpaceColor = defaults?.object(forKey: Self.tintKey) as? Bool ?? true
-        self.optionDragTarget = defaults?.string(forKey: Self.dragTargetKey)
-            .flatMap(ControlIslandDragTarget.init(rawValue:)) ?? .panel
         let records = defaults?.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
         self.items = Self.normalized(records.compactMap { record in
@@ -44,20 +40,17 @@ final class ControlIslandConfiguration {
 
     func apply(
         _ items: [ControlIslandItemPreference],
-        optionDragTarget: ControlIslandDragTarget = .panel,
         avoidsPageControls: Bool = true,
         restsWhenIdle: Bool = true,
         tintsWithSpaceColor: Bool = true,
     ) {
         self.items = Self.normalized(items)
-        self.optionDragTarget = optionDragTarget
         self.avoidsPageControls = avoidsPageControls
         self.restsWhenIdle = restsWhenIdle
         self.tintsWithSpaceColor = tintsWithSpaceColor
         defaults?.set(avoidsPageControls, forKey: Self.avoidanceKey)
         defaults?.set(restsWhenIdle, forKey: Self.restKey)
         defaults?.set(tintsWithSpaceColor, forKey: Self.tintKey)
-        defaults?.set(optionDragTarget.rawValue, forKey: Self.dragTargetKey)
         let records = self.items.map { StoredItem(id: $0.item.rawValue, isVisible: $0.isVisible) }
         guard let data = try? JSONEncoder().encode(records) else { return }
         defaults?.set(data, forKey: Self.storageKey)

@@ -5,21 +5,19 @@ struct ControlIslandCustomizationSheet: View {
     let configuration: ControlIslandConfiguration
     @Environment(\.dismiss) private var dismiss
     @State private var items: [ControlIslandItemPreference]
-    @State private var optionDragTarget: ControlIslandDragTarget
     @State private var avoidsPageControls: Bool
     @State private var restsWhenIdle: Bool
     @State private var tintsWithSpaceColor: Bool
 
     private enum Layout {
         static let width: CGFloat = 480
-        static let height: CGFloat = 670
+        static let height: CGFloat = 640
         static let padding: CGFloat = 20
     }
 
     init(configuration: ControlIslandConfiguration) {
         self.configuration = configuration
         _items = State(initialValue: configuration.items)
-        _optionDragTarget = State(initialValue: configuration.optionDragTarget)
         _avoidsPageControls = State(initialValue: configuration.avoidsPageControls)
         _restsWhenIdle = State(initialValue: configuration.restsWhenIdle)
         _tintsWithSpaceColor = State(initialValue: configuration.tintsWithSpaceColor)
@@ -30,7 +28,8 @@ struct ControlIslandCustomizationSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Customize Controls")
                     .font(.title2.weight(.semibold))
-                Text("Choose what appears. Drag rows to change their order.")
+                Text("Choose what appears. Drag rows to change their order. Additional controls gather below a divider at the bottom; the grip under the spaces moves the rail.")
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(.secondary)
             }
             .padding(Layout.padding)
@@ -58,18 +57,9 @@ struct ControlIslandCustomizationSheet: View {
                     .help("The glass takes on the active space's color")
                 Toggle("Move aside when covering a page control", isOn: $avoidsPageControls)
                     .help("Makes a small adjustment after a page loads, while the pointer is away")
-                Picker("Option-drag moves", selection: $optionDragTarget) {
-                    ForEach(ControlIslandDragTarget.allCases, id: \.self) { target in
-                        Text(target.title).tag(target)
-                    }
-                }
-                Text(optionDragTarget.help)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 HStack {
                     Button("Restore Defaults") {
                         items = ControlIslandConfiguration.defaultItems
-                        optionDragTarget = .panel
                         avoidsPageControls = true
                         restsWhenIdle = true
                         tintsWithSpaceColor = true
@@ -80,7 +70,6 @@ struct ControlIslandCustomizationSheet: View {
                     Button("Done") {
                         configuration.apply(
                             items,
-                            optionDragTarget: optionDragTarget,
                             avoidsPageControls: avoidsPageControls,
                             restsWhenIdle: restsWhenIdle,
                             tintsWithSpaceColor: tintsWithSpaceColor,

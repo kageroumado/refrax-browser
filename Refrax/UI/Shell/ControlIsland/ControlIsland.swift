@@ -15,6 +15,8 @@ struct ControlIsland: View {
     @Environment(SpaceManager.self) private var spaces
     @Environment(TabManager.self) private var tabManager
     @Environment(FloatingTourManager.self) private var tour
+    @Environment(AppUpdateManager.self) private var updates
+    @Environment(TabGroupManager.self) private var groups
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -22,19 +24,18 @@ struct ControlIsland: View {
     @FocusState private var focusedControl: String?
     @GestureState private var isDraggingWindow = false
     @GestureState private var isDraggingPanel = false
-    @State private var isOptionDragging = false
-    @State private var railDragFeedback: ControlIslandDragFeedback = .idle
     @State private var dragOrigin: CGPoint?
     @State private var showsFavorites = false
+    @State private var showsUpdate = false
     @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
-    @AppStorage(ControlIslandOptionDragHint.storageKey) private var optionDragExplained = false
-    @State private var showsDragHint = false
-    @State private var dragHintMidY: CGFloat?
+    #if DEBUG
+        @State private var showsDeskLab = false
+    #endif
     private typealias Layout = ControlIslandPlacement
 
     private var state: ControlIslandState {
@@ -49,23 +50,44 @@ struct ControlIsland: View {
             case .spaces: !spaces.spaces.isEmpty
             case .favoriteTabs: !favorites.isEmpty
             case .page: windowState.activePage != nil
+            case .updates: updateIsReady
             default: true
             }
         }
     }
+    private var railLayout: ControlIslandRailLayout {
+        ControlIslandRailLayout(visibleItems: visibleItems)
+    }
+    /// A downloaded update waits for a restart; the update badge is on the rail only then.
+    private var updateIsReady: Bool {
+        if case .readyToInstall = updates.phase {
+            true
+        } else {
+            false
+        }
+    }
 
     private var height: CGFloat {
-        Layout.railHeight(items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count, showsGrip: showsGrip)
+        Layout.railHeight(items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count)
     }
 
-    /// The grip stands under More while the rail is awake and clears with the glass at rest.
-    private var showsGrip: Bool {
-        !isResting
+    /// The row keyboard focus lands on from View → Focus Browser Controls: the page icon, then the first focusable row.
+    private var firstFocusID: String? {
+        if visibleItems.contains(.page) {
+            return "Page"
+        }
+        for item in railLayout.rows {
+            switch item {
+            case .windowControls, .spaces, .favoriteTabs, .page: continue
+            case .navigation: return "Back"
+            case .reload: return reloadTitle
+            default: return item.title
+            }
+        }
+        return nil
     }
-
-    private func hasSeparator(before item: ControlIslandItem) -> Bool {
-        guard let index = visibleItems.firstIndex(of: item), index > 0 else { return false }
-        return item.isGroup || visibleItems[index - 1].isGroup
+    private var reloadTitle: String {
+        windowState.activeWebPage?.isLoading == true ? "Stop loading" : "Reload"
     }
     private var frame: CGRect {
         effectivePlacement.railFrame(in: area, height: height)
@@ -87,7 +109,7 @@ struct ControlIsland: View {
     /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,
     /// the revealed tab layer, or a visit that can return. A pointer crossing the rail leaves it closed.
     private var showsPageBranch: Bool {
-        windowState.activePage != nil && dragFeedback == .idle && !state.isDragging
+        windowState.activePage != nil && !state.isDragging
             && (state.tabInfo.isVisible || state.showsAddress || hoverHasSettled || windowState.pageVisit.destination != nil
                 || canvas.floatingVisibility.isRevealed)
     }
@@ -125,12 +147,6 @@ struct ControlIsland: View {
         let width: CGFloat = 64
         let x = opensLeft ? frame.minX - Layout.adjacentGap - width : frame.maxX + Layout.adjacentGap
         return CGRect(x: x, y: (shortcutRowMidY ?? frame.midY) - 14, width: width, height: 28)
-    }
-    /// Beside the hand: level with the pointer, on the rail's open side.
-    private var dragHintFrame: CGRect {
-        let size = Layout.dragHintSize
-        let x = opensLeft ? frame.minX - Layout.adjacentGap - size.width : frame.maxX + Layout.adjacentGap
-        return CGRect(x: x, y: (dragHintMidY ?? frame.midY) - size.height / 2, width: size.width, height: size.height)
     }
 
     var body: some View {
@@ -182,18 +198,6 @@ struct ControlIsland: View {
                     .help("Hold \(revealKey.title) to reveal tabs; release to hide")
                     .accessibilityLabel("Tabs shortcut: hold \(revealKey.title)")
                 }
-                if showsDragHint {
-                    Text("Drag to move")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: dragHintFrame.width, height: dragHintFrame.height)
-                        .background(spaceTint, in: .rect(cornerRadius: 7))
-                        .glassEffect(.regular, in: .rect(cornerRadius: 7))
-                        .glassEffectID("dragHint", in: glassNamespace)
-                        .offset(x: dragHintFrame.minX, y: dragHintFrame.minY)
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
                 if state.isDragging {
                     let snap = state.placement.snapped(in: area, height: height)
                     if snap != state.placement {
@@ -225,17 +229,17 @@ struct ControlIsland: View {
                 state.hasKeyboardFocus = true
             }
         }
-        .onChange(of: isDraggingWindow || isDraggingPanel || isOptionDragging || state.isReorderingFavorites) { _, dragging in
+        .onChange(of: isDraggingWindow || isDraggingPanel || state.isReorderingFavorites) { _, dragging in
             state.isDragging = dragging
             if !dragging {
                 finishPanelDrag()
             }
         }
-        .onChange(of: showsFavorites) { _, presented in
+        .onChange(of: showsFavorites || showsUpdate) { _, presented in
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
-            focusedControl = visibleItems.contains(.page) ? "Page" : "More"
+            focusedControl = firstFocusID
         }
         .onChange(of: state.configuration.items) {
             focusedControl = nil
@@ -249,6 +253,9 @@ struct ControlIsland: View {
         }
         .sheet(isPresented: $state.showsCustomization) {
             ControlIslandCustomizationSheet(configuration: state.configuration)
+        }
+        .sheet(isPresented: $showsUpdate) {
+            UpdateAvailableView()
         }
         .onChange(of: state.dismissalRequest) {
             focusedControl = nil
@@ -287,7 +294,6 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsDragHint)
         .onAppear { state.wake() }
         .task(id: state.isHovered) {
             hoverHasSettled = false
@@ -304,12 +310,6 @@ struct ControlIsland: View {
             guard !Task.isCancelled else { return }
             showsShortcut = false
         }
-        .task(id: showsDragHint) {
-            guard showsDragHint else { return }
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            showsDragHint = false
-        }
     }
 
     private var controls: some View {
@@ -317,41 +317,35 @@ struct ControlIsland: View {
             ScrollView(.vertical) {
                 let highlightedItem = tour.highlightedItem
                 VStack(spacing: 0) {
-                    ForEach(visibleItems) { item in
-                        if hasSeparator(before: item) {
-                            sectionDivider
-                        }
-                        itemControl(item)
-                            .background {
-                                if highlightedItem == item {
-                                    rowHighlight
+                    ForEach(railLayout.elements) { element in
+                        switch element {
+                        case let .row(item):
+                            itemControl(item)
+                                .background {
+                                    if highlightedItem == item {
+                                        rowHighlight
+                                    }
                                 }
-                            }
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
-                                state.reportFrame($0, for: item)
-                            }
-                    }
-                    if visibleItems.last?.isGroup == true {
-                        sectionDivider
-                    }
-                    ControlIslandMenu(showsFavorites: $showsFavorites)
-                        .focused($focusedControl, equals: "More")
-                        .focusEffectDisabled()
-                        .popover(isPresented: $showsFavorites, arrowEdge: opensLeft ? .leading : .trailing) {
-                            ControlIslandFavorites(isPresented: $showsFavorites)
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
+                                    state.reportFrame($0, for: item)
+                                }
+                        case .line:
+                            sectionDivider
+                        case .grip:
+                            grip
                         }
+                    }
                 }
             }
             .scrollIndicators(.automatic)
             .scrollBounceBehavior(.basedOnSize)
-            if showsGrip {
-                grip
-            }
         }
         .padding(.vertical, Layout.contentInset)
         .padding(.horizontal, Layout.horizontalInset)
         .background { dragSurface }
-        .background { optionDrag }
+        .popover(isPresented: $showsFavorites, arrowEdge: opensLeft ? .leading : .trailing) {
+            ControlIslandFavorites(isPresented: $showsFavorites)
+        }
         .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
         .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
         .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
@@ -390,36 +384,34 @@ struct ControlIsland: View {
             .help("Command Lens · ⌘T")
         case .floatingTabs:
             control(item.title, symbol: canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol) {
-                dismissTransientOverlays()
-                canvas.toggleFloatingTabs()
-                showsShortcut = canvas.floatingVisibility.isRevealed
+                if optionIsHeld {
+                    showRecentTabs()
+                } else {
+                    dismissTransientOverlays()
+                    canvas.toggleFloatingTabs()
+                    showsShortcut = canvas.floatingVisibility.isRevealed
+                }
             }
             .overlay(alignment: .bottomTrailing) { unplacedBadge }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
-            .help("Show tabs · Hold \(revealKey.title) to peek")
+            .help("Show tabs · ⌥ for recent tabs · hold \(revealKey.glyph) to peek")
         case .recentTabs:
             control(item.title, symbol: item.symbol, enabled: tabSwitcher.isActive || tabSwitcher.canShowSwitcher) {
-                windowState.closeCommandLens()
-                canvas.dismissFloatingTabs()
-                tabSwitcher.toggle()
+                showRecentTabs()
             }
             .help(item.detail)
         case .desk:
-            control(item.title, symbol: TabCanvasManager.symbolName) {
-                dismissTransientOverlays()
-                canvas.show()
-            }
-            .help(item.detail)
+            deskControl(item)
         case .spaces:
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
             ControlIslandFavoriteTabs(favorites: favorites, focusedControl: $focusedControl)
         case .reload:
             control(
-                windowState.activeWebPage?.isLoading == true ? "Stop loading" : "Reload",
+                reloadTitle,
                 symbol: windowState.activeWebPage?.isLoading == true ? "xmark" : item.symbol,
                 enabled: windowState.activeWebPage != nil,
             ) {
@@ -443,7 +435,77 @@ struct ControlIsland: View {
             control(item.title, symbol: item.symbol) {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
+        case .updates:
+            updateControl(item)
         }
+    }
+
+    /// Option is down as the button fires: the macOS way to ask a control for its second meaning.
+    private var optionIsHeld: Bool {
+        NSEvent.modifierFlags.contains(.option)
+    }
+
+    /// The recent-tab picker, in place of the lens and the tab layer.
+    private func showRecentTabs() {
+        windowState.closeCommandLens()
+        canvas.dismissFloatingTabs()
+        tabSwitcher.toggle()
+    }
+
+    /// Desk opens the canvas; in a debug build, Option-click also offers the lab's preset boards.
+    private func deskControl(_ item: ControlIslandItem) -> some View {
+        let desk = control(item.title, symbol: TabCanvasManager.symbolName) {
+            dismissTransientOverlays()
+            canvas.show()
+            #if DEBUG
+                showsDeskLab = optionIsHeld
+            #endif
+        }
+        .help(item.detail)
+        #if DEBUG
+            return desk.popover(isPresented: $showsDeskLab, arrowEdge: opensLeft ? .leading : .trailing) { deskLab }
+        #else
+            return desk
+        #endif
+    }
+
+    #if DEBUG
+        /// The preset boards from Develop → Tab Canvas Lab, beside the Desk row.
+        private var deskLab: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Tab Canvas Lab")
+                    .font(.headline)
+                ForEach(CanvasScenario.allCases, id: \.self) { scenario in
+                    Button(scenario.title) {
+                        showsDeskLab = false
+                        CanvasScenario.load(
+                            scenario, tabManager: tabManager, spaceManager: spaces, groupManager: groups,
+                            windowState: windowState, canvas: canvas,
+                        )
+                    }
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.body)
+            .padding(16)
+        }
+    #endif
+
+    /// The update badge: green while the window is active and the rail awake; it opens the restart sheet.
+    private func updateControl(_ item: ControlIslandItem) -> some View {
+        Button {
+            showsUpdate = true
+        } label: {
+            ControlIslandRow {
+                Image(systemName: item.symbol)
+                    .foregroundStyle(isResting || !appearsActive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
+            }
+        }
+        .focusable()
+        .focused($focusedControl, equals: item.title)
+        .focusEffectDisabled()
+        .accessibilityLabel(item.title)
+        .help("Update ready · Restart to install")
     }
 
     /// The row the tour points at: a capsule inset in the cell, above the glass, with a glow around it.
@@ -468,23 +530,15 @@ struct ControlIsland: View {
             .accessibilityHidden(true)
     }
 
-    private var dragFeedback: ControlIslandDragFeedback {
-        railDragFeedback
-    }
-
     private var dragSurface: some View {
         draggableBackground(Color.clear.contentShape(Rectangle()))
     }
 
-    /// Empty glass drags the window or the controls, and carries the rail's own menu on a right-click.
-    @ViewBuilder
+    /// Empty glass drags the window natively and carries the rail's own menu on a right-click.
     private func draggableBackground(_ content: some View) -> some View {
-        let surface = content.contextMenu { ControlIslandRailMenu() }
-        if state.configuration.optionDragTarget.backgroundTarget == .panel {
-            surface.gesture(moveGesture)
-        } else {
-            surface.gesture(windowDrag)
-        }
+        content
+            .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
+            .gesture(windowDrag)
     }
 
     private var sectionDivider: some View {
@@ -507,45 +561,26 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    private var optionDrag: some View {
-        ControlIslandOptionDrag(target: state.configuration.optionDragTarget, isEnabled: !state.isReorderingFavorites, onFeedback: { feedback in
-            railDragFeedback = feedback
-            explainOptionDrag(for: feedback)
-        }, onBegin: {
-            isOptionDragging = true
-            state.isDragging = true
-        }, onMove: movePanel, onEnd: {
-            isOptionDragging = false
-            state.isDragging = false
-            finishPanelDrag()
-        })
-    }
-
-    /// An 18 × 3-point capsule under More: a handle that moves the controls with no modifier.
+    /// A 3 × 18-point capsule centered in the gap under the space picker: the handle that moves the
+    /// controls. It fades with the glass at rest. Its hit area reaches into the neighbors' padding,
+    /// above them in hit order, so the thin gap is still an easy target.
     private var grip: some View {
         Capsule()
             .fill(.secondary)
             .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
-            .frame(width: Layout.contentWidth, height: Layout.gripRowHeight)
-            .contentShape(Rectangle())
+            .opacity(isResting ? 0 : 1)
+            .frame(width: Layout.contentWidth, height: Layout.sectionGap)
+            .contentShape(Rectangle().inset(by: (Layout.sectionGap - Layout.gripHitHeight) / 2))
+            .zIndex(1)
+            .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
             .gesture(moveGesture)
-            .transition(.opacity)
-            .help("Move controls · ⌥-drag anywhere on the rail")
+            .help("Move controls")
             .accessibilityElement()
             .accessibilityLabel("Move controls")
             .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
             .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
             .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
             .accessibilityAction(named: "Move controls down") { moveBy(dx: 0, dy: 32) }
-    }
-
-    /// The first Option held over the rail earns one "Drag to move" chip beside the hand.
-    private func explainOptionDrag(for feedback: ControlIslandDragFeedback) {
-        var hint = ControlIslandOptionDragHint(isExplained: optionDragExplained)
-        guard hint.shouldShow(for: feedback) else { return }
-        optionDragExplained = hint.isExplained
-        dragHintMidY = pointerLocation?.y
-        showsDragHint = true
     }
 
     /// The pointer in the rail's coordinate space: window content, origin top-left.
@@ -584,7 +619,7 @@ struct ControlIsland: View {
             .focusable()
             .focused($focusedControl, equals: "Back")
             .focusEffectDisabled()
-            .help("Back")
+            .help("Back · ⌥ for history")
             .accessibilityLabel("Back")
             if canGoForward {
                 AddressBarForwardButton(
@@ -595,7 +630,7 @@ struct ControlIsland: View {
                 .focusable()
                 .focused($focusedControl, equals: "Forward")
                 .focusEffectDisabled()
-                .help("Forward")
+                .help("Forward · ⌥ for history")
                 .accessibilityLabel("Forward")
             }
         }

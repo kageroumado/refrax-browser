@@ -441,7 +441,6 @@ extension FloatingTourManager.Step {
         var hasPage: Bool
         var lensIsOpen: Bool
         var layerRevealed: Bool
-        var optionDragMovesPanel: Bool
     }
 
     var title: String {
@@ -494,9 +493,7 @@ extension FloatingTourManager.Step {
         case .pageCard:
             return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."
         case .movePanel:
-            return context.optionDragMovesPanel
-                ? "Hold ⌥ and drag the panel somewhere else. It rests while you work and wakes as you approach."
-                : "Drag the panel's empty glass somewhere else. It rests while you work and wakes as you approach."
+            return "Drag the panel's grip, under the spaces, somewhere else. It rests while you work and wakes as you approach."
         case .done:
             return "Pages open from the lens, keep their places behind \(context.revealKey.glyph), and the panel stays out of your way."
         }

@@ -32,31 +32,26 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let highlightFillOpacity: Double = 0.3
     static let highlightGlowOpacity: Double = 0.7
     static let highlightGlowRadius: CGFloat = 8
-    /// The handle under More that moves the controls with no modifier.
-    static let gripSize = CGSize(width: 18, height: 3)
-    static let gripRowHeight: CGFloat = 10
-    /// The "Drag to move" chip beside the hand, the first time Option is held over the rail.
-    static let dragHintSize = CGSize(width: 104, height: 28)
+    /// The handle in the gap under the space picker that moves the controls: a 3 × 18-point
+    /// vertical capsule, whose hit area reaches into the padding of its neighbors.
+    static let gripSize = CGSize(width: 3, height: 18)
+    static let gripHitHeight: CGFloat = 20
 
     /// The rail's height: one row per action, three for the window controls, the space and
-    /// favorite columns at their own heights, a gap at each section edge, the content insets,
-    /// and the grip row while the grip is shown.
+    /// favorite columns at their own heights, a gap for every divider and for the grip, and
+    /// the content insets.
     @MainActor
-    static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int, showsGrip: Bool) -> CGFloat {
-        let rowCount = items.reduce(1) { count, item in
-            switch item {
-            case .windowControls: count + 3
-            case .spaces, .favoriteTabs: count
-            default: count + 1
+    static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int) -> CGFloat {
+        let layout = ControlIslandRailLayout(visibleItems: items)
+        return layout.elements.reduce(contentInset * 2) { height, element in
+            switch element {
+            case .row(.windowControls): height + rowHeight * 3
+            case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
+            case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount)
+            case .row: height + rowHeight
+            case .line, .grip: height + sectionGap
             }
         }
-        let separators = items.indices.filter { $0 > 0 && (items[$0].isGroup || items[$0 - 1].isGroup) }.count
-            + (items.last?.isGroup == true ? 1 : 0)
-        return contentInset * 2
-            + rowHeight * CGFloat(rowCount) + sectionGap * CGFloat(separators)
-            + (items.contains(.spaces) ? CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight : 0)
-            + (items.contains(.favoriteTabs) ? ControlIslandFavoriteTabs.height(for: favoriteCount) : 0)
-            + (showsGrip ? gripRowHeight : 0)
     }
 
     func railFrame(in bounds: CGRect, height: CGFloat) -> CGRect {

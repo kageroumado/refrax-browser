@@ -131,10 +131,9 @@ struct ControlIslandInteractionTests {
         let config = ControlIslandConfiguration(defaults: defaults)
         #expect(config.restsWhenIdle)
         #expect(config.tintsWithSpaceColor)
-        config.apply(config.items, optionDragTarget: .window, avoidsPageControls: false, restsWhenIdle: false, tintsWithSpaceColor: false)
+        config.apply(config.items, avoidsPageControls: false, restsWhenIdle: false, tintsWithSpaceColor: false)
         let restored = ControlIslandConfiguration(defaults: defaults)
         #expect(restored.avoidsPageControls == false)
-        #expect(restored.optionDragTarget == .window)
         #expect(restored.restsWhenIdle == false)
         #expect(restored.tintsWithSpaceColor == false)
     }
