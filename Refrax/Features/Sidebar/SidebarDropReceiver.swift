@@ -336,10 +336,9 @@ extension DropReceiverNSView {
 
     private func performReentryDrop() -> Bool {
         // Commit the internal drag operation
-        let success = MainActor.assumeIsolated {
+        MainActor.assumeIsolated {
             dragCoordinator.commitDrag()
         }
-        return success
     }
 }
 
@@ -408,7 +407,7 @@ extension DropReceiverNSView {
                     break
                 case .openAsTab, .failed:
                     // Couldn't download or content is HTML - open as tab
-                    _ = createTabFromURL(url, isPinned: false)
+                    _ = createTabFromURL(url, asFavorite: false)
                 }
             }
             return true
@@ -422,20 +421,20 @@ extension DropReceiverNSView {
                 createFavoriteFromURL(url)
 
             case .pinnedSection:
-                // Create pinned tab
-                createTabFromURL(url, isPinned: true)
+                // The pinned section holds pinned groups; a page dropped there becomes a favorite
+                createTabFromURL(url, asFavorite: true)
 
             case .normalSection:
                 // Create normal tab
-                createTabFromURL(url, isPinned: false)
+                createTabFromURL(url, asFavorite: false)
 
             case .groupHeader:
                 // For now, create as normal tab (could add to group in future)
-                createTabFromURL(url, isPinned: false)
+                createTabFromURL(url, asFavorite: false)
 
             case .none:
                 // No valid drop zone - create as normal tab
-                createTabFromURL(url, isPinned: false)
+                createTabFromURL(url, asFavorite: false)
             }
         }
     }
@@ -461,7 +460,7 @@ extension DropReceiverNSView {
         guard !ext.isEmpty else { return false }
 
         // Extensions that should go to shelf (images, documents, media)
-        let downloadExtensions: Set<String> = [
+        let downloadExtensions: Set = [
             // Images
             "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "svg", "ico", "bmp", "tiff",
             // Documents
@@ -495,12 +494,15 @@ extension DropReceiverNSView {
         return .normalSection
     }
 
-    /// Create a tab from a dropped URL.
-    private func createTabFromURL(_ url: URL, isPinned: Bool) -> Bool {
+    /// Create a tab from a dropped URL, as a favorite when `asFavorite` is set.
+    private func createTabFromURL(_ url: URL, asFavorite: Bool) -> Bool {
         guard let tabManager = dragCoordinator.tabManager else { return false }
 
-        let tab = tabManager.createTab(url: url, isPinned: isPinned, makeActive: true)
-        return tab.id != UUID() // Check that a valid tab was created
+        let tab = tabManager.createTab(url: url, makeActive: true)
+        if asFavorite {
+            tabManager.makeFavorite(tab)
+        }
+        return true
     }
 
     /// Create a shortcut favorite from a dropped URL.

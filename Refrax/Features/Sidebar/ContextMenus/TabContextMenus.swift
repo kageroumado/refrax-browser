@@ -159,18 +159,6 @@ extension SidebarContextMenus {
             Environment(tabManager: tabManager, windowState: windowState, bookmarksManager: nil)
         }
 
-        private var allTabsUngrouped: Bool {
-            selectedTabs.allSatisfy { $0.groupID == nil }
-        }
-
-        private var allTabsPinned: Bool {
-            selectedTabs.allSatisfy(\.isPinned)
-        }
-
-        private var allTabsUnpinned: Bool {
-            selectedTabs.allSatisfy { !$0.isPinned && $0.groupID == nil }
-        }
-
         private var hasGroupedTabs: Bool {
             selectedTabs.contains { $0.groupID != nil }
         }
@@ -189,32 +177,6 @@ extension SidebarContextMenus {
             Text("\(selectedTabs.count) Tabs Selected")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            Divider()
-
-            // MARK: Status
-
-            if allTabsUngrouped {
-                if allTabsPinned {
-                    Button {
-                        for tab in selectedTabs {
-                            tabManager.togglePinTab(tab)
-                        }
-                        onOperationComplete?()
-                    } label: {
-                        Label("Unpin All", systemImage: ContextMenuIcon.unpin.systemName)
-                    }
-                } else if allTabsUnpinned {
-                    Button {
-                        for tab in selectedTabs {
-                            tabManager.togglePinTab(tab)
-                        }
-                        onOperationComplete?()
-                    } label: {
-                        Label("Pin All", systemImage: ContextMenuIcon.pin.systemName)
-                    }
-                }
-            }
 
             Divider()
 

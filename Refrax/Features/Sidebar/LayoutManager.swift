@@ -56,9 +56,15 @@ extension Sidebar {
             let normal: Range<Int>
             
             func collection(for index: Int) -> SidebarCollection? {
-                if favorites.contains(index) { return .favorites }
-                if pinned.contains(index) { return .pinned }
-                if normal.contains(index) { return .normal }
+                if favorites.contains(index) {
+                    return .favorites
+                }
+                if pinned.contains(index) {
+                    return .pinned
+                }
+                if normal.contains(index) {
+                    return .normal
+                }
                 return nil
             }
         }
@@ -580,7 +586,7 @@ extension Sidebar {
             var allRootItems: [(item: Any, position: Int, isPinned: Bool)] = []
 
             for tab in ungroupedTabs {
-                allRootItems.append((tab, tab.position, tab.isPinned))
+                allRootItems.append((tab, tab.position, tab.isInPinnedGroup))
             }
             for group in rootGroups {
                 allRootItems.append((group, group.position, group.isPinned))
@@ -1379,7 +1385,7 @@ extension Sidebar {
             var allRootItems: [(item: Any, position: Int, isPinned: Bool)] = []
 
             for tab in ungroupedTabs {
-                allRootItems.append((tab, tab.position, tab.isPinned))
+                allRootItems.append((tab, tab.position, tab.isInPinnedGroup))
             }
             for group in rootGroups {
                 allRootItems.append((group, group.position, group.isPinned))

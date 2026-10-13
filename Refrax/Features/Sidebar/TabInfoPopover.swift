@@ -144,10 +144,12 @@ struct TabInfoPopover: View {
 
     private var statusDescription: String {
         var parts: [String] = []
-        if tab.isPinned { parts.append("Pinned") }
-        if tab.isUnread { parts.append("Unread") }
-
-        if tab.status == .liveFavorite { parts.append("Live Favorite") }
+        if tab.isFavorite {
+            parts.append("Favorite")
+        }
+        if tab.isUnread {
+            parts.append("Unread")
+        }
         return parts.isEmpty ? "Regular" : parts.joined(separator: ", ")
     }
 
@@ -315,8 +317,12 @@ struct TabInfoPopover: View {
             // Navigation
             if webPage.canGoBack || webPage.canGoForward {
                 var nav: [String] = []
-                if webPage.canGoBack { nav.append("Back") }
-                if webPage.canGoForward { nav.append("Forward") }
+                if webPage.canGoBack {
+                    nav.append("Back")
+                }
+                if webPage.canGoForward {
+                    nav.append("Forward")
+                }
                 items.append(RuntimeInfoItem(
                     label: "Navigation",
                     value: nav.joined(separator: ", "),
