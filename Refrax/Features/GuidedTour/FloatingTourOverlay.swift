@@ -109,7 +109,7 @@ struct FloatingTourOverlay: View {
         let revision = tour.beamRevision
         if !requests.isEmpty, finishedBeamRevision != revision {
             let style = LightStyle.guide
-            let color = style.color(space: nil)
+            let color = LightStyle.color
             LightTravel(
                 paths: requests.map { style.path(ray: FloatingRayPath(from: $0.from, to: $0.to, in: bounds), color: color) },
                 timing: style.timing,

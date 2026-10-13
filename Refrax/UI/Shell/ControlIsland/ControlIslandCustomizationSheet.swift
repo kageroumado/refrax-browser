@@ -90,10 +90,16 @@ struct ControlIslandCustomizationSheet: View {
         .buttonStyle(.automatic)
     }
 
-    /// The window background behind the island: the same choices as Settings › Appearance.
+    /// The accent (controls, selection, and every beam of light) and the window background
+    /// behind the island: the same choices as Settings › Appearance.
     private var backgroundEditor: some View {
         @Bindable var settings = settings
         return VStack(alignment: .leading, spacing: 10) {
+            SettingsColorPicker(
+                label: "Accent and light",
+                selectedColor: $settings.customAccentColor,
+                systemColor: .accentColor,
+            )
             SettingsColorPicker(
                 label: "Window background",
                 selectedColor: $settings.customWindowBackgroundColor,

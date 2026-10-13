@@ -23,6 +23,9 @@ struct ControlIslandSpaces: View {
         static let iconSize: CGFloat = 14
         static let trackOpacity: Double = 0.10
         static let selectionOpacity: Double = 0.70
+        /// At rest the track and the selected segment keep this share of their opacity, so the
+        /// picker steps back with the clear glass instead of standing out against the page.
+        static let restingEmphasis: Double = 0.2
         static let shadowOpacity: Double = 0.12
         static let cornerRadius = ControlIslandPlacement.contentWidth / 2
     }
@@ -43,8 +46,8 @@ struct ControlIslandSpaces: View {
         .background {
             if isSelector {
                 RoundedRectangle(cornerRadius: Layout.cornerRadius)
-                    .fill(Color.primary.opacity(Layout.trackOpacity).shadow(.inner(
-                        color: .black.opacity(Layout.shadowOpacity), radius: 2, y: 1,
+                    .fill(Color.primary.opacity(Layout.trackOpacity * emphasis).shadow(.inner(
+                        color: .black.opacity(Layout.shadowOpacity * emphasis), radius: 2, y: 1,
                     )))
             }
         }
@@ -102,6 +105,11 @@ struct ControlIslandSpaces: View {
         }
     }
 
+    /// Full while the island is awake; a trace of itself while it rests.
+    private var emphasis: Double {
+        isResting ? Layout.restingEmphasis : 1
+    }
+
     private func iconColor(selected: Bool) -> Color {
         if appearsActive, !isResting {
             return Color(nsColor: selected ? .labelColor : .secondaryLabelColor)
@@ -146,7 +154,7 @@ struct ControlIslandSpaces: View {
             .background {
                 if selected, isSelector {
                     Circle()
-                        .fill(.background.opacity(Layout.selectionOpacity))
+                        .fill(.background.opacity(Layout.selectionOpacity * emphasis))
                         .overlay {
                             if contrast == .increased {
                                 Circle().strokeBorder(.primary, lineWidth: 1)

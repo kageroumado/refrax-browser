@@ -122,13 +122,12 @@ struct BrowserBeamsOverlay: View {
             isDeliberate: island.showsAddress || island.tabInfo.isLatched,
             row: island.itemFrames[.page] ?? .zero,
         )
-        let space = windowState.activeSpace?.color
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
             ZStack(alignment: .topLeading) {
                 ForEach([cues.lensRay, cues.trail].compactMap(\.self), id: \.revision) { request in
                     LightTravel(
-                        paths: [request.style.path(request.points(in: bounds), color: request.style.color(space: space))],
+                        paths: [request.style.path(request.points(in: bounds), color: LightStyle.color)],
                         timing: request.style.timing,
                     ) {
                         cues.finish(request)

@@ -3,13 +3,13 @@ import Foundation
 import SwiftUI
 
 /// The browser's beams, one style per purpose, so every effect shares its widths,
-/// intensity, and timing with the others and its color comes from one place.
+/// intensity, and timing with the others. Every beam is drawn in the browser's accent
+/// color (``color``), the one set in Settings or the Control Island's Customize sheet.
 ///
-/// A ``guide`` points from a control to what it opened in the accent color: the rail's
-/// lens button to the open lens, and every beam of the tour. A ``trail`` is the short run
-/// from the page icon to its card in the space color, at half the brightness and a
-/// quicker travel. A ``displaced`` ray leaves the control that displaced a page for the
-/// page's new place, in the accent color.
+/// A ``guide`` points from a control to what it opened: the rail's lens button to the open
+/// lens, and every beam of the tour. A ``trail`` is the short run from the page icon to its
+/// card, at half the brightness and a quicker travel. A ``displaced`` ray leaves the
+/// control that displaced a page for the page's new place.
 nonisolated enum LightStyle: CaseIterable, Sendable {
     case guide
     case trail
@@ -51,18 +51,10 @@ nonisolated enum LightStyle: CaseIterable, Sendable {
         }
     }
 
-    /// The beam's color: the space color for a trail, when the space has one; the accent elsewhere.
-    func color(accent: Color.Components, space: Color.Components?) -> Color.Components {
-        switch self {
-        case .trail: space ?? accent
-        case .guide, .displaced: accent
-        }
-    }
-
-    /// The beam's color in the window, with the browser's accent resolved.
+    /// Every beam's color: the browser's accent.
     @MainActor
-    func color(space: Color?) -> Color.Components {
-        color(accent: Color.Components(color: .appAccentColor), space: space.map { Color.Components(color: $0) })
+    static var color: Color.Components {
+        Color.Components(color: .appAccentColor)
     }
 
     /// A path along `points` in this style.

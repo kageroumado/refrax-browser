@@ -108,8 +108,9 @@ struct FloatingStartPage: View {
         CGRect(x: lensFrame.minX, y: lensFrame.minY, width: lensFrame.width, height: min(lensFrame.height, Layout.lensHeight))
     }
 
-    private var spaceColor: Color {
-        windowState.activeSpace?.color ?? .appAccentColor
+    /// The Prism's light: the browser's accent, like every beam.
+    private var lightColor: Color {
+        .appAccentColor
     }
 
     /// The lens is being typed in.
@@ -148,7 +149,7 @@ struct FloatingStartPage: View {
     private func field(around center: CGPoint) -> some View {
         Circle()
             .fill(RadialGradient(
-                colors: [spaceColor.opacity(Layout.fieldOpacity), .clear],
+                colors: [lightColor.opacity(Layout.fieldOpacity), .clear],
                 center: .center,
                 startRadius: 0,
                 endRadius: Layout.fieldDiameter / 2,
@@ -161,7 +162,7 @@ struct FloatingStartPage: View {
 
     /// The beams on their clock: the entry beam pulses every few seconds and each band breathes on its own period.
     private func light(_ layout: PrismLayout) -> some View {
-        let color = Color.Components(color: spaceColor)
+        let color = Color.Components(color: lightColor)
         let tightened = isTightened
         return TimelineView(.animation(paused: reduceMotion)) { context in
             LightLayer(paths: layout.paths(color: color, time: context.date.timeIntervalSince(epoch), tightened: tightened, reduceMotion: reduceMotion)
@@ -174,8 +175,8 @@ struct FloatingStartPage: View {
     private var lensRim: some View {
         let capsule = local(lensCapsule).insetBy(dx: -Layout.rimOutset, dy: -Layout.rimOutset)
         return RoundedRectangle(cornerRadius: Layout.lensCornerRadius + Layout.rimOutset)
-            .stroke(spaceColor, lineWidth: 1)
-            .shadow(color: spaceColor.opacity(0.6), radius: Layout.rimGlowRadius)
+            .stroke(lightColor, lineWidth: 1)
+            .shadow(color: lightColor.opacity(0.6), radius: Layout.rimGlowRadius)
             .frame(width: capsule.width, height: capsule.height)
             .offset(x: capsule.minX, y: capsule.minY)
             .opacity(isTightened ? 1 : 0)
@@ -268,7 +269,7 @@ struct FloatingStartPage: View {
 
     private var leader: some View {
         Rectangle()
-            .fill(spaceColor)
+            .fill(lightColor)
             .accessibilityHidden(true)
     }
 

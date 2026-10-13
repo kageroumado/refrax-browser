@@ -6,7 +6,6 @@ import Testing
 
 struct LightStyleTests {
     private let accent = Color.Components(red: 0.2, green: 0.5, blue: 0.9)
-    private let space = Color.Components(red: 0.9, green: 0.3, blue: 0.4)
     private let ray = FloatingRayPath(start: CGPoint(x: 40, y: 300), bend: CGPoint(x: 400, y: 220), end: CGPoint(x: 460, y: 200))
 
     @Test
@@ -35,13 +34,5 @@ struct LightStyleTests {
         #expect(LightStyle.guide.timing == .default)
         #expect(LightStyle.displaced.timing == .default)
         #expect(LightStyle.displaced.intensity == 1)
-    }
-
-    @Test
-    func `the trail takes the space color and the others the accent`() {
-        #expect(LightStyle.trail.color(accent: accent, space: space) == space)
-        #expect(LightStyle.trail.color(accent: accent, space: nil) == accent)
-        #expect(LightStyle.guide.color(accent: accent, space: space) == accent)
-        #expect(LightStyle.displaced.color(accent: accent, space: space) == accent)
     }
 }
