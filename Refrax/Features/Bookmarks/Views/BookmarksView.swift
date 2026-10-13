@@ -149,7 +149,6 @@ struct BookmarksView: View {
 
     // MARK: - Content Area
 
-    @ViewBuilder
     private var contentArea: some View {
         VStack(spacing: 0) {
             contentHeader
@@ -292,7 +291,6 @@ struct BookmarksView: View {
 
     // MARK: - Inspector
 
-    @ViewBuilder
     private var inspectorContent: some View {
         BookmarkInspectorView(
             bookmark: selectedBookmark,
@@ -663,10 +661,10 @@ struct BookmarksView: View {
                     tabManager: tabManager,
                 )
             }
-        case .downloadingHTML, .downloadingReader:
+        case .downloadingHTML:
             Button("Saving...") {}
                 .disabled(true)
-        case .availableHTML, .availableReader:
+        case .availableHTML:
             if let savedAt = bookmark.offlineSavedAt {
                 Text("Saved \(savedAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)

@@ -3,7 +3,7 @@ import SwiftUI
 /// Popover for managing per-site settings.
 ///
 /// Displays and allows modification of settings for a specific domain:
-/// - Content settings (Reader mode, content blockers, zoom)
+/// - Content settings (content blockers, zoom)
 /// - Media settings (auto-play policy)
 /// - Window settings (pop-up policy)
 /// - Permissions (camera, microphone, screen sharing, location)
@@ -21,7 +21,6 @@ struct WebpageSettingsPopover: View {
 
     // MARK: - State
 
-    @State private var useReaderWhenAvailable = false
     @State private var enableContentBlockers = true
     @State private var allowJavaScript = true
     @State private var disableAutoConsent = false
@@ -50,9 +49,8 @@ struct WebpageSettingsPopover: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 12)
 
-            // Reader & Content Blockers
+            // Content Blockers
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Use Reader when available", isOn: $useReaderWhenAvailable)
                 Toggle("Enable content blockers", isOn: $enableContentBlockers)
                 Toggle("Allow JavaScript", isOn: $allowJavaScript)
                 Toggle("Disable auto-dismiss cookie banners", isOn: $disableAutoConsent)
@@ -196,7 +194,6 @@ struct WebpageSettingsPopover: View {
         .padding(16)
         .frame(width: 320)
         .onAppear(perform: loadSettings)
-        .onChange(of: useReaderWhenAvailable) { saveSettings() }
         .onChange(of: enableContentBlockers) { saveSettings() }
         .onChange(of: allowJavaScript) { saveSettings() }
         .onChange(of: disableAutoConsent) { saveSettings() }
@@ -216,7 +213,6 @@ struct WebpageSettingsPopover: View {
 
     // MARK: - Extensions Section
 
-    @ViewBuilder
     private var extensionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Extensions")
@@ -230,7 +226,6 @@ struct WebpageSettingsPopover: View {
         }
     }
 
-    @ViewBuilder
     private func extensionRow(for ext: InstalledExtension) -> some View {
         HStack(spacing: 8) {
             extensionIcon(for: ext)
@@ -290,7 +285,6 @@ struct WebpageSettingsPopover: View {
         }
 
         if let settings = siteSettingsManager.settings(for: domain) {
-            useReaderWhenAvailable = settings.useReaderWhenAvailable
             enableContentBlockers = settings.enableContentBlockers
             allowJavaScript = settings.allowJavaScript
             disableAutoConsent = settings.disableAutoConsent
@@ -325,7 +319,6 @@ struct WebpageSettingsPopover: View {
         guard isLoaded else { return }
 
         let settings = siteSettingsManager.settingsOrCreate(for: domain)
-        settings.useReaderWhenAvailable = useReaderWhenAvailable
         settings.enableContentBlockers = enableContentBlockers
         settings.allowJavaScript = allowJavaScript
         settings.disableAutoConsent = disableAutoConsent

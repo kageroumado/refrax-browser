@@ -20,7 +20,6 @@ struct PageCardOptionsPopover: View {
     @Environment(RecordingCoordinator.self) private var recording
     @Environment(DownloadManager.self) private var downloads
     @Environment(ExtensionManager.self) private var extensions
-    @Environment(ReaderModeManager.self) private var readerMode
     @Environment(SiteSettingsManager.self) private var siteSettings
     @Environment(WebPagePool.self) private var pagePool
 
@@ -34,7 +33,6 @@ struct PageCardOptionsPopover: View {
             recording: recording,
             downloads: downloads,
             extensions: extensions,
-            readerMode: readerMode,
             siteSettings: siteSettings,
             pagePool: pagePool,
         )
@@ -45,12 +43,8 @@ struct PageCardOptionsPopover: View {
         VStack(spacing: 0) {
             PageMenuContent(
                 actions: actions,
-                isReaderAvailable: readerMode.cachedAvailability(for: tab.activePage.url),
                 dismiss: dismiss,
                 onFindOnPage: { windowState.showFindNavigator() },
-                onReaderMode: {
-                    Task(name: "Toggle Reader from the page card") { await actions.toggleReader() }
-                },
                 onWebpageSettings: onWebpageSettings,
                 onShowCookies: onShowCookies,
             )

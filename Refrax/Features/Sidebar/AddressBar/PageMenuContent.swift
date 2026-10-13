@@ -11,7 +11,7 @@ struct PageMenuExtension: Identifiable {
     let isEnabled: Bool
 }
 
-/// The page menu: zoom, copy and share, screenshots, recording, Find, Reader, Calm, the
+/// The page menu: zoom, copy and share, screenshots, recording, Find, Calm, the
 /// extensions' page actions, and the connection, website settings, and cookies.
 ///
 /// The sidebar's address bar shows it alone; the page card shows it above the tab's actions.
@@ -20,8 +20,6 @@ struct PageMenuContent: View {
     let serverTrust: SecTrust?
     let currentZoom: Int
     let extensions: [PageMenuExtension]
-    let isReaderAvailable: Bool
-    let isReaderActive: Bool
     let isRecording: Bool
     let recordingStartTime: Date?
     let isPageCalmed: Bool
@@ -35,7 +33,6 @@ struct PageMenuContent: View {
     let onStartRecording: () -> Void
     let onStopRecording: () -> Void
     let onFindOnPage: () -> Void
-    let onReaderMode: () -> Void
     let onToggleCalm: () -> Void
     let onWebpageSettings: () -> Void
     let onShowCookies: () -> Void
@@ -153,14 +150,6 @@ struct PageMenuContent: View {
                     icon: "doc.text.magnifyingglass",
                     action: onFindOnPage,
                 )
-
-                if isReaderAvailable {
-                    PageMenuItem(
-                        title: isReaderActive ? "Exit Reader Mode" : "Enter Reader Mode",
-                        icon: isReaderActive ? "doc.richtext.fill" : "doc.richtext",
-                        action: onReaderMode,
-                    )
-                }
 
                 PageMenuItem(
                     title: isPageCalmed ? "Resume Animations" : "Calm This Page",
@@ -455,13 +444,11 @@ private struct RecordingButton: View {
 
 extension PageMenuContent {
     /// The menu bound to `actions`. `dismiss` closes the popover before an action runs. Find on
-    /// Page, Reader, Website Settings, and Cookies stay with the caller, which presents them.
+    /// Page, Website Settings, and Cookies stay with the caller, which presents them.
     init(
         actions: PageMenuActions,
-        isReaderAvailable: Bool,
         dismiss: @escaping () -> Void,
         onFindOnPage: @escaping () -> Void,
-        onReaderMode: @escaping () -> Void,
         onWebpageSettings: @escaping () -> Void,
         onShowCookies: @escaping () -> Void,
     ) {
@@ -476,8 +463,6 @@ extension PageMenuContent {
             serverTrust: actions.webPage?.serverTrust,
             currentZoom: actions.currentZoom,
             extensions: actions.installedExtensions,
-            isReaderAvailable: isReaderAvailable,
-            isReaderActive: actions.isReaderActive,
             isRecording: actions.recording.isRecording,
             recordingStartTime: actions.recording.recordingStartTime,
             isPageCalmed: actions.isPageCalmed,
@@ -491,7 +476,6 @@ extension PageMenuContent {
             onStartRecording: closing(actions.startRecording),
             onStopRecording: closing(actions.stopRecording),
             onFindOnPage: closing(onFindOnPage),
-            onReaderMode: closing(onReaderMode),
             onToggleCalm: closing(actions.toggleCalmPage),
             onWebpageSettings: closing(onWebpageSettings),
             onShowCookies: closing(onShowCookies),

@@ -34,7 +34,6 @@ struct WebViewContainer: View {
     @Environment(WindowState.self) private var windowState
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
-    @Environment(ReaderModeManager.self) private var readerModeManager
     @Environment(\.webViewForcedInactive) private var isForcedInactive
     @Environment(\.webViewOwnershipID) private var customOwnershipID
 
@@ -66,14 +65,6 @@ struct WebViewContainer: View {
         customOwnershipID != nil
     }
 
-    /// Whether reader mode is active for this page's tab.
-    ///
-    /// When reader mode is active, the main WKWebView's mouse events are blocked
-    /// to prevent hover effects and cursor changes from bleeding through the overlay.
-    private var isReaderActive: Bool {
-        readerModeManager.isReaderActive(for: page.tabPage.id)
-    }
-
     var body: some View {
         // Determine if this window should be the owner (have the active WebView).
         // Access ownerWindowID directly to ensure SwiftUI observes changes.
@@ -85,9 +76,6 @@ struct WebViewContainer: View {
 
         ZStack(alignment: .bottomLeading) {
             content(isOwner: isOwner)
-
-            // Reader mode overlay - slides up from bottom when active
-            ReaderOverlayContainer(tabID: page.tabPage.id)
 
             LinkHoverPreviewView(url: $hoveredLinkURL)
                 .padding([.vertical, .trailing], Constants.linkPreviewPadding)
@@ -340,7 +328,6 @@ struct WebViewContainer: View {
         let shouldIgnore = windowState.webViewsShouldIgnoreAllEvents
             || windowState.isInLayoutMode
             || windowState.isSpaceLocked
-            || isReaderActive
         
         return WebView(page)
             .webViewIsActive(isOwner)

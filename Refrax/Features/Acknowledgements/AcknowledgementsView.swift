@@ -17,7 +17,6 @@ struct AcknowledgementsView: View {
 
     /// License files bundled in Resources (Xcode flattens the Licenses/ folder).
     private static let licenseFileNames = [
-        "readability",
         "aria2",
         "gpl-2.0",
         "ublock-origin",

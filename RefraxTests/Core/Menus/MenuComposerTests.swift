@@ -161,7 +161,7 @@ struct MenuComposerTests {
         let date = MenuGroupID.detected("October 14")
         actions += ["Create Calendar Event", "Show in Calendar", "Copy Date"].map { action($0, date) }
         actions += [
-            action("Look Up", .read, primary: true), action("Translate", .read), action("Search with Google", .read), action("Speed Read Selection", .read),
+            action("Look Up", .read, primary: true), action("Translate", .read), action("Search with Google", .read), action("Search with DuckDuckGo", .read),
             action("Remind Me About This Page…", page), action("Inspect Element", .develop),
         ]
         let tree = MenuComposer.compose(actions)

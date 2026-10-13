@@ -1,13 +1,12 @@
 import AppKit
 import Foundation
 
-/// Menu actions on a tab's active page: copy, share, find, Reader, reload.
+/// Menu actions on a tab's active page: copy, share, find, reload.
 struct PageActions {
     let tab: Tab
     let surface: MenuSurface
     let windowState: WindowState
     let tabs: TabManager
-    let readerMode: ReaderModeManager
     let sharing: SharingCoordinator
 
     func actions() -> [MenuAction] {
@@ -19,17 +18,9 @@ struct PageActions {
                 sharing.shareURL(URL(string: tabs.copyableURL(for: tab)) ?? tab.activePage.url, title: tab.activePage.title)
             },
         ]
-        if surface.isCard, tab.id == windowState.activeTabID, let page = tabs.pagePool.existingPage(for: tab.activePage) {
+        if surface.isCard, tab.id == windowState.activeTabID, tabs.pagePool.existingPage(for: tab.activePage) != nil {
             actions.append(MenuAction("page.find", "Find on Page…", symbol: "magnifyingglass", key: .init("f"), group: .read) {
                 windowState.showFindNavigator()
-            })
-            let readerTitle = readerMode.isReaderActive(for: tab.activePage.id) ? "Leave Reader" : "Reader"
-            actions.append(MenuAction("page.reader", readerTitle, symbol: "text.page", group: .read) {
-                Task(name: "Toggle reader from page card") {
-                    if await readerMode.toggleReader(for: page) == .tooLong {
-                        windowState.showToast("This page is too long for Reader")
-                    }
-                }
             })
         }
         if !surface.isCard {

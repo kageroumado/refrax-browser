@@ -34,7 +34,7 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
     static let save = MenuGroupID(id: "save", title: "Save", symbol: "arrow.down.circle", rank: 80)
     /// yt-dlp and WebKit media controls.
     static let video = MenuGroupID(id: "video", title: "Video", symbol: "film", rank: 90)
-    /// Reader, Find, Speed Read, Look Up, Translate, Search.
+    /// Find, Look Up, Translate, Search.
     static let read = MenuGroupID(id: "read", title: "Read", symbol: "text.page", rank: 100)
     /// Emoji & Symbols, Insert GIF, WebKit editing.
     static let edit = MenuGroupID(id: "edit", title: "Edit", symbol: "pencil", rank: 110)

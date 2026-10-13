@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// The page menu's actions, bound to one page: copy, share, zoom, screenshots, recording,
-/// Reader, Calm, and extension page actions. The sidebar's address bar and the page card each
+/// Calm, and extension page actions. The sidebar's address bar and the page card each
 /// build one from their environment and hand it to ``PageMenuContent``.
 struct PageMenuActions {
     /// The live page, when it has one; the window screenshot and the copy actions work without it.
@@ -14,7 +14,6 @@ struct PageMenuActions {
     let recording: RecordingCoordinator
     let downloads: DownloadManager
     let extensions: ExtensionManager
-    let readerMode: ReaderModeManager
     let siteSettings: SiteSettingsManager
     let pagePool: WebPagePool
 
@@ -22,11 +21,6 @@ struct PageMenuActions {
 
     var currentZoom: Int {
         webPage?.currentZoom ?? 100
-    }
-
-    var isReaderActive: Bool {
-        guard let webPage else { return false }
-        return readerMode.isReaderActive(for: webPage.tabPage.id)
     }
 
     var isPageCalmed: Bool {
@@ -128,20 +122,6 @@ struct PageMenuActions {
         Task(name: "Trigger extension page action") {
             await extensions.triggerPageAction(for: extensionID, in: webPage)
         }
-    }
-
-    /// Toggles Reader for the page and says so when the page is too long for it.
-    ///
-    /// - Returns: The extraction outcome when Reader was opening, or `nil` when it closed or
-    ///   there is no page.
-    @discardableResult
-    func toggleReader() async -> ReaderExtraction? {
-        guard let webPage else { return nil }
-        let extraction = await readerMode.toggleReader(for: webPage)
-        if extraction == .tooLong {
-            windowState.showToast("This page is too long for Reader")
-        }
-        return extraction
     }
 
     /// Toggles Calm for the page's domain and applies it to every live page of that domain.

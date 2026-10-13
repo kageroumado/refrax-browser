@@ -111,7 +111,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let passwordsManager: PasswordsManager
     let undoRedoManager: UndoRedoManager
     let extensionManager: ExtensionManager
-    let readerModeManager: ReaderModeManager
     let autoConsentManager: AutoConsentManager
     let contentScriptManager: ContentScriptManager
     let keyboardShortcutsManager: KeyboardShortcutsManager
@@ -151,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let feedbackManager: FeedbackManager
     let appUpdateManager: AppUpdateManager
 
-    // iCloud Sync
+    /// iCloud Sync
     /// Separate container for sync metadata (CloudKit system fields, history tokens).
     private(set) var syncContainer: ModelContainer?
 
@@ -361,7 +360,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engineRegistry.apply(.scripts(scripts: scripts.map { $0.granting(scriptChannels.channelNames(in: $0.world)) }))
         }
         self.groupManager = TabGroupManager(state: browserState)
-        self.readerModeManager = ReaderModeManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()
         self.contentScriptManager = ContentScriptManager(state: browserState)
         Task { [contentScriptManager, engineRegistry] in
@@ -471,7 +469,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browserState.downloadManager = downloadManager
         browserState.pagePool = pagePool
         browserState.extensionManager = extensionManager
-        extensionManager.readerModeManager = readerModeManager
         browserState.webInspectorManager = webInspectorManager
         browserState.webPageConfiguration.webExtensionController = extensionManager.defaultController
         
@@ -564,11 +561,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tiered setup pattern: Fire-and-forget tasks at appropriate priorities.
         // This allows the first frame to render without waiting for any setup.
 
-        // Tier 1: Fast setups (~5ms total) - reader mode and auto consent
+        // Tier 1: Fast setups (~5ms total) - auto consent
         Task(priority: .userInitiated) {
-            async let reader: Void = self.readerModeManager.setup()
-            async let consent: Void = self.autoConsentManager.setup()
-            _ = await (reader, consent)
+            await self.autoConsentManager.setup()
         }
 
         // Tier 2: Content blocking (50-200ms) - needed before first navigation

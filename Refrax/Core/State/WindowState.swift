@@ -751,53 +751,6 @@ final class WindowState {
     /// Whether the browser data import wizard is showing.
     var showsBrowserImport = false
 
-    // MARK: - Speed Reader State
-
-    /// Current speed reader window controller, retained to keep the window alive.
-    @ObservationIgnored
-    private var speedReaderWindowController: SpeedReaderWindowController?
-
-    /// The speed reader panel still splitting its words; a newer request cancels it.
-    @ObservationIgnored
-    private var speedReaderOpening: Task<Void, Never>?
-
-    /// Shows the speed reader panel for the given selected text.
-    ///
-    /// Creates a minimal `ExtractedArticle` from the text and opens the speed reader panel
-    /// attached to the current window. The panel reference is retained until closed.
-    ///
-    /// - Parameter text: The selected text to speed read.
-    func showSpeedReader(for text: String) {
-        // Close existing speed reader if open
-        speedReaderWindowController?.close()
-
-        // Create a minimal article from the selected text
-        let article = ExtractedArticle(
-            title: "Selected Text",
-            byline: nil,
-            content: text,
-            textContent: text,
-            excerpt: nil,
-            siteName: nil,
-            publishedTime: nil,
-            sourceURL: URL.staticRequired("refrax://selection"),
-        )
-
-        // Create and show the speed reader panel
-        let parentWindow = NSApp.keyWindow
-        speedReaderOpening?.cancel()
-        speedReaderOpening = Task(name: "Open Speed Reader for selection") { [weak self] in
-            let controller = await SpeedReaderWindowController.make(
-                article: article,
-                settings: self?.settings,
-                parentWindow: parentWindow,
-            )
-            guard let self, !Task.isCancelled else { return }
-            controller.showCentered()
-            speedReaderWindowController = controller
-        }
-    }
-
     // MARK: - Page Search Bar State
 
     /// Per-tab page find navigator presentation state

@@ -12,7 +12,6 @@ struct PageActionsMenuTests {
         let space: Space
         let window: WindowState
         let canvas: TabCanvasManager
-        let readerMode: ReaderModeManager
         let sharing = SharingCoordinator()
         let area = CGRect(x: 0, y: 0, width: 1_200, height: 800)
         let active: Tab
@@ -23,7 +22,6 @@ struct PageActionsMenuTests {
             self.space = env.makeSpace()
             self.window = env.makeActiveWindowState(with: space)
             self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-            self.readerMode = ReaderModeManager(state: env.browserState)
             self.active = try env.createActiveTab(url: #require(URL(string: "https://example.com/active")), in: space, for: window)
             self.other = try env.tabManager.createTab(url: #require(URL(string: "https://example.com/other")), in: space, makeActive: false)
         }
@@ -31,7 +29,7 @@ struct PageActionsMenuTests {
         func tree(for tab: Tab, surface: MenuSurface) -> MenuTree {
             PageActionsMenu.tree(
                 for: tab, surface: surface, area: area, windowState: window, tabs: env.tabManager,
-                bookmarks: env.bookmarksManager, canvas: canvas, readerMode: readerMode, sharing: sharing,
+                bookmarks: env.bookmarksManager, canvas: canvas, sharing: sharing,
             )
         }
 
@@ -64,12 +62,12 @@ struct PageActionsMenuTests {
     }
 
     @Test
-    func `the page card offers Find and Reader, toggles the presentation, and never Look`() throws {
+    func `the page card offers Find, toggles the presentation, and never Look`() throws {
         let fixture = try Fixture()
         _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
         let tree = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "——", "Find on Page…", "Reader", "——", "Keep Visible", "Show as Preview", "——",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "——", "Find on Page…", "——", "Keep Visible", "Show as Preview", "——",
             "Select for Group", "Duplicate Tab", "Close Tab",
         ])
         #expect(!tree.ids.contains("tab.look"))

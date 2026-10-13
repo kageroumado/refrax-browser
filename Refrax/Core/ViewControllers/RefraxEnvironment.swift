@@ -40,7 +40,6 @@ struct RefraxEnvironment {
     let tabCanvasManager: TabCanvasManager
     let sidebarManagers: SidebarManagers
     let cellEnvironment: SidebarCellEnvironment
-    let readerModeManager: ReaderModeManager
     let undoRedoManager: UndoRedoManager
     let calendarManager: CalendarManager
     let clipboardMonitor: ClipboardMonitor
@@ -109,7 +108,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.sidebarManagers.frameRegistry)
             .environment(environment.sidebarManagers.geometryState)
             .environment(environment.cellEnvironment)
-            .environment(environment.readerModeManager)
             .environment(environment.undoRedoManager)
             .environment(environment.calendarManager)
             .environment(environment.clipboardMonitor)

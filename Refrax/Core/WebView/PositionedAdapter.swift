@@ -41,7 +41,7 @@ struct PositionedAdapter: NSViewRepresentable {
     let expectedFrame: CGRect
 
     /// Whether the webView should ignore all events.
-    /// Used during layout mode, space lock, reader mode, etc.
+    /// Used during layout mode and space lock.
     var ignoresAllEvents: Bool = false
 
     /// Callback when mouse down occurs in the webView.
@@ -49,8 +49,7 @@ struct PositionedAdapter: NSViewRepresentable {
     var onMouseDown: (() -> Void)?
 
     func makeNSView(context _: Context) -> CocoaWebViewAdapter {
-        let adapter = CocoaWebViewAdapter()
-        return adapter
+        CocoaWebViewAdapter()
     }
 
     func updateNSView(_ adapter: CocoaWebViewAdapter, context: Context) {
@@ -175,7 +174,7 @@ struct PositionedAdapter: NSViewRepresentable {
             webView.isHidden = isEngineHosted
         }
 
-        // Event blocking - changes based on layout mode, reader, etc.
+        // Event blocking - changes based on layout mode and space lock.
         if webView._ignoresAllEvents != ignoresAllEvents {
             webView._ignoresAllEvents = ignoresAllEvents
         }

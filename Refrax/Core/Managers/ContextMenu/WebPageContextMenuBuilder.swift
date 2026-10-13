@@ -42,9 +42,6 @@ final class WebPageContextMenuBuilder: NSObject {
     /// Callback for the "Insert GIF" action. Called when user selects the menu item.
     var onInsertGIF: (() -> Void)?
 
-    /// Callback for speed reading selected text. Receives the selected text.
-    var onSpeedReadSelection: ((String) -> Void)?
-
     /// Callback for downloading a file (image/video) to the Downloads folder.
     var onDownloadFile: ((URL) -> Void)?
 
@@ -60,10 +57,6 @@ final class WebPageContextMenuBuilder: NSObject {
 
     /// Returns the search engine selected in Refrax's settings. Set by the caller.
     var searchEngine: (() -> SearchEngine)?
-
-    /// Minimum character count for showing "Speed Read Selection" option.
-    /// Assumes ~6 chars per word (5 letter avg + space), so 300 chars ≈ 50 words.
-    private let speedReadMinCharCount = 300
 
     // MARK: - Initialization
 
@@ -109,12 +102,6 @@ final class WebPageContextMenuBuilder: NSObject {
             let dataItems = dataDetectionManager.createMenuItems(for: selectedText)
             if !dataItems.isEmpty {
                 itemGroups.append(dataItems)
-            }
-
-            // Speed read for long selections
-            let speedReadItems = speedReadSelectionItems(for: selectedText)
-            if !speedReadItems.isEmpty {
-                itemGroups.append(speedReadItems)
             }
         }
 
@@ -286,24 +273,6 @@ final class WebPageContextMenuBuilder: NSObject {
         return items
     }
 
-    /// Returns speed read menu items for sufficiently long selected text.
-    private func speedReadSelectionItems(for text: String) -> [NSMenuItem] {
-        guard onSpeedReadSelection != nil else { return [] }
-
-        // Quick character count check (O(1) for String.count)
-        guard text.count >= speedReadMinCharCount else { return [] }
-
-        let item = NSMenuItem(
-            title: "Speed Read Selection",
-            action: #selector(speedReadSelection(_:)),
-            keyEquivalent: "",
-        )
-        item.target = self
-        item.representedObject = text
-        item.image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: "Speed Read")
-        return [item]
-    }
-
     /// Returns page-level action items (Remind Me).
     private func pageActionItems() -> [NSMenuItem] {
         var items: [NSMenuItem] = []
@@ -450,13 +419,6 @@ final class WebPageContextMenuBuilder: NSObject {
     @objc
     private func insertGIF() {
         onInsertGIF?()
-    }
-
-    /// Triggers speed reading of selected text.
-    @objc
-    private func speedReadSelection(_ sender: NSMenuItem) {
-        guard let text = sender.representedObject as? String else { return }
-        onSpeedReadSelection?(text)
     }
 
     @objc

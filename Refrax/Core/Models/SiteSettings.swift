@@ -3,13 +3,12 @@ import SwiftData
 import WebKit
 
 // TODO: Wire remaining SiteSettings to WebPage/WebView configuration:
-// - useReaderWhenAvailable: Trigger Reader mode after page load
 // - enableContentBlockers: Configure content rule lists per-site
 
 /// Per-domain settings for granular site control.
 ///
 /// Stores user preferences for individual websites, including:
-/// - Content settings (zoom, Reader, content blockers, JavaScript)
+/// - Content settings (zoom, content blockers, JavaScript)
 /// - Media settings (auto-play policy)
 /// - Window settings (pop-up policy)
 /// - Permissions (camera, microphone, screen sharing, location, sensors)
@@ -28,8 +27,8 @@ import WebKit
 /// When no site settings exist, the browser uses global defaults from
 /// ``BrowserSettings``. Most permission defaults to `.ask` (prompt user).
 ///
-/// - Note: Currently only some settings are wired to WebView. Reader mode and
-///   per-site content blocker toggling still need to be applied during navigation.
+/// - Note: Currently only some settings are wired to WebView. Per-site content blocker
+///   toggling still needs to be applied during navigation.
 @Model
 final class SiteSettings {
     #Index<SiteSettings>([\.domain])
@@ -53,9 +52,6 @@ final class SiteSettings {
     ///
     /// Default is 100 (no zoom).
     var pageZoom: Int = 100
-
-    /// Automatically use Reader mode when available.
-    var useReaderWhenAvailable: Bool = false
 
     /// Enable content blockers for this site.
     ///
@@ -540,7 +536,9 @@ enum PageFilterOverride: String, Codable, CaseIterable, Sendable {
     case tritanopia
 
     var displayName: String {
-        if case .auto = self { return "Use Default" }
+        if case .auto = self {
+            return "Use Default"
+        }
         guard let filter = effectiveFilter else { return "Use Default" }
         return filter.displayName
     }
@@ -598,7 +596,9 @@ enum BackgroundRemovalOverride: String, Codable, CaseIterable, Sendable {
     case transparent
 
     var displayName: String {
-        if case .auto = self { return "Use Default" }
+        if case .auto = self {
+            return "Use Default"
+        }
         guard let mode = effectiveMode else { return "Use Default" }
         return mode.displayName
     }

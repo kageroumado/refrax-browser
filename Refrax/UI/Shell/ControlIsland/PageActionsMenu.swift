@@ -15,7 +15,6 @@ struct PageActionsMenu: NSViewRepresentable {
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @Environment(BookmarksManager.self) private var bookmarks
-    @Environment(ReaderModeManager.self) private var readerMode
     @Environment(SharingCoordinator.self) private var sharing
     @Environment(\.appearsActive) private var appearsActive
 
@@ -27,7 +26,7 @@ struct PageActionsMenu: NSViewRepresentable {
         button.makeTree = {
             Self.tree(
                 for: tab, surface: surface, area: area, windowState: windowState, tabs: tabs,
-                bookmarks: bookmarks, canvas: canvas, readerMode: readerMode, sharing: sharing,
+                bookmarks: bookmarks, canvas: canvas, sharing: sharing,
             )
         }
         button.infoState = windowState.controlIsland.tabInfo
@@ -50,10 +49,9 @@ struct PageActionsMenu: NSViewRepresentable {
         tabs: TabManager,
         bookmarks: BookmarksManager,
         canvas: TabCanvasManager,
-        readerMode: ReaderModeManager,
         sharing: SharingCoordinator,
     ) -> MenuTree {
-        let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, readerMode: readerMode, sharing: sharing)
+        let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, sharing: sharing)
         let object = TabActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area)
         return MenuComposer.compose(page.actions() + object.actions(), groupOrder: groupOrder)
     }

@@ -11,7 +11,6 @@ struct SidebarTabMenuTests {
         let env: TabManagerTestEnvironment
         let space: Space
         let window: WindowState
-        let readerMode: ReaderModeManager
         let sharing = SharingCoordinator()
         let tabs: [Tab]
 
@@ -22,7 +21,6 @@ struct SidebarTabMenuTests {
             self.env = env
             self.space = space
             self.window = env.makeActiveWindowState(with: space)
-            self.readerMode = ReaderModeManager(state: env.browserState)
             _ = try env.groupManager.createGroup(in: space, name: "Work")
             self.tabs = (0 ..< 3).map { index in
                 env.tabManager.createTab(url: URL(string: "https://example.com/\(index)")!, in: space, makeActive: false)
@@ -33,7 +31,7 @@ struct SidebarTabMenuTests {
             SidebarContextMenus.Tab.tree(
                 for: tab, isCompactMode: isCompactMode, onRename: onRename, onGetInfo: onGetInfo,
                 tabManager: env.tabManager, groupManager: env.groupManager, pagePool: env.pagePool, bookmarksManager: env.bookmarksManager,
-                sharingCoordinator: sharing, readerModeManager: readerMode, windowState: window, settings: env.settings,
+                sharingCoordinator: sharing, windowState: window, settings: env.settings,
             )
         }
     }

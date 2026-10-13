@@ -139,9 +139,6 @@ final class ExtensionManager {
     /// Browser state for accessing tab/window managers.
     unowned let state: BrowserState
 
-    /// Answers extensions' reader-mode queries (`tabs.toggleReaderMode`, `isInReaderMode`).
-    weak var readerModeManager: ReaderModeManager?
-
     /// Manager for handling permission prompts.
     let permissionPromptManager = PermissionPromptManager()
 
@@ -378,7 +375,6 @@ final class ExtensionManager {
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
-
         // Persist the extension
         installedExtensions.append(installedExtension)
 
@@ -614,7 +610,6 @@ final class ExtensionManager {
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
 
-
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
@@ -695,7 +690,6 @@ final class ExtensionManager {
         // Load the extension into the default controller
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
-
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -807,7 +801,6 @@ final class ExtensionManager {
         // Load into default controller
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
-
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -1565,7 +1558,6 @@ final class ExtensionManager {
 
         try load(context, into: defaultController)
         loadedContexts[extension_.uniqueIdentifier] = context
-
     }
 
     /// The folder an installed extension's resources load from. Everything except a local
