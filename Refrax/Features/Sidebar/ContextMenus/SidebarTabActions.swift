@@ -117,12 +117,6 @@ struct SidebarTabActions {
             }
             actions.append(MenuAction("sidebar.moveToSpace", "Move to Space", symbol: ContextMenuIcon.moveToSpace.systemName, group: .move, children: targets))
         }
-        let referenceTabs = windowState.activeSpace?.referenceTabCount ?? 0
-        let spaceTabs = windowState.activeSpace?.tabs.count ?? 0
-        actions.append(MenuAction(
-            "sidebar.moveToReferencePane", "Move to Reference Pane", symbol: ContextMenuIcon.moveToReferencePane.systemName, group: .move,
-            isEnabled: referenceTabs < 4 && tab.pages.count <= 1 && spaceTabs > 1,
-        ) { tabManager.moveTabToReferencePane(tab) })
         return actions
     }
 

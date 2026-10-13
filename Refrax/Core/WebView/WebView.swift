@@ -284,7 +284,7 @@ struct WebViewRepresentable: NSViewRepresentable {
         // calling updateScrollPocket() with the correct insets.
 
         // Automatic content inset adjustment
-        // Disable when manually providing content insets (e.g., reference pane window)
+        // Disable when manually providing content insets (e.g., Glimpse and Reflected windows)
         let automaticallyAdjustsInsets = environment.webViewAutomaticallyAdjustsContentInsets
         if webView._automaticallyAdjustsContentInsets != automaticallyAdjustsInsets {
             webView._automaticallyAdjustsContentInsets = automaticallyAdjustsInsets

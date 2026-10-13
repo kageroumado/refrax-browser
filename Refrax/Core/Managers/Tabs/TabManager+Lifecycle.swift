@@ -194,25 +194,20 @@ extension TabManager {
             // Capture state before archive modifies the tab
             guard let space = tab.space else { return }
             let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
-            let isReferenceTab = tab.isReferenceTab
 
             do {
                 try archiveManager.archive(tab)
 
                 // Trigger window state sync so active tab selection updates
-                // Now that mainTabs/referenceTabs exclude archived tabs, the sync
-                // will detect the archived tab as invalid and select a replacement
+                // mainTabs excludes archived tabs, so the sync detects the
+                // archived tab as invalid and selects a replacement
                 mutationPipeline.withMutation { effects in
                     effects.didChangeList = true
-                    if isReferenceTab {
-                        effects.spaceIDsToSyncActiveRefTab.insert(space.id)
-                    } else {
-                        effects.spaceIDsToSyncActiveTab.insert(space.id)
-                        effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
-                            tabID: tab.id,
-                            mainTabIndex: mainTabIndex,
-                        )
-                    }
+                    effects.spaceIDsToSyncActiveTab.insert(space.id)
+                    effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
+                        tabID: tab.id,
+                        mainTabIndex: mainTabIndex,
+                    )
                 }
                 return
             } catch {
@@ -413,14 +408,6 @@ extension TabManager {
         undoRedoManager.reopenLastClosedTab()
     }
 
-    /// Restores a closed reference tab from undo info.
-    ///
-    /// Called by UndoRedoManager when undoing a reference tab close.
-    ///
-    /// - Parameter info: Information about the closed reference tab to restore.
-    func restoreReferenceTab(_ info: ClosedTabInfo) {
-        referencePaneManager.restoreReferenceTab(info)
-    }
 
     /// Duplicates a tab.
     ///

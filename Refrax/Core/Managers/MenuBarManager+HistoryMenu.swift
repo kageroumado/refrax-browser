@@ -159,10 +159,6 @@ extension MenuBarManager {
                 tabItem.tag = index
                 tabItem.toolTip = tabInfo.url.absoluteString
 
-                if tabInfo.isReferenceTab {
-                    tabItem.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
-                }
-
                 menu.addItem(tabItem)
             }
         }

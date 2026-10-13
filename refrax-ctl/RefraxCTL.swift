@@ -47,7 +47,6 @@ struct RefraxCTL: AsyncParsableCommand {
             WaitCommand.self,
             PipeCommand.self,
             WindowCommand.self,
-            RefPaneCommand.self,
             HotkeyCommand.self,
             UICommand.self,
             GroupCommand.self,

@@ -776,7 +776,7 @@ final class WebPagePool {
     /// Clears all inactive pages to free memory.
     ///
     /// Protects active tabs across ALL windows, not just the key window.
-    /// Each window's active tab and active reference tab are preserved.
+    /// Each window's active tab is preserved.
     /// Also cleans up associated navigation deciders and termination history.
     ///
     /// - Parameter protectedTabs: Optional tabs to protect from eviction.
@@ -792,10 +792,6 @@ final class WebPagePool {
             for windowState in windowManager.allWindowStates {
                 if let activeTab = windowState.activeTab {
                     protectedPageIDs.formUnion(activeTab.pages.map(\.id))
-                }
-
-                if let activeRefTab = windowState.activeReferenceTab {
-                    protectedPageIDs.formUnion(activeRefTab.pages.map(\.id))
                 }
             }
         }

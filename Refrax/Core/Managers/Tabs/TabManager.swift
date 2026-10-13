@@ -14,7 +14,6 @@ import WebKit
 /// - Tab activation and navigation
 /// - Tab organization (pin, move, reorder)
 /// - Tab groups (create, nest, collapse)
-/// - Reference pane management
 /// - Tab/page transfers between areas
 /// - Multi-page layouts
 /// - Cross-collection operations (tabs ↔ favorites)
@@ -59,7 +58,7 @@ import WebKit
 /// @Environment(WebPagePool.self) var pagePool
 /// @Environment(SpaceManager.self) var spaceManager
 /// @Environment(TabGroupManager.self) var groupManager
-/// @Environment(ReferencePaneManager.self) var referencePaneManager
+
 ///
 /// // Then use directly
 /// pagePool.clearInactivePages()
@@ -145,10 +144,6 @@ final class TabManager {
     /// Injected at initialization. Accessible via `@Environment(TabGroupManager.self)`.
     unowned let groupManager: TabGroupManager
 
-    /// Manages reference pane operations.
-    ///
-    /// Injected at initialization. Accessible via `@Environment(ReferencePaneManager.self)`.
-    unowned let referencePaneManager: ReferencePaneManager
 
     /// Evaluates URL routing rules for navigation decisions.
     ///
@@ -202,8 +197,6 @@ final class TabManager {
 
     // MARK: - Constants
 
-    /// Maximum number of tabs allowed in the reference pane.
-    static let maxReferenceTabs = 4
 
     /// Maximum length for custom tab names.
     static let maxCustomNameLength = 20
@@ -342,7 +335,7 @@ final class TabManager {
 
     /// Creates a TabManager with all dependencies.
     ///
-    /// All sub-managers (pagePool, spaceManager, groupManager, referencePaneManager)
+    /// All sub-managers (pagePool, spaceManager, groupManager)
     /// are created externally and passed in. This enables proper dependency injection
     /// and allows them to be accessed directly via `@Environment`.
     ///
@@ -352,13 +345,11 @@ final class TabManager {
         pagePool: WebPagePool,
         spaceManager: SpaceManager,
         groupManager: TabGroupManager,
-        referencePaneManager: ReferencePaneManager,
     ) {
         self.state = state
         self.pagePool = pagePool
         self.spaceManager = spaceManager
         self.groupManager = groupManager
-        self.referencePaneManager = referencePaneManager
 
         Logger.info("TabManager initialized", category: Logger.tabs)
     }

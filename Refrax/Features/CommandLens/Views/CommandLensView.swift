@@ -58,7 +58,6 @@ struct CommandLensView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.3), value: providerSwitchScale)
         .animation(reduceMotion ? nil : .spring(duration: 0.5), value: hasSuggestions)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: manager.showSearchEngineBadge)
-        .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.isCreatingReferenceTab)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.layoutModeTargetPosition)
         .task { await onAppear() }
         .task(id: tour.requestedPage) {
@@ -99,7 +98,6 @@ struct CommandLensView: View {
     private var textFieldCapsule: some View {
         HStack(spacing: isSmallMode ? 8 : 12) {
             searchIcon
-            referenceTabIndicator
             layoutModeIndicator
             searchEngineBadge
             textField
@@ -141,14 +139,6 @@ struct CommandLensView: View {
         }
     }
 
-    /// Shows a badge when the command lens is creating a reference tab.
-    @ViewBuilder
-    private var referenceTabIndicator: some View {
-        if windowState.isCreatingReferenceTab {
-            contextBadge(icon: "sidebar.right", color: .teal)
-        }
-    }
-
     /// Shows a badge when the command lens is creating a tab in a layout pane.
     @ViewBuilder
     private var layoutModeIndicator: some View {
@@ -157,7 +147,7 @@ struct CommandLensView: View {
         }
     }
 
-    /// Reusable context badge for reference/layout mode indicators.
+    /// Reusable context badge for the layout mode indicator.
     private func contextBadge(icon: String, color: Color) -> some View {
         Image(systemName: icon)
             .font(.system(size: 12, weight: .medium))
@@ -306,7 +296,6 @@ struct CommandLensView: View {
         } else {
             manager.reset()
             windowState.closeCommandLens()
-            windowState.closeReferencePaneLens()
         }
     }
 

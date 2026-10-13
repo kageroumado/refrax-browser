@@ -10,13 +10,8 @@ extension RefraxWindowController {
     ///
     /// - Window frame (origin, size)
     /// - Sidebar: collapsed state, width
-    /// - Inspector: collapsed state, docked width
     /// - Active space ID
     /// - Window background color and mix settings
-    ///
-    /// ## What's NOT Encoded Here
-    ///
-    /// - Reference tabs → Per-space in SwiftData
     func encodeWindowState(to state: NSCoder) {
         if let data = try? JSONEncoder().encode(windowState.readingState) {
             state.encode(data as NSData, forKey: "readingState")
@@ -45,12 +40,6 @@ extension RefraxWindowController {
         let sidebarWidth = sidebarItem.isCollapsed ? lastCollapsedThickness : sidebarItem.viewController.view.frame.width
         state.encode(sidebarWidth as NSNumber, forKey: "sidebarWidth")
 
-        let inspectorItem = splitViewController.splitViewItems[2]
-        state.encode(inspectorItem.isCollapsed as NSNumber, forKey: "inspectorCollapsed")
-
-        let inspectorWidth = inspectorItem.isCollapsed ? windowState.referencePaneDockedWidth : inspectorItem.viewController.view.frame.width
-        state.encode(inspectorWidth as NSNumber, forKey: "referencePaneDockedWidth")
-
         if let spaceID = windowState.activeSpaceID {
             state.encode(spaceID.uuidString as NSString, forKey: "activeSpaceID")
         }
@@ -67,8 +56,7 @@ extension RefraxWindowController {
     ///
     /// 1. Restore window frame (must happen first — split view positions depend on window width)
     /// 2. Restore sidebar (width, collapsed state)
-    /// 3. Restore inspector (docked width, collapsed state)
-    /// 4. Restore window background color
+    /// 3. Restore window background color
     func decodeWindowState(from state: NSCoder) {
         isRestoringState = true
         defer { isRestoringState = false }
@@ -98,16 +86,7 @@ extension RefraxWindowController {
             ?? Constants.Layout.sidebarDefaultWidth
         let sidebarCollapsed = state.decodeObject(of: NSNumber.self, forKey: "sidebarCollapsed")?.boolValue ?? false
 
-        let dockedWidth = state.decodeObject(of: NSNumber.self, forKey: "referencePaneDockedWidth")?.doubleValue
-            ?? Constants.Layout.inspectorDefaultWidth
-        let inspectorCollapsed = state.decodeObject(of: NSNumber.self, forKey: "inspectorCollapsed")?.boolValue ?? true
-
-        applyChrome(
-            sidebarWidth: sidebarWidth,
-            sidebarCollapsed: sidebarCollapsed,
-            inspectorWidth: dockedWidth,
-            inspectorCollapsed: inspectorCollapsed,
-        )
+        applyChrome(sidebarWidth: sidebarWidth, sidebarCollapsed: sidebarCollapsed)
 
         if let spaceIDString = state.decodeObject(of: NSString.self, forKey: "activeSpaceID") as String?,
            let spaceID = UUID(uuidString: spaceIDString) {
@@ -130,9 +109,8 @@ extension RefraxWindowController {
     /// Applies geometry to a freshly created window outside the AppKit
     /// restoration path (Dock click, Cmd+N, first launch).
     ///
-    /// The inspector always starts collapsed in new windows; its width is
-    /// still applied so it opens at the last-used size. Must be called
-    /// before `showWindow(_:)` so the window appears at its final frame.
+    /// Must be called before `showWindow(_:)` so the window appears at its
+    /// final frame.
     func applyInitialGeometry(_ geometry: SavedWindowGeometry) {
         isRestoringState = true
         defer { isRestoringState = false }
@@ -142,16 +120,8 @@ extension RefraxWindowController {
         let sidebarWidth = geometry.sidebarWidth.clamped(
             to: Constants.Layout.sidebarMinWidth ... Constants.Layout.sidebarMaxWidth,
         )
-        let inspectorWidth = geometry.inspectorWidth.clamped(
-            to: Constants.Layout.inspectorMinWidth ... Constants.Layout.inspectorMaxWidth,
-        )
 
-        applyChrome(
-            sidebarWidth: sidebarWidth,
-            sidebarCollapsed: geometry.isSidebarCollapsed,
-            inspectorWidth: inspectorWidth,
-            inspectorCollapsed: true,
-        )
+        applyChrome(sidebarWidth: sidebarWidth, sidebarCollapsed: geometry.isSidebarCollapsed)
     }
 
     /// Sets the window frame, validating it against connected screens.
@@ -169,18 +139,15 @@ extension RefraxWindowController {
         }
     }
 
-    /// Applies sidebar and inspector dimensions and collapse state, syncing
+    /// Applies sidebar width and collapse state, syncing
     /// split view positions, `WindowState`, and the overlay width constraint,
     /// then applies the matching sidebar UI (traffic lights, toolbar items)
     /// before the window becomes visible to prevent a flash of incorrect state.
     private func applyChrome(
         sidebarWidth: CGFloat,
         sidebarCollapsed: Bool,
-        inspectorWidth: CGFloat,
-        inspectorCollapsed: Bool,
     ) {
         let sidebarItem = splitViewController.splitViewItems[0]
-        let inspectorItem = splitViewController.splitViewItems[2]
 
         lastCollapsedThickness = sidebarWidth
         windowState.sidebarThickness = sidebarWidth
@@ -195,16 +162,6 @@ extension RefraxWindowController {
         if !sidebarItem.isCollapsed {
             splitViewController.splitView.setPosition(sidebarWidth, ofDividerAt: 0)
         }
-
-        windowState.referencePaneDockedWidth = inspectorWidth
-
-        splitViewController.splitView.setPosition(
-            splitViewController.view.bounds.width - inspectorWidth,
-            ofDividerAt: 1,
-        )
-
-        inspectorItem.isCollapsed = inspectorCollapsed
-        windowState.isInspectorCollapsed = inspectorCollapsed
 
         applySidebarStateUI()
     }

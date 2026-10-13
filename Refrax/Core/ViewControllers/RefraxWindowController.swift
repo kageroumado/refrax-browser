@@ -6,17 +6,16 @@ import UniformTypeIdentifiers
 
 /// Root view for a Refrax browser window.
 ///
-/// Presents a three-column layout with sidebar (vertical tabs), main content area,
-/// and optional inspector panel. Overlays include lenses for quick actions and
-/// the hover-activated sidebar overlay when collapsed.
+/// Presents a two-column layout with sidebar (vertical tabs) and main content area.
+/// Overlays include lenses for quick actions and the hover-activated sidebar
+/// overlay when collapsed.
 ///
 /// ## Layout Architecture
 ///
-/// Uses `NSSplitViewController` to manage three resizable columns:
+/// Uses `NSSplitViewController` to manage two resizable columns:
 ///
 /// - **Sidebar**: Vertical tab list, spaces, and navigation controls
 /// - **Content**: Primary web view showing the active tab's page
-/// - **Inspector**: Reference pane for side-by-side browsing (collapsible)
 ///
 /// ## State Management
 ///
@@ -96,8 +95,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     var isRestoringState = false
     var restoredReadingState: WindowReadingState?
 
-    /// Flag to prevent frame observer feedback during programmatic inspector updates
-    var isUpdatingInspectorProgrammatically = false
 
     /// State machine for sidebar overlay animation
     var isAnimatingToVisible = false
@@ -209,7 +206,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     /// The toolbar item identifiers that should move with the sidebar.
     let sidebarToolbarItemIdentifiers: Set<NSToolbarItem.Identifier> = [
-        .toggleSidebarGrouped, .toggleFloatingTabs, .toggleTabCanvas, .toggleInspector,
+        .toggleSidebarGrouped, .toggleFloatingTabs, .toggleTabCanvas,
     ]
 
     /// Tracks whether we're in fullscreen mode for proper edge reveal behavior
@@ -269,7 +266,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             browserSettings: appDelegate.settings,
             siteSettingsManager: appDelegate.siteSettingsManager,
             downloadManager: appDelegate.downloadManager,
-            referencePaneManager: appDelegate.referencePaneManager,
             extensionManager: appDelegate.extensionManager,
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             localNetworkSource: appDelegate.localNetworkDirectory,
@@ -308,7 +304,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             pagePool: appDelegate.pagePool,
             spaceManager: appDelegate.spaceManager,
             groupManager: appDelegate.groupManager,
-            referencePaneManager: appDelegate.referencePaneManager,
             archiveManager: appDelegate.archiveManager,
             autoArchiveManager: appDelegate.autoArchiveManager,
             windowManager: appDelegate.windowManager,
@@ -388,7 +383,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupUndoRedoMonitor()
 
         observeSidebarState()
-        observeInspectorState()
         observeSidebarMode()
         observeWindowState()
         observeWebsiteColor()
@@ -421,17 +415,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         splitViewController.onToggleSidebar = { [weak self] in
             self?.toggleSidebar(nil)
         }
-        splitViewController.onToggleInspector = { [weak self] in
-            self?.toggleInspector()
-        }
 
         let sidebarVC = NSHostingController(rootView: SidebarContentView().refraxEnvironment(environment))
         let contentVC = NSHostingController(rootView: MainContentView().refraxEnvironment(environment))
-        let inspectorVC = NSHostingController(rootView: ReferencePaneContentView().refraxEnvironment(environment))
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
         let contentItem = NSSplitViewItem(viewController: contentVC)
-        let inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorVC)
 
         sidebarItem.minimumThickness = Constants.Layout.sidebarMinWidth
         sidebarItem.maximumThickness = Constants.Layout.sidebarMaxWidth
@@ -440,14 +429,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
         contentItem.minimumThickness = 400
 
-        inspectorItem.isCollapsed = true
-        inspectorItem.minimumThickness = Constants.Layout.inspectorMinWidth
-        inspectorItem.maximumThickness = Constants.Layout.inspectorMaxWidth
-        inspectorItem.canCollapse = true
-
         splitViewController.insertSplitViewItem(sidebarItem, at: 0)
         splitViewController.insertSplitViewItem(contentItem, at: 1)
-        splitViewController.insertSplitViewItem(inspectorItem, at: 2)
 
         window.contentViewController = splitViewController
 
@@ -457,26 +440,17 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
         // Set default thicknesses (restoration will override if applicable)
         sidebarItem.preferredThicknessFraction = 0
-        inspectorItem.preferredThicknessFraction = 0
 
-        // Set divider positions using window's content rect (avoids forcing layout)
-        let contentWidth = window.contentLayoutRect.width
+        // Set divider position without forcing layout
         splitViewController.splitView.setPosition(Constants.Layout.sidebarDefaultWidth, ofDividerAt: 0)
-        splitViewController.splitView.setPosition(
-            contentWidth - Constants.Layout.inspectorDefaultWidth,
-            ofDividerAt: 1,
-        )
 
         windowState.sidebarThickness = Constants.Layout.sidebarDefaultWidth
-        windowState.referencePaneDockedWidth = Constants.Layout.inspectorDefaultWidth
         lastCollapsedThickness = Constants.Layout.sidebarDefaultWidth
 
-        // Start with inspector collapsed to prevent the frame observer from saving
-        // an incorrect width before window restoration runs
+        // Start collapsed so the frame observer doesn't save an incorrect width
+        // before window restoration runs
         sidebarItem.isCollapsed = true
         windowState.isSidebarCollapsed = true
-        inspectorItem.isCollapsed = true
-        windowState.isInspectorCollapsed = true
 
         // To run performance profiling, uncomment the following:
         // schedulePerformanceTest()
@@ -995,33 +969,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         }
     }
 
-    /// Toggles the inspector/reference pane visibility.
-    ///
-    /// Inspector state is per-window (saved via window restoration).
-    /// If a separate reference pane window is open, brings it to front instead of toggling.
-    func toggleInspector() {
-        // If a separate reference pane window is open, bring it to front
-        if tabManager.windowManager.bringReferencePaneWindowToFront(for: self) {
-            return
-        }
-
-        guard splitViewController.splitViewItems.count > 2 else { return }
-        let inspectorItem = splitViewController.splitViewItems[2]
-
-        // Save width before collapsing
-        if !inspectorItem.isCollapsed {
-            let currentWidth = inspectorItem.viewController.view.frame.width
-            if currentWidth > 0 {
-                windowState.referencePaneDockedWidth = currentWidth
-            }
-        }
-
-        // Toggle state
-        windowState.isInspectorCollapsed.toggle()
-
-        // Apply the change with animation
-        updateInspectorCollapsed(windowState.isInspectorCollapsed)
-    }
 
     /// Reloads the active page.
     /// Stops loading the active page.

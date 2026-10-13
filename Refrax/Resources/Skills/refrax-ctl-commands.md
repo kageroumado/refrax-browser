@@ -36,7 +36,6 @@ refrax-ctl tab recently-closed [--json]        # List recently closed tabs
 refrax-ctl tab move ID --space S             # Move to space
 refrax-ctl tab move ID --group GID             # Move to group
 refrax-ctl tab ungroup ID                      # Remove from group
-refrax-ctl tab to-refpane ID                   # Move to reference pane
 refrax-ctl tab reorder ID --index N            # Reorder within list
 refrax-ctl tab mark-read ID                    # Mark as read
 refrax-ctl tab mark-unread ID                  # Mark as unread
@@ -142,17 +141,6 @@ isolated or private space has it, and no command can turn it on. A locked space 
 cookie read and every `fetch --space` (`space_locked`). Never print a value you only need to pass
 on: export it to the Keychain.
 
-## Reference Pane
-
-```bash
-refrax-ctl refpane show|hide|toggle
-refrax-ctl refpane add URL [--title T]
-refrax-ctl refpane close ID
-refrax-ctl refpane list [--json]
-refrax-ctl refpane activate ID
-refrax-ctl refpane to-main ID                  # Move to main tab area
-```
-
 ## Visual Agent Feedback
 
 Visual feedback is automatic inside `exec` programs. Use these only for manual control:
@@ -228,7 +216,7 @@ refrax-ctl window minimize
 ## UI Controls
 
 ```bash
-refrax-ctl ui toggle sidebar|inspector|command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
+refrax-ctl ui toggle sidebar|command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
 refrax-ctl ui ax-tree [--depth N] [--id IDENTIFIER]   # Dump accessibility tree
 refrax-ctl ui ax-click IDENTIFIER                      # Click by accessibility identifier
 refrax-ctl hotkey cmd,k                                # Simulate keyboard shortcut

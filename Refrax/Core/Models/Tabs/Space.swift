@@ -13,12 +13,6 @@ import SwiftUI
 /// are persisted to disk. The `tabs` and `groups` relationships are managed
 /// automatically by SwiftData.
 ///
-/// ## Reference Tabs
-///
-/// Reference tabs are tabs marked with `isReferenceTab = true`. They appear in
-/// a side panel (max 4 per space). Access them via the `referenceTabs` computed
-/// property which filters the `tabs` relationship.
-///
 /// ## Runtime State
 ///
 /// Some properties are runtime-only (`@Transient`):
@@ -134,8 +128,7 @@ final class Space {
 
     /// All tabs in this space.
     ///
-    /// Includes both regular tabs and reference tabs. Use `mainTabs` and `referenceTabs`
-    /// computed properties to filter by type.
+    /// Includes archived tabs. Use `mainTabs` for the activatable tabs in position order.
     ///
     /// - Note: Delete rule is `.cascade` - deleting a space deletes all its tabs.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
@@ -165,10 +158,6 @@ final class Space {
     /// Cached sorted main tabs to avoid O(n log n) sort on every access.
     @Transient
     private var _mainTabsCache: [Tab]?
-
-    /// Cached sorted reference tabs to avoid O(n log n) sort on every access.
-    @Transient
-    private var _referenceTabsCache: [Tab]?
 
     /// Tabs count when cache was created, for staleness detection.
     @Transient
@@ -266,7 +255,7 @@ final class Space {
 
     // MARK: - Tab Access
 
-    /// Main tabs (non-reference, non-archived tabs) sorted by position.
+    /// Non-archived tabs sorted by position.
     ///
     /// Excludes archived tabs since they are non-activatable and displayed
     /// separately in the Archive group.
@@ -279,33 +268,11 @@ final class Space {
         let currentCount = tabs.count
         if currentCount != _tabsCacheCount {
             _mainTabsCache = nil
-            _referenceTabsCache = nil
         }
         if let cached = _mainTabsCache { return cached }
-        let result = tabs.filter { !$0.isReferenceTab && !$0.isArchived }
+        let result = tabs.filter { !$0.isArchived }
             .sorted { $0.position < $1.position }
         _mainTabsCache = result
-        _tabsCacheCount = tabs.count // Update count AFTER building cache
-        return result
-    }
-
-    /// Reference pane tabs sorted by position.
-    ///
-    /// Maximum 4 reference tabs per space. Excludes archived tabs.
-    ///
-    /// Results are cached. Cache is auto-invalidated when tabs count changes.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var referenceTabs: [Tab] {
-        // Auto-invalidate cache if tabs count changed
-        let currentCount = tabs.count
-        if currentCount != _tabsCacheCount {
-            _mainTabsCache = nil
-            _referenceTabsCache = nil
-        }
-        if let cached = _referenceTabsCache { return cached }
-        let result = tabs.filter { $0.isReferenceTab && !$0.isArchived }
-            .sorted { $0.position < $1.position }
-        _referenceTabsCache = result
         _tabsCacheCount = tabs.count // Update count AFTER building cache
         return result
     }
@@ -334,21 +301,12 @@ final class Space {
         mainTabs.count
     }
 
-    /// Number of reference tabs.
-    ///
-    /// Uses cached count to avoid filtering on every access.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var referenceTabCount: Int {
-        referenceTabs.count
-    }
-
     /// Invalidates the cached tab arrays.
     ///
-    /// Call this when a tab's `position`, `isReferenceTab`, or `isArchived` property changes.
+    /// Call this when a tab's `position` or `isArchived` property changes.
     /// Note: Cache is auto-invalidated when tabs are added/removed (count change detection).
     func invalidateTabCaches() {
         _mainTabsCache = nil
-        _referenceTabsCache = nil
         _tabsCacheCount = -1
     }
 

@@ -1,22 +1,16 @@
 import AppKit
 
-/// Custom split view controller that intercepts sidebar and inspector toggle actions.
+/// Custom split view controller that intercepts the sidebar toggle action.
 ///
 /// The native `NSToolbarToggleSidebarItem` sends `toggleSidebar:` directly to the
 /// `NSSplitViewController` in the responder chain. By subclassing and overriding
-/// these methods, we can provide custom behavior like smooth overlay transitions.
+/// it, we can provide custom behavior like smooth overlay transitions.
 final class RefraxSplitViewController: NSSplitViewController {
     /// Called when the sidebar toggle action is triggered.
     ///
     /// Set this closure to intercept the toggle and provide custom behavior.
     /// If nil, the default `NSSplitViewController` behavior is used.
     var onToggleSidebar: (() -> Void)?
-
-    /// Called when the inspector toggle action is triggered.
-    ///
-    /// Set this closure to intercept the toggle and provide custom behavior.
-    /// If nil, the default `NSSplitViewController` behavior is used.
-    var onToggleInspector: (() -> Void)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -31,13 +25,6 @@ final class RefraxSplitViewController: NSSplitViewController {
         }
     }
 
-    override func toggleInspector(_ sender: Any?) {
-        if let handler = onToggleInspector {
-            handler()
-        } else {
-            super.toggleInspector(sender)
-        }
-    }
 
     // MARK: - Sidebar Backdrop Prevention
 

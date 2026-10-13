@@ -34,7 +34,7 @@ The protocol is a simple JSON-over-socket RPC layer. Each request is a flat JSON
 | **History** | List, search, clear, frequent destinations |
 | **Site Settings** | Get/set per-domain settings |
 | **Dev Tools** | Inspector, console logs, network log, cookies, storage |
-| **Reference Pane** | Show/hide, add/close/list/activate tabs, move to main |
+
 | **Compound** | Navigate-and-read, click-and-read, fill-form, scroll-and-read |
 | **Programs** | Execute multi-step automation programs with security policies |
 

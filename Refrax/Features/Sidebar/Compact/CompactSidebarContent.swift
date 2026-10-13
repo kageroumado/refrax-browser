@@ -268,12 +268,6 @@ struct CompactSidebarContent: View {
             } label: {
                 Label("Layout Mode", systemImage: "rectangle.split.2x1")
             }
-
-            Button {
-                NSApp.sendAction(#selector(NSSplitViewController.toggleInspector(_:)), to: nil, from: nil)
-            } label: {
-                Label("Inspector", systemImage: "sidebar.right")
-            }
         }
     }
 

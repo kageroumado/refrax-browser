@@ -25,7 +25,7 @@ struct RecentlyClosedEmptyStateAction: CommandLensEmptyStateAction {
                 type: .recentlyClosed(index: index),
                 text: tabInfo.title,
                 description: tabInfo.url.absoluteString,
-                iconName: tabInfo.isReferenceTab ? "sidebar.squares.right" : "arrow.uturn.backward",
+                iconName: "arrow.uturn.backward",
                 groupHeader: "Recently Closed",
                 isRemovable: false,
                 keywordAction: nil,

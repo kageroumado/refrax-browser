@@ -8,7 +8,7 @@ import AppKit
 ///
 /// ## Design
 ///
-/// - Same chrome as `ReferencePaneWindow` (transparent titlebar, frosted glass)
+/// - Same chrome as `FloatingPageWindow` (transparent titlebar, frosted glass)
 /// - Title shows page title (not hardcoded)
 /// - Closable, movable by background
 /// - Not restorable across app restarts

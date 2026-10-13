@@ -67,8 +67,8 @@ final class ReflectedViewController: NSWindowController, NSWindowDelegate {
         self.environment = environment
         self.windowState = ReflectedWindowState(webPage: webPage)
 
-        // Use ReferencePaneWindow for consistent appearance with Glimpse
-        let window = ReferencePaneWindow()
+        // Use FloatingPageWindow for consistent appearance with Glimpse
+        let window = FloatingPageWindow()
         super.init(window: window)
 
         windowState.window = window
@@ -240,7 +240,7 @@ private struct ReflectedContentView: View {
 
 /// Toolbar for reflected windows with address bar.
 ///
-/// Matches the Reference Pane and Glimpse toolbar pattern.
+/// Matches the Glimpse toolbar pattern.
 private struct ReflectedWindowToolbar: View {
     let windowState: ReflectedWindowState
 

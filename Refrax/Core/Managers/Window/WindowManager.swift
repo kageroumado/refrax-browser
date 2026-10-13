@@ -42,16 +42,6 @@ final class WindowManager {
     @ObservationIgnored private var windowObservers: [ObjectIdentifier: any NSObjectProtocol] = [:]
     private var didBecomeKeyObserver: (any NSObjectProtocol)?
 
-    /// Active reference pane window controllers, keyed by parent WindowState.
-    ///
-    /// Each browser window can have at most one reference pane window open.
-    /// When the parent window closes or the reference pane window is closed,
-    /// the entry is removed.
-    @ObservationIgnored private var referencePaneWindowControllers: [ObjectIdentifier: ReferencePaneWindowController] = [:]
-
-    /// Observers for reference pane window close notifications, keyed by parent WindowState.
-    @ObservationIgnored private var referencePaneCloseObservers: [ObjectIdentifier: any NSObjectProtocol] = [:]
-
     /// Active Glimpse window controllers.
     ///
     /// Glimpse windows are lightweight ephemeral windows for quick browsing tasks.
@@ -287,7 +277,6 @@ final class WindowManager {
             frame: frame,
             sidebarWidth: source.windowState.sidebarThickness,
             isSidebarCollapsed: source.windowState.isSidebarCollapsed,
-            inspectorWidth: source.windowState.referencePaneDockedWidth,
         )
     }
 
@@ -331,7 +320,7 @@ final class WindowManager {
 
     /// Handles window close event.
     ///
-    /// Saves state, closes any detached reference pane, clears navigation,
+    /// Saves state, clears navigation,
     /// removes observer, and handles app quit if this was the last window.
     private func handleWindowClosed(_ closedWindow: NSWindow) {
         guard let index = windowControllers.firstIndex(where: { $0.window === closedWindow }) else {
@@ -346,7 +335,6 @@ final class WindowManager {
                     frame: closedWindow.frame,
                     sidebarWidth: controller.windowState.sidebarThickness,
                     isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
-                    inspectorWidth: controller.windowState.referencePaneDockedWidth,
                 ),
                 screen: closedWindow.screen,
             )
@@ -367,13 +355,6 @@ final class WindowManager {
         }
 
         tabManager.scheduleSave()
-
-        // Close any detached reference pane window associated with this parent
-        let parentID = ObjectIdentifier(controller.windowState)
-        if let referencePaneController = referencePaneWindowControllers[parentID] {
-            referencePaneController.window?.close()
-            // Note: The close notification handler will clean up tracking state
-        }
 
         controller.windowState.clearNavigationState()
 
@@ -715,153 +696,6 @@ final class WindowManager {
             activeWindowController?.windowState.showToast(
                 "Imported \(result.bookmarksImported) bookmarks (\(result.failedBookmarks.count) failed)",
             )
-        }
-    }
-
-    // MARK: - Reference Pane Window
-
-    /// Creates a separate window for the reference pane.
-    ///
-    /// The reference pane content is moved from the inspector panel to a new window.
-    /// The inspector panel in the source window is collapsed (mode set to `.hidden`).
-    ///
-    /// ## Behavior
-    ///
-    /// - If a reference pane window already exists for this window, it is brought to front
-    /// - The new window shares the same WindowState as the parent
-    /// - When the window closes, mode returns to `.hidden`
-    /// - When space changes, the window updates to show new space's reference tabs
-    ///
-    /// - Parameter parentController: The browser window controller that owns the reference pane.
-    @discardableResult
-    func createReferencePaneWindow(from parentController: RefraxWindowController) -> ReferencePaneWindowController {
-        let parentID = ObjectIdentifier(parentController.windowState)
-
-        // If window already exists, bring it to front
-        if let existing = referencePaneWindowControllers[parentID] {
-            existing.window?.makeKeyAndOrderFront(nil)
-            return existing
-        }
-
-        // Calculate initial size matching the docked pane dimensions.
-        // Uses the inspector width (clamped to minimum) and the parent window's content height.
-        let width = max(parentController.windowState.referencePaneDockedWidth, ReferencePaneWindow.minimumWidth)
-        let height: CGFloat = parentController.window?.contentView?.bounds.height ?? 600
-        let size = NSSize(width: width, height: height)
-
-        // Mark that a reference pane window is about to exist.
-        // This prevents the docked view from forcing WebViews inactive.
-        parentController.windowState.hasReferencePaneWindow = true
-
-        // Claim ownership for the reference tab's WebPage BEFORE collapsing the inspector.
-        // This ensures the WebViewContainer sees isCurrentOwner=true and doesn't enter portal mode.
-        // Without this, the ownership check would fail because:
-        // 1. Both docked and separate window share the same WindowState
-        // 2. windowState.window points to the MAIN window
-        // 3. When ref pane window becomes key, isWindowKey becomes false
-        // 4. If ownerID is nil, isOwner would be false
-        // Note: Only claim if a reference tab is already selected - we don't auto-select.
-        if let space = parentController.windowState.activeSpace,
-           let activeRefTabID = parentController.windowState.activeReferenceTabID,
-           let activeTab = space.referenceTabs.first(where: { $0.id == activeRefTabID }),
-           let webPage = tabManager.pagePool.existingPage(for: activeTab.activePage) {
-            webPage.claimOwnership(for: parentController.windowState)
-        }
-
-        // Collapse the docked inspector BEFORE creating window controller.
-        // This ensures the docked view stops rendering WebViewContainer.
-        parentController.windowState.isInspectorCollapsed = true
-
-        // Create new reference pane window.
-        let controller = ReferencePaneWindowController(
-            parentWindowState: parentController.windowState,
-            environment: parentController.environment,
-        )
-
-        // Track the window immediately so subsequent calls return the same controller
-        referencePaneWindowControllers[parentID] = controller
-
-        // Observe window close to clean up tracking
-        if let window = controller.window {
-            let observer = NotificationCenter.default.addObserver(
-                forName: NSWindow.willCloseNotification,
-                object: window,
-                queue: .main,
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.cleanupReferencePaneWindow(parentID: parentID)
-                }
-            }
-            referencePaneCloseObservers[parentID] = observer
-        }
-
-        // Show the window after a brief delay to allow SwiftUI to process mode change
-        DispatchQueue.main.async {
-            controller.showWindow(size: size, relativeTo: parentController.window)
-        }
-
-        return controller
-    }
-
-    /// Closes the reference pane window for a given parent window, if open.
-    ///
-    /// This closes the window without returning to docked mode. Use
-    /// `returnReferencePaneToDock(for:)` to close and re-dock.
-    ///
-    /// - Parameter parentController: The browser window controller.
-    func closeReferencePaneWindow(for parentController: RefraxWindowController) {
-        let parentID = ObjectIdentifier(parentController.windowState)
-        if let controller = referencePaneWindowControllers[parentID] {
-            // Close window - the willCloseNotification observer will clean up tracking
-            controller.window?.close()
-        }
-    }
-
-    /// Closes the reference pane window and returns to docked mode.
-    ///
-    /// The inspector panel will expand to show the reference pane content.
-    ///
-    /// - Parameter parentController: The browser window controller.
-    func returnReferencePaneToDock(for parentController: RefraxWindowController) {
-        let parentID = ObjectIdentifier(parentController.windowState)
-        if let controller = referencePaneWindowControllers[parentID] {
-            controller.returnToDock()
-        }
-    }
-
-    /// Returns whether a reference pane window exists for the given parent window.
-    ///
-    /// - Parameter parentController: The browser window controller.
-    /// - Returns: True if a reference pane window is open for this parent.
-    func hasReferencePaneWindow(for parentController: RefraxWindowController) -> Bool {
-        let parentID = ObjectIdentifier(parentController.windowState)
-        return referencePaneWindowControllers[parentID] != nil
-    }
-
-    /// Brings the reference pane window to front if it exists.
-    ///
-    /// - Parameter parentController: The browser window controller.
-    /// - Returns: True if the window was brought to front, false if no window exists.
-    @discardableResult
-    func bringReferencePaneWindowToFront(for parentController: RefraxWindowController) -> Bool {
-        let parentID = ObjectIdentifier(parentController.windowState)
-        guard let controller = referencePaneWindowControllers[parentID],
-              let window = controller.window else {
-            return false
-        }
-        window.makeKeyAndOrderFront(nil)
-        return true
-    }
-
-    /// Cleans up tracking state for a reference pane window.
-    ///
-    /// Called when the reference pane window closes, either from user action or
-    /// when the parent window closes.
-    private func cleanupReferencePaneWindow(parentID: ObjectIdentifier) {
-        referencePaneWindowControllers.removeValue(forKey: parentID)
-
-        if let observer = referencePaneCloseObservers.removeValue(forKey: parentID) {
-            NotificationCenter.default.removeObserver(observer)
         }
     }
 

@@ -248,23 +248,6 @@ extension UnifiedContentView {
                 }
             }
 
-            if windowState.activeSpace?.referenceTabCount ?? 0 < 4 {
-                VStack {
-                    HStack {
-                        Spacer()
-
-                        GlassButton(
-                            systemName: "arrow.right.to.line.square",
-                            size: 56.6,
-                            fontSize: 22.6,
-                        ) {
-                            moveToReferencePane(at: position)
-                        }
-                        .offset(x: -16, y: 16)
-                    }
-                    Spacer()
-                }
-            }
 
             expansionButtons(for: position)
         }

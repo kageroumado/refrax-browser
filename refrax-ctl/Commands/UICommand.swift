@@ -20,19 +20,18 @@ extension UICommand {
             abstract: "Toggle UI elements",
         )
 
-        @Argument(help: "Element: sidebar, inspector, command-lens, or address-lens (the Command Lens with the page address in it)")
+        @Argument(help: "Element: sidebar, command-lens, or address-lens (the Command Lens with the page address in it)")
         var element: String
 
         func run() async throws {
             let request: ControlRequest
             switch element {
             case "sidebar": request = .sidebarToggle
-            case "inspector": request = .inspectorToggle
             case "command-lens": request = .commandLens
             case "address-lens": request = .addressLens
             default:
                 printError(
-                    "Invalid element '\(element)'. Use: sidebar, inspector, command-lens, or address-lens",
+                    "Invalid element '\(element)'. Use: sidebar, command-lens, or address-lens",
                 )
                 _Exit(1)
             }

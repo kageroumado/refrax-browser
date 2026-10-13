@@ -14,7 +14,7 @@ import SwiftUI
 /// ## Managed State
 ///
 /// - **Lenses**: Command lens (Cmd+K) and address bar lens for quick actions
-/// - **Layout**: Sidebar and inspector visibility, widths, and collapse states
+/// - **Layout**: Sidebar visibility, widths, and collapse states
 /// - **Overlays**: Sidebar hover overlay animation and positioning
 /// - **Drag Operations**: Tracks content being dragged for visual feedback
 /// - **Layout Mode**: Enable/disable interface customization mode
@@ -27,7 +27,7 @@ import SwiftUI
 ///
 /// ## Navigation State
 ///
-/// WindowState stores only IDs for active space/tab/reference tab. Actual objects
+/// WindowState stores only IDs for active space and tab. Actual objects
 /// are retrieved via `BrowserState.tab(for:)` which provides O(1) lookup.
 /// Convenience properties (`activeTab`, `activeSpace`, `activePage`) handle
 /// the lookup automatically.
@@ -348,24 +348,12 @@ final class WindowState {
         activeTab?.activePage
     }
     
-    /// Active reference tab ID for this window.
-    ///
-    /// Reference tabs appear in the reference pane for side-by-side browsing.
-    var activeReferenceTabID: Tab.ID?
-
-    /// Active reference tab for this window.
-    ///
-    /// Uses O(1) lookup via `BrowserState.tab(for:)`.
-    var activeReferenceTab: Tab? {
-        guard let id = activeReferenceTabID else { return nil }
-        return browserState.tab(for: id)
-    }
 
     // MARK: - Focused Webpage Tracking
 
     /// The ID of the last-interacted webpage in this window.
     ///
-    /// This tracks which webpage (from main content, split-view, or reference pane)
+    /// This tracks which webpage (from main content or split-view)
     /// the user last interacted with. Used by the address bar to show the correct
     /// URL and navigation state.
     ///
@@ -378,20 +366,14 @@ final class WindowState {
     /// When nil or the referenced page is removed, falls back to:
     /// 1. Active tab's primary page (if single-page tab)
     /// 2. Active tab's active page (if split-view tab)
-    /// 3. First reference tab's page (if no main tab)
     var focusedPageID: TabPage.ID?
 
     /// The focused webpage for address bar and navigation display.
     ///
     /// Returns the last-interacted webpage, or falls back to a sensible default
-    /// if the focused page is no longer available or belongs to a hidden reference pane.
+    /// if the focused page is no longer available.
     var focusedWebPage: WebPage? {
         if let focusedPageID, let webPage = browserState.webPage(for: focusedPageID) {
-            // If the inspector is collapsed, don't return reference tab pages
-            // The address bar should show the active main tab instead
-            if isInspectorCollapsed, webPage.tabPage.tab?.isReferenceTab == true {
-                return fallbackWebPage
-            }
             return webPage
         }
         return fallbackWebPage
@@ -416,15 +398,7 @@ final class WindowState {
     /// @ObservationIgnored to reduce observation dependencies.
     @ObservationIgnored
     private var fallbackPage: TabPage? {
-        if let activeTab {
-            return activeTab.activePage
-        }
-        // Only fall back to reference tab if the reference pane is visible
-        if !isInspectorCollapsed,
-           let refTab = activeReferenceTab {
-            return refTab.activePage
-        }
-        return nil
+        activeTab?.activePage
     }
 
     /// Records an interaction with a webpage.
@@ -491,12 +465,6 @@ final class WindowState {
 
     /// Mirrors the sidebar split item.
     var isSidebarCollapsed: Bool = true
-
-    /// Whether the inspector (reference pane) is collapsed.
-    ///
-    /// The inspector shows side-by-side content when working with multiple sources.
-    /// Synced with `@SceneStorage` for persistence across launches.
-    var isInspectorCollapsed: Bool = true
 
     // MARK: - Sidebar Overlay State
 
@@ -634,26 +602,6 @@ final class WindowState {
     /// When set, the command lens will add a new page to the active tab's layout
     /// at this position instead of creating a new tab.
     var layoutModeTargetPosition: PanePosition?
-
-    /// When set, command lens creates a new reference tab instead of a main tab.
-    ///
-    /// Set to `true` when user taps the "add tab" button in the reference pane.
-    /// The command lens will then route the selected URL/search to `addReferenceTab()`
-    /// instead of creating a normal tab.
-    var isCreatingReferenceTab = false
-
-    /// Whether the command lens is visible in the reference pane window.
-    ///
-    /// This is separate from `showsCommandLens` because the reference pane window
-    /// has its own lens overlay positioned at the top-middle of the window.
-    var showsReferencePaneLens = false
-
-    /// Whether a reference pane window is open for this WindowState.
-    ///
-    /// Set by `WindowManager.createReferencePaneWindow()` and cleared when the window closes.
-    /// When true, the docked reference pane view should NOT force WebViews inactive
-    /// because the content is being displayed in the separate window.
-    var hasReferencePaneWindow = false
 
     // MARK: - Toast Notification State
 
@@ -819,41 +767,6 @@ final class WindowState {
         )
     }
     
-    // MARK: - Reference Pane Layout (Window-Specific)
-
-    // Per-window visual layout state for the reference pane.
-    //
-    // ## Architecture: Content vs Layout Separation
-    //
-    // ```
-    // ┌─────────────────────────────────────────────────────┐
-    // │ CONTENT (What)        → Per-Space (TabManager)      │
-    // │ • Reference tabs      → Stored in Space             │
-    // ├─────────────────────────────────────────────────────┤
-    // │ LAYOUT (How)          → Per-Window (WindowState)    │
-    // │ • Inspector collapsed → Here                        │
-    // │ • Docked width        → Here                        │
-    // │ • Controls locked     → Here                        │
-    // │ • Active ref tab ID   → Here                        │
-    // └─────────────────────────────────────────────────────┘
-    // ```
-    //
-    // ## Why Separate?
-    //
-    // Multiple windows can show the SAME space with DIFFERENT layouts:
-    // - Window A: Reference pane docked at 400px width
-    // - Window B: Reference pane docked at 500px width
-    // - Both showing the same Space with same reference tabs
-    //
-    // ## Separate Window Mode
-    //
-    // To detach the reference pane into a separate window, use
-    // `WindowManager.createReferencePaneWindow()`. This creates a new
-    // `ReferencePaneWindow` that shares the same WindowState.
-
-    /// Reference pane width when docked in inspector panel
-    var referencePaneDockedWidth: CGFloat = 400
-
     // MARK: - Computed Properties
 
     var showsCommandLens: Bool {
@@ -922,23 +835,6 @@ final class WindowState {
         clearFocus()
     }
 
-    /// Opens the command lens in the reference pane window.
-    ///
-    /// This shows the lens overlay in the reference pane window. The lens is
-    /// positioned at the top-middle of the window.
-    ///
-    /// - Parameter forNewTab: If true, the lens will create a new reference tab.
-    ///   If false (default), the lens will navigate the current reference tab.
-    func openReferencePaneLens(forNewTab: Bool = false) {
-        isCreatingReferenceTab = forNewTab
-        showsReferencePaneLens = true
-    }
-
-    /// Closes the command lens in the reference pane window.
-    func closeReferencePaneLens() {
-        showsReferencePaneLens = false
-        isCreatingReferenceTab = false
-    }
 
     private func clearFocus() {
         commandLensEntrance = nil
@@ -946,7 +842,6 @@ final class WindowState {
         webViewsShouldIgnoreAllEvents = false
         (window as? RefraxWindow)?.lockedFirstResponder = nil
         // Clear contextual creation flags when any lens closes
-        isCreatingReferenceTab = false
         layoutModeTargetPosition = nil
     }
     
@@ -978,10 +873,6 @@ final class WindowState {
         isSidebarCollapsed.toggle()
     }
 
-    /// Toggle inspector/reference pane visibility
-    func toggleInspector() {
-        isInspectorCollapsed.toggle()
-    }
 
     // MARK: - Detail Tray Actions
 
@@ -1125,9 +1016,6 @@ final class WindowState {
         // Persist as the last-active space so windowless surfaces (a standalone Glimpse)
         // can default to it after every window closes.
         browserState.lastActiveSpaceID = space.id
-        // Note: Reference tabs intentionally don't auto-select on space switch.
-        // The user must explicitly choose which reference tab to load via the
-        // empty state tab selector, matching the behavior for main tabs.
     }
     
     /// Removes references to a deleted tab from all navigation state.
@@ -1179,7 +1067,6 @@ final class WindowState {
         activeSpaceID = nil
         _activeTabIDs.removeAll()
         _previousActiveTabIDs.removeAll()
-        activeReferenceTabID = nil
         _activeLiveFavoriteTabID = nil
     }
 }

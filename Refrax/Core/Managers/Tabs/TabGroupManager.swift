@@ -204,7 +204,7 @@ final class TabGroupManager {
             }
         } else {
             // For unpinned groups, insert at top of unpinned section
-            let minUnpinnedTab = targetSpace.tabs.lazy.filter { !$0.isPinned && !$0.isReferenceTab }.map(\.position).min()
+            let minUnpinnedTab = targetSpace.tabs.lazy.filter { !$0.isPinned }.map(\.position).min()
             let minUnpinnedGroup = targetSpace.groups.lazy.filter { !$0.isPinned }.map(\.position).min()
             let minUnpinned = [minUnpinnedTab, minUnpinnedGroup].compactMap(\.self).min()
             if let minUnpinned {
@@ -833,7 +833,6 @@ final class TabGroupManager {
                     position: tab.position,
                     groupID: tab.groupID,
                     isPinned: tab.isPinned,
-                    isReferenceTab: tab.isReferenceTab,
                 )
             },
         )
@@ -912,9 +911,6 @@ final class TabGroupManager {
         }
 
         // Capture state for undo before modifying
-        let mainTabs = space.tabs.filter { !$0.isReferenceTab }
-        let referenceTabs = space.tabs.filter(\.isReferenceTab)
-
         let conversionInfo = ConvertedSpaceInfo(
             originalSpaceID: space.id,
             spaceName: space.name,
@@ -922,22 +918,12 @@ final class TabGroupManager {
             spaceColor: space.color,
             dataStoreMode: space.dataStoreMode,
             position: space.position,
-            tabInfos: mainTabs.map { tab in
+            tabInfos: space.tabs.map { tab in
                 ConvertedTabInfo(
                     tabID: tab.id,
                     position: tab.position,
                     groupID: tab.groupID,
                     isPinned: tab.isPinned,
-                    isReferenceTab: false,
-                )
-            },
-            referenceTabInfos: referenceTabs.map { tab in
-                ConvertedTabInfo(
-                    tabID: tab.id,
-                    position: tab.position,
-                    groupID: nil,
-                    isPinned: false,
-                    isReferenceTab: true,
                 )
             },
             targetSpaceID: targetSpace.id,

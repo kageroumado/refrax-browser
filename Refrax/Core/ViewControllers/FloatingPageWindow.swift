@@ -1,10 +1,8 @@
 import AppKit
 import QuartzCore
 
-/// Window for displaying the reference pane as a separate window.
-///
-/// This window hosts the reference pane content when the user detaches it from
-/// the main browser window. It uses a compact toolbar style similar to iOS Safari.
+/// A compact, toolbar-styled window that hosts a single page outside the main
+/// browser window, used by Glimpse and Reflected windows.
 ///
 /// ## Design
 ///
@@ -12,14 +10,7 @@ import QuartzCore
 /// - Titlebar has blur effect via CABackdropLayer
 /// - Content extends behind the toolbar (fullSizeContentView)
 /// - Uses page theme color when scrolled to top
-///
-/// ## Lifecycle
-///
-/// - Created when user clicks "Open in Window" in reference pane
-/// - Closed when user closes window or "Return to sidebar" is clicked
-/// - On close: Reference pane mode is set to `.hidden` (tabs preserved)
-/// - On return to dock: Reference pane mode is set to `.docked`
-final class ReferencePaneWindow: NSWindow, NSToolbarDelegate {
+final class FloatingPageWindow: NSWindow, NSToolbarDelegate {
     /// Minimum window width to accommodate toolbar with address bar.
     /// Practical minimum ensuring address bar is usable (~200px minimum).
     static let minimumWidth: CGFloat = 450
@@ -71,7 +62,7 @@ final class ReferencePaneWindow: NSWindow, NSToolbarDelegate {
     }
 
     private func setupToolbar() {
-        let toolbar = NSToolbar(identifier: "ReferencePaneToolbar")
+        let toolbar = NSToolbar(identifier: "FloatingPageToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         self.toolbar = toolbar

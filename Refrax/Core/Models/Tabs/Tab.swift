@@ -53,7 +53,6 @@ import SwiftData
 /// | Feature | Purpose |
 /// |---------|---------|
 /// | **Groups** | Color-coded project organization |
-/// | **Reference** | Side panel for persistent reference |
 ///
 /// ## Persistence
 ///
@@ -184,13 +183,6 @@ final class Tab {
     /// - `.live`: Global tab in favorites grid, visible across all spaces
     var status: TabStatus
 
-    /// Whether this tab appears in the reference pane.
-    ///
-    /// Reference tabs display in a persistent side panel (max 4 per space),
-    /// separate from the main tab list. Useful for documentation or
-    /// reference material while working.
-    var isReferenceTab: Bool
-
     /// Whether this tab has unread content.
     ///
     /// Set `true` when created in background (e.g., "Open in New Tab").
@@ -278,7 +270,6 @@ final class Tab {
     ///   - url: Initial URL to load. Defaults to `about:blank`.
     ///   - title: Initial page title. Defaults to "New Tab".
     ///   - status: The organizational status. Defaults to `.regular`.
-    ///   - isReferenceTab: Whether to show in reference pane. Defaults to `false`.
     ///   - groupID: Optional group to assign (only valid for `.regular` status).
     ///   - linkedBookmark: Bookmark this tab is linked to (for `.liveFavorite` status tabs).
     ///   - position: Position in tab list. Defaults to `0`.
@@ -287,7 +278,6 @@ final class Tab {
         url: URL = .blank,
         title: String = "New Tab",
         status: TabStatus = .regular,
-        isReferenceTab: Bool = false,
         groupID: UUID? = nil,
         linkedBookmark: Bookmark? = nil,
         position: Int = 0,
@@ -298,7 +288,6 @@ final class Tab {
         self.layoutConfigurationData = nil
         self.customName = nil
         self.status = status
-        self.isReferenceTab = isReferenceTab
         self.isUnread = false
         self.unreadFromBadge = false
         self.lastBadgeCount = nil

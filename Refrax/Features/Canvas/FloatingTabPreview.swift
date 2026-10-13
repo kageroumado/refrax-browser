@@ -13,7 +13,7 @@ struct FloatingTabPreview: View {
     @State private var livePage: WebPage?
 
     private var isMainContent: Bool {
-        tab.id == windowState.activeTabID || tab.isReferenceTab
+        tab.id == windowState.activeTabID
     }
 
     var body: some View {

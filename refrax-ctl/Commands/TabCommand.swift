@@ -27,7 +27,6 @@ struct TabCommand: AsyncParsableCommand {
             RecentlyClosed.self,
             Move.self,
             Ungroup.self,
-            ToRefPane.self,
             Reorder.self,
             MarkRead.self,
             MarkUnread.self,
@@ -575,28 +574,6 @@ struct TabCommand: AsyncParsableCommand {
 
         func run() async throws {
             try sendAndHandle(.tabRemoveFromGroup(.init(id: id)))
-        }
-    }
-
-    struct ToRefPane: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "to-refpane",
-            abstract: "Move a tab to the reference pane",
-            discussion: """
-            Moves the specified tab from the main area into the reference pane.
-            
-            Examples:
-              refrax-ctl tab to-refpane active        # Active tab
-              refrax-ctl tab to-refpane 3             # By index
-              refrax-ctl tab to-refpane "Hacker News" # By title/URL match
-            """,
-        )
-
-        @Argument(help: "Tab ref (ID, index, title, URL, or: active/first/last/next/prev)")
-        var id: String
-
-        func run() async throws {
-            try sendAndHandle(.tabMoveToRefPane(.init(id: id)))
         }
     }
 

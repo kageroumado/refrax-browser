@@ -27,7 +27,6 @@ struct PaneContentWrapper: View {
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
     @Environment(ReaderModeManager.self) private var readerModeManager
-    @Environment(\.webViewForcedInactive) private var isForcedInactive
 
     private enum Constants {
         static let linkPreviewPadding: CGFloat = 8
@@ -86,7 +85,7 @@ struct PaneContentWrapper: View {
         let isCurrentOwner = ownerID == windowID
         // When ownerID is nil, we should be active - we'll claim ownership via onChange.
         // This prevents the "empty frame" gap when another window releases ownership.
-        let isOwner = !isForcedInactive && (isCurrentOwner || ownerID == nil)
+        let isOwner = isCurrentOwner || ownerID == nil
 
         ZStack(alignment: .bottomLeading) {
             // The adapter - always rendered for position stability
@@ -162,7 +161,7 @@ struct PaneContentWrapper: View {
         .onChange(of: webPage?.ownerWindowID) { oldValue, newValue in
             // When ownership is released (becomes nil), immediately claim it.
             // This prevents the visual gap when another window closes and releases ownership.
-            guard !isForcedInactive, let webPage, newValue == nil, oldValue != nil else { return }
+            guard let webPage, newValue == nil, oldValue != nil else { return }
             webPage.claimOwnership(for: windowState)
         }
     }
@@ -221,7 +220,7 @@ struct PaneContentWrapper: View {
         // window of ours is key (the app is in the background). Leaving a stale owner
         // in place puts the adapter into portal mode over a layer that is attached
         // nowhere, which renders as a blank pane.
-        if !isForcedInactive, ownerID != windowID, ownerID == nil || isWindowKey || NSApp.keyWindow == nil {
+        if ownerID != windowID, ownerID == nil || isWindowKey || NSApp.keyWindow == nil {
             webPage.claimOwnership(for: windowState)
         }
 
@@ -256,12 +255,7 @@ struct PaneContentWrapper: View {
         historyActivityManager.unregisterPage(tabPageID, windowID: windowID)
         page.onBecameHidden()
 
-        // Release ownership unless a reference pane window is open.
-        // The separate window shares the same WindowState, so releasing here
-        // would clear ownership needed by the separate window's view.
-        if !windowState.hasReferencePaneWindow {
-            page.releaseOwnership(for: windowState)
-        }
+        page.releaseOwnership(for: windowState)
 
         // Clean up link hover callback only if we set it
         if page.ownerWindowID == nil || page.ownerWindowID == windowID {
@@ -272,9 +266,7 @@ struct PaneContentWrapper: View {
     }
 
     private func handleWindowBecameKey(_ notification: Notification) {
-        // Don't claim ownership if forced inactive
-        guard !isForcedInactive,
-              let webPage, let tabPage,
+        guard let webPage, let tabPage,
               let keyWindow = notification.object as? NSWindow,
               keyWindow === windowState.window else {
             return
