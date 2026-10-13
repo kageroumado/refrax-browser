@@ -17,18 +17,18 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
         hasher.combine(id)
     }
 
-    /// Rename, Get Info, Preview, Pin, Favorites, Mark Unread, Duplicate.
+    /// Rename, Get Info, Preview, Favorite, Mark Unread, Duplicate.
     static let tab = MenuGroupID(id: "tab", title: "Tab", symbol: "rectangle", rank: 0)
     /// Look, Open in New Tab, Open Link in New Window.
     static let open = MenuGroupID(id: "open", title: "Open", symbol: "arrow.up.right.square", rank: 10)
-    /// Go to Home, Set Home, history entries.
+    /// A favorite's Go to Home and Set Current Page as Home, history entries.
     static let go = MenuGroupID(id: "go", title: "Go", symbol: "house", rank: 20)
     static let reload = MenuGroupID(id: "reload", title: "Reload", symbol: "arrow.clockwise", rank: 30)
     /// Mute Tab, Mute Other Tabs.
     static let media = MenuGroupID(id: "media", title: "Sound", symbol: "speaker.wave.2", rank: 35)
     /// Groups, spaces, floating selection.
     static let move = MenuGroupID(id: "move", title: "Move", symbol: "folder", rank: 40)
-    /// Floating placement: pinned, compact, region, zoom.
+    /// Floating placement: kept visible, compact, region, zoom.
     static let preview = MenuGroupID(id: "preview", title: "Preview", symbol: "rectangle.on.rectangle", rank: 50)
     static let copy = MenuGroupID(id: "copy", title: "Copy", symbol: "doc.on.doc", rank: 60)
     static let share = MenuGroupID(id: "share", title: "Share", symbol: "square.and.arrow.up", rank: 70)

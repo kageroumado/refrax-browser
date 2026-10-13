@@ -65,14 +65,14 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     /// favorite columns at their own heights, a gap for every divider and for the grip, and
     /// the content insets.
     @MainActor
-    static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int) -> CGFloat {
+    static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int, favoritesOverflow: Bool = false) -> CGFloat {
         let layout = ControlIslandRailLayout(visibleItems: items)
         let bottom = gripBottomInset(aboveRadius: layout.rows.last == .spaces ? spaceRowHeight / 2 : 0)
         return layout.elements.reduce(contentInset + bottom) { height, element in
             switch element {
             case .row(.windowControls): height + rowHeight * 3
             case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
-            case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount)
+            case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount, overflows: favoritesOverflow)
             case .row: height + rowHeight
             case .line, .gap: height + sectionGap
             case .grip: height + gripGap + gripSize.height

@@ -23,8 +23,13 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         let query = context.input.lowercased()
         var results: [CommandLensSuggestion] = []
 
+        let favorite: (String, String, String, AppAction) = if windowState?.activeTab?.isFavorite == true {
+            ("remove from favorites unfavorite unstar", "Remove from Favorites", "star.slash", .favoriteCurrentPage)
+        } else {
+            ("favorite current page star add to favorites every space", "Favorite", "star", .favoriteCurrentPage)
+        }
         let pageActions: [(String, String, String, AppAction)] = [
-            ("favorite current page", "Favorite Current Page", "star", .favoriteCurrentPage),
+            favorite,
             ("return look go back activity", "Return to Activity", "arrow.uturn.backward", .returnFromLook),
             ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
             ("mute this tab silence sound quiet audio", "Mute This Tab", "speaker.slash", .setCurrentTabMuted(true)),
@@ -206,7 +211,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         var results: [CommandLensSuggestion] = []
         // A locked space's name stays out of the suggestions until it is unlocked.
         let lock = tabs.state.spaceLockManager
-        if let tab = windowState?.activeTab, !tab.isLiveFavorite, let current = tab.space, !lock.requiresAuth(for: current) {
+        if let tab = windowState?.activeTab, !tab.isFavorite, let current = tab.space, !lock.requiresAuth(for: current) {
             for space in tabs.spaceManager.spaces where space.id != current.id && !lock.requiresAuth(for: space) {
                 let name = space.name.lowercased()
                 if matches(["move to \(name)", "move tab to \(name)", "send to \(name)"]) {

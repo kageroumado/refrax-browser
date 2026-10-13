@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// Live favorite destinations using the compact sidebar's favicon artwork and cell sizing.
+/// The favorites column: the favorites that fit, as site icons in every space, then a "more"
+/// chevron when the grid holds more than the column shows. The chevron opens the grid.
 struct ControlIslandFavoriteTabs: View {
+    /// Favorites with a tab, in favorites order.
     let favorites: [FavoriteItem]
+    /// Whether the grid holds favorites without a tab, which the column leaves out.
+    let overflows: Bool
+    let onShowAll: () -> Void
     var focusedControl: FocusState<String?>.Binding
 
     @Environment(WindowState.self) private var windowState
@@ -12,51 +17,52 @@ struct ControlIslandFavoriteTabs: View {
     @State private var draggedID: UUID?
     @State private var dragSessionID: DragSession.ID?
     @State private var dropPoint: CGPoint?
-    @State private var scrollOffset: CGFloat = 0
-    @State private var scrollPosition = SwiftUI.ScrollPosition(idType: UUID.self)
-    @State private var autoScrollTask: Task<Void, Never>?
     @Environment(\.appearsActive) private var appearsActive
 
     private enum Layout {
         static let maximumVisible = 4
-        static let edgeZone: CGFloat = 22
-        static let scrollStep: CGFloat = 8
+        static let moreHeight: CGFloat = 20
+        static let moreSymbolSize: CGFloat = 9
         static let insertionHeight: CGFloat = 2
         static let insertionWidth: CGFloat = 28
     }
 
-    static func height(for count: Int) -> CGFloat {
+    /// The column's height for `count` favorites with tabs, with the chevron when the grid holds more.
+    static func height(for count: Int, overflows: Bool = false) -> CGFloat {
         CGFloat(min(count, Layout.maximumVisible)) * CompactTabButton.Layout.buttonHeight
+            + (overflows || count > Layout.maximumVisible ? Layout.moreHeight : 0)
+    }
+
+    private var visible: ArraySlice<FavoriteItem> {
+        favorites.prefix(Layout.maximumVisible)
+    }
+
+    private var showsMore: Bool {
+        overflows || favorites.count > Layout.maximumVisible
     }
 
     var body: some View {
         let selectedID = windowState.activeTabID
-        return ScrollView(.vertical) {
+        return VStack(spacing: 0) {
             VStack(spacing: 0) {
-                ForEach(favorites) { favorite in
+                ForEach(visible) { favorite in
                     if let tab = favorite.tab {
                         favoriteButton(favorite, tab: tab, selected: tab.id == selectedID)
                     }
                 }
             }
-            .scrollTargetLayout()
+            .overlay(alignment: .top) { insertionIndicator }
+            .onDrop(of: [ControlIslandFavoriteDrag.contentType], delegate: ControlIslandFavoriteDropDelegate(
+                isActive: draggedID != nil,
+                onUpdate: { dropPoint = $0 },
+                onExit: { dropPoint = nil },
+                onDrop: commitDrop,
+            ))
+            if showsMore {
+                moreButton
+            }
         }
-        .scrollPosition($scrollPosition)
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.automatic)
-        .frame(height: Self.height(for: favorites.count))
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
-            scrollOffset = offset
-        }
-        .overlay(alignment: .top) { insertionIndicator }
-        .onDrop(of: [ControlIslandFavoriteDrag.contentType], delegate: ControlIslandFavoriteDropDelegate(
-            isActive: draggedID != nil,
-            onUpdate: updateDrop,
-            onExit: clearDrop,
-            onDrop: commitDrop,
-        ))
-        .onAppear(perform: revealSelection)
-        .onChange(of: windowState.activeTabID) { revealSelection() }
+        .frame(height: Self.height(for: favorites.count, overflows: overflows))
         .onChange(of: favorites.map(\.id)) { finishDrag() }
         .onChange(of: windowState.controlIsland.dismissalRequest) { finishDrag() }
         .onChange(of: appearsActive) {
@@ -69,16 +75,27 @@ struct ControlIslandFavoriteTabs: View {
         .accessibilityLabel("Favorite tabs")
     }
 
-    private func revealSelection() {
-        guard draggedID == nil,
-              let favorite = favorites.first(where: { $0.tab?.id == windowState.activeTabID }) else { return }
-        scrollPosition.scrollTo(id: favorite.id)
+    private var moreButton: some View {
+        Button(action: onShowAll) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: Layout.moreSymbolSize, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: Layout.moreHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable()
+        .focused(focusedControl, equals: "All Favorites")
+        .focusEffectDisabled()
+        .help("All Favorites")
+        .accessibilityLabel("All Favorites")
     }
 
     private var insertionIndex: Int? {
         guard draggedID != nil, let dropPoint else { return nil }
         let rowHeight = CompactTabButton.Layout.buttonHeight
-        return min(favorites.count, max(0, Int((dropPoint.y + scrollOffset + rowHeight / 2) / rowHeight)))
+        return min(visible.count, max(0, Int((dropPoint.y + rowHeight / 2) / rowHeight)))
     }
 
     @ViewBuilder
@@ -88,33 +105,11 @@ struct ControlIslandFavoriteTabs: View {
                 .fill(.primary)
                 .frame(width: Layout.insertionWidth, height: Layout.insertionHeight)
                 .offset(y: min(
-                    Self.height(for: favorites.count) - Layout.insertionHeight,
-                    max(0, CGFloat(index) * CompactTabButton.Layout.buttonHeight - scrollOffset),
+                    CGFloat(visible.count) * CompactTabButton.Layout.buttonHeight - Layout.insertionHeight,
+                    max(0, CGFloat(index) * CompactTabButton.Layout.buttonHeight),
                 ))
                 .allowsHitTesting(false)
         }
-    }
-
-    private func updateDrop(_ point: CGPoint) {
-        dropPoint = point
-        guard autoScrollTask == nil else { return }
-        autoScrollTask = Task(name: "Scroll favorite reorder destination") {
-            while !Task.isCancelled, draggedID != nil, let point = dropPoint {
-                let height = Self.height(for: favorites.count)
-                let direction: CGFloat = point.y < Layout.edgeZone ? -1 : (point.y > height - Layout.edgeZone ? 1 : 0)
-                let maximum = max(0, CGFloat(favorites.count) * CompactTabButton.Layout.buttonHeight - height)
-                if direction != 0 {
-                    scrollPosition.scrollTo(y: min(maximum, max(0, scrollOffset + direction * Layout.scrollStep)))
-                }
-                try? await Task.sleep(for: .milliseconds(40))
-            }
-        }
-    }
-
-    private func clearDrop() {
-        autoScrollTask?.cancel()
-        autoScrollTask = nil
-        dropPoint = nil
     }
 
     private func commitDrop(_ point: CGPoint) -> Bool {
@@ -128,7 +123,7 @@ struct ControlIslandFavoriteTabs: View {
     }
 
     private func finishDrag() {
-        clearDrop()
+        dropPoint = nil
         draggedID = nil
         dragSessionID = nil
         windowState.controlIsland.isReorderingFavorites = false
@@ -155,7 +150,6 @@ struct ControlIslandFavoriteTabs: View {
               favorites.indices.contains(index + offset) else { return }
         let nextIndex = offset < 0 ? index - 1 : index + 2
         bookmarks.moveLiveFavorite(id, before: favorites.indices.contains(nextIndex) ? favorites[nextIndex].id : nil)
-        scrollPosition.scrollTo(id: id)
     }
 
     private func favoriteButton(_ favorite: FavoriteItem, tab: Tab, selected: Bool) -> some View {

@@ -8,32 +8,22 @@ struct ControlIslandTabActions {
     let bookmarks: BookmarksManager
 
     var isFavorite: Bool {
-        tab.isLiveFavorite && tab.linkedBookmark?.isFavorite == true
+        tab.isFavorite && tab.linkedBookmark?.isFavorite == true
     }
 
     var canFavorite: Bool {
-        isFavorite || (tab.space != nil && tabs.state.liveFavoriteTabs.count < bookmarks._maxLiveFavoriteTabs)
+        isFavorite || (tab.space != nil && tabs.state.favoriteTabs.count < bookmarks._maxLiveFavoriteTabs)
     }
 
+    /// Favorite, or Remove from Favorites. The tab keeps its identity and floating place
+    /// either way; a removed favorite moves into the window's active space.
     func toggleFavorite() {
         guard canFavorite else { return }
         windowState.pageVisit.isTransformingIdentity = true
         defer { windowState.pageVisit.isTransformingIdentity = false }
-        if isFavorite, let bookmark = tab.linkedBookmark {
-            bookmarks.removeFromFavorites(bookmark, in: windowState)
-            windowState.showToast("Removed from Favorites · \(tab.displayTitle)")
-        } else {
-            let placement = tab.boardFrameData
-            guard let id = tabs.convertTabToFavorite(tab, mode: .liveFavorite, in: windowState),
-                  let favorite = tabs.state.liveFavoriteTab(for: id) else { return }
-            favorite.boardFrameData = placement
-            windowState.pageVisit.replaceIdentity(of: tab.id, with: favorite)
-            if let layout = windowState.floatingPlacements.removeValue(forKey: tab.id) {
-                windowState.floatingPlacements[favorite.id] = layout
-            }
-            windowState.showToast("Added to Favorites · \(favorite.displayTitle)")
-        }
-        bookmarks.refreshFavoritesCache()
+        let wasFavorite = isFavorite
+        guard tabs.toggleFavorite(tab, in: windowState) else { return }
+        windowState.showToast("\(wasFavorite ? "Removed from Favorites" : "Added to Favorites") · \(tab.displayTitle)")
     }
 
     func copyLink() {
@@ -49,7 +39,7 @@ struct ControlIslandTabActions {
     @discardableResult
     func duplicate() -> Tab? {
         let duplicate: Tab
-        if tab.isLiveFavorite {
+        if tab.isFavorite {
             guard let space = windowState.activeSpace else { return nil }
             duplicate = tabs.createTab(url: tab.activePage.url, in: space, makeActive: false)
             duplicate.activePage.title = tab.activePage.title

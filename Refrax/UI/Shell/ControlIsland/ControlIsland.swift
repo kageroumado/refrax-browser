@@ -49,11 +49,16 @@ struct ControlIsland: View {
     private var favorites: [FavoriteItem] {
         bookmarks.favorites.filter { $0.tab != nil }
     }
+    /// The grid holds favorites without a tab (shortcuts, folders, app shortcuts), which the
+    /// column reaches through its chevron.
+    private var favoritesOverflow: Bool {
+        bookmarks.favorites.count > favorites.count
+    }
     private var visibleItems: [ControlIslandItem] {
         state.configuration.visibleItems.filter { item in
             switch item {
             case .spaces: !spaces.spaces.isEmpty
-            case .favoriteTabs: !favorites.isEmpty
+            case .favoriteTabs: !bookmarks.favorites.isEmpty
             case .page: windowState.activePage != nil
             case .updates: updateIsReady
             case .nowPlaying: mediaControls.hasActiveMedia
@@ -74,7 +79,9 @@ struct ControlIsland: View {
     }
 
     private var height: CGFloat {
-        Layout.railHeight(items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count)
+        Layout.railHeight(
+            items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count, favoritesOverflow: favoritesOverflow,
+        )
     }
 
     /// The row keyboard focus lands on from View → Focus Browser Controls: the page icon, then the first focusable row.
@@ -442,7 +449,9 @@ struct ControlIsland: View {
         case .spaces:
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
-            ControlIslandFavoriteTabs(favorites: favorites, focusedControl: $focusedControl)
+            ControlIslandFavoriteTabs(
+                favorites: favorites, overflows: favoritesOverflow, onShowAll: { showsFavorites = true }, focusedControl: $focusedControl,
+            )
         case .reload:
             control(
                 reloadTitle,
