@@ -136,9 +136,12 @@ struct ControlIsland: View {
 
     /// The space color is drawn as the rail's own layer under the symbols, so it can fade with
     /// the glass: a tint inside the glass would drop to white the moment the glass starts to clear.
+    /// The window's resolved background, the same color the sidebar tints its blur with: the
+    /// space color, the website color, or the custom color, whichever the window settings resolve.
     private var spaceTint: Color {
-        guard state.configuration.tintsWithSpaceColor, let color = windowState.activeSpace?.color else { return .clear }
-        return color.opacity(Layout.spaceTintOpacity)
+        let background = windowState.resolvedBackground
+        guard state.configuration.tintsWithSpaceColor, background.source != .none else { return .clear }
+        return Color(background.color.color).opacity(Layout.spaceTintOpacity)
     }
     private var restAnimation: Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.4)
@@ -215,7 +218,7 @@ struct ControlIsland: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .semibold))
+        .font(.system(size: 13, weight: .medium))
         .buttonStyle(ControlIslandButtonStyle())
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
@@ -578,8 +581,9 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    /// A 3 × 18-point capsule closing the rail: the handle that moves the controls, one content
-    /// inset below the last row and one above the rail's edge. It fades with the glass at rest.
+    /// A 24 × 4-point capsule closing the rail, the grabber macOS and iOS use for things that
+    /// move: one content inset below the last row and one above the rail's edge. It fades with the
+    /// glass at rest.
     private var grip: some View {
         Capsule()
             .fill(.secondary)

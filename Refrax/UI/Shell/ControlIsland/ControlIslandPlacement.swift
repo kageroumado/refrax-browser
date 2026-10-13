@@ -34,7 +34,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let highlightGlowRadius: CGFloat = 8
     /// The handle in the gap under the space picker that moves the controls: a 3 × 18-point
     /// vertical capsule, whose hit area reaches into the padding of its neighbors.
-    static let gripSize = CGSize(width: 3, height: 18)
+    static let gripSize = CGSize(width: 24, height: 4)
 
     /// The rail's height: one row per action, three for the window controls, the space and
     /// favorite columns at their own heights, a gap for every divider and for the grip, and

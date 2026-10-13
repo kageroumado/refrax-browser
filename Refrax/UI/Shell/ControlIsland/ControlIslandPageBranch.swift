@@ -152,21 +152,21 @@ struct ControlIslandPageBranch: View {
 
     // MARK: - Controls
 
-    /// Reload, Favorite, Copy Address (its slot reserved, shown while the card is hovered), and
-    /// the page options.
+    /// Copy Address (its slot reserved at the leading edge, shown while the card is hovered),
+    /// Reload, Favorite, and the page options.
     private func controls(_ tab: Tab) -> some View {
         let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
         return HStack(spacing: Layout.controlSpacing) {
-            reloadControl
-            control(actions.isFavorite ? "Remove from Favorites" : "Add to Favorites", symbol: actions.isFavorite ? "star.fill" : "star") {
-                actions.toggleFavorite()
-            }
-            .disabled(!actions.canFavorite)
             copyControl(actions)
                 .opacity(showsCopyAddress ? 1 : 0)
                 .allowsHitTesting(showsCopyAddress)
                 .accessibilityHidden(!showsCopyAddress)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsCopyAddress)
+            reloadControl
+            control(actions.isFavorite ? "Remove from Favorites" : "Add to Favorites", symbol: actions.isFavorite ? "star.fill" : "star") {
+                actions.toggleFavorite()
+            }
+            .disabled(!actions.canFavorite)
             optionsControl(tab)
         }
     }

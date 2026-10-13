@@ -219,7 +219,7 @@ struct ControlIslandTests {
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
         let grip = ControlIslandPlacement.contentInset + ControlIslandPlacement.gripSize.height
         #expect(height == ControlIslandPlacement.contentInset * 2 + rows + gaps + spaces + grip)
-        #expect(ControlIslandPlacement.gripSize == CGSize(width: 3, height: 18))
+        #expect(ControlIslandPlacement.gripSize == CGSize(width: 24, height: 4))
     }
 
     @Test @MainActor

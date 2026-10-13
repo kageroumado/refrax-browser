@@ -56,8 +56,8 @@ struct ControlIslandCustomizationSheet: View {
                 Divider()
                 Toggle("Rest when the pointer is away or still", isOn: $restsWhenIdle)
                     .help("The glass clears and the symbols fade; moving toward the controls brings them back")
-                Toggle("Carry the space color", isOn: $tintsWithSpaceColor)
-                    .help("The glass takes on the active space's color")
+                Toggle("Carry the window color", isOn: $tintsWithSpaceColor)
+                    .help("The glass takes on the window background color: the space, website, or custom color chosen above")
                 Toggle("Move aside when covering a page control", isOn: $avoidsPageControls)
                     .help("Makes a small adjustment after a page loads, while the pointer is away")
                 HStack {
