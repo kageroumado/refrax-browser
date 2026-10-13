@@ -66,6 +66,8 @@ struct ControlIslandPageBranch: View {
             HStack(spacing: Layout.identityGap) {
                 if let tab {
                     identity(tab)
+                    // Beside the identity, outside its button, so a symbol's click acts on the state.
+                    TabStateSymbols(tab: tab)
                     controls(tab)
                 }
             }
