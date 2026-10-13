@@ -142,9 +142,9 @@ final class Bookmark {
     @Relationship(inverse: \BookmarkFolder.bookmarks)
     var folder: BookmarkFolder?
 
-    /// The live favorite tab linked to this bookmark.
+    /// The favorite tab linked to this bookmark; this bookmark's URL is its home.
     ///
-    /// Set when a `.liveFavorite` tab is created for this bookmark.
+    /// Set when the favorite's tab is created, on first need or by favoriting an open tab.
     /// The inverse of ``Tab/linkedBookmark``.
     var linkedTab: Tab?
     
@@ -335,11 +335,11 @@ final class Bookmark {
 ///
 /// Determines what happens when a favorited bookmark is clicked in the sidebar grid.
 enum FavoriteMode: String, Codable {
-    /// Creates/activates a persistent global tab visible across all spaces.
+    /// A favorite: a tab in every space whose home is this bookmark's URL.
     ///
-    /// Live favorites are actual `Tab` instances stored in `BrowserState.liveFavoriteTabs`.
-    /// They appear in the favorites grid as tiles and when clicked, switch to that tab
-    /// while staying in the current space.
+    /// Its tab (`status == .favorite`) is stored in `BrowserState.favoriteTabs`. It appears
+    /// in the island's favorites column and, when clicked, switches to that tab while
+    /// staying in the current space.
     ///
     /// This is the default mode for favorited bookmarks.
     case liveFavorite

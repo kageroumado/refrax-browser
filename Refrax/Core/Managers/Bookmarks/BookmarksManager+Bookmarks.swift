@@ -124,7 +124,7 @@ extension BookmarksManager {
 
         if let url {
             bookmark.updateURL(url)
-            if let tab = tabManager.state.liveFavoriteTab(for: bookmark.id) {
+            if let tab = tabManager.state.favoriteTab(for: bookmark.id) {
                 tab.activePage.url = url
             }
         }

@@ -61,8 +61,8 @@ struct PageImportanceScorer {
         /// Form has unsaved user input
         static let hasFormData: Int = 500
 
-        /// Tab is pinned by user
-        static let pinned: Int = 300
+        /// Tab is a favorite
+        static let favorite: Int = 300
 
         /// Tab was visible within last 5 minutes
         static let recentlyVisible: Int = 200
@@ -164,10 +164,9 @@ struct PageImportanceScorer {
             factors.append("return-destination")
         }
 
-        // Pinned status
-        if let tab, tab.isPinned {
-            score += Weight.pinned
-            factors.append("pinned")
+        if let tab, tab.isFavorite {
+            score += Weight.favorite
+            factors.append("favorite")
         }
 
         // Recent visibility
@@ -231,10 +230,9 @@ struct PageImportanceScorer {
             factors.append("floating-preview")
         }
 
-        // Pinned status
-        if let tab, tab.isPinned {
-            score += Weight.pinned
-            factors.append("pinned")
+        if let tab, tab.isFavorite {
+            score += Weight.favorite
+            factors.append("favorite")
         }
 
         // Recent visibility

@@ -225,14 +225,7 @@ extension MenuBarManager {
     func closeTab(_: Any?) {
         guard let controller = activeWindowController,
               let tab = controller.windowState.focusedPage?.tab ?? controller.windowState.activeTab else { return }
-        if tab.status == .liveFavorite {
-            windowManager.tabManager.closeLiveFavoriteTab(tab)
-            if controller.windowState.activeTabID == tab.id {
-                controller.windowState.clearActiveLiveFavorite()
-            }
-        } else {
-            windowManager.tabManager.closeTab(tab)
-        }
+        windowManager.tabManager.closeTab(tab)
     }
 
     @objc
@@ -470,7 +463,6 @@ extension MenuBarManager {
                             url: url,
                             in: space,
                             groupID: group.id,
-                            isPinned: exportedTab.isPinned,
                             makeActive: false,
                             loadImmediately: false,
                         )
@@ -490,7 +482,6 @@ extension MenuBarManager {
                 let tab = tabManager.createTab(
                     url: url,
                     in: space,
-                    isPinned: exportedTab.isPinned,
                     makeActive: false,
                     loadImmediately: false,
                 )

@@ -139,7 +139,7 @@ extension TabCanvasManager {
 
     /// Groups the selected cards of this space, and opens the new group's name for editing.
     func groupFloatingSelection() {
-        let members = floatingTabs.filter { selectedFloatingTabIDs.contains($0.id) && !$0.isLiveFavorite && $0.space?.id == windowState.activeSpaceID }
+        let members = floatingTabs.filter { selectedFloatingTabIDs.contains($0.id) && !$0.isFavorite && $0.space?.id == windowState.activeSpaceID }
         guard members.count > 1, let group = try? groupManager.createGroup(in: windowState.activeSpace, name: "Group", color: Self.nextGroupColor()) else { return }
         for tab in members {
             groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
@@ -165,7 +165,7 @@ extension TabCanvasManager {
     func addToFloatingGroup(_ tabs: [Tab], group: TabGroup) {
         let area = floatingArea
         let outline = floatingGroupItems(in: area).flatMap { [$0] + $0.children }.first { $0.id == group.id }?.outline
-        for tab in tabs where tab.group?.id != group.id && !tab.isLiveFavorite {
+        for tab in tabs where tab.group?.id != group.id && !tab.isFavorite {
             groupManager.moveTabToGroup(tab, group: group, in: group.space)
             if storedFloatingPlacement(for: tab) == nil, let outline {
                 var placement = floatingPlacement(for: tab)
@@ -291,7 +291,7 @@ extension TabCanvasManager {
 
     /// Selects the cards a released lasso encircles; an empty catch clears the selection.
     func finishFloatingLasso(_ lasso: LassoSelection, in area: CGRect) {
-        let candidates = visibleFloatingTabs.filter { !$0.isLiveFavorite && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID }
+        let candidates = visibleFloatingTabs.filter { !$0.isFavorite && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID }
         selectedFloatingTabIDs = lasso.caught(candidates.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) })
     }
 
@@ -313,7 +313,7 @@ extension TabCanvasManager {
     }
 
     func moveFloatingSelection(to space: Space) {
-        let moving = selectedFloatingTabs.filter { !$0.isLiveFavorite }
+        let moving = selectedFloatingTabs.filter { !$0.isFavorite }
         selectedFloatingTabIDs = []
         tabManager.moveTabs(moving, to: space)
     }

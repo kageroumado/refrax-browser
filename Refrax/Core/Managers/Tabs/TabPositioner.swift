@@ -23,7 +23,7 @@ import Foundation
 /// let positioner = TabPositioner()
 ///
 /// // Get insertion position for a new tab
-/// let position = positioner.insertionPosition(for: space, isPinned: false, strategy: .append)
+/// let position = positioner.insertionPosition(for: space, strategy: .append)
 ///
 /// // Normalize after structural changes
 /// positioner.normalizeIfNeeded(space: space, force: false)
@@ -44,10 +44,10 @@ struct TabPositioner {
 
     /// Strategy for determining where to insert a new item.
     enum InsertionStrategy {
-        /// Prepend at the beginning of the relevant section (below pinned for unpinned tabs).
+        /// Prepend at the beginning of the relevant section (below the pinned groups).
         case prepend
 
-        /// Append at the end of the relevant section (pinned or unpinned).
+        /// Append at the end of the relevant section.
         case append
 
         /// Insert after the currently active tab (if applicable).
@@ -66,24 +66,22 @@ struct TabPositioner {
     ///
     /// - Parameters:
     ///   - space: The space to insert into.
-    ///   - isPinned: Whether the tab will be pinned.
     ///   - groupID: Optional group to insert into.
     ///   - strategy: The insertion strategy to use.
     ///   - activeTabID: The currently active tab ID (for `.afterActive` strategy).
     /// - Returns: The calculated position and array index.
     func insertionPosition(
         for space: Space,
-        isPinned: Bool,
         groupID: UUID? = nil,
         strategy: InsertionStrategy = .prepend,
         activeTabID: UUID? = nil,
     ) -> (position: Int, index: Int) {
         switch strategy {
         case .prepend:
-            return prependPosition(in: space, isPinned: isPinned, groupID: groupID)
+            return prependPosition(in: space, groupID: groupID)
 
         case .append:
-            return appendPosition(in: space, isPinned: isPinned, groupID: groupID)
+            return appendPosition(in: space, groupID: groupID)
 
         case .afterActive:
             if let activeTabID,
@@ -93,31 +91,19 @@ struct TabPositioner {
                 let newPosition = activeTab.position + Self.groupMultiplier / 2
                 return (newPosition, newIndex)
             }
-            return appendPosition(in: space, isPinned: isPinned, groupID: groupID)
+            return appendPosition(in: space, groupID: groupID)
 
         case let .atPosition(position):
             let index = space.tabs.firstIndex { $0.position >= position } ?? space.tabs.count
             return (position, index)
 
         case .forceNormalize:
-            let result = appendPosition(in: space, isPinned: isPinned, groupID: groupID)
-            return result
+            return appendPosition(in: space, groupID: groupID)
         }
     }
 
     /// Calculates append position at the end of a section.
-    private func appendPosition(in space: Space, isPinned: Bool, groupID: UUID?) -> (position: Int, index: Int) {
-        if isPinned {
-            let pinnedTabs = space.tabs.filter(\.isPinned)
-            let index = pinnedTabs.count
-            let position: Int = if let lastPinned = pinnedTabs.last {
-                lastPinned.position + Self.rootMultiplier
-            } else {
-                Self.rootMultiplier
-            }
-            return (position, index)
-        }
-
+    private func appendPosition(in space: Space, groupID: UUID?) -> (position: Int, index: Int) {
         if let groupID {
             let groupTabs = space.tabs.filter { $0.groupID == groupID }
             if let group = space.groups.first(where: { $0.id == groupID }) {
@@ -141,21 +127,9 @@ struct TabPositioner {
 
     /// Calculates prepend position at the beginning of a section.
     ///
-    /// For unpinned tabs, this inserts at the top of the list (right after pinned tabs).
+    /// For ungrouped tabs, this inserts at the top of the list (right after the pinned groups).
     /// This matches Arc's behavior where new tabs appear at the top of the tab list.
-    private func prependPosition(in space: Space, isPinned: Bool, groupID: UUID?) -> (position: Int, index: Int) {
-        if isPinned {
-            // For pinned tabs, prepend means position 0 (before all pinned)
-            let pinnedTabs = space.tabs.filter(\.isPinned)
-            let index = 0
-            let position: Int = if let firstPinned = pinnedTabs.first {
-                firstPinned.position / 2
-            } else {
-                Self.rootMultiplier
-            }
-            return (position, index)
-        }
-
+    private func prependPosition(in space: Space, groupID: UUID?) -> (position: Int, index: Int) {
         if let groupID {
             // For grouped tabs, prepend to the beginning of the group
             let groupTabs = space.tabs.filter { $0.groupID == groupID }
@@ -263,7 +237,9 @@ struct TabPositioner {
         }
 
         rootItems.sort { lhs, rhs in
-            if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned
+            }
             return lhs.position < rhs.position
         }
 
@@ -304,7 +280,7 @@ struct TabPositioner {
 
         var isPinned: Bool {
             switch self {
-            case let .tab(tab): tab.isPinned
+            case let .tab(tab): tab.isInPinnedGroup
             case let .group(group): group.isPinned
             }
         }
@@ -384,7 +360,7 @@ struct TabPositioner {
         var lastUnpinnedPosition = Int.min
 
         for tab in space.tabs.sorted(by: { $0.position < $1.position }) {
-            if tab.isPinned {
+            if tab.isInPinnedGroup {
                 if tab.position <= lastPinnedPosition {
                     return false
                 }

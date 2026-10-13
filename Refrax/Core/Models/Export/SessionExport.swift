@@ -92,9 +92,6 @@ struct ExportedTab: Codable, Sendable, Equatable {
 
     /// User-provided custom name, if any.
     let customName: String?
-
-    /// Whether the tab is pinned.
-    let isPinned: Bool
 }
 
 // MARK: - Export Helpers
@@ -125,7 +122,7 @@ extension ExportedSpace {
 
         // Separate grouped and ungrouped tabs
         let ungroupedFiltered = allTabs.filter { tab in
-            tab.groupID == nil && tab.status != TabStatus.liveFavorite
+            tab.groupID == nil && tab.status != TabStatus.favorite
         }
         let ungroupedSorted = ungroupedFiltered.sorted { $0.position < $1.position }
         let ungroupedTabs = ungroupedSorted.map { ExportedTab(tab: $0) }
@@ -160,6 +157,5 @@ extension ExportedTab {
         self.url = tab.activePage.url.absoluteString
         self.title = tab.activePage.title
         self.customName = tab.customName
-        self.isPinned = tab.isPinned
     }
 }

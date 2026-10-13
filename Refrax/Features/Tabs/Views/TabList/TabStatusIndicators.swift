@@ -103,9 +103,9 @@ struct TabStatusIndicators: View {
         tab.isUnread
     }
 
-    /// Archive warning (pinned and live favorite tabs are exempt).
+    /// Archive warning (favorites are exempt).
     private var showArchiveWarningIndicator: Bool {
-        !tab.isPinned && !tab.isLiveFavorite && env.autoArchiveManager.isAtArchiveThreshold(tab)
+        !tab.isFavorite && env.autoArchiveManager.isAtArchiveThreshold(tab)
     }
 
     private var showUnsavedFormIndicator: Bool {

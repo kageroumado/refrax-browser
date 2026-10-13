@@ -230,6 +230,7 @@ extension MenuBarManager {
         viewMenu.addItem(keepItem)
         let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
         favoriteItem.target = self
+        favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue
         viewMenu.addItem(favoriteItem)
         let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
         controlsItem.target = self
@@ -475,6 +476,12 @@ extension MenuBarManager {
             let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
             engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
             engineItem.isHidden = target == nil
+        }
+
+        if let favoriteItem = menu.item(withTag: MenuItemTag.favoriteCurrentPage.rawValue) {
+            let isFavorite = activeWindowController?.windowState.focusedPage?.tab?.isFavorite == true
+            favoriteItem.title = isFavorite ? "Remove from Favorites" : "Favorite Current Page"
+            favoriteItem.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
         }
 
         if let muteItem = menu.item(withTag: MenuItemTag.muteTab.rawValue) {

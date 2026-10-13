@@ -75,31 +75,31 @@ struct SpaceSummary: Codable, Sendable, Identifiable {
 
 // MARK: - Widget Data Manager
 
-/// Manages exporting browser data to widgets via the shared app group container.
-///
-/// This manager collects data from Lightboard components and writes
-/// it to a JSON file that widgets can read. Data is updated periodically
-/// and when significant state changes occur.
-///
-/// ## Architecture
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────────┐
-/// │ Main App                                                     │
-/// │                                                              │
-/// │  TabManager ─┐                                               │
-/// │  PagePool ───┼─> WidgetDataManager ─> widget-data.json ──┐  │
-/// │  MemoryMon ──┘       (collects)         (app group)      │  │
-/// └──────────────────────────────────────────────────────────│──┘
-///                                                            │
-/// ┌──────────────────────────────────────────────────────────│──┐
-/// │ Widget Extension                                          │  │
-/// │                                                           │  │
-/// │  widget-data.json <── WidgetDataStorage.read() ──────────┘  │
-/// │       │                                                      │
-/// │       └─> TabHealthWidget / CurrentlyReadingWidget           │
-/// └─────────────────────────────────────────────────────────────┘
-/// ```
+// Manages exporting browser data to widgets via the shared app group container.
+//
+// This manager collects data from Lightboard components and writes
+// it to a JSON file that widgets can read. Data is updated periodically
+// and when significant state changes occur.
+//
+// ## Architecture
+//
+// ```
+// ┌─────────────────────────────────────────────────────────────┐
+// │ Main App                                                     │
+// │                                                              │
+// │  TabManager ─┐                                               │
+// │  PagePool ───┼─> WidgetDataManager ─> widget-data.json ──┐  │
+// │  MemoryMon ──┘       (collects)         (app group)      │  │
+// └──────────────────────────────────────────────────────────│──┘
+//                                                            │
+// ┌──────────────────────────────────────────────────────────│──┐
+// │ Widget Extension                                          │  │
+// │                                                           │  │
+// │  widget-data.json <── WidgetDataStorage.read() ──────────┘  │
+// │       │                                                      │
+// │       └─> TabHealthWidget / CurrentlyReadingWidget           │
+// └─────────────────────────────────────────────────────────────┘
+// ```
 
 final class WidgetDataManager {
     // MARK: - Dependencies
@@ -339,10 +339,16 @@ final class WidgetDataManager {
 
                 // Calculate importance score
                 var score = 0
-                if webPage?.isPlayingAudio == true { score += 1_000 }
+                if webPage?.isPlayingAudio == true {
+                    score += 1_000
+                }
                 if webPage?.cameraCaptureState == .active ||
-                    webPage?.microphoneCaptureState == .active { score += 300 }
-                if tab.isPinned { score += 300 }
+                    webPage?.microphoneCaptureState == .active {
+                    score += 300
+                }
+                if tab.isFavorite {
+                    score += 300
+                }
 
                 // Check for crash
                 var hasCrashed = false
@@ -350,7 +356,9 @@ final class WidgetDataManager {
                     hasCrashed = observer.lastTerminationReason?.isRecoverable == true &&
                         observer.processState == .notRunning
                 }
-                if hasCrashed { score += 500 } // Crashed tabs are important to show
+                if hasCrashed {
+                    score += 500
+                } // Crashed tabs are important to show
 
                 // Recency bonus
                 if let lastAccessed = tab.lastAccessed {

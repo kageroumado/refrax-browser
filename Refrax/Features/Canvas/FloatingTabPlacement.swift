@@ -10,7 +10,6 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     var previewWidth: Double?
     var previewHeight: Double?
     var region: FloatingPageRegion?
-    var showsInEverySpace: Bool?
 
     static func initial(index: Int, count: Int = 10, isCompact: Bool = true) -> Self {
         let columns = max(2, Int(ceil(Double(count) / 5)))

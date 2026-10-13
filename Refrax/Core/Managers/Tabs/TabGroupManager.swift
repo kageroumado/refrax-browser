@@ -117,7 +117,9 @@ final class TabGroupManager {
     /// - Throws: `TabGroupError.noActiveSpace` if no space can be resolved.
     private func resolveSpace(_ space: Space? = nil, id spaceID: UUID? = nil) throws -> Space {
         // Explicit Space takes priority
-        if let space { return space }
+        if let space {
+            return space
+        }
         
         // Look up by ID
         if let spaceID, let space = state.space(for: spaceID) {
@@ -146,9 +148,15 @@ final class TabGroupManager {
         id spaceID: UUID?,
         entitySpace: Space?,
     ) -> Space? {
-        if let space { return space }
-        if let spaceID, let resolved = state.space(for: spaceID) { return resolved }
-        if let entitySpace { return entitySpace }
+        if let space {
+            return space
+        }
+        if let spaceID, let resolved = state.space(for: spaceID) {
+            return resolved
+        }
+        if let entitySpace {
+            return entitySpace
+        }
         return activeWindowState?.activeSpace
     }
     
@@ -194,7 +202,7 @@ final class TabGroupManager {
         let position: Int
         if isPinned {
             // For pinned groups, insert before first pinned item or use root multiplier
-            let minPinnedTab = targetSpace.tabs.lazy.filter(\.isPinned).map(\.position).min()
+            let minPinnedTab = targetSpace.tabs.lazy.filter(\.isInPinnedGroup).map(\.position).min()
             let minPinnedGroup = targetSpace.groups.lazy.filter(\.isPinned).map(\.position).min()
             let minPinned = [minPinnedTab, minPinnedGroup].compactMap(\.self).min()
             if let minPinned {
@@ -204,7 +212,7 @@ final class TabGroupManager {
             }
         } else {
             // For unpinned groups, insert at top of unpinned section
-            let minUnpinnedTab = targetSpace.tabs.lazy.filter { !$0.isPinned }.map(\.position).min()
+            let minUnpinnedTab = targetSpace.tabs.lazy.filter { !$0.isInPinnedGroup }.map(\.position).min()
             let minUnpinnedGroup = targetSpace.groups.lazy.filter { !$0.isPinned }.map(\.position).min()
             let minUnpinned = [minUnpinnedTab, minUnpinnedGroup].compactMap(\.self).min()
             if let minUnpinned {
@@ -319,18 +327,16 @@ final class TabGroupManager {
         
         // Restore tabs
         for tabInfo in info.tabs {
-            let status: TabStatus = tabInfo.isPinned ? .pinned : .regular
             let tab = Tab(
                 space: space,
                 url: tabInfo.url,
                 title: tabInfo.title,
-                status: status,
                 position: tabInfo.position,
             )
             tab.customName = tabInfo.customName
             tab.activePage.faviconData = tabInfo.faviconData
 
-            // Set group relationship after init (Tab.init clears groupID for pinned tabs)
+            // Set group relationship after init
             tab.groupID = group.id
             tab.group = group
 
@@ -555,29 +561,19 @@ final class TabGroupManager {
         }
 
         group.isPinned.toggle()
-        
-        // Pin/unpin all tabs in group
-        let groupTabs = targetSpace.tabs.filter { $0.groupID == group.id }
-        for tab in groupTabs {
-            tab.isPinned = group.isPinned
-        }
-        
-        // Handle nested groups
+
+        // Nested groups follow; their tabs follow through Tab.isInPinnedGroup
         let nestedGroups = targetSpace.groups.filter { $0.parentGroupID == group.id }
         for nestedGroup in nestedGroups {
             nestedGroup.isPinned = group.isPinned
-            let nestedTabs = targetSpace.tabs.filter { $0.groupID == nestedGroup.id }
-            for tab in nestedTabs {
-                tab.isPinned = group.isPinned
-            }
         }
         
         // Reposition
         if group.isPinned {
-            let maxPinned = targetSpace.tabs.lazy.filter(\.isPinned).map(\.position).max() ?? -1
+            let maxPinned = targetSpace.tabs.lazy.filter(\.isInPinnedGroup).map(\.position).max() ?? -1
             group.position = maxPinned + 1
         } else {
-            let minUnpinned = targetSpace.tabs.lazy.filter { !$0.isPinned }.map(\.position).min() ?? 0
+            let minUnpinned = targetSpace.tabs.lazy.filter { !$0.isInPinnedGroup }.map(\.position).min() ?? 0
             group.position = minUnpinned
         }
         
@@ -832,7 +828,6 @@ final class TabGroupManager {
                     tabID: tab.id,
                     position: tab.position,
                     groupID: tab.groupID,
-                    isPinned: tab.isPinned,
                 )
             },
         )
@@ -923,7 +918,6 @@ final class TabGroupManager {
                     tabID: tab.id,
                     position: tab.position,
                     groupID: tab.groupID,
-                    isPinned: tab.isPinned,
                 )
             },
             targetSpaceID: targetSpace.id,

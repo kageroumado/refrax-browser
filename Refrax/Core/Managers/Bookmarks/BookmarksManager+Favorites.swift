@@ -80,7 +80,7 @@ extension BookmarksManager {
         bookmark.isFavorite = false
 
         if bookmark.favoriteMode == .liveFavorite,
-           let tab = tabManager.state.liveFavoriteTab(for: bookmark.id) {
+           let tab = tabManager.state.favoriteTab(for: bookmark.id) {
             // Try to convert to regular tab; fall back to removal if no active window
             if !tabManager.convertLiveFavoriteToTab(tab, bookmark: bookmark, in: windowState) {
                 removeLiveFavoriteTab(for: bookmark)

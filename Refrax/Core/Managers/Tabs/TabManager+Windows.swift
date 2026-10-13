@@ -13,7 +13,7 @@ extension TabManager {
     /// page. The window it leaves shows the tab it showed before, or the most recent other one.
     @discardableResult
     func moveTabToNewWindow(_ tab: Tab, from windowState: WindowState) -> RefraxWindowController? {
-        guard !tab.isArchived, !tab.isLiveFavorite, let space = tab.space else { return nil }
+        guard !tab.isArchived, !tab.isFavorite, let space = tab.space else { return nil }
         // The new window shows the tab first, so the window it leaves sees it shown elsewhere
         // and does not hand it to its floating layer.
         let controller = windowManager.createWindow(with: space, activating: tab)

@@ -361,10 +361,15 @@ final class TabAutoArchiveManager {
 
     /// Checks if a tab is exempt from auto-archiving.
     private func isExempt(_ tab: Tab, activeTabIDs: Set<UUID>) -> Bool {
-        if tab.isPinned { return true }
-        if tab.isArchived { return true }
-        if tab.isLiveFavorite { return true }
-        if activeTabIDs.contains(tab.id) { return true }
+        if tab.isArchived {
+            return true
+        }
+        if tab.isFavorite {
+            return true
+        }
+        if activeTabIDs.contains(tab.id) {
+            return true
+        }
 
         guard let page = pagePool?.existingPage(for: tab.activePage) else {
             return false

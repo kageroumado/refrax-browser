@@ -74,8 +74,8 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
                       let tab = owner?.tabPage.tab,
                       let space = tab.space ?? pagePool.state.spaces.first
                 else { return }
-                // Pinned/live favorite tabs have stale position info — prepend instead
-                let isContained = tab.isPinned || tab.isLiveFavorite
+                // Favorites have stale position info — prepend instead
+                let isContained = tab.isFavorite
                 pagePool.tabManager.createTab(
                     url: url,
                     in: space,
