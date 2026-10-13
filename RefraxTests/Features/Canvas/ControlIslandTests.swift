@@ -220,7 +220,7 @@ struct ControlIslandTests {
         let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
         let bottom = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
         #expect(height == ControlIslandPlacement.contentInset + bottom + rows + gaps + spaces + grip)
-        #expect(ControlIslandPlacement.gripSize == CGSize(width: 22, height: 4))
+        #expect(ControlIslandPlacement.gripSize == CGSize(width: 22, height: 13))
     }
 
     @Test
@@ -232,8 +232,8 @@ struct ControlIslandTests {
         #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 20) == 20)
         let underSpaces = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
         let underRow = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
-        #expect(abs(underSpaces - 10) < 0.1)
-        #expect(abs(underRow - 6.67) < 0.05)
+        #expect(abs(underSpaces - 12) < 0.1)
+        #expect(abs(underRow - 8.67) < 0.05)
         #expect(underSpaces > underRow)
     }
 

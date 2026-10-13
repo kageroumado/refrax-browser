@@ -123,7 +123,7 @@ struct ControlIslandSpaces: View {
                         .symbolRenderingMode(.monochrome)
                 }
             }
-            .font(.system(size: Layout.iconSize, weight: .medium))
+            .font(.system(size: Layout.iconSize, weight: ControlIslandPlacement.symbolWeight))
             .foregroundStyle(iconColor(selected: selected))
             .frame(maxWidth: .infinity)
             .frame(height: ControlIslandPlacement.spaceRowHeight)

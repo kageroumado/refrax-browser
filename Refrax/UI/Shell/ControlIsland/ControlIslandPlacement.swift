@@ -32,11 +32,18 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let highlightFillOpacity: Double = 0.3
     static let highlightGlowOpacity: Double = 0.7
     static let highlightGlowRadius: CGFloat = 8
-    /// The handle in the gap under the space picker that moves the controls: a 3 × 18-point
-    /// vertical capsule, whose hit area reaches into the padding of its neighbors.
-    static let gripSize = CGSize(width: 22, height: 4)
+    /// The handle closing the rail that moves the controls: a 3 × 2 grid of `gripDot`-point dots
+    /// `gripDotSpacing` apart, the macOS handle for things that move.
+    static let gripColumns = 3
+    static let gripRows = 2
+    static let gripDot: CGFloat = 4
+    static let gripDotSpacing: CGFloat = 5
+    static let gripSize = CGSize(
+        width: CGFloat(gripColumns) * gripDot + CGFloat(gripColumns - 1) * gripDotSpacing,
+        height: CGFloat(gripRows) * gripDot + CGFloat(gripRows - 1) * gripDotSpacing,
+    )
     /// The straight distance between the grip and the shape above it, measured at the grip's ends.
-    static let gripGap: CGFloat = 4
+    static let gripGap: CGFloat = 6
 
     /// How far a rounded edge of `radius` has receded from its straight tangent at a horizontal
     /// `offset` from the corner's center line: `r − √(r² − x²)`. Shapes that meet near a corner

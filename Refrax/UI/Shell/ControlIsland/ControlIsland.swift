@@ -218,7 +218,7 @@ struct ControlIsland: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(.system(size: 13, weight: Layout.symbolWeight))
         .buttonStyle(ControlIslandButtonStyle())
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
@@ -310,7 +310,9 @@ struct ControlIsland: View {
             }
         }
         .onDisappear {
-            if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
+            if let flagsMonitor {
+                NSEvent.removeMonitor(flagsMonitor)
+            }
             flagsMonitor = nil
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: optionIsDown)
@@ -406,9 +408,11 @@ struct ControlIsland: View {
             .help("Command Lens · ⌘T")
         case .floatingTabs:
             let showsRecent = optionIsDown
-            control(showsRecent ? "Recent tabs" : item.title,
-                    symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
-                    enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher) {
+            control(
+                showsRecent ? "Recent tabs" : item.title,
+                symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
+                enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
+            ) {
                 if optionIsHeld {
                     showRecentTabs()
                 } else {
@@ -418,7 +422,11 @@ struct ControlIsland: View {
                 }
             }
             .contentTransition(.symbolEffect(.replace))
-            .overlay(alignment: .bottomTrailing) { if !showsRecent { unplacedBadge } }
+            .overlay(alignment: .bottomTrailing) {
+                if !showsRecent {
+                    unplacedBadge
+                }
+            }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
             }
@@ -582,25 +590,35 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    /// A 22 × 4-point capsule closing the rail, the grabber macOS and iOS use for things that
-    /// move. Its ends sit `gripGap` from the shape above and from the rail's curved edge, by
-    /// closest approach rather than center line. It fades with the glass at rest.
+    /// A 3 × 2 grid of dots closing the rail, the macOS handle for things that move. Its outer
+    /// dots sit `gripGap` from the shape above and from the rail's curved edge, by closest
+    /// approach rather than center line, so the inset under it is the larger. It fades with the
+    /// glass at rest.
     private var grip: some View {
-        Capsule()
-            .fill(.secondary)
-            .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
-            .opacity(isResting ? 0 : 1)
-            .frame(width: Layout.contentWidth, height: Layout.gripGap + Layout.gripSize.height, alignment: .bottom)
-            .contentShape(Rectangle())
-            .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
-            .gesture(moveGesture)
-            .help("Move controls")
-            .accessibilityElement()
-            .accessibilityLabel("Move controls")
-            .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
-            .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
-            .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
-            .accessibilityAction(named: "Move controls down") { moveBy(dx: 0, dy: 32) }
+        Grid(horizontalSpacing: Layout.gripDotSpacing, verticalSpacing: Layout.gripDotSpacing) {
+            ForEach(0 ..< Layout.gripRows, id: \.self) { _ in
+                GridRow {
+                    ForEach(0 ..< Layout.gripColumns, id: \.self) { _ in
+                        Circle()
+                            .fill(.secondary)
+                            .frame(width: Layout.gripDot, height: Layout.gripDot)
+                    }
+                }
+            }
+        }
+        .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
+        .opacity(isResting ? 0 : 1)
+        .frame(width: Layout.contentWidth, height: Layout.gripGap + Layout.gripSize.height, alignment: .bottom)
+        .contentShape(Rectangle())
+        .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
+        .gesture(moveGesture)
+        .help("Move controls")
+        .accessibilityElement()
+        .accessibilityLabel("Move controls")
+        .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
+        .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
+        .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
+        .accessibilityAction(named: "Move controls down") { moveBy(dx: 0, dy: 32) }
     }
 
     /// The pointer in the rail's coordinate space: window content, origin top-left.
@@ -634,7 +652,7 @@ struct ControlIsland: View {
             AddressBarBackButton(
                 webPage: page, canGoBack: page?.canGoBack == true,
                 targetSize: CGSize(width: canGoForward ? Layout.contentWidth / 2 : Layout.contentWidth, height: Layout.rowHeight),
-                highlightsOnHover: false, symbolWeight: .semibold,
+                highlightsOnHover: false, symbolWeight: Layout.navigationSymbolWeight,
             )
             .focusable()
             .focused($focusedControl, equals: "Back")
@@ -645,7 +663,7 @@ struct ControlIsland: View {
                 AddressBarForwardButton(
                     webPage: page, canGoForward: true,
                     targetSize: CGSize(width: Layout.contentWidth / 2, height: Layout.rowHeight),
-                    highlightsOnHover: false, symbolWeight: .semibold,
+                    highlightsOnHover: false, symbolWeight: Layout.navigationSymbolWeight,
                 )
                 .focusable()
                 .focused($focusedControl, equals: "Forward")
@@ -827,4 +845,12 @@ struct ControlIsland: View {
         guard let window = windowState.window, window.isMovable, !window.styleMask.contains(.fullScreen) else { return }
         window.setFrameOrigin(window.constrainFrameRect(window.frame.offsetBy(dx: dx, dy: dy), to: window.screen).origin)
     }
+}
+
+extension ControlIslandPlacement {
+    /// The weight of the rail's 13-point symbols and the space picker's icons.
+    static let symbolWeight: Font.Weight = .regular
+    /// Back and forward use the address bar's 12-point chevrons, one weight heavier to match
+    /// the 13-point symbols' presence.
+    static let navigationSymbolWeight: Font.Weight = .medium
 }
