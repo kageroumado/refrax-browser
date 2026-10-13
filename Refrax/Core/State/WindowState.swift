@@ -460,6 +460,7 @@ final class WindowState {
     var usesFloatingTabs = true
 
     let controlIsland = ControlIslandState()
+    let fileIsland = FileIslandState()
     let pageVisit = PageVisitState()
     var floatingPlacements: [Tab.ID: FloatingTabPlacement] = [:]
 

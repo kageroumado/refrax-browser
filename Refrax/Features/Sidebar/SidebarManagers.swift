@@ -95,7 +95,6 @@ struct SidebarManagers {
     let filterManager: Sidebar.FilterManager
     let selectionManager: Sidebar.TabSelectionManager
     let mediaControlsManager: Sidebar.MediaControlsManager
-    let shelfManager: ShelfManager
     let transitionCoordinator: Sidebar.TransitionCoordinator
     let middleClickCoordinator: Sidebar.MiddleClickCoordinator
     let dependencyContainer: Sidebar.DependencyContainer
@@ -124,7 +123,6 @@ struct SidebarManagers {
         let filterManager = Sidebar.FilterManager()
         let selectionManager = Sidebar.TabSelectionManager()
         let mediaControlsManager = Sidebar.MediaControlsManager()
-        let shelfManager = ShelfManager()
         let transitionCoordinator = Sidebar.TransitionCoordinator()
         let middleClickCoordinator = Sidebar.MiddleClickCoordinator()
         let frameRegistry = Sidebar.FrameRegistry()
@@ -135,7 +133,6 @@ struct SidebarManagers {
         self.filterManager = filterManager
         self.selectionManager = selectionManager
         self.mediaControlsManager = mediaControlsManager
-        self.shelfManager = shelfManager
         self.transitionCoordinator = transitionCoordinator
         self.middleClickCoordinator = middleClickCoordinator
         self.frameRegistry = frameRegistry

@@ -49,7 +49,6 @@ struct Sidebar: View {
   @Environment(Sidebar.FilterManager.self) private var filterManager
   @Environment(Sidebar.TabSelectionManager.self) private var selectionManager
   @Environment(Sidebar.MediaControlsManager.self) private var mediaControlsManager
-  @Environment(ShelfManager.self) private var shelfManager
   @Environment(Sidebar.TransitionCoordinator.self) private var transitionCoordinator
   @Environment(Sidebar.MiddleClickCoordinator.self) private var middleClickCoordinator
   @Environment(Sidebar.DependencyContainer.self) private var dependencyContainer
@@ -101,10 +100,10 @@ struct Sidebar: View {
         .frame(width: 0, height: 0)
         .allowsHitTesting(false)
 
-      // Invisible view for receiving drops (re-entry, external URLs, and shelf items)
+      // Invisible view for receiving drops (re-entry and external URLs)
       // Note: Hit testing passes through via hitTest override, so the NSView
       // receives drag events but doesn't intercept normal mouse events
-      SidebarDropReceiver(coordinator: dragCoordinator, shelfManager: shelfManager)
+      SidebarDropReceiver(coordinator: dragCoordinator)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .accessibilityElement(children: .contain)
@@ -496,9 +495,6 @@ struct Sidebar: View {
       // Media controls panel (expands upward when active)
       MediaControlsPanel()
 
-      // Shelf panel (expands upward when items exist)
-      ShelfPanel()
-
       if isFilterExpanded {
         // Expanded: Filter bar on its own row
         SidebarFilter(
@@ -552,9 +548,6 @@ struct Sidebar: View {
 
           // Downloads button - only show during/after downloads
           DownloadsButton()
-
-          // Shelf button - only show when there are items
-          ShelfButton()
 
           // Reminders widget button
           RemindersWidgetButton()

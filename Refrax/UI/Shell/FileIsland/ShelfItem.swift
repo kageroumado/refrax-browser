@@ -1,9 +1,9 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// A single item stored in the global shelf.
+/// A single item kept on the File Island's shelf.
 ///
-/// Shelf items are dragged into the sidebar footer and stored in Application Support.
+/// Items are dropped onto the File Island and stored in Application Support.
 /// They can be dragged back out to other applications.
 struct ShelfItem: Identifiable, Codable, Hashable {
     let id: UUID
@@ -12,6 +12,8 @@ struct ShelfItem: Identifiable, Codable, Hashable {
     let displayName: String
     /// Original path for aliases (files >= 10MB stored as bookmarks)
     let originalPath: URL?
+    /// The address a link item opens.
+    var url: URL?
     let createdAt: Date
     let fileSize: Int64
 
@@ -38,24 +40,26 @@ enum ShelfItemType: String, Codable, Hashable {
     case file
     /// Bookmark/alias to a large file (>= 10MB)
     case alias
+    /// A web address stored as a .webloc file
+    case link
 
     /// System icon name for this item type.
     var systemImage: String {
         switch self {
-        case .text: "doc.text"
+        case .text: "text.alignleft"
         case .image: "photo"
         case .file: "doc"
-        case .alias: "link"
+        case .alias: "doc"
+        case .link: "link"
         }
     }
 
-    /// UTType for this item when dragging out.
-    var contentType: UTType {
+    /// What clicking the item does, for its tooltip and accessibility hint.
+    var primaryActionTitle: String {
         switch self {
-        case .text: .plainText
-        case .image: .image
-        case .file: .data
-        case .alias: .fileURL
+        case .text: "Copy"
+        case .link: "Open in a new tab"
+        case .image, .file, .alias: "Open"
         }
     }
 }

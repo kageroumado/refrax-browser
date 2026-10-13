@@ -29,9 +29,14 @@ final class ControlIslandConfiguration {
         self.tintsWithSpaceColor = defaults?.object(forKey: Self.tintKey) as? Bool ?? true
         let records = defaults?.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
-        self.items = Self.normalized(records.compactMap { record in
-            ControlIslandItem(rawValue: record.id).map { .init(item: $0, isVisible: record.isVisible) }
-        })
+        let known = records.compactMap { record in
+            ControlIslandItem(rawValue: record.id).map { ControlIslandItemPreference(item: $0, isVisible: record.isVisible) }
+        }
+        self.items = Self.normalized(known)
+        // A saved arrangement that names a control the rail does not have is rewritten without it.
+        if known.count != records.count {
+            saveItems()
+        }
     }
 
     var visibleItems: [ControlIslandItem] {
@@ -51,7 +56,11 @@ final class ControlIslandConfiguration {
         defaults?.set(avoidsPageControls, forKey: Self.avoidanceKey)
         defaults?.set(restsWhenIdle, forKey: Self.restKey)
         defaults?.set(tintsWithSpaceColor, forKey: Self.tintKey)
-        let records = self.items.map { StoredItem(id: $0.item.rawValue, isVisible: $0.isVisible) }
+        saveItems()
+    }
+
+    private func saveItems() {
+        let records = items.map { StoredItem(id: $0.item.rawValue, isVisible: $0.isVisible) }
         guard let data = try? JSONEncoder().encode(records) else { return }
         defaults?.set(data, forKey: Self.storageKey)
     }

@@ -239,6 +239,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             tabPreviewProvider: tabPreviewProvider,
             tabPreviewManager: tabPreviewManager,
             downloadManager: downloadManager,
+            shelfManager: ShelfManager(),
             webInspectorManager: webInspectorManager,
             sharingCoordinator: sharingCoordinator,
             passwordsManager: passwordsManager,

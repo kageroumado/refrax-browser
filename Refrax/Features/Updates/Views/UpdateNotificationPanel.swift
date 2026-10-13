@@ -9,7 +9,7 @@ import SwiftUI
 ///   clicking the warning icon. Shows the error message with retry and close buttons.
 ///   Closing dismisses the failure and suppresses checks until the next scheduler cycle.
 ///
-/// Follows the same layout pattern as ``MediaControlsPanel`` and ``ShelfPanel``.
+/// Follows the same layout pattern as ``MediaControlsPanel``.
 struct UpdateNotificationPanel: View {
     @Environment(AppUpdateManager.self) private var updateManager
     @State private var showCompletedSheet = false

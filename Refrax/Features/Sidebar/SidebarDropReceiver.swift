@@ -4,13 +4,11 @@ import UniformTypeIdentifiers
 
 /// Invisible NSView that receives drag operations entering the sidebar.
 ///
-/// This view handles three scenarios:
+/// This view handles two scenarios:
 /// 1. **Re-entry**: When a drag that originated in the sidebar (and handed off to AppKit)
 ///    returns to the sidebar, this view restores the internal drag state.
 /// 2. **External URL drops**: When an external app drags URLs into the sidebar,
 ///    this view coordinates with the DragCoordinator to create tabs/favorites.
-/// 3. **External shelf drops**: When non-URL content (text, images, files) is dragged
-///    into the sidebar, this view adds items to the global shelf.
 ///
 /// ## Re-Entry Flow
 ///
@@ -27,12 +25,6 @@ import UniformTypeIdentifiers
 /// 3. `inboundDropZone` updated on coordinator for visual feedback
 /// 4. User releases → `performDragOperation` creates tab/favorite based on zone
 ///
-/// ## Shelf Drop Flow
-///
-/// 1. External app drags non-URL content → `draggingEntered` detects shelf types
-/// 2. User releases → `performDragOperation` calls `shelfManager.addItem()`
-/// 3. Item stored in Application Support/Shelf/
-///
 /// ## Thread Safety
 ///
 /// All interactions happen on the main thread (required by both SwiftUI and AppKit).
@@ -40,19 +32,14 @@ struct SidebarDropReceiver: NSViewRepresentable {
     /// The drag coordinator that manages drag state.
     var coordinator: Sidebar.DragCoordinator
 
-    /// The shelf manager for handling non-URL drops.
-    var shelfManager: ShelfManager
-
     func makeNSView(context _: Context) -> DropReceiverNSView {
         let view = DropReceiverNSView()
         view.dragCoordinator = coordinator
-        view.shelfManager = shelfManager
         return view
     }
 
     func updateNSView(_ nsView: DropReceiverNSView, context _: Context) {
         nsView.dragCoordinator = coordinator
-        nsView.shelfManager = shelfManager
     }
 }
 
@@ -64,15 +51,11 @@ final class DropReceiverNSView: NSView {
     /// Reference to the drag coordinator (set by the representable).
     unowned var dragCoordinator: Sidebar.DragCoordinator!
 
-    /// Reference to the shelf manager (set by the representable).
-    unowned var shelfManager: ShelfManager!
-
     /// Current drag mode being handled.
     private enum DragMode {
         case none
         case reentry
         case externalURL
-        case externalShelf
     }
 
     private var dragMode: DragMode = .none
@@ -100,8 +83,8 @@ final class DropReceiverNSView: NSView {
     }
 
     private func registerForDraggedTypes() {
-        // Register for Refrax internal types (for re-entry detection),
-        // external URL types (for inbound drops), and shelf types (non-URL content)
+        // Register for Refrax internal types (for re-entry detection)
+        // and external URL types (for inbound drops)
         registerForDraggedTypes([
             // Internal types for re-entry
             DragPasteboardType.refraxTabID,
@@ -112,11 +95,7 @@ final class DropReceiverNSView: NSView {
             NSPasteboard.PasteboardType(UTType.fileURL.identifier),
             // Legacy file type for .webloc files
             NSPasteboard.PasteboardType("NSFilenamesPboardType"),
-            // Shelf types (non-URL content)
             .string,
-            NSPasteboard.PasteboardType(UTType.image.identifier),
-            NSPasteboard.PasteboardType(UTType.tiff.identifier),
-            NSPasteboard.PasteboardType(UTType.png.identifier),
         ])
     }
 }
@@ -138,11 +117,6 @@ extension DropReceiverNSView {
             return handleExternalURLEntered(sender)
         }
 
-        // Priority 3: Non-URL content → shelf (NEW)
-        if containsShelfableData(pasteboard) {
-            return handleExternalShelfEntered(sender)
-        }
-
         // Unknown drag type - reject
         dragMode = .none
         return []
@@ -156,8 +130,6 @@ extension DropReceiverNSView {
             handleReentryUpdated(sender)
         case .externalURL:
             handleExternalURLUpdated(sender)
-        case .externalShelf:
-            handleExternalShelfUpdated(sender)
         }
     }
 
@@ -169,8 +141,6 @@ extension DropReceiverNSView {
             handleReentryExited(sender)
         case .externalURL:
             handleExternalURLExited()
-        case .externalShelf:
-            handleExternalShelfExited()
         }
     }
 
@@ -187,8 +157,6 @@ extension DropReceiverNSView {
             performReentryDrop()
         case .externalURL:
             performExternalURLDrop(sender)
-        case .externalShelf:
-            performExternalShelfDrop(sender)
         }
     }
 
@@ -202,9 +170,6 @@ extension DropReceiverNSView {
                 dragCoordinator.reset()
             case .externalURL:
                 dragCoordinator.inboundDropZone = nil
-            case .externalShelf:
-                // No cleanup needed for shelf drops
-                break
             }
         }
         dragMode = .none
@@ -336,10 +301,9 @@ extension DropReceiverNSView {
 
     private func performReentryDrop() -> Bool {
         // Commit the internal drag operation
-        let success = MainActor.assumeIsolated {
+        MainActor.assumeIsolated {
             dragCoordinator.commitDrag()
         }
-        return success
     }
 }
 
@@ -397,23 +361,6 @@ extension DropReceiverNSView {
             determineDropZone(at: globalLocation)
         }
 
-        // Check if this URL looks like a downloadable file (image, PDF, etc.)
-        // If so, try to download it to the shelf instead of opening as a tab
-        if shouldTryShelfDownload(url: url, dropZone: dropZone) {
-            Task { @MainActor in
-                let result = await shelfManager.addItemFromURL(url)
-                switch result {
-                case .addedToShelf:
-                    // Successfully added to shelf, nothing more to do
-                    break
-                case .openAsTab, .failed:
-                    // Couldn't download or content is HTML - open as tab
-                    _ = createTabFromURL(url, isPinned: false)
-                }
-            }
-            return true
-        }
-
         // Create tab or favorite based on drop zone
         return MainActor.assumeIsolated {
             switch dropZone {
@@ -438,43 +385,6 @@ extension DropReceiverNSView {
                 createTabFromURL(url, isPinned: false)
             }
         }
-    }
-
-    /// Determines if a URL should be downloaded to shelf vs opened as a tab.
-    ///
-    /// Returns true for URLs that look like downloadable files (images, PDFs, etc.)
-    /// when dropped anywhere except the favorites grid.
-    private func shouldTryShelfDownload(url: URL, dropZone: Sidebar.DragCoordinator.DropZone?) -> Bool {
-        // Don't intercept favorites grid drops - those should create shortcuts
-        if dropZone == .favoritesGrid {
-            return false
-        }
-
-        // Only process http/https URLs
-        guard let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https" else {
-            return false
-        }
-
-        // Check if the URL path has a file-like extension
-        let ext = url.pathExtension.lowercased()
-        guard !ext.isEmpty else { return false }
-
-        // Extensions that should go to shelf (images, documents, media)
-        let downloadExtensions: Set<String> = [
-            // Images
-            "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "svg", "ico", "bmp", "tiff",
-            // Documents
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
-            // Archives
-            "zip", "rar", "7z", "tar", "gz",
-            // Media
-            "mp3", "mp4", "mov", "avi", "mkv", "wav", "flac",
-            // Other common downloads
-            "dmg", "pkg", "exe", "msi",
-        ]
-
-        return downloadExtensions.contains(ext)
     }
 
     /// Determine which drop zone the cursor is over.
@@ -515,77 +425,6 @@ extension DropReceiverNSView {
             isFavorite: true,
             favoriteMode: .shortcut,
         )
-        return true
-    }
-}
-
-// MARK: - External Shelf Handling
-
-extension DropReceiverNSView {
-    /// Check if pasteboard contains non-URL content suitable for the shelf.
-    private func containsShelfableData(_ pasteboard: NSPasteboard) -> Bool {
-        let types = pasteboard.types ?? []
-
-        // Check for text
-        if types.contains(.string) {
-            return true
-        }
-
-        // Check for images
-        let imageTypes: [NSPasteboard.PasteboardType] = [
-            NSPasteboard.PasteboardType(UTType.image.identifier),
-            NSPasteboard.PasteboardType(UTType.tiff.identifier),
-            NSPasteboard.PasteboardType(UTType.png.identifier),
-            .png,
-            .tiff,
-        ]
-        if imageTypes.contains(where: types.contains) {
-            return true
-        }
-
-        // Check for file URLs that aren't web URLs or .webloc files
-        if types.contains(.fileURL) || types.contains(NSPasteboard.PasteboardType(UTType.fileURL.identifier)) {
-            // Only accept as shelf content if it's NOT a web-openable file
-            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-                for url in urls where url.isFileURL {
-                    let ext = url.pathExtension.lowercased()
-                    // Exclude .webloc files (they should create tabs)
-                    if ext != "webloc" {
-                        return true
-                    }
-                }
-            }
-        }
-
-        return false
-    }
-
-    /// Handle external shelf drag entered.
-    private func handleExternalShelfEntered(_: any NSDraggingInfo) -> NSDragOperation {
-        dragMode = .externalShelf
-        return .copy
-    }
-
-    /// Handle external shelf drag updated.
-    private func handleExternalShelfUpdated(_: any NSDraggingInfo) -> NSDragOperation {
-        // No visual feedback needed for shelf drops (items go to global shelf)
-        .copy
-    }
-
-    /// Handle external shelf drag exited.
-    private func handleExternalShelfExited() {
-        dragMode = .none
-    }
-
-    /// Perform the external shelf drop.
-    private func performExternalShelfDrop(_ sender: any NSDraggingInfo) -> Bool {
-        let pasteboard = sender.draggingPasteboard
-
-        // Add items to shelf asynchronously
-        Task { @MainActor in
-            await shelfManager.addItem(from: pasteboard)
-        }
-
         return true
     }
 }
