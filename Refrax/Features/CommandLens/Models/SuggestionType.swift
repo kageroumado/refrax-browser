@@ -107,6 +107,10 @@ nonisolated enum AppAction: Hashable, Sendable {
     case favoriteCurrentPage
     case returnFromLook
     case keepPartVisible
+    /// Mute or unmute the current tab.
+    case setCurrentTabMuted(Bool)
+    /// Mute every other tab that plays sound.
+    case muteOtherTabs
 }
 
 /// Scope of a setting (global or per-site).

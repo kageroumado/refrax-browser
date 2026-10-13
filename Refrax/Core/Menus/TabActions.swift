@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Menu actions on a tab as an object: its favorite, its floating placement, its selection on
-/// the desk, its duplicate, its close, and Look.
+/// the desk, its sound, its duplicate, its close, and Look.
 ///
 /// Placement actions need the canvas and the area the card is laid out in, so they appear only
 /// on card surfaces that pass both.
@@ -32,12 +32,36 @@ struct TabActions {
                 tabs.state.scheduleSave()
             })
         }
+        actions += mediaActions()
         actions.append(MenuAction("tab.duplicate", "Duplicate Tab", symbol: "plus.square.on.square", group: .tab) { behaviors.duplicate() })
         if surface.isCard {
             actions.append(MenuAction("tab.close", "Close Tab", symbol: "xmark", group: .close) { tabs.requestCloseTab(tab) })
         }
         return actions
     }
+
+    /// Mute while the tab plays sound or is muted; Mute Other Tabs while another tab plays sound.
+    private func mediaActions() -> [MenuAction] {
+        let control = TabMediaControl(tab: tab, pagePool: tabs.pagePool)
+        let state = control.state
+        var actions: [MenuAction] = []
+        if state.isPlayingAudio || state.isTabMuted {
+            let isMuted = state.isTabMuted
+            actions.append(MenuAction(
+                "tab.mute", isMuted ? "Unmute Tab" : "Mute Tab", symbol: isMuted ? "speaker.wave.2" : "speaker.slash",
+                key: tab.id == windowState.activeTabID ? Self.muteKey : nil, group: .media, isPrimary: true,
+            ) { control.setMuted(!isMuted) })
+        }
+        if TabMediaControl.othersPlay(than: tab, in: tabs.pagePool) {
+            actions.append(MenuAction("tab.muteOthers", "Mute Other Tabs", symbol: "speaker.slash", group: .media) {
+                TabMediaControl.muteOthers(than: tab, in: tabs.pagePool)
+            })
+        }
+        return actions
+    }
+
+    /// ⌃M, the menu bar's Mute Tab for the current tab.
+    static let muteKey = MenuAction.KeyEquivalent("m", modifiers: .control)
 
     /// Region placement (Keep Part Visible, Adjust Region, Preview Zoom) stays behind its flag.
     private var regionsEnabled: Bool {
