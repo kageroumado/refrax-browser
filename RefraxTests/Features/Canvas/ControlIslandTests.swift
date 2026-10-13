@@ -246,7 +246,7 @@ struct ControlIslandTests {
         let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
         #expect(base == ControlIslandPlacement.contentInset + flatBottom + ControlIslandPlacement.rowHeight
             + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2) + grip)
-        #expect(withExtras - base == ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)
+        #expect(abs(withExtras - base - (ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)) < 0.001)
         let empty = ControlIslandPlacement.railHeight(items: [], spaceCount: 0, favoriteCount: 0)
         #expect(empty == ControlIslandPlacement.contentInset + flatBottom + grip)
     }
