@@ -14,9 +14,11 @@ struct LassoSelectionTests {
     @Test
     func `A drag draws only after it passes the threshold`() {
         var lasso = LassoSelection(at: .zero)
-        #expect(!lasso.extend(to: CGPoint(x: 2, y: 2)))
+        let belowThreshold = lasso.extend(to: CGPoint(x: 2, y: 2))
+        #expect(!belowThreshold)
         #expect(!lasso.isDrawing)
-        #expect(lasso.extend(to: CGPoint(x: LassoSelection.threshold, y: 0)))
+        let atThreshold = lasso.extend(to: CGPoint(x: LassoSelection.threshold, y: 0))
+        #expect(atThreshold)
         #expect(lasso.isDrawing)
         #expect(lasso.points.count == 2)
     }
