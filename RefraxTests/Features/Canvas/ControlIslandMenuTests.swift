@@ -11,7 +11,7 @@ struct ControlIslandMenuTests {
     @Test
     func `the optional destinations keep their rail controls`() {
         let additional = ControlIslandItem.allCases.filter { $0.section == .additional }
-        #expect(additional == [.reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates])
+        #expect(additional == [.reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .nowPlaying, .updates])
         #expect(Set(ControlIslandItem.defaultOrder) == Set(ControlIslandItem.allCases))
     }
 }

@@ -17,6 +17,7 @@ struct ControlIsland: View {
     @Environment(FloatingTourManager.self) private var tour
     @Environment(AppUpdateManager.self) private var updates
     @Environment(TabGroupManager.self) private var groups
+    @Environment(Sidebar.MediaControlsManager.self) private var mediaControls
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -27,6 +28,7 @@ struct ControlIsland: View {
     @State private var dragOrigin: CGPoint?
     @State private var showsFavorites = false
     @State private var showsUpdate = false
+    @State private var showsNowPlaying = false
     @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
     @State private var shortcutRowMidY: CGFloat?
     @State private var showsShortcut = false
@@ -54,6 +56,7 @@ struct ControlIsland: View {
             case .favoriteTabs: !favorites.isEmpty
             case .page: windowState.activePage != nil
             case .updates: updateIsReady
+            case .nowPlaying: mediaControls.hasActiveMedia
             default: true
             }
         }
@@ -242,7 +245,7 @@ struct ControlIsland: View {
                 finishPanelDrag()
             }
         }
-        .onChange(of: showsFavorites || showsUpdate || windowState.showsAnchoredLens) { _, presented in
+        .onChange(of: showsFavorites || showsUpdate || showsNowPlaying || windowState.showsAnchoredLens) { _, presented in
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
@@ -464,6 +467,8 @@ struct ControlIsland: View {
             control(item.title, symbol: item.symbol) {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
+        case .nowPlaying:
+            nowPlayingControl(item)
         case .updates:
             updateControl(item)
         }
@@ -535,6 +540,28 @@ struct ControlIsland: View {
         .focusEffectDisabled()
         .accessibilityLabel(item.title)
         .help("Update ready · Restart to install")
+    }
+
+    /// Now Playing: a speaker while any tab plays sound; it opens the per-tab media controls.
+    private func nowPlayingControl(_ item: ControlIslandItem) -> some View {
+        let symbol = ControlIslandNowPlaying.symbol(for: mediaControls.activeSections)
+        return Button {
+            showsNowPlaying.toggle()
+        } label: {
+            ControlIslandRow {
+                Image(systemName: symbol)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : .default, value: symbol)
+            }
+        }
+        .focusable()
+        .focused($focusedControl, equals: item.title)
+        .focusEffectDisabled()
+        .popover(isPresented: $showsNowPlaying, arrowEdge: opensLeft ? .leading : .trailing) {
+            ControlIslandNowPlaying(isPresented: $showsNowPlaying)
+        }
+        .accessibilityLabel(item.title)
+        .help("Now Playing · ⌃M mutes this tab")
     }
 
     /// The row the tour points at: a capsule inset in the cell, above the glass, with a glow around it.

@@ -16,6 +16,8 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case downloads
     case bookmarks
     case settings
+    /// Media playing in any tab, with a popover of per-tab controls. On the rail only while something plays.
+    case nowPlaying
     /// A downloaded update waiting for a restart. On the rail only while one is ready.
     case updates
     /// The current page's icon, which unfolds the page card. Stored under its original name.
@@ -36,7 +38,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
         .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs,
-        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates,
+        .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .nowPlaying, .updates,
     ]
 
     var title: String {
@@ -56,6 +58,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "Downloads"
         case .bookmarks: "Bookmarks"
         case .settings: "Settings"
+        case .nowPlaying: "Now Playing"
         case .updates: "Update ready"
         }
     }
@@ -77,6 +80,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "arrow.down.circle"
         case .bookmarks: "bookmark"
         case .settings: "gearshape"
+        case .nowPlaying: "speaker.wave.2"
         case .updates: "arrow.down.circle.fill"
         }
     }
@@ -98,6 +102,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .downloads: "See your downloads"
         case .bookmarks: "Manage saved pages and favorites"
         case .settings: "Open browser settings · ⌘,"
+        case .nowPlaying: "Play, pause, and mute the tabs playing sound · ⌃M mutes this tab; on the rail only while something plays"
         case .updates: "Restart to install a downloaded update; on the rail only while one is ready"
         }
     }
@@ -109,13 +114,18 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     var section: Section {
         switch self {
         case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs: .main
-        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .updates: .additional
+        case .reload, .copyLink, .favorites, .history, .downloads, .bookmarks, .settings, .nowPlaying, .updates: .additional
         }
     }
 
-    /// Shown before anyone customizes the rail. The update badge is on by default because it
-    /// occupies the rail only while an update is ready.
+    /// Shown before anyone customizes the rail. Now Playing and the update badge are on by
+    /// default because they occupy the rail only while something plays or an update is ready.
     var isDefault: Bool {
-        section == .main || self == .updates
+        section == .main || isConditional
+    }
+
+    /// On the rail only while its subject exists, so it costs no height the rest of the time.
+    var isConditional: Bool {
+        self == .nowPlaying || self == .updates
     }
 }

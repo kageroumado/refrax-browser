@@ -172,10 +172,25 @@ struct ControlIslandTests {
     }
 
     @Test @MainActor
-    func `the default rail keeps the update badge`() {
+    func `the default rail keeps Now Playing and the update badge`() {
         let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
-        #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs, .updates])
-        #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0 == .updates })
+        #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs, .nowPlaying, .updates])
+        #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0.isConditional })
+        #expect(ControlIslandItem.allCases.filter(\.isConditional) == [.nowPlaying, .updates])
+    }
+
+    @Test @MainActor
+    func `Now Playing costs no height while nothing plays and one row with its divider while something does`() {
+        let main: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces]
+        let silent = ControlIslandPlacement.railHeight(items: main, spaceCount: 2, favoriteCount: 0)
+        let playing = ControlIslandPlacement.railHeight(items: main + [.nowPlaying], spaceCount: 2, favoriteCount: 0)
+        let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
+        let spacesBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
+        #expect(abs(playing - silent - (ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight + flatBottom - spacesBottom)) < 0.001)
+        #expect(ControlIslandRailLayout(visibleItems: main + [.nowPlaying]).elements.suffix(3)
+            == [.line(before: .nowPlaying), .row(.nowPlaying), .grip])
+        #expect(ControlIslandRailLayout(visibleItems: [.navigation, .nowPlaying, .updates]).elements
+            == [.row(.navigation), .line(before: .nowPlaying), .row(.nowPlaying), .row(.updates), .grip])
     }
 
     @Test
