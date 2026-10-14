@@ -7,7 +7,8 @@ import SwiftUI
 /// `row` is the continuous row position: 2 shows row 2 exactly, 2.5 shows the lower half of
 /// row 2 above the upper half of row 3. `shift` is a horizontal displacement in points added
 /// to every row's resting offset, so a pan slides the whole table and each row keeps its own
-/// offset underneath. At rest a layout is seen from `(focusedRow, 0)`.
+/// offset underneath. A discrete move rests at `(focusedRow, 0)`; a free pan rests wherever
+/// it stops, between rows if it stopped there.
 nonisolated struct TableViewpoint: Equatable, Sendable {
     var row: Double
     var shift: CGFloat
@@ -107,15 +108,19 @@ nonisolated struct TableCamera: Equatable, Sendable {
 
     /// The viewpoint after a free pan by `delta` points, following `NSEvent.scrollingDelta`:
     /// positive y reveals the row above, positive x the slabs to the left. The row stays
-    /// within the table and the current row's drawn offset within its resting range.
+    /// within the table and the current row's drawn offset within its resting range; a row
+    /// already past that range may stay there but never goes further out.
     func panned(_ viewpoint: TableViewpoint, by delta: CGSize, in layout: TableLayout) -> TableViewpoint {
         guard !layout.rows.isEmpty, viewport.width > 0, viewport.height > 0 else { return viewpoint }
         var result = viewpoint
         result.row = min(max(viewpoint.row - Double(delta.height / viewport.height), 0), Double(layout.rows.count - 1))
         let anchor = layout.rows[anchorRow(of: result, in: layout)]
         let base = CGFloat(anchor.offset) * viewport.width
-        let shifted = base + viewpoint.shift - delta.width
-        let clamped = min(max(shifted, 0), CGFloat(anchor.maxOffset) * viewport.width)
+        let current = base + viewpoint.shift
+        let shifted = current - delta.width
+        let lower = min(0, current)
+        let upper = max(CGFloat(anchor.maxOffset) * viewport.width, current)
+        let clamped = min(max(shifted, lower), upper)
         result.shift = clamped - base
         return result
     }
@@ -143,6 +148,27 @@ nonisolated struct TableCamera: Equatable, Sendable {
         let offset = row.clamped(restingOffset(showing: target, in: row, from: current))
         let focused = row.isWhole(row.focusedSlab, at: offset) ? row.focusedSlab : target
         return TableRest(row: rowIndex, offset: offset, focusedSlab: focused)
+    }
+
+    /// Where the view rests after a free pan ends at `viewpoint`: exactly there, with the slab
+    /// under `pointer` (viewport coordinates) current, or else the slab with the most of
+    /// itself in view. The returned layout has the viewpoint's shift folded into its row
+    /// offsets, so the returned viewpoint has no shift and draws the same picture. `nil` for
+    /// an empty table.
+    func rest(at viewpoint: TableViewpoint, in layout: TableLayout, pointer: CGPoint?) -> (layout: TableLayout, viewpoint: TableViewpoint)? {
+        guard viewport.width > 0 else { return nil }
+        let bounds = CGRect(origin: .zero, size: viewport)
+        let visible = visibleSlabs(in: layout, at: viewpoint)
+        let underPointer = pointer.flatMap { point in
+            bounds.contains(point) ? visible.first { $0.frame.contains(point) } : nil
+        }
+        func area(_ slab: TableVisibleSlab) -> CGFloat {
+            let shown = slab.frame.intersection(bounds)
+            return shown.isNull ? 0 : shown.width * shown.height
+        }
+        guard let focus = underPointer ?? visible.max(by: { area($0) < area($1) }) else { return nil }
+        let rested = layout.restingFreely(focus: focus.position, shift: Double(viewpoint.shift / viewport.width))
+        return (rested, TableViewpoint(row: viewpoint.row))
     }
 
     /// The viewpoint, in `layout`'s terms, that shows the table as `rest` will.

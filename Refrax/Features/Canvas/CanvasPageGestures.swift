@@ -87,6 +87,7 @@ final class CanvasPageGestures {
         self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
         self.resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.tableInput?.interrupt()
                 self?.interruptControl()
                 self?.canvas.dismissFloatingTabs()
             }
@@ -112,6 +113,9 @@ final class CanvasPageGestures {
         guard event.window === window else { return event }
         if !canvas.isPanningFromPage {
             isMoveMode = false
+        }
+        if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown].contains(event.type) {
+            tableInput?.interrupt()
         }
         if event.type == .scrollWheel, !canvas.isPanningFromPage, let tableInput,
            tableInput.route(event, canStart: !canvas.isActive && !floatingContains(event.locationInWindow)) {
@@ -254,7 +258,9 @@ final class CanvasPageGestures {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let revealKey = FloatingRevealKey.current
         let now = Date()
-        tableInput?.controlChanged(isDown: modifiers == .control)
+        if !modifiers.contains(.control) {
+            tableInput?.interrupt()
+        }
         Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
 
         if canvas.floatingVisibility.isHeld, modifiers.contains(revealKey.flag), floatingHasKeyboardFocus() {

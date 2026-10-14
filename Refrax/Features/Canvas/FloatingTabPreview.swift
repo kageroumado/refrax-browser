@@ -1,16 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// A live desktop page scaled into a movable tab window.
+/// A desktop page scaled into a movable tab window: live while `isLive`, otherwise its
+/// full-resolution snapshot. A page just taken live keeps the snapshot on top until it paints.
 struct FloatingTabPreview: View {
     let tab: Tab
     let viewportSize: CGSize
+    /// Holds the page live. A card that is only peeked at shows its snapshot, so revealing
+    /// the floating layer composites images and draws no pages.
+    var isLive = true
 
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(WindowState.self) private var windowState
     @Environment(WebPagePool.self) private var pagePool
     @State private var session = FloatingPreviewSession()
     @State private var livePage: WebPage?
+    @State private var hasPainted = false
+    @Environment(TableController.self) private var table
+
+    private enum Layout {
+        static let firstPaintFade: TimeInterval = 0.15
+    }
 
     private var isMainContent: Bool {
         tab.id == windowState.activeTabID
@@ -27,13 +37,30 @@ struct FloatingTabPreview: View {
                     Button("Adjust Region…") { canvas.beginRegionSelection(for: tab) }
                     Button("Open Full Page") { canvas.openFloatingTab(tab) }
                 }.padding(12)
-            } else if let livePage, !isMainContent, livePage.ownerWindowID == session.id {
-                FloatingPreviewViewport(viewportSize: canvas.floatingPlacement(for: tab).region?.viewportSize ?? viewportSize,
-                                        region: canvas.floatingPlacement(for: tab).region) {
+            } else if isLive, let livePage, !isMainContent, livePage.ownerWindowID == session.id {
+                FloatingPreviewViewport(
+                    viewportSize: canvas.floatingPlacement(for: tab).region?.viewportSize ?? viewportSize,
+                    region: canvas.floatingPlacement(for: tab).region,
+                ) {
                     WebViewContainer(page: livePage)
                         .webViewOwnershipID(session.id)
                 }
-            } else if let image = canvas.snapshots[tab.id] {
+                .overlay {
+                    if !hasPainted {
+                        snapshotFace
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: Layout.firstPaintFade), value: hasPainted)
+                .task(id: ObjectIdentifier(livePage)) {
+                    hasPainted = false
+                    await livePage.waitForPresentationUpdate()
+                    guard !Task.isCancelled else { return }
+                    hasPainted = true
+                }
+            } else if !isLive, !isMainContent {
+                snapshotFace
+            } else if let image = table.snapshot(for: tab.id) {
                 Image(nsImage: image).resizable().scaledToFit()
                     .overlay(alignment: .bottom) {
                         Text("Preview · Open tab to interact")
@@ -61,13 +88,37 @@ struct FloatingTabPreview: View {
             }
         }
         .onChange(of: isMainContent) { activate() }
+        .onChange(of: isLive) { activate() }
         .onChange(of: livePage?.isLoading) { _, loading in
-            if loading == true { canvas.verifiedRegionPages.removeValue(forKey: tab.activePage.id) }
+            if loading == true {
+                canvas.verifiedRegionPages.removeValue(forKey: tab.activePage.id)
+            }
         }
         .onDisappear { deactivate() }
     }
 
+    /// The card's snapshot, or its favicon and title when it has none.
+    @ViewBuilder
+    private var snapshotFace: some View {
+        if let image = table.snapshot(for: tab.id) {
+            Image(nsImage: image).resizable().scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            PagePlaceholder(tab: tab)
+                .task(id: tab.id) { table.requestStoredSnapshot(for: tab) }
+        }
+    }
+
     private func activate() {
+        guard isLive || isMainContent else {
+            if let page = livePage, page.ownerWindowID == session.id {
+                deactivate()
+                Task { await table.captureSnapshot(of: tab) }
+            } else {
+                deactivate()
+            }
+            return
+        }
         guard let page = pagePool.page(for: tab.activePage) else { return }
         deactivate()
         if isMainContent {

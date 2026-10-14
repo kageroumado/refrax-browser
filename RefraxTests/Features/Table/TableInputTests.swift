@@ -81,8 +81,8 @@ struct TableScrollRouterTests {
         _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
         _ = router.route(gesture(.ended), controlDown: true, canStart: true)
         _ = router.route(momentum(.began, 0, -20), controlDown: false, canStart: false)
-        #expect(router.route(momentum(.changed, 0, -1), controlDown: false, canStart: false) == .settle)
-        #expect(router.route(momentum(.changed, 0, -0.5), controlDown: false, canStart: false) == .consume)
+        #expect(router.route(momentum(.changed, 0, -0.3), controlDown: false, canStart: false) == .settle)
+        #expect(router.route(momentum(.changed, 0, -0.1), controlDown: false, canStart: false) == .consume)
         #expect(router.route(momentum(.ended), controlDown: false, canStart: false) == .consume)
         #expect(router.state == .idle)
     }
@@ -146,6 +146,74 @@ struct TableScrollRouterTests {
         #expect(router.route(first, controlDown: false, canStart: false) == .pan(CGSize(width: 0, height: -3)))
         #expect(router.smoothWheelWentQuiet() == .settle)
         #expect(router.route(first, controlDown: false, canStart: true) == .pass)
+    }
+
+    @Test
+    func `A click, a key, or ⌃ let go mid-gesture settles it and swallows the rest`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        #expect(router.interrupt() == .settle)
+        #expect(router.route(gesture(.changed, 0, -6), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(gesture(.ended), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(momentum(.began, 0, -20), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(momentum(.changed, 0, -10), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(momentum(.ended), controlDown: false, canStart: true) == .consume)
+        #expect(router.state == .idle)
+    }
+
+    @Test
+    func `Interrupting momentum settles it; the momentum still to come is swallowed`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.route(gesture(.ended), controlDown: true, canStart: true)
+        _ = router.route(momentum(.began, 0, -20), controlDown: false, canStart: false)
+        #expect(router.interrupt() == .settle)
+        #expect(router.route(momentum(.changed, 0, -10), controlDown: false, canStart: false) == .consume)
+    }
+
+    @Test
+    func `Interrupting while waiting for momentum settles at once`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.route(gesture(.ended), controlDown: true, canStart: true)
+        #expect(router.interrupt() == .settle)
+        #expect(router.momentumWindowElapsed() == .consume)
+    }
+
+    @Test
+    func `Interrupting a smooth wheel settles it`() {
+        var router = TableScrollRouter()
+        _ = router.route(Sample(source: .smoothWheel, delta: CGSize(width: 0, height: -3)), controlDown: true, canStart: true)
+        #expect(router.interrupt() == .settle)
+        #expect(router.smoothWheelWentQuiet() == .consume)
+    }
+
+    @Test
+    func `Interrupting with no slide does nothing`() {
+        var router = TableScrollRouter()
+        #expect(router.interrupt() == .consume)
+        _ = router.route(gesture(.began, 0, -4), controlDown: false, canStart: true)
+        #expect(router.interrupt() == .consume)
+        #expect(router.state == .passing)
+    }
+
+    @Test
+    func `After a swallowed gesture, a new one is judged afresh`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.interrupt()
+        _ = router.route(gesture(.ended), controlDown: false, canStart: true)
+        #expect(router.route(gesture(.began, 0, -4), controlDown: false, canStart: true) == .pass)
+        #expect(router.route(gesture(.changed, 0, -4), controlDown: false, canStart: true) == .pass)
+    }
+
+    @Test
+    func `A wheel event after a swallowed gesture is judged afresh`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.interrupt()
+        #expect(router.route(wheel(0, -1), controlDown: true, canStart: true) == .step(.down))
+        #expect(router.state == .idle)
     }
 }
 
@@ -240,5 +308,94 @@ struct TableEditTests {
         #expect(TableCommand.rowNumber(in: "go to row 3") == 3)
         #expect(TableCommand.rowNumber(in: "Row12") == 12)
         #expect(TableCommand.rowNumber(in: "rows") == nil)
+    }
+}
+
+struct TableFreeRestTests {
+    private let camera = TableCamera(viewport: CGSize(width: 1_000, height: 600))
+    private let a = UUID()
+    private let b = UUID()
+    private let c = UUID()
+    private let d = UUID()
+
+    private var row: TableLayout {
+        TableLayout(rows: [TableLayout.Row(slabs: [a, b, c].map { TableLayout.Slab(tabID: $0, width: .full) })])
+    }
+
+    @Test
+    func `A pan rests where it stopped, the picture unchanged`() throws {
+        let viewpoint = TableViewpoint(row: 0, shift: 400)
+        let rest = try #require(camera.rest(at: viewpoint, in: row, pointer: nil))
+        #expect(rest.viewpoint.shift == 0)
+        #expect(abs(camera.drawnOffset(ofRow: 0, in: rest.layout, at: rest.viewpoint) - camera.drawnOffset(ofRow: 0, in: row, at: viewpoint)) < 1e-6)
+    }
+
+    @Test
+    func `The slab under the pointer becomes current, even partly in view`() throws {
+        let viewpoint = TableViewpoint(row: 0, shift: 400)
+        let rest = try #require(camera.rest(at: viewpoint, in: row, pointer: CGPoint(x: 900, y: 300)))
+        #expect(rest.layout.focusedTabID == b)
+    }
+
+    @Test
+    func `With the pointer away, the slab most in view becomes current`() throws {
+        let rest = try #require(camera.rest(at: TableViewpoint(row: 0, shift: 700), in: row, pointer: nil))
+        #expect(rest.layout.focusedTabID == b)
+        let mostlyFirst = try #require(camera.rest(at: TableViewpoint(row: 0, shift: 300), in: row, pointer: CGPoint(x: -10, y: 0)))
+        #expect(mostlyFirst.layout.focusedTabID == a)
+    }
+
+    @Test
+    func `A pan can rest between rows, showing parts of both`() throws {
+        let layout = TableLayout(rows: [
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: a)]),
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: b)]),
+        ])
+        let rest = try #require(camera.rest(at: TableViewpoint(row: 0.7), in: layout, pointer: nil))
+        #expect(rest.viewpoint.row == 0.7)
+        #expect(rest.layout.focusedTabID == b)
+        #expect(camera.visibleSlabs(in: rest.layout, at: rest.viewpoint).map(\.tabID) == [a, b])
+    }
+
+    @Test
+    func `A row the pan left past its ends never goes further out, and comes back freely`() {
+        let end = TableLayout(rows: [TableLayout.Row(slabs: [a, b, c].map { TableLayout.Slab(tabID: $0) }, offset: 2, focusedSlab: 2)])
+        let past = end.restingFreely(focus: TableLayout.Position(row: 0, slab: 2), shift: 0.5)
+        let current = camera.drawnOffset(ofRow: 0, in: past, at: TableViewpoint(row: 0))
+        #expect(current == 2_500)
+        let further = camera.panned(TableViewpoint(row: 0), by: CGSize(width: -100, height: 0), in: past)
+        #expect(camera.drawnOffset(ofRow: 0, in: past, at: further) == 2_500)
+        let back = camera.panned(TableViewpoint(row: 0), by: CGSize(width: 100, height: 0), in: past)
+        #expect(camera.drawnOffset(ofRow: 0, in: past, at: back) == 2_400)
+    }
+
+    @Test
+    func `A discrete step from a free rest aligns the target slab whole`() {
+        let free = row.restingFreely(focus: TableLayout.Position(row: 0, slab: 0), shift: 0.4)
+        let stepped = free.movingFocus(.right)
+        #expect(stepped.focusedTabID == b)
+        #expect(stepped.rows[0].isWhole(1, at: stepped.rows[0].offset))
+        #expect(abs(stepped.rows[0].offset - 1) < 1e-9)
+    }
+
+    @Test
+    func `The live band holds the slabs in view and one beyond each side`() {
+        let layout = TableLayout(rows: [TableLayout.Row(slabs: [a, b, c, d].map { TableLayout.Slab(tabID: $0, width: .half) }, offset: 1, focusedSlab: 2)])
+        let band = camera.bandSlabs(in: layout, at: .resting(on: layout))
+        #expect(band.map(\.tabID) == [b, c, d])
+        #expect(band.map(\.isWhole) == [false, true, true])
+    }
+
+    @Test
+    func `The live band reaches the rows above and below`() {
+        let layout = TableLayout(rows: [
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: a)]),
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: b)]),
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: c)]),
+            TableLayout.Row(slabs: [TableLayout.Slab(tabID: d)]),
+        ], focusedRow: 1)
+        let band = camera.bandSlabs(in: layout, at: .resting(on: layout))
+        #expect(band.map(\.tabID) == [a, b, c])
+        #expect(band.first?.frame.minY == -600)
     }
 }

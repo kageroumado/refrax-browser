@@ -5,17 +5,24 @@ import SwiftUI
 /// One window's view onto its space's table: which slabs show, where the view is while it
 /// moves, and the commands that move it.
 ///
-/// ## Two layers
+/// ## Live slabs, moved by translation
 ///
-/// The **rest layer** draws ``presented``, the layout as it last came to rest: the slabs of
-/// the current row fully in view are live pages, the current one being the window's active
-/// tab, and partly visible slabs are snapshots. It changes only when the view settles, so
-/// motion never resizes or remounts a web view.
+/// Every slab within the viewport and one slab beyond it on each side, in both axes, is a
+/// live page at its slab size (``TableCamera/bandSlabs(in:at:)``). Motion only changes
+/// ``viewpoint``, which translates them; a slab is never resized or remounted mid-motion. A
+/// slab entering that band mounts its page at once, waking it if the pool had let it go, and
+/// shows its snapshot until the page has painted. The window's active tab is the current slab.
 ///
-/// The **cover** draws every visible slab from its snapshot at ``viewpoint``. It is up while
-/// the view moves and stays up after it settles until the live slabs of the new rest have
-/// drawn, then fades out. Under Reduce Motion the cover holds the old view and fades over
-/// the new one: a cross-fade with no slide.
+/// ## Free and aligned rests
+///
+/// A trackpad pan rests where its momentum leaves it, between rows or slabs if that is where
+/// it stopped; the slab under the pointer, or else the one most in view, becomes current.
+/// Wheel notches, ⌃⌘ arrows, lens jumps, and edits spring the view the least distance that
+/// shows their target slab whole.
+///
+/// Every motion ends in a rest: gesture and momentum ends, a click, a key, ⌃ let go, the
+/// window losing key, and a watchdog that settles the view when no input or frame has moved
+/// it for ``Layout/watchdogQuiet``. At rest the current slab becomes the window's page.
 ///
 /// ## Keeping in step
 ///
@@ -24,22 +31,19 @@ import SwiftUI
 /// current slab with the least movement, and each space keeps its own table. Edits are
 /// written to ``Space/table`` when the view rests and saved through the tab manager's
 /// debounced save.
+///
+/// The controller also keeps full-resolution snapshots of pages as they leave view, for the
+/// table's slabs and the floating cards alike.
 @MainActor
 @Observable
 final class TableController {
     private enum Layout {
-        /// How long the cover takes to fade once the live slabs have drawn.
-        static let coverFade: TimeInterval = 0.1
-        /// The cover's fade under Reduce Motion, the whole of the cross-fade.
-        static let reducedMotionFade: TimeInterval = 0.15
-        /// The longest the cover waits for live slabs to draw.
-        static let revealTimeout: TimeInterval = 0.6
-        /// How long after the cover lifts the live slabs are captured for the next motion.
-        static let restCaptureDelay: TimeInterval = 0.12
-        /// Recent velocity samples older than this are ignored.
-        static let velocityWindow: TimeInterval = 0.08
-        /// Full-size snapshots kept for the next motion.
-        static let snapshotLimit = 8
+        /// Motion with no input or frame for this long is settled by force.
+        static let watchdogQuiet: CFTimeInterval = 0.25
+        /// How often the watchdog looks while the view is away from rest.
+        static let watchdogInterval: TimeInterval = 0.1
+        /// Full-resolution snapshots kept.
+        static let snapshotLimit = 12
     }
 
     /// A spring in progress from `start` to `target`.
@@ -60,14 +64,10 @@ final class TableController {
 
     /// The layout the view is moving to, or resting on.
     private(set) var layout = TableLayout()
-    /// The layout the rest layer draws: ``layout`` as of the last time the view settled.
-    private(set) var presented = TableLayout()
-    /// Where the cover looks onto ``layout`` while it is up.
+    /// Where the window looks onto ``layout``; ``TableViewpoint/resting(on:)`` at rest.
     private(set) var viewpoint = TableViewpoint(row: 0)
-    /// The cover is drawn over the rest layer.
-    private(set) var showsCover = false
-    /// The cover's opacity, animated to 0 as it fades.
-    private(set) var coverOpacity: Double = 1
+    /// The view is moving: a pan, a spring, or queued wheel steps.
+    private(set) var isMoving = false
     /// The beam from the old focus to the new one after a long jump.
     private(set) var beam: BrowserBeamCues.Request?
     /// The size of the area the table fills: the window beside docked columns.
@@ -75,24 +75,20 @@ final class TableController {
     /// That area in the window's content view, top-left origin.
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
 
-    /// Full-size captures of slabs, newest last.
+    /// Full-resolution captures of pages, newest last.
     private var captures: [UUID: NSImage] = [:]
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
 
     /// Side slabs whose page this window's table holds live.
     @ObservationIgnored private var sideLiveTabIDs: Set<UUID> = []
-    /// Increments each time the view rests, so live slabs report drawing again.
-    private(set) var restGeneration = 0
-    @ObservationIgnored private var drawnTabIDs: Set<UUID> = []
-    @ObservationIgnored private var awaitingReveal = false
-    @ObservationIgnored private var revealTimeout: DispatchWorkItem?
 
     @ObservationIgnored private var flight: Flight?
     @ObservationIgnored private var isPanning = false
-    @ObservationIgnored private var panSamples: [(time: TimeInterval, delta: CGSize)] = []
     @ObservationIgnored private var stepQueue = TableStepQueue()
     @ObservationIgnored private var stepTimer: DispatchWorkItem?
+    @ObservationIgnored private var lastActivity: CFTimeInterval = 0
+    @ObservationIgnored private var watchdog: DispatchWorkItem?
     /// The focus when the current motion began, for the beam of a long jump.
     @ObservationIgnored private var motionOrigin: UUID?
     /// The side focus last arrived from: the neighbor an edit keeps in view first.
@@ -102,6 +98,9 @@ final class TableController {
     @ObservationIgnored private var storedLayout: TableLayout?
     @ObservationIgnored private let clock = TableFrameClock()
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+
+    /// Called when the view is settled by force, so input stops treating the gesture as a slide.
+    @ObservationIgnored var onForcedRest: (() -> Void)?
 
     @ObservationIgnored private unowned let windowState: WindowState
     @ObservationIgnored private unowned let tabManager: TabManager
@@ -146,9 +145,7 @@ final class TableController {
     func stop() {
         tasks.forEach { $0.cancel() }
         tasks.removeAll()
-        clock.stop()
-        stepTimer?.cancel()
-        revealTimeout?.cancel()
+        stopMotion()
     }
 
     // MARK: - Reading
@@ -169,12 +166,6 @@ final class TableController {
         !tab.isFavorite && tab.space?.id == windowState.activeSpaceID && !tab.isArchived
     }
 
-    /// The image the cover and partly visible slabs draw for a tab: the newest full-size
-    /// capture, or the tab canvas's snapshot.
-    func snapshot(for tabID: UUID) -> NSImage? {
-        captures[tabID] ?? canvas.snapshots[tabID]
-    }
-
     /// Whether the window shows the table now: its current page is a slab.
     var isShowingTable: Bool {
         currentTab != nil
@@ -183,6 +174,12 @@ final class TableController {
     /// The window's current page while it is a slab.
     var currentTab: Tab? {
         windowState.activeTab.flatMap { holds($0) ? $0 : nil }
+    }
+
+    /// The image a page shows until it paints, or while another surface holds it: the
+    /// newest full-resolution capture, or the tab canvas's snapshot.
+    func snapshot(for tabID: UUID) -> NSImage? {
+        captures[tabID] ?? canvas.snapshots[tabID]
     }
 
     /// Whether the slide may start with the pointer at `point`, in window coordinates.
@@ -209,8 +206,8 @@ final class TableController {
 
     // MARK: - Sliding
 
-    /// A slide starts: the cover comes up over the rest layer and follows the fingers.
-    func beginPan(_ delta: CGSize, at time: TimeInterval) {
+    /// A slide starts and follows the fingers.
+    func beginPan(_ delta: CGSize) {
         stepTimer?.cancel()
         stepTimer = nil
         stepQueue.removeAll()
@@ -221,31 +218,34 @@ final class TableController {
         }
         beginMotion()
         isPanning = true
-        panSamples.removeAll()
-        pan(delta, at: time)
+        pan(delta)
     }
 
     /// The slide follows a pan of `delta` points.
-    func pan(_ delta: CGSize, at time: TimeInterval) {
+    func pan(_ delta: CGSize) {
         guard isPanning else { return }
+        noteActivity()
         viewpoint = camera.panned(viewpoint, by: delta, in: layout)
-        panSamples.append((time, delta))
-        panSamples.removeAll { time - $0.time > Layout.velocityWindow }
     }
 
-    /// The slide ends: the view springs to the nearest resting place, row first, then slab.
+    /// The slide ends where it is: the slab under the pointer, or else the one most in view,
+    /// becomes current.
     func endPan() {
         guard isPanning else { return }
         isPanning = false
-        guard let rest = camera.restingTarget(in: layout, from: viewpoint) else {
-            settle()
-            return
+        if let rest = camera.rest(at: viewpoint, in: layout, pointer: pointerInViewport()) {
+            layout = rest.layout
+            viewpoint = rest.viewpoint
         }
-        let velocity = panVelocity()
-        let next = layout.resting(at: rest)
-        viewpoint = camera.rebased(viewpoint, from: layout, to: next)
-        layout = next
-        fly(to: .resting(on: next), velocity: velocity)
+        settle()
+    }
+
+    /// The pointer in the table's coordinates, top-left origin.
+    private func pointerInViewport() -> CGPoint? {
+        guard let window = windowState.window, let content = window.contentView else { return nil }
+        let local = content.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
+        return CGPoint(x: topLeft.x - viewportFrame.minX, y: topLeft.y - viewportFrame.minY)
     }
 
     /// One wheel notch or ⌃⌘ arrow: focus moves one slab or row, queued behind the steps
@@ -308,7 +308,7 @@ final class TableController {
         layout.rows.count
     }
 
-    // MARK: - Live slabs
+    // MARK: - Live slabs and snapshots
 
     /// A side slab took its page live, or gave it back.
     func setSideLive(_ isLive: Bool, tabID: UUID) {
@@ -319,46 +319,28 @@ final class TableController {
         }
     }
 
-    /// A slab of the rest layer has drawn for `generation`.
-    func slabDidDraw(_ tabID: UUID, generation: Int) {
-        guard generation == restGeneration else { return }
-        drawnTabIDs.insert(tabID)
-        revealIfDrawn()
+    /// Captures a page at full resolution, when it has loaded. A page leaving view is
+    /// captured so it can be shown again until it repaints.
+    func captureSnapshot(of tab: Tab) async {
+        guard !capturing.contains(tab.id), let page = pagePool.existingPage(for: tab.activePage),
+              page.url != nil, !page.isLoading else { return }
+        let bounds = page.contentView.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        capturing.insert(tab.id)
+        defer { capturing.remove(tab.id) }
+        guard let image = try? await page.snapshot() else { return }
+        store(image, for: tab.id)
     }
 
-    /// Captures a slab that came partly into view at rest, once, when its tab has a loaded
-    /// page in the pool, so the slide that brings it in starts from what it shows.
-    func captureIfLoaded(_ tab: Tab) {
-        guard captures[tab.id] == nil, pagePool.existingPage(for: tab.activePage) != nil else { return }
-        Task { await capture(tab) }
-    }
-
-    /// Captures a slab the cover has no image for: the live page when the pool holds it,
-    /// otherwise the canvas snapshot stored on disk.
-    func requestSnapshot(for tab: Tab) {
-        guard snapshot(for: tab.id) == nil, !capturing.contains(tab.id) else { return }
-        if pagePool.existingPage(for: tab.activePage) != nil {
-            Task { await capture(tab) }
-            return
-        }
-        guard tab.space?.dataStoreMode != .private else { return }
+    /// Fills in a slab or card with no image from the canvas snapshot stored on disk.
+    func requestStoredSnapshot(for tab: Tab) {
+        guard snapshot(for: tab.id) == nil, !capturing.contains(tab.id), tab.space?.dataStoreMode != .private else { return }
         capturing.insert(tab.id)
         Task {
-            if let data = await CanvasSnapshotStore.load(for: tab.id), let image = NSImage(data: data) {
+            if let data = await CanvasSnapshotStore.load(for: tab.id), let image = NSImage(data: data), captures[tab.id] == nil {
                 store(image, for: tab.id)
             }
             capturing.remove(tab.id)
-        }
-    }
-
-    /// Captures the live slabs, so the cover starts from what they show now. ⌃ going down
-    /// asks for this ahead of the slide it may start.
-    func captureLiveSlabs() async {
-        let camera = camera
-        guard viewport.width > 0, !showsCover else { return }
-        let live = camera.liveSlabs(in: presented).compactMap { tabManager.state.tab(for: presented[$0].tabID) }
-        for tab in live {
-            await capture(tab)
         }
     }
 
@@ -377,7 +359,7 @@ final class TableController {
             spaceID = nil
             stopMotion()
             layout = TableLayout()
-            presented = layout
+            viewpoint = .resting(on: layout)
             return
         }
         if spaceID != self.spaceID {
@@ -432,9 +414,7 @@ final class TableController {
             loaded = loaded.focusing(active)
         }
         layout = loaded
-        presented = loaded
         viewpoint = .resting(on: loaded)
-        restGeneration += 1
         persist()
     }
 
@@ -450,49 +430,36 @@ final class TableController {
 
     /// Moves the view to `next`, from wherever it shows now.
     private func move(to next: TableLayout) {
-        guard viewport.width > 0, viewport.height > 0, isShowingTable || showsCover else {
+        guard viewport.width > 0, viewport.height > 0, isShowingTable || isMoving else {
             stopMotion()
             layout = next
-            presented = next
             viewpoint = .resting(on: next)
             persist()
             return
         }
-        let start = showsCover ? camera.rebased(currentViewpoint(), from: layout, to: next) : camera.transition(from: presented, to: next)
+        let start = camera.rebased(currentViewpoint(), from: layout, to: next)
         let velocity = flight.map { currentVelocity(of: $0, at: CACurrentMediaTime()) } ?? TableViewpoint(row: 0)
-        if !showsCover, let origin = presented.focusedTabID {
-            Task { [weak self] in
-                guard let self, let tab = tabManager.state.tab(for: origin) else { return }
-                await capture(tab)
-            }
-        }
         beginMotion()
         viewpoint = start
         layout = next
         fly(to: .resting(on: next), velocity: velocity)
     }
 
-    /// Captures the live slabs first, then applies a command's edit.
-    private func edit(_ transform: @escaping (TableLayout) -> TableLayout) {
+    /// Applies a command's edit to the layout and moves the view to it.
+    private func edit(_ transform: (TableLayout) -> TableLayout) {
         guard !isPanning, isShowingTable else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            await captureLiveSlabs()
-            let next = transform(layout).settlingFocus(keepingNeighborOn: arrivalSide)
-            guard next != layout else { return }
-            move(to: next)
-        }
+        let edited = transform(layout)
+        let next = (edited.focusedTabID.map(edited.focusing) ?? edited).settlingFocus(keepingNeighborOn: arrivalSide)
+        guard next != layout else { return }
+        move(to: next)
     }
 
     private func beginMotion() {
-        revealTimeout?.cancel()
-        awaitingReveal = false
-        if !showsCover {
-            motionOrigin = presented.focusedTabID
-            viewpoint = .resting(on: presented)
+        if !isMoving {
+            motionOrigin = layout.focusedTabID
+            isMoving = true
         }
-        showsCover = true
-        coverOpacity = 1
+        noteActivity()
     }
 
     private func playNextStep() {
@@ -506,7 +473,8 @@ final class TableController {
         if step == .left || step == .right {
             arrivalSide = step.opposite
         }
-        move(to: layout.movingFocus(step))
+        let next = layout.movingFocus(step)
+        move(to: next.focusedTabID.map(next.focusing) ?? next)
         let timer = DispatchWorkItem { [weak self] in self?.playNextStep() }
         stepTimer = timer
         DispatchQueue.main.asyncAfter(deadline: .now() + TableStepQueue.stepInterval, execute: timer)
@@ -516,16 +484,20 @@ final class TableController {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
+    /// Springs the view to `target`; under Reduce Motion it lands at once.
     private func fly(to target: TableViewpoint, velocity: TableViewpoint) {
-        guard !reduceMotion else {
+        noteActivity()
+        guard !reduceMotion, let view = windowState.window?.contentView else {
             flight = nil
-            settle()
+            clock.stop()
+            viewpoint = target
+            if stepTimer == nil {
+                settle()
+            }
             return
         }
         flight = Flight(start: viewpoint, target: target, velocity: velocity, startTime: CACurrentMediaTime())
-        if let view = windowState.window?.contentView {
-            clock.start(in: view)
-        }
+        clock.start(in: view)
     }
 
     private func advanceFlight(at time: CFTimeInterval) {
@@ -533,17 +505,24 @@ final class TableController {
             clock.stop()
             return
         }
+        noteActivity()
         let elapsed = time - flight.startTime
         if TableSpring.isSettled(from: flight.start, to: flight.target, velocity: flight.velocity, elapsed: elapsed, rowHeight: viewport.height) {
-            viewpoint = flight.target
-            self.flight = nil
-            clock.stop()
-            if stepTimer == nil {
-                settle()
-            }
+            landFlight()
             return
         }
         viewpoint = TableSpring.interpolate(from: flight.start, to: flight.target, velocity: flight.velocity, elapsed: elapsed)
+    }
+
+    private func landFlight() {
+        if let flight {
+            viewpoint = flight.target
+        }
+        flight = nil
+        clock.stop()
+        if stepTimer == nil {
+            settle()
+        }
     }
 
     private func currentViewpoint() -> TableViewpoint {
@@ -564,17 +543,45 @@ final class TableController {
         )
     }
 
-    /// The pan's recent speed as a viewpoint velocity: rows and points per second.
-    private func panVelocity() -> TableViewpoint {
-        guard let first = panSamples.first, let last = panSamples.last, last.time > first.time, viewport.height > 0 else {
-            return TableViewpoint(row: 0)
+    // MARK: - Private: watchdog
+
+    private func noteActivity() {
+        lastActivity = CACurrentMediaTime()
+        guard watchdog == nil else { return }
+        scheduleWatchdog()
+    }
+
+    private func scheduleWatchdog() {
+        let check = DispatchWorkItem { [weak self] in self?.watchdogCheck() }
+        watchdog = check
+        DispatchQueue.main.asyncAfter(deadline: .now() + Layout.watchdogInterval, execute: check)
+    }
+
+    /// Settles motion that has gone quiet: a pan whose end never came, a spring whose frames
+    /// stopped, or steps whose timer was lost.
+    private func watchdogCheck() {
+        watchdog = nil
+        guard isMoving else { return }
+        guard CACurrentMediaTime() - lastActivity >= Layout.watchdogQuiet else {
+            scheduleWatchdog()
+            return
         }
-        let duration = last.time - first.time
-        let total = panSamples.dropFirst().reduce(CGSize.zero) { CGSize(width: $0.width + $1.delta.width, height: $0.height + $1.delta.height) }
-        return TableViewpoint(
-            row: -Double(total.height / viewport.height) / duration,
-            shift: -total.width / CGFloat(duration),
-        )
+        Logger.debug("table watchdog settles panning \(isPanning) flight \(flight != nil) steps \(stepTimer != nil)", category: Logger.canvas)
+        if isPanning {
+            onForcedRest?()
+            endPan()
+        } else {
+            stepTimer?.cancel()
+            stepTimer = nil
+            stepQueue.removeAll()
+            landFlight()
+            if flight == nil, stepTimer == nil, isMoving {
+                settle()
+            }
+        }
+        if isMoving {
+            scheduleWatchdog()
+        }
     }
 
     private func stopMotion() {
@@ -584,63 +591,26 @@ final class TableController {
         stepTimer?.cancel()
         stepTimer = nil
         stepQueue.removeAll()
-        revealTimeout?.cancel()
-        awaitingReveal = false
-        showsCover = false
-        coverOpacity = 1
+        watchdog?.cancel()
+        watchdog = nil
+        isMoving = false
+        motionOrigin = nil
     }
 
-    /// The view has come to rest on ``layout``: the rest layer takes it, its current slab
-    /// becomes the window's page, and the cover waits for the live slabs to draw.
+    /// The view has come to rest on ``layout``: its current slab becomes the window's page,
+    /// and the pages in view are captured for when they next show.
     private func settle() {
         guard flight == nil, stepTimer == nil, !isPanning else { return }
         let origin = motionOrigin
         motionOrigin = nil
-        presented = layout
-        if !reduceMotion {
-            viewpoint = .resting(on: layout)
-        }
+        isMoving = false
+        watchdog?.cancel()
+        watchdog = nil
         persist()
         if isShowingTable, let focus = layout.focusedTabID, focus != windowState.activeTabID, let tab = tabManager.state.tab(for: focus) {
             tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
         }
         lightBeam(from: origin)
-        restGeneration += 1
-        drawnTabIDs.removeAll()
-        awaitingReveal = true
-        let timeout = DispatchWorkItem { [weak self] in self?.reveal() }
-        revealTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + Layout.revealTimeout, execute: timeout)
-        revealIfDrawn()
-    }
-
-    private func revealIfDrawn() {
-        guard awaitingReveal else { return }
-        let live = Set(camera.liveSlabs(in: presented).map { presented[$0].tabID })
-        guard live.isSubset(of: drawnTabIDs) else { return }
-        reveal()
-    }
-
-    /// Fades the cover off the live slabs.
-    private func reveal() {
-        guard awaitingReveal else { return }
-        awaitingReveal = false
-        revealTimeout?.cancel()
-        let duration = reduceMotion ? Layout.reducedMotionFade : Layout.coverFade
-        let generation = restGeneration
-        withAnimation(.easeOut(duration: duration)) {
-            coverOpacity = 0
-        } completion: { [weak self] in
-            guard let self, restGeneration == generation, flight == nil, !isPanning, stepTimer == nil else { return }
-            showsCover = false
-            coverOpacity = 1
-            viewpoint = .resting(on: presented)
-        }
-        let recapture = DispatchWorkItem { [weak self] in
-            guard let self, restGeneration == generation else { return }
-            Task { await self.captureLiveSlabs() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Layout.restCaptureDelay, execute: recapture)
     }
 
     private func lightBeam(from origin: UUID?) {
@@ -664,17 +634,6 @@ final class TableController {
         storedLayout = layout
         space.table = layout
         tabManager.scheduleSave()
-    }
-
-    private func capture(_ tab: Tab) async {
-        guard !capturing.contains(tab.id), let page = pagePool.existingPage(for: tab.activePage),
-              page.url != nil, !page.isLoading else { return }
-        let bounds = page.contentView.bounds
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        capturing.insert(tab.id)
-        defer { capturing.remove(tab.id) }
-        guard let image = try? await page.snapshot() else { return }
-        store(image, for: tab.id)
     }
 
     private func store(_ image: NSImage, for tabID: UUID) {

@@ -408,6 +408,21 @@ nonisolated struct TableLayout: Codable, Equatable, Sendable {
         return layout
     }
 
+    /// The table resting where a free pan left it: `shift` viewport widths added to every
+    /// row's offset, so the picture stays put with no viewpoint shift, and the slab at `focus`
+    /// current. Nothing is aligned: the current slab may be partly in view, and a row the pan
+    /// carried past its ends keeps that offset until it is next aligned.
+    func restingFreely(focus: Position, shift: Double) -> TableLayout {
+        guard rows.indices.contains(focus.row), rows[focus.row].slabs.indices.contains(focus.slab) else { return self }
+        var layout = self
+        for index in layout.rows.indices {
+            layout.rows[index].offset += shift
+        }
+        layout.focusedRow = focus.row
+        layout.rows[focus.row].focusedSlab = focus.slab
+        return layout
+    }
+
     /// Makes row `index`'s remembered slab current; unchanged for a row not on the table.
     func focusingRow(_ index: Int) -> TableLayout {
         guard rows.indices.contains(index) else { return self }

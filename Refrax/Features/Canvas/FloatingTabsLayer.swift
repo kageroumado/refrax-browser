@@ -142,6 +142,8 @@ private struct FloatingTabCard: View {
     /// When the current resize last changed the shape: updates while that motion runs join it.
     @State private var shapeChangedAt: Date?
     @State private var isHovering = false
+    /// The pointer was on the card within the last ``Layout/liveLinger``, so its page stays live.
+    @State private var wantsLive = false
     @State private var tearOff: FloatingTearOffGhost?
     @State private var isOutsideWindow = false
 
@@ -158,6 +160,8 @@ private struct FloatingTabCard: View {
         static let iconBadgePadding: CGFloat = 2
         /// How long a resize keeps animating after a shape change: the spring's duration.
         static let shapeMotionDuration: TimeInterval = 0.2
+        /// How long a card keeps its page live after the pointer leaves it.
+        static let liveLinger: Duration = .seconds(1)
     }
 
     private var shape: FloatingCardShape {
@@ -179,6 +183,12 @@ private struct FloatingTabCard: View {
     private var showsControls: Bool {
         isHovering || canvas.menuTabID == tab.id
     }
+    /// A live-shape card draws its page while the pointer is on it or just left, while it
+    /// takes input, while it is kept visible, or while it shows a region; otherwise it shows
+    /// its snapshot, so a peek at the floating layer draws no pages.
+    private var showsLivePage: Bool {
+        wantsLive || hasInput || isKept || canvas.retainedInputTabID == tab.id || placement.region != nil
+    }
     private var isHighlighted: Bool {
         canvas.selectedFloatingTabIDs.contains(tab.id) || hasInput
             || (tab.id == canvas.focusedFloatingTabID && canvas.floatingVisibility.isRevealed)
@@ -199,7 +209,7 @@ private struct FloatingTabCard: View {
                             .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, Header.leadingPadding).frame(height: Layout.mainPageRowHeight)
                     } else if shape == .live {
-                        FloatingTabPreview(tab: tab, viewportSize: area.size)
+                        FloatingTabPreview(tab: tab, viewportSize: area.size, isLive: showsLivePage)
                             .frame(height: max(0, placement.frame(in: area).height - Header.height - FloatingTabPlacement.previewInset))
                             .clipShape(.rect(cornerRadius: FloatingCardChrome.previewCornerRadius(isKept: isKept), style: .continuous))
                             .padding([.horizontal, .bottom], FloatingTabPlacement.previewInset)
@@ -229,6 +239,16 @@ private struct FloatingTabCard: View {
         .shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y)
         .opacity(isOutsideWindow ? Layout.leavingOpacity : 1)
         .onHover { isHovering = $0 }
+        .task(id: isHovering) {
+            if isHovering {
+                wantsLive = true
+                return
+            }
+            try? await Task.sleep(for: Layout.liveLinger)
+            if !Task.isCancelled {
+                wantsLive = false
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Floating tab, \(tab.displayTitle)")
         .accessibilityValue(isKept ? "Kept visible" : "")

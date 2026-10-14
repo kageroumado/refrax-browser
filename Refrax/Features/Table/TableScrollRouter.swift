@@ -71,9 +71,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         case smoothTracking
     }
 
-    /// Momentum slower than this many points per event stops carrying the table, so the
-    /// spring takes over instead of a long slow tail.
-    static let momentumSettleSpeed: CGFloat = 1.5
+    /// Momentum slower than this many points per event ends the slide where it is, instead
+    /// of a long tail too slow to see.
+    static let momentumSettleSpeed: CGFloat = 0.5
 
     private(set) var state = State.idle
 
@@ -115,6 +115,24 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         return .settle
     }
 
+    /// A click, a key, ⌃ let go, or the window losing key ends the slide where it is. The
+    /// rest of a gesture still under the fingers, and its momentum, are swallowed.
+    mutating func interrupt() -> Decision {
+        switch state {
+        case .tracking, .momentum:
+            state = .draining
+            return .settle
+        case .awaitingMomentum:
+            state = .draining
+            return .settle
+        case .smoothTracking:
+            state = .idle
+            return .settle
+        case .idle, .passing, .draining:
+            return .consume
+        }
+    }
+
     mutating func reset() {
         state = .idle
     }
@@ -143,6 +161,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
 
     private mutating func routeGesture(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
         let phase = sample.phase
+        if state == .draining, !phase.contains(.began), !phase.contains(.mayBegin) {
+            return .consume
+        }
         if phase.contains(.began) {
             if controlDown, canStart {
                 state = .tracking
@@ -198,6 +219,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
     private mutating func routeMomentum(_ sample: Sample) -> Decision {
         let phase = sample.momentumPhase
         if phase.contains(.began) {
+            if state == .draining {
+                return .consume
+            }
             guard state == .awaitingMomentum else { return .pass }
             state = .momentum
             return .pan(sample.delta)
@@ -266,5 +290,40 @@ extension TableCamera {
     /// along the row, or past the next row.
     static func isLongJump(from old: TableLayout.Position, to new: TableLayout.Position) -> Bool {
         old.row == new.row ? abs(old.slab - new.slab) > 1 : abs(old.row - new.row) > 1
+    }
+}
+
+extension TableCamera {
+    /// The slabs kept live at `viewpoint`: every slab in view and one slab beyond it on each
+    /// side, in the rows in view and the row beyond each edge. Rows above and below take the
+    /// slabs over the viewport's span the same way. Top row first, left to right; frames are
+    /// in viewport coordinates and `isWhole` says the slab is entirely in view.
+    func bandSlabs(in layout: TableLayout, at viewpoint: TableViewpoint) -> [TableVisibleSlab] {
+        guard !layout.rows.isEmpty, viewport.width > 0, viewport.height > 0 else { return [] }
+        let bounds = CGRect(origin: .zero, size: viewport)
+        let first = max(Int(viewpoint.row.rounded(.down)) - 1, 0)
+        let last = min(Int(viewpoint.row.rounded(.up)) + 1, layout.rows.count - 1)
+        guard first <= last else { return [] }
+        var result: [TableVisibleSlab] = []
+        for rowIndex in first ... last {
+            let row = layout.rows[rowIndex]
+            let offset = drawnOffset(ofRow: rowIndex, in: layout, at: viewpoint)
+            let y = CGFloat(Double(rowIndex) - viewpoint.row) * viewport.height
+            let frames = row.slabs.indices.map { index in
+                tableFrame(of: TableLayout.Position(row: rowIndex, slab: index), in: layout)
+                    .offsetBy(dx: -offset, dy: y - CGFloat(rowIndex) * viewport.height)
+            }
+            let overlapping = frames.indices.filter { frames[$0].maxX > Self.wholeTolerance && frames[$0].minX < viewport.width - Self.wholeTolerance }
+            guard let low = overlapping.first, let high = overlapping.last else { continue }
+            for index in max(low - 1, 0) ... min(high + 1, frames.count - 1) {
+                result.append(TableVisibleSlab(
+                    position: TableLayout.Position(row: rowIndex, slab: index),
+                    tabID: row.slabs[index].tabID,
+                    frame: frames[index],
+                    isWhole: bounds.insetBy(dx: -Self.wholeTolerance, dy: -Self.wholeTolerance).contains(frames[index]),
+                ))
+            }
+        }
+        return result
     }
 }

@@ -3,8 +3,8 @@ import AppKit
 /// Turns ⌃ + scroll on the page into table motion, ahead of the page.
 ///
 /// ``CanvasPageGestures`` hands every scroll event in the window here first; what this
-/// returns `true` for never reaches the page. ⌃ going down warms the cover's snapshots for
-/// the slide it may start.
+/// returns `true` for never reaches the page. A click, a key, ⌃ let go, or the window losing
+/// key ends a slide in a rest.
 @MainActor
 final class TableInput {
     private unowned let table: TableController
@@ -21,6 +21,7 @@ final class TableInput {
 
     init(table: TableController) {
         self.table = table
+        table.onForcedRest = { [weak self] in self?.forcedRest() }
     }
 
     /// Whether a slide owns the scroll events now, wherever the pointer is.
@@ -43,16 +44,23 @@ final class TableInput {
         let controlDown = event.modifierFlags.contains(.control)
         let mayStart = controlDown && canStart() && table.canSlide(atWindowPoint: event.locationInWindow)
         let decision = router.route(sample, controlDown: controlDown, canStart: mayStart)
-        return perform(decision, sample: sample, at: event.timestamp)
+        return perform(decision, sample: sample)
     }
 
-    /// ⌃ went down or up.
-    func controlChanged(isDown: Bool) {
-        guard isDown, !router.isSliding else { return }
-        Task { await table.captureLiveSlabs() }
+    /// Ends a slide in progress: the view settles and the rest of the gesture is swallowed.
+    func interrupt() {
+        guard router.isSliding else { return }
+        _ = perform(router.interrupt(), sample: TableScrollRouter.Sample(source: .trackpad, delta: .zero))
     }
 
-    private func perform(_ decision: TableScrollRouter.Decision, sample: TableScrollRouter.Sample, at time: TimeInterval) -> Bool {
+    /// The table settled on its own; what is left of the gesture is swallowed.
+    private func forcedRest() {
+        momentumWindow?.cancel()
+        smoothWheelQuiet?.cancel()
+        _ = router.interrupt()
+    }
+
+    private func perform(_ decision: TableScrollRouter.Decision, sample: TableScrollRouter.Sample) -> Bool {
         switch decision {
         case .pass:
             return false
@@ -60,18 +68,18 @@ final class TableInput {
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
-            table.beginPan(delta, at: time)
+            table.beginPan(delta)
             armSmoothWheelQuiet(for: sample)
             return true
         case let .pan(delta):
             momentumWindow?.cancel()
-            table.pan(delta, at: time)
+            table.pan(delta)
             armSmoothWheelQuiet(for: sample)
             return true
         case .liftOff:
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
-                _ = perform(router.momentumWindowElapsed(), sample: sample, at: time)
+                _ = perform(router.momentumWindowElapsed(), sample: sample)
             }
             momentumWindow = work
             DispatchQueue.main.asyncAfter(deadline: .now() + Layout.momentumWindow, execute: work)
@@ -92,7 +100,7 @@ final class TableInput {
         smoothWheelQuiet?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            _ = perform(router.smoothWheelWentQuiet(), sample: sample, at: 0)
+            _ = perform(router.smoothWheelWentQuiet(), sample: sample)
         }
         smoothWheelQuiet = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Layout.smoothWheelQuiet, execute: work)
