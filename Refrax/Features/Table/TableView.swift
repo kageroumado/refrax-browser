@@ -52,6 +52,12 @@ private struct TableSlabView: View {
     @Environment(TabManager.self) private var tabManager
     @Environment(WebPagePool.self) private var pagePool
 
+    private enum Layout {
+        /// Load progress at which a waking page has usually drawn its first content.
+        static let firstPaintProgress = 0.5
+        static let firstPaintFade: TimeInterval = 0.15
+    }
+
     private struct DrawKey: Equatable {
         var generation: Int
         var isLive: Bool
@@ -78,11 +84,32 @@ private struct TableSlabView: View {
     private func content(for tab: Tab) -> some View {
         if !slab.isWhole {
             TableSnapshotView(tab: tab, cutEdge: cutEdge)
-        } else if isCurrent {
+        } else {
+            livePage(for: tab)
+                .overlay {
+                    if isAwaitingFirstPaint(tab) {
+                        TableSnapshotView(tab: tab, cutEdge: nil)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: Layout.firstPaintFade), value: isAwaitingFirstPaint(tab))
+        }
+    }
+
+    @ViewBuilder
+    private func livePage(for tab: Tab) -> some View {
+        if isCurrent {
             UnifiedContentView(tab: tab)
         } else {
             TableSideLivePage(tab: tab)
         }
+    }
+
+    /// A live slab whose page has not drawn anything yet keeps its snapshot or placeholder on
+    /// top, so a tab that wakes on arrival never shows as a blank white page while it loads.
+    private func isAwaitingFirstPaint(_ tab: Tab) -> Bool {
+        guard let page = pagePool.existingPage(for: tab.activePage) else { return true }
+        return page.isLoading && page.estimatedProgress < Layout.firstPaintProgress
     }
 
     /// The edge where the viewport cuts the slab.
