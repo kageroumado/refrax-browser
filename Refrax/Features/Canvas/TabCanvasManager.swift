@@ -166,9 +166,11 @@ final class TabCanvasManager {
     var floatingDropGroupID: UUID? {
         didSet { floatingDropCardID = nil }
     }
-    /// The loose card a dragged card forms a new group with if it is let go now; its outline
-    /// brightens and says Group.
+    /// The loose card a dragged card forms a group with if released here.
     var floatingDropCardID: Tab.ID?
+    /// The visible seam between neighboring cards while a drag is ready to connect them.
+    var floatingDropBridge: CGRect?
+    var floatingDropMovingCardID: Tab.ID?
     /// A group whose header shows its name field, as it does right after Group.
     var floatingRenamingGroupID: UUID?
     /// Group header widths as the layer drew them, for hit-testing headers.
@@ -436,6 +438,8 @@ final class TabCanvasManager {
         recentIsOpen = false
         selectedFloatingTabIDs = []
         floatingDropGroupID = nil
+        floatingDropBridge = nil
+        floatingDropMovingCardID = nil
         floatingRenamingGroupID = nil
         retainedInputTabID = nil
         floatingVisibility.dismiss()

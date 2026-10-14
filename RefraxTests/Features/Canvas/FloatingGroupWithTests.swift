@@ -56,6 +56,41 @@ struct FloatingGroupWithTests {
     }
 
     @Test
+    func `Dropping beside a card connects them without moving either card`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        _ = try env.createActiveTab(url: #require(URL(string: "about:blank#current")), in: space, for: window)
+        let first = try env.tabManager.createTab(url: #require(URL(string: "about:blank#first")), in: space, makeActive: false)
+        let second = try env.tabManager.createTab(url: #require(URL(string: "about:blank#second")), in: space, makeActive: false)
+        canvas.revealFloatingTabs()
+        canvas.latchFloatingTabs()
+        let area = canvas.floatingArea
+        var firstPlacement = canvas.floatingPlacement(for: first)
+        firstPlacement.move(to: CGPoint(x: 100, y: 200), in: area)
+        canvas.updateFloatingPlacement(firstPlacement, for: first)
+        var secondPlacement = canvas.floatingPlacement(for: second)
+        secondPlacement.move(to: CGPoint(x: canvas.floatingFrame(for: first, in: area).maxX + 12, y: 200), in: area)
+        canvas.updateFloatingPlacement(secondPlacement, for: second)
+        let firstFrame = canvas.floatingFrame(for: first, in: area)
+        let secondFrame = canvas.floatingFrame(for: second, in: area)
+
+        canvas.updateFloatingDropTarget(at: CGPoint(x: secondFrame.midX, y: secondFrame.midY), dragging: [second], in: area)
+        #expect(canvas.floatingDropCardID == first.id)
+        #expect(canvas.floatingDropBridge != nil)
+        canvas.dropIntoTarget([second])
+
+        #expect(first.group?.id == second.group?.id)
+        #expect(canvas.floatingFrame(for: first, in: area) == firstFrame)
+        #expect(canvas.floatingFrame(for: second, in: area) == secondFrame)
+        #expect(canvas.spatialNeighbor(from: first.id, toward: .right, among: [first.id, second.id]) == second.id)
+        #expect(canvas.spatialNeighbor(from: second.id, toward: .left, among: [first.id, second.id]) == first.id)
+        #expect(canvas.floatingRenamingGroupID == nil)
+        #expect(canvas.floatingDropCardID == nil)
+    }
+
+    @Test
     func `joining a group brings a distant card next to its members`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

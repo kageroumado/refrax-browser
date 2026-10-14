@@ -100,4 +100,19 @@ struct FloatingGroupLayoutTests {
         #expect(FloatingGroupLayout.dropTarget(at: CGPoint(x: 700, y: 500), among: targets) == "parent")
         #expect(FloatingGroupLayout.dropTarget(at: CGPoint(x: 900, y: 700), among: targets) == nil)
     }
+
+    @Test
+    func `Adjacent cards expose the seam that joins them`() throws {
+        let moving = CGRect(x: 362, y: 200, width: 250, height: 34)
+        let cards = [
+            (id: "left", frame: CGRect(x: 100, y: 200, width: 250, height: 34)),
+            (id: "far", frame: CGRect(x: 700, y: 200, width: 250, height: 34)),
+        ]
+        let target = try #require(FloatingGroupLayout.adjacentCardDropTarget(beside: moving, among: cards))
+        #expect(target.id == "left")
+        #expect(target.bridge == CGRect(x: 350, y: 215, width: 12, height: 4))
+        #expect(FloatingGroupLayout.adjacentCardDropTarget(
+            beside: moving.offsetBy(dx: 0, dy: 40), among: cards
+        ) == nil)
+    }
 }

@@ -208,16 +208,28 @@ extension TabCanvasManager {
             floatingDropGroupID = target
         }
         let card = target == nil ? floatingCardDropTarget(at: point, dragging: tabs, in: area) : nil
-        if floatingDropCardID != card {
-            floatingDropCardID = card
+        let attachment = target == nil && card == nil ? floatingAdjacentCardDropTarget(dragging: tabs, in: area) : nil
+        floatingDropBridge = attachment?.bridge
+        floatingDropMovingCardID = attachment == nil ? nil : tabs.first?.id
+        if floatingDropCardID != (card ?? attachment?.id) {
+            floatingDropCardID = card ?? attachment?.id
         }
     }
 
     /// Adds `tabs` to the marked target, if any, and clears the mark.
     func dropIntoTarget(_ tabs: [Tab]) {
-        defer { floatingDropGroupID = nil }
+        defer {
+            floatingDropGroupID = nil
+            floatingDropCardID = nil
+            floatingDropBridge = nil
+            floatingDropMovingCardID = nil
+        }
         if let cardID = floatingDropCardID, let card = floatingTabs.first(where: { $0.id == cardID }) {
-            groupFloatingCard(card, with: tabs)
+            if floatingDropBridge != nil {
+                attachFloatingCard(card, with: tabs)
+            } else {
+                groupFloatingCard(card, with: tabs)
+            }
             return
         }
         guard let targetID = floatingDropGroupID,
@@ -273,6 +285,9 @@ extension TabCanvasManager {
 
     func endFloatingCardDrag(_ tab: Tab) {
         if dockDraggedCard(tab) {
+            floatingDropGroupID = nil
+            floatingDropBridge = nil
+            floatingDropMovingCardID = nil
             return
         }
         let moving = cardsMoved(with: tab)
