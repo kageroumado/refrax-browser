@@ -178,16 +178,22 @@ final class TableController {
         captures[tabID] ?? canvas.snapshots[tabID]
     }
 
-    /// Captures a page at full resolution, when it has loaded. A page leaving view is
-    /// captured so it can be shown again until it repaints.
+    /// Captures the page after its first presentation so adjacent previews show its contents.
     func captureSnapshot(of tab: Tab) async {
         guard !capturing.contains(tab.id), let page = pagePool.existingPage(for: tab.activePage),
-              page.url != nil, !page.isLoading else { return }
-        let bounds = page.contentView.bounds
-        guard bounds.width > 0, bounds.height > 0 else { return }
+              page.url != nil else { return }
         capturing.insert(tab.id)
         defer { capturing.remove(tab.id) }
-        guard let image = try? await page.snapshot() else { return }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while page.isLoading && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+        }
+        guard !page.isLoading else { return }
+        await page.waitForPresentationUpdate()
+        let bounds = page.contentView.bounds
+        guard !Task.isCancelled, bounds.width > 0, bounds.height > 0,
+              let image = try? await page.snapshot() else { return }
         store(image, for: tab.id)
     }
 

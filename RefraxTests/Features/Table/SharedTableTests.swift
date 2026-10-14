@@ -152,6 +152,33 @@ struct SharedTableTests {
     }
 
     @Test
+    func `Control shows adjacent destinations while the floating button opens the card layer`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
+        let hotel = try env.tabManager.createTab(url: #require(URL(string: "about:blank#hotel")), in: space, makeActive: false)
+        let map = try env.tabManager.createTab(url: #require(URL(string: "about:blank#map")), in: space, makeActive: false)
+        for (tab, x) in [(hotel, 0.0), (map, 300.0)] {
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = CGPoint(x: x, y: 100)
+            canvas.storeTablePlacement(placement, for: tab)
+        }
+        env.tabManager.setActiveTab(hotel, in: window)
+
+        canvas.revealFloatingTabs()
+        #expect(canvas.isMomentaryNavigation)
+        #expect(canvas.visibleFloatingTabs.isEmpty)
+        #expect(table.destination(toward: .right)?.id == map.id)
+
+        canvas.releaseFloatingTabs()
+        canvas.toggleFloatingTabs()
+        #expect(!canvas.isMomentaryNavigation)
+        #expect(canvas.visibleFloatingTabs.contains { $0.id == map.id })
+    }
+
+    @Test
     func `the active page and its card move under the same camera`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

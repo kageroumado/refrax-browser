@@ -67,7 +67,7 @@ struct FloatingTabsLayer: View {
             let bounds = CGRect(origin: .zero, size: geometry.size)
             ZStack(alignment: .topLeading) {
                 FloatingDockLayer(area: bounds)
-                if canvas.floatingVisibility.isRevealed {
+                if canvas.floatingVisibility.isRevealed && !canvas.isMomentaryNavigation {
                     FloatingLassoSurface(area: bounds)
                     ForEach(canvas.flattenedFloatingGroupItems(in: bounds)) { item in
                         FloatingTabGroup(item: item, area: bounds)

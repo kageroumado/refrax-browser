@@ -139,6 +139,12 @@ final class TabCanvasManager {
 
     /// The floating layer appears while Control is held or its toolbar button is on.
     private(set) var floatingVisibility = FloatingTabVisibility()
+
+    /// A held Control key previews adjacent pages while the reading page stays in place.
+    var isMomentaryNavigation: Bool {
+        floatingVisibility.isHeld && !floatingVisibility.isLatched && !floatingVisibility.isManipulating
+    }
+
     private(set) var focusedFloatingTabID: Tab.ID?
     private(set) var floatingCamera = TabSpatialCamera()
     private(set) var openingCameraFrame: CGRect?
@@ -344,7 +350,7 @@ final class TabCanvasManager {
             if storedFloatingPlacement(for: tab)?.isDocked == true {
                 return false
             }
-            return (floatingVisibility.isRevealed && storedFloatingPlacement(for: tab) != nil)
+            return (floatingVisibility.isRevealed && !isMomentaryNavigation && storedFloatingPlacement(for: tab) != nil)
                 || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
                 || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
                 || tab.id == renamingTabID

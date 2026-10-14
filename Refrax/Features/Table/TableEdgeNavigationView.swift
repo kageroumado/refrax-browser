@@ -6,10 +6,13 @@ struct TableEdgeNavigationView: View {
     @Environment(TabCanvasManager.self) private var canvas
 
     private enum Layout {
-        static let edgeInset: CGFloat = 20
-        static let railClearance: CGFloat = 104
-        static let titleWidth: CGFloat = 174
+        static let edgeInset: CGFloat = 16
         static let faviconSize: CGFloat = 16
+        static let sidePreview = CGSize(width: 152, height: 116)
+        static let verticalPreview = CGSize(width: 198, height: 100)
+        static let cornerRadius: CGFloat = 16
+        static let sidePreviewRise: CGFloat = 88
+        static let captionHeight: CGFloat = 34
     }
 
     var body: some View {
@@ -25,6 +28,7 @@ struct TableEdgeNavigationView: View {
                     Spacer(minLength: 0)
                     edge(.right)
                 }
+                .offset(y: -Layout.sidePreviewRise)
                 if hasOtherTabs && !hasAdjacentDestination && table.blockedDirection == nil {
                     VStack {
                         Spacer(minLength: 0)
@@ -49,7 +53,7 @@ struct TableEdgeNavigationView: View {
         }
         .padding(.vertical, Layout.edgeInset)
         .padding(.trailing, Layout.edgeInset)
-        .padding(.leading, Layout.railClearance)
+        .padding(.leading, Layout.edgeInset)
         .onChange(of: table.navigationTabID) { table.clearBlockedDirection() }
         .onDisappear { table.clearBlockedDirection() }
     }
@@ -69,31 +73,13 @@ struct TableEdgeNavigationView: View {
             Button {
                 table.step(direction)
             } label: {
-                HStack(spacing: 8) {
-                    if direction == .right || direction == .down {
-                        favicon(for: tab)
-                    }
-                    Text(tab.displayTitle)
-                        .lineLimit(1)
-                        .frame(maxWidth: Layout.titleWidth, alignment: .leading)
-                    Image(systemName: symbol(for: direction))
-                        .fontWeight(.semibold)
-                    if direction == .left || direction == .up {
-                        favicon(for: tab)
-                    }
-                }
-                .font(.subheadline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .contentShape(Capsule())
-                .fixedSize(horizontal: true, vertical: false)
+                neighborPreview(tab, direction: direction)
             }
             .buttonStyle(.plain)
-            .fixedSize(horizontal: true, vertical: false)
-            .glassEffect(.regular.interactive(), in: Capsule())
             .accessibilityIdentifier("table-edge-\(direction.rawValue)")
             .accessibilityLabel("Go \(direction.rawValue) to \(tab.displayTitle)")
             .help("Go \(direction.rawValue) to \(tab.displayTitle)")
+            .task(id: tab.id) { table.requestStoredSnapshot(for: tab) }
         } else if hasOtherTabs && table.blockedDirection == direction {
             Button {
                 canvas.show(fittingEverything: true)
@@ -114,6 +100,49 @@ struct TableEdgeNavigationView: View {
             .accessibilityLabel("End of group \(direction.rawValue). Open Desk")
             .help("Open Desk to reach another tab group")
         }
+    }
+
+    private func neighborPreview(_ tab: Tab, direction: TableDirection) -> some View {
+        let size = direction == .left || direction == .right ? Layout.sidePreview : Layout.verticalPreview
+        return VStack(spacing: 0) {
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                if let snapshot = table.snapshot(for: tab.id) {
+                    Image(nsImage: snapshot)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                } else {
+                    favicon(for: tab)
+                        .font(.largeTitle)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+
+            HStack(spacing: 7) {
+                favicon(for: tab)
+                Text(tab.displayTitle)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: symbol(for: direction))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: Layout.captionHeight)
+        }
+        .frame(width: size.width)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+                .strokeBorder(.tint, lineWidth: 2)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 16, y: 6)
+        .contentShape(RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous))
     }
 
     @ViewBuilder

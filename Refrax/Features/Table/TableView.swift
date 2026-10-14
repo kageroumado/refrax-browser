@@ -15,13 +15,13 @@ struct TableView: View {
                     .frame(width: table.viewport.width, height: table.viewport.height)
                     .scaleEffect(canvas.floatingCamera.scale, anchor: .topLeading)
                     .offset(x: frame.minX, y: frame.minY)
-                    .task(id: tab.activePage.id) { await table.captureSnapshot(of: tab) }
+                    .task(id: tab.activePage.url) { await table.captureSnapshot(of: tab) }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .overlay {
-            if canvas.floatingVisibility.isRevealed && !canvas.isActive {
+            if canvas.isMomentaryNavigation && !canvas.isActive {
                 TableEdgeNavigationView()
             }
         }
