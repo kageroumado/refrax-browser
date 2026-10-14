@@ -84,6 +84,22 @@ nonisolated enum FloatingArrangement: String, CaseIterable, Hashable, Sendable {
         return origins
     }
 
+    /// The first cell of the arrange grid where a card of `size` keeps a gap from every frame
+    /// in `taken`: the column beside the island first, top to bottom, then the next one out.
+    /// Returns `nil` when every cell in `area` is taken.
+    static func freeCell(for size: CGSize, avoiding taken: [CGRect], in area: CGRect, fromTrailing: Bool) -> CGPoint? {
+        guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else { return nil }
+        let rows = max(1, Int((area.height + gap) / (size.height + gap)))
+        let columns = max(1, Int((area.width + gap) / (size.width + gap)))
+        let origins = gridOrigins(for: Array(repeating: size, count: rows * columns), in: area, fromTrailing: fromTrailing)
+        // Half a point of slack lets a card sit exactly one gap from its neighbor.
+        let clearance = gap - 0.5
+        return origins.first { origin in
+            let cell = CGRect(origin: origin, size: size)
+            return !taken.contains { !$0.isEmpty && $0.insetBy(dx: -clearance, dy: -clearance).intersects(cell) }
+        }
+    }
+
     /// Items by site, keeping only sites with two or more items: those become stacks. Each
     /// stack lists its items in the order given; sites come out in the order of their first item.
     static func siteStacks<ID: Hashable>(_ items: [(id: ID, site: String?)]) -> [(site: String, ids: [ID])] {

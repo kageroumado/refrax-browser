@@ -185,14 +185,9 @@ final class TabCanvasManager {
               !tabManager.isShownInAnotherWindow(tab, besides: windowState),
               windowState.pageVisit.destination == nil,
               storedFloatingPlacement(for: tab) == nil else { return }
-        let area = floatingArea
         let source = raySource
         let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
-        guard let placement = FloatingTabPlacement.freeStartingSlot(
-            nearest: source.isEmpty ? nil : CGPoint(x: source.midX, y: source.midY), avoiding: occupied, in: area,
-            shape: startingFloatingShape(for: tab), clearing: startingSlotRail, below: startingSlotReserved,
-            gap: ControlIslandPlacement.adjacentGap,
-        ) else { return }
+        guard let placement = startingPlacement(for: tab, avoiding: occupied) else { return }
         updateFloatingPlacement(placement, for: tab)
         fileIntoSiteStack(tab)
         rayRevision += 1
@@ -205,14 +200,22 @@ final class TabCanvasManager {
         rayRequest = nil
     }
 
-    /// The rail a new card's starting place steps clear of, while the island shows it.
-    private var startingSlotRail: CGRect {
-        showsFloatingControls ? windowState.controlIsland.railFrame : .zero
-    }
-
-    /// The page card beside the rail, which shows with the revealed layer: a new card starts below it.
-    private var startingSlotReserved: [CGRect] {
-        showsFloatingControls ? [windowState.pageCardFrame] : []
+    /// A new card's place: the first free cell of the arrange grid, in the column beside the
+    /// rail and below the page card, then the next column out, so new cards line up in one
+    /// tidy column instead of the window's corners.
+    private func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement]) -> FloatingTabPlacement? {
+        let bounds = floatingArea
+        let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
+        let pageCard = showsFloatingControls ? windowState.pageCardFrame : .zero
+        var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
+        guard let origin = FloatingArrangement.freeCell(
+            for: placement.frame(in: bounds).size,
+            avoiding: occupied.map { $0.frame(in: bounds) } + [pageCard],
+            in: FloatingArrangement.arrangeArea(in: bounds, rail: rail),
+            fromTrailing: FloatingArrangement.fillsFromTrailing(bounds: bounds, rail: rail),
+        ) else { return nil }
+        placement.move(to: origin, in: bounds)
+        return placement
     }
 
     /// The control the ray leaves from: the lens while it is up, else the page card, else the rail.
@@ -433,13 +436,9 @@ final class TabCanvasManager {
                 windowState.floatingPlacements[tab.id] = placement
             }
         }
-        let area = floatingArea
         var occupied = floatingTabs.compactMap { storedFloatingPlacement(for: $0) }
         for tab in unplacedFloatingTabs {
-            guard let placement = FloatingTabPlacement.freeStartingSlot(
-                nearest: nil, avoiding: occupied, in: area, shape: startingFloatingShape(for: tab),
-                clearing: startingSlotRail, below: startingSlotReserved, gap: ControlIslandPlacement.adjacentGap,
-            ) else { break }
+            guard let placement = startingPlacement(for: tab, avoiding: occupied) else { break }
             updateFloatingPlacement(placement, for: tab)
             occupied.append(floatingPlacement(for: tab))
         }

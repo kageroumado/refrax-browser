@@ -289,10 +289,21 @@ private struct FloatingTabCard: View {
                 .offset(x: Layout.iconBadgeOffset, y: -Layout.iconBadgeOffset)
                 .allowsHitTesting(false)
         }
+        .overlay(alignment: .topLeading) {
+            // A kept icon has no header, so its way back out shows on its corner on hover.
+            if isKept, showsControls {
+                keepVisibleButton
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .controlSize(.small)
+                    .background(.regularMaterial, in: Circle())
+                    .offset(x: -Layout.iconBadgeOffset, y: -Layout.iconBadgeOffset)
+            }
+        }
     }
 
-    /// A title bar: favicon, title, and state at rest; the shape button, close, and the
-    /// options join them on hover. The header is the card's drag handle.
+    /// A title bar: favicon, title, and state at rest; the shape button, Keep Visible, close,
+    /// and the options join them on hover. The header is the card's drag handle.
     private var header: some View {
         HStack(spacing: 0) {
             cardHandle(HStack(spacing: Header.itemSpacing) {
@@ -310,6 +321,7 @@ private struct FloatingTabCard: View {
             if showsControls {
                 if !isMainPage {
                     shapeButton
+                    keepVisibleButton
                 }
                 closeButton
                 PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
@@ -378,6 +390,15 @@ private struct FloatingTabCard: View {
                 shapeChangedAt = nil
                 canvas.endFloatingManipulation()
             }
+    }
+
+    /// Keeps the card on screen after the layer hides, or lets a kept card go.
+    private var keepVisibleButton: some View {
+        headerControl(isKept ? "Hide Preview" : "Keep Visible", symbol: isKept ? "pin.slash" : "pin") {
+            var next = placement
+            next.isPinned.toggle()
+            canvas.updateFloatingPlacement(next, for: tab)
+        }
     }
 
     private var closeButton: some View {

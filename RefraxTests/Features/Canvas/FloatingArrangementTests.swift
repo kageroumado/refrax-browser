@@ -25,6 +25,30 @@ struct FloatingArrangementTests {
     }
 
     @Test
+    func `New cards line up in one column beside the rail, below the page card`() throws {
+        let rail = CGRect(x: 12, y: 100, width: 48, height: 560)
+        let pageCard = CGRect(x: 68, y: 16, width: 416, height: 44)
+        let area = FloatingArrangement.arrangeArea(in: bounds, rail: rail)
+        var taken = [pageCard]
+        var origins: [CGPoint] = []
+        for _ in 0 ..< 3 {
+            let origin = try #require(FloatingArrangement.freeCell(for: compact, avoiding: taken, in: area, fromTrailing: false))
+            origins.append(origin)
+            taken.append(CGRect(origin: origin, size: compact))
+        }
+        #expect(origins.allSatisfy { $0.x == area.minX })
+        #expect(origins.allSatisfy { $0.y > pageCard.maxY })
+        #expect(origins[1].y == origins[0].y + compact.height + FloatingArrangement.gap)
+        #expect(origins[2].y == origins[1].y + compact.height + FloatingArrangement.gap)
+    }
+
+    @Test
+    func `A full arrange area has no free cell`() {
+        let area = CGRect(x: 0, y: 0, width: 260, height: 40)
+        #expect(FloatingArrangement.freeCell(for: compact, avoiding: [area], in: area, fromTrailing: false) == nil)
+    }
+
+    @Test
     func `The arrange area sits beside the island, away from it`() {
         let leftRail = CGRect(x: 12, y: 100, width: 48, height: 400)
         let left = FloatingArrangement.arrangeArea(in: bounds, rail: leftRail)
