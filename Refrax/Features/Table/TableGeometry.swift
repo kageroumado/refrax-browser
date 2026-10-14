@@ -65,12 +65,18 @@ nonisolated struct TableGeometry: Equatable, Sendable {
         )
     }
 
-    /// The whole plane: the longest row across and every row down, never smaller than the
-    /// viewport, so a short table still rests at its top-left.
+    /// The empty row below the last one, always there to move a slab into, like Niri's empty
+    /// workspace at the end: a viewport tall, the viewport wide.
+    func emptyRowFrame(in layout: TableLayout) -> CGRect {
+        let top = layout.rows.indices.last.map { rowFrame($0, in: layout).maxY + gap } ?? 0
+        return CGRect(x: 0, y: top, width: viewport.width, height: viewport.height)
+    }
+
+    /// The whole plane: the longest row across, every row down, and the empty row after them,
+    /// never narrower than the viewport, so a short table still rests at its left edge.
     func tableSize(of layout: TableLayout) -> CGSize {
         let width = layout.rows.indices.map { rowFrame($0, in: layout).maxX }.max() ?? 0
-        let height = layout.rows.indices.last.map { rowFrame($0, in: layout).maxY } ?? 0
-        return CGSize(width: max(width, viewport.width), height: max(height, viewport.height))
+        return CGSize(width: max(width, viewport.width), height: emptyRowFrame(in: layout).maxY)
     }
 
     // MARK: - Slabs

@@ -28,6 +28,8 @@ final class TableController {
         static let ribbonLinger: Duration = .milliseconds(400)
         /// Below this magnification slabs show their snapshots instead of live pages.
         static let liveMagnification: CGFloat = 0.5
+        /// How far one wheel notch moves the table: a third of the window.
+        static let wheelNotchFraction: CGFloat = 1.0 / 3.0
         /// Room around the table when it is fitted into the window.
         static let overviewInset: CGFloat = 48
         /// A pinch released at or below this magnification stays in the overview.
@@ -62,6 +64,14 @@ final class TableController {
     private(set) var showsRibbon = false
     /// The slab the ribbon names: the one under the pointer while moving, else the most visible.
     private(set) var ribbonSlab: TableLayout.Position?
+    /// The slabs whose pages are live: those in the window when it last came to rest. Every
+    /// other slab shows its snapshot, so motion moves images and never a page.
+    private(set) var liveTabIDs: Set<UUID> = []
+    /// Live slabs with a snapshot taken for the motion under way; they show it until rest.
+    private(set) var freshSnapshotTabIDs: Set<UUID> = []
+    /// The wheel moved the table; when it rests, the nearest slab is aligned.
+    @ObservationIgnored private var alignsAtRest = false
+    @ObservationIgnored private var motionRevision = 0
     /// The tab the pinch started on; it stays current until the overview is left for another.
     @ObservationIgnored private var pinchOrigin: UUID?
 
@@ -215,6 +225,9 @@ final class TableController {
         let rebuilt = TableLayout(rows: rows, state: state)
         guard rebuilt != layout else { return }
         layout = rebuilt
+        if !isMoving {
+            refreshLive()
+        }
         Logger.info("table rebuilt: \(rebuilt.rows.count) rows, \(rebuilt.tabIDs.count) slabs; current held: \(windowState.activeTab.map(holds) ?? false); scroll view: \(scrollView != nil)", category: Logger.table)
         scrollView?.apply(layout: layout, geometry: geometry)
         if let current = windowState.activeTab, holds(current), let frame = geometry.frame(of: current.id, in: layout),
@@ -242,6 +255,9 @@ final class TableController {
         if let previous, !isOverview {
             reveal(previous.id, animated: false)
         }
+        if !isMoving {
+            refreshLive()
+        }
     }
 
     /// The scroll view reports where the window looks.
@@ -250,8 +266,33 @@ final class TableController {
         self.magnification = magnification
         if !isMoving {
             isMoving = true
+            motionBegan()
         }
         showRibbon()
+    }
+
+    /// Motion starts: every live slab in the window takes a fresh snapshot and shows it as
+    /// soon as it arrives, so what moves is an image and never a page that repaints as it goes.
+    private func motionBegan() {
+        freshSnapshotTabIDs = []
+        motionRevision += 1
+        let revision = motionRevision
+        for slab in geometry.slabs(in: visibleRect, of: layout) where liveTabIDs.contains(slab.tabID) {
+            guard let tab = tab(for: slab.tabID), let page = pagePool.existingPage(for: tab.activePage) else { continue }
+            Task(name: "Snapshot a slab for motion") { [weak self] in
+                guard let image = try? await page.snapshot(), let self, motionRevision == revision, isMoving else { return }
+                store(image, for: slab.tabID)
+                freshSnapshotTabIDs.insert(slab.tabID)
+            }
+        }
+    }
+
+    /// The slabs in the window are the live ones; the rest show snapshots.
+    private func refreshLive() {
+        let live = showsLivePages ? Set(geometry.slabs(in: visibleRect, of: layout).map(\.tabID)) : []
+        if live != liveTabIDs {
+            liveTabIDs = live
+        }
     }
 
     private func showRibbon() {
@@ -274,6 +315,16 @@ final class TableController {
     /// one, becomes the window's page; the ribbon lingers a moment and fades.
     func settle() {
         isMoving = false
+        freshSnapshotTabIDs = []
+        if alignsAtRest, !isOverview {
+            alignsAtRest = false
+            if let position = geometry.mostVisibleSlab(in: visibleRect, of: layout),
+               !geometry.isWhole(geometry.frame(of: position, in: layout), at: visibleRect.origin) {
+                reveal(layout[position].tabID)
+                return
+            }
+        }
+        refreshLive()
         ribbonTask?.cancel()
         ribbonTask = Task(name: "Fade the table ribbon") { [weak self] in
             try? await Task.sleep(for: Layout.ribbonLinger)
@@ -327,6 +378,20 @@ final class TableController {
         }
         activate(tab)
         reveal(tab.id)
+    }
+
+    /// One wheel notch: the table moves a third of the window in `direction`, smoothly, and
+    /// notches add up; when the wheel goes quiet the nearest slab is aligned.
+    func wheelStep(_ direction: TableDirection) {
+        guard let scrollView, !isOverview else { return }
+        let delta: CGPoint = switch direction {
+        case .left: CGPoint(x: -viewport.width * Layout.wheelNotchFraction, y: 0)
+        case .right: CGPoint(x: viewport.width * Layout.wheelNotchFraction, y: 0)
+        case .up: CGPoint(x: 0, y: -viewport.height * Layout.wheelNotchFraction)
+        case .down: CGPoint(x: 0, y: viewport.height * Layout.wheelNotchFraction)
+        }
+        alignsAtRest = true
+        scrollView.moveTarget(by: delta)
     }
 
     /// Leaves the overview on `tabID`: it becomes current and the table returns to reading
@@ -425,6 +490,8 @@ final class TableController {
             tabManager.state.incrementListVersion()
             tabManager.scheduleSave()
         }
+        // The model changed in place; the layout follows now, not on the next observation turn.
+        rebuild()
         reveal(tab.id)
     }
 

@@ -94,7 +94,7 @@ final class TableInput {
             }
             return decision != .settleAndPass
         case let .step(direction):
-            table.step(direction)
+            table.wheelStep(direction)
             return true
         }
     }

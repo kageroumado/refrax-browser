@@ -28,7 +28,8 @@ struct TableGeometryTests {
         #expect(geometry.frame(of: b, in: layout) == CGRect(x: 0, y: 612, width: 494, height: 600))
         #expect(geometry.frame(of: c, in: layout) == CGRect(x: 506, y: 612, width: 494, height: 600))
         #expect(geometry.rowLength(layout.rows[1]) == 1_000)
-        #expect(geometry.tableSize(of: layout) == CGSize(width: 1_000, height: 1_212))
+        #expect(geometry.emptyRowFrame(in: layout) == CGRect(x: 0, y: 1_224, width: 1_000, height: 600))
+        #expect(geometry.tableSize(of: layout) == CGSize(width: 1_000, height: 1_824))
     }
 
     @Test
@@ -42,12 +43,13 @@ struct TableGeometryTests {
     }
 
     @Test
-    func `The plane is never smaller than the viewport`() {
+    func `The plane is never narrower than the viewport and ends with the empty row`() {
         var state = TableState()
         state.setWidth(.third, of: a)
         let layout = TableLayout(rows: [Row(id: space, tabIDs: [a])], state: state)
-        #expect(geometry.tableSize(of: layout) == CGSize(width: 1_000, height: 600))
-        #expect(geometry.clamped(CGPoint(x: 300, y: 300), in: layout) == .zero)
+        #expect(geometry.tableSize(of: layout) == CGSize(width: 1_000, height: 1_212))
+        #expect(geometry.clamped(CGPoint(x: 300, y: 300), in: layout) == CGPoint(x: 0, y: 300))
+        #expect(geometry.clamped(CGPoint(x: 300, y: 900), in: layout) == CGPoint(x: 0, y: 612))
     }
 
     @Test

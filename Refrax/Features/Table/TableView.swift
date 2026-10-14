@@ -50,6 +50,11 @@ private struct TableScrollRepresentable: NSViewRepresentable {
             host.sizingOptions = []
             return host
         }
+        view.makeEmptyRowView = {
+            let host = NSHostingView(rootView: AnyView(TableEmptyRow()))
+            host.sizingOptions = []
+            return host
+        }
         view.onViewportMoved = { rect, magnification in table.viewportMoved(visibleRect: rect, magnification: magnification) }
         view.onRest = { table.settle() }
         view.onEnter = { table.enter($0) }
@@ -79,8 +84,9 @@ private extension View {
 }
 
 /// One slab: the window's page when current, otherwise the tab's page borrowed the way a
-/// docked column borrows it. Its snapshot stays on top until the page paints, and stands in
-/// for it in a deep overview.
+/// docked column borrows it. The page is live only while its slab is in the window at rest;
+/// while the table moves, and out of the window, the slab shows its snapshot. The snapshot
+/// also stays on top of a page until it paints.
 struct TableSlabContent: View {
     let tab: Tab
 
@@ -98,22 +104,31 @@ struct TableSlabContent: View {
         tab.id == windowState.activeTabID
     }
 
+    /// The page is drawn: its slab was in the window at the last rest.
+    private var isLive: Bool {
+        table.liveTabIDs.contains(tab.id) && table.showsLivePages
+    }
+
+    /// The snapshot covers the page: the slab is not live, or the table is moving and the
+    /// snapshot for this motion has arrived.
+    private var showsSnapshot: Bool {
+        !isLive || table.freshSnapshotTabIDs.contains(tab.id) || isAwaitingFirstPaint
+    }
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: TableGeometry.cornerRadius, style: .continuous)
         ZStack {
-            if table.showsLivePages {
+            if isLive {
                 livePage
-                    .overlay {
-                        if isAwaitingFirstPaint {
-                            TableSnapshotView(tab: tab)
-                                .transition(.opacity)
-                        }
-                    }
-                    .animation(.easeOut(duration: Layout.firstPaintFade), value: isAwaitingFirstPaint)
-            } else {
+                    .opacity(showsSnapshot ? 0 : 1)
+                    .allowsHitTesting(!showsSnapshot)
+            }
+            if showsSnapshot {
                 TableSnapshotView(tab: tab)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: Layout.firstPaintFade), value: showsSnapshot)
         .clipShape(shape)
         .task(id: tab.activePage.id) {
             hasPainted = false
@@ -263,6 +278,30 @@ struct TableRowBand: View {
         .glassEffect(.regular, in: shape)
         .help("Open \(row.title)")
         .accessibilityLabel("\(row.title), \(row.slabs.count) tabs, collapsed")
+    }
+}
+
+/// The empty row below the table: where a page goes to start a new group.
+struct TableEmptyRow: View {
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: TableGeometry.cornerRadius, style: .continuous)
+        VStack(spacing: 8) {
+            Image(systemName: "rectangle.dashed")
+                .font(.system(size: 28, weight: .regular))
+            Text("A new row")
+                .font(.headline)
+            Text("Press ⌃⌘⇧↓ on a page to move it here and start a group.")
+                .font(.subheadline)
+        }
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            shape.strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+                .foregroundStyle(.quaternary)
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel("Empty row. Press Control Command Shift Down on a page to move it here.")
     }
 }
 
