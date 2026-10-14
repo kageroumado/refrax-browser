@@ -70,7 +70,8 @@ struct TableCameraTests {
         let layout = TableLayout(rows: [row([(a, .half), (b, .half), (c, .half)])])
         let visible = camera.visibleSlabs(in: layout, at: .resting(on: layout))
         #expect(visible.map(\.tabID) == [a, b])
-        #expect(visible.allSatisfy { $0.isWhole })
+        let allWhole = visible.allSatisfy(\.isWhole)
+        #expect(allWhole)
         #expect(camera.liveSlabs(in: layout).count == 2)
     }
 
@@ -260,69 +261,6 @@ struct TableCameraTests {
         #expect(start == TableViewpoint(row: 0, shift: 0))
     }
 
-    // MARK: - Wheel queue
-
-    @Test
-    func `Wheel notches queue and resolve to the slab they lead to`() {
-        let layout = TableLayout(tabIDs: [a, b, c, d, e])
-        var queue = TableStepQueue()
-        for _ in 0 ..< 3 {
-            queue.push(.right, from: layout)
-        }
-        #expect(queue.pending.count == 3)
-        #expect(queue.resolved(from: layout).focusedTabID == d)
-        #expect(queue.next() == .right)
-        #expect(queue.pending.count == 2)
-    }
-
-    @Test
-    func `Notches past the end of the row are dropped`() {
-        let layout = TableLayout(tabIDs: [a, b])
-        var queue = TableStepQueue()
-        for _ in 0 ..< 5 {
-            queue.push(.right, from: layout)
-        }
-        #expect(queue.pending == [.right])
-        queue.push(.up, from: layout)
-        #expect(queue.pending == [.right])
-    }
-
-    @Test
-    func `A notch the other way cancels the last pending one`() {
-        let layout = TableLayout(tabIDs: [a, b, c])
-        var queue = TableStepQueue()
-        queue.push(.right, from: layout)
-        queue.push(.right, from: layout)
-        queue.push(.left, from: layout)
-        #expect(queue.pending == [.right])
-        #expect(queue.resolved(from: layout).focusedTabID == b)
-    }
-
-    @Test
-    func `Vertical notches step rows and keep each row's slab`() {
-        let layout = TableLayout(rows: [row([(a, .full)]), row([(b, .full), (c, .full)], offset: 1, focus: 1), row([(d, .full)])])
-        var queue = TableStepQueue()
-        queue.push(.down, from: layout)
-        queue.push(.down, from: layout)
-        queue.push(.down, from: layout)
-        #expect(queue.pending == [.down, .down])
-        #expect(queue.resolved(from: layout).focusedTabID == d)
-        var applied = layout
-        while let step = queue.next() {
-            applied = applied.movingFocus(step)
-            if step == .down, applied.focusedRow == 1 {
-                #expect(applied.focusedTabID == c)
-            }
-        }
-        #expect(applied.focusedTabID == d)
-        #expect(queue.isEmpty)
-    }
-
-    @Test
-    func `Each queued slab passes in about 120 ms`() {
-        #expect(TableStepQueue.stepInterval == 0.12)
-    }
-
     // MARK: - Spring
 
     @Test
@@ -393,7 +331,8 @@ struct TableCameraTests {
         #expect(approx(layout.rows[0].offset, 0))
         let visible = camera.visibleSlabs(in: layout, at: .resting(on: layout))
         #expect(visible.map(\.tabID) == [a, b])
-        #expect(visible.allSatisfy { $0.isWhole })
+        let allWhole = visible.allSatisfy(\.isWhole)
+        #expect(allWhole)
     }
 
     @Test

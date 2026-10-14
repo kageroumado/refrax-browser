@@ -333,6 +333,11 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 return true
             }
             return tabCanvasManager.floatingHitRegions(in: content.bounds).contains { $0.contains(topLeft) }
+        }, floatingControlsContain: { [unowned self] point in
+            guard let content = window.contentView, tabCanvasManager.showsFloatingControls else { return false }
+            let local = content.convert(point, from: nil)
+            let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
+            return (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains { $0.contains(topLeft) }
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in

@@ -69,7 +69,7 @@ final class TableController {
     private(set) var layout = TableLayout()
     /// Where the window looks onto ``layout``; ``TableViewpoint/resting(on:)`` at rest.
     private(set) var viewpoint = TableViewpoint(row: 0)
-    /// The view is moving: a pan, a spring, or queued wheel steps.
+    /// The view is moving: a pan or a spring.
     private(set) var isMoving = false
     /// The beam from the old focus to the new one after a long jump.
     private(set) var beam: BrowserBeamCues.Request?
@@ -88,8 +88,6 @@ final class TableController {
 
     @ObservationIgnored private var flight: Flight?
     @ObservationIgnored private var isPanning = false
-    @ObservationIgnored private var stepQueue = TableStepQueue()
-    @ObservationIgnored private var stepTimer: DispatchWorkItem?
     @ObservationIgnored private var lastActivity: CFTimeInterval = 0
     @ObservationIgnored private var watchdog: DispatchWorkItem?
     @ObservationIgnored private var panHasFingersDown = false
@@ -215,9 +213,6 @@ final class TableController {
     /// A slide starts and follows the fingers; `fingersDown` while a trackpad gesture with
     /// phases is in progress.
     func beginPan(_ delta: CGSize, fingersDown: Bool = false) {
-        stepTimer?.cancel()
-        stepTimer = nil
-        stepQueue.removeAll()
         if let flight {
             viewpoint = currentViewpoint(of: flight, at: CACurrentMediaTime())
             self.flight = nil
@@ -256,14 +251,16 @@ final class TableController {
         return CGPoint(x: topLeft.x - viewportFrame.minX, y: topLeft.y - viewportFrame.minY)
     }
 
-    /// One wheel notch or ⌃⌘ arrow: focus moves one slab or row, queued behind the steps
-    /// still playing.
+    /// Each wheel notch or ⌃⌘ arrow immediately retargets the moving camera, preserving
+    /// its position and velocity so rapid input stays under the person's control.
     func step(_ direction: TableDirection) {
         guard !isPanning, viewport.width > 0, isShowingTable else { return }
-        stepQueue.push(direction, from: layout)
-        guard stepTimer == nil, !stepQueue.isEmpty else { return }
-        beginMotion()
-        playNextStep()
+        let next = layout.movingFocus(direction)
+        guard next.focus != layout.focus else { return }
+        if direction == .left || direction == .right {
+            arrivalSide = direction.opposite
+        }
+        move(to: next.focusedTabID.map(next.focusing) ?? next)
     }
 
     // MARK: - Commands
@@ -444,24 +441,6 @@ final class TableController {
         noteActivity()
     }
 
-    private func playNextStep() {
-        guard let step = stepQueue.next() else {
-            stepTimer = nil
-            if flight == nil {
-                settle()
-            }
-            return
-        }
-        if step == .left || step == .right {
-            arrivalSide = step.opposite
-        }
-        let next = layout.movingFocus(step)
-        move(to: next.focusedTabID.map(next.focusing) ?? next)
-        let timer = DispatchWorkItem { [weak self] in self?.playNextStep() }
-        stepTimer = timer
-        DispatchQueue.main.asyncAfter(deadline: .now() + TableStepQueue.stepInterval, execute: timer)
-    }
-
     private var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
@@ -473,9 +452,7 @@ final class TableController {
             flight = nil
             clock.stop()
             viewpoint = target
-            if stepTimer == nil {
-                settle()
-            }
+            settle()
             return
         }
         flight = Flight(start: viewpoint, target: target, velocity: velocity, startTime: CACurrentMediaTime())
@@ -502,9 +479,7 @@ final class TableController {
         }
         flight = nil
         clock.stop()
-        if stepTimer == nil {
-            settle()
-        }
+        settle()
     }
 
     private func currentViewpoint() -> TableViewpoint {
@@ -540,7 +515,7 @@ final class TableController {
     }
 
     /// Settles motion that has gone quiet: a pan whose end never came, a spring whose frames
-    /// stopped, or steps whose timer was lost.
+    /// stopped.
     private func watchdogCheck() {
         watchdog = nil
         guard isMoving else { return }
@@ -549,16 +524,13 @@ final class TableController {
             scheduleWatchdog()
             return
         }
-        Logger.debug("table watchdog settles panning \(isPanning) flight \(flight != nil) steps \(stepTimer != nil)", category: Logger.canvas)
+        Logger.debug("table watchdog settles panning \(isPanning) flight \(flight != nil)", category: Logger.canvas)
         if isPanning {
             onForcedRest?()
             endPan()
         } else {
-            stepTimer?.cancel()
-            stepTimer = nil
-            stepQueue.removeAll()
             landFlight()
-            if flight == nil, stepTimer == nil, isMoving {
+            if flight == nil, isMoving {
                 settle()
             }
         }
@@ -571,9 +543,6 @@ final class TableController {
         flight = nil
         clock.stop()
         isPanning = false
-        stepTimer?.cancel()
-        stepTimer = nil
-        stepQueue.removeAll()
         watchdog?.cancel()
         watchdog = nil
         isMoving = false
@@ -583,7 +552,7 @@ final class TableController {
     /// The view has come to rest on ``layout``: its current slab becomes the window's page,
     /// and the pages in view are captured for when they next show.
     private func settle() {
-        guard flight == nil, stepTimer == nil, !isPanning else { return }
+        guard flight == nil, !isPanning else { return }
         let origin = motionOrigin
         motionOrigin = nil
         isMoving = false

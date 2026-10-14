@@ -241,47 +241,6 @@ nonisolated struct TableCamera: Equatable, Sendable {
     }
 }
 
-/// A queue of discrete wheel steps: each notch moves focus one slab or one row, notches
-/// accumulate while the view is moving, and the queue resolves to the layout they lead to.
-///
-/// Steps that would run past the table's edge are dropped, and a step against the last
-/// pending one cancels it.
-nonisolated struct TableStepQueue: Equatable, Sendable {
-    /// The time each queued step holds the view before the next one starts.
-    static let stepInterval: TimeInterval = 0.12
-
-    private(set) var pending: [TableDirection] = []
-
-    var isEmpty: Bool {
-        pending.isEmpty
-    }
-
-    /// Queues one notch, measured against `layout` with the steps already pending.
-    mutating func push(_ step: TableDirection, from layout: TableLayout) {
-        if pending.last == step.opposite {
-            pending.removeLast()
-            return
-        }
-        let end = resolved(from: layout)
-        guard end.movingFocus(step).focus != end.focus else { return }
-        pending.append(step)
-    }
-
-    /// Takes the next step to animate, or `nil` when the queue is empty.
-    mutating func next() -> TableDirection? {
-        pending.isEmpty ? nil : pending.removeFirst()
-    }
-
-    mutating func removeAll() {
-        pending.removeAll()
-    }
-
-    /// The layout after every pending step, applied to `layout` in order.
-    func resolved(from layout: TableLayout) -> TableLayout {
-        pending.reduce(layout) { $0.movingFocus($1) }
-    }
-}
-
 /// The spring that carries the table to rest: critically damped, so it settles without
 /// bouncing.
 nonisolated enum TableSpring {

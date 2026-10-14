@@ -170,7 +170,7 @@ struct FloatingPreviewTests {
             window: window,
             canvas: canvas,
             floatingEligible: { true },
-            floatingContains: { _ in true },
+            floatingContains: { _ in true }, floatingControlsContain: { _ in false },
             floatingHasKeyboardFocus: { previewHasFocus },
             isEligible: { _ in true },
         )
@@ -225,21 +225,105 @@ struct FloatingPreviewTests {
     func `control tab remains a browser shortcut while typing in a preview`() throws {
         let environment = try TabManagerTestEnvironment()
         let state = environment.makeWindowState()
-        let canvas = TabCanvasManager(tabManager: environment.tabManager, windowState: state,
-                                      pagePool: environment.pagePool, groupManager: environment.groupManager)
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
+        let canvas = TabCanvasManager(
+            tabManager: environment.tabManager,
+            windowState: state,
+            pagePool: environment.pagePool,
+            groupManager: environment.groupManager,
+        )
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+        )
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        let gestures = CanvasPageGestures(window: window, canvas: canvas, floatingEligible: { true },
-                                          floatingContains: { _ in true }, floatingHasKeyboardFocus: { true },
-                                          isEligible: { _ in true })
+        let gestures = CanvasPageGestures(
+            window: window,
+            canvas: canvas,
+            floatingEligible: { true },
+            floatingContains: { _ in true },
+            floatingControlsContain: { _ in false },
+            floatingHasKeyboardFocus: { true },
+            isEligible: { _ in true },
+        )
         canvas.revealFloatingTabs()
-        let key = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control,
-                                              timestamp: 0, windowNumber: window.windowNumber, context: nil,
-                                              characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48))
+        let key = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .control,
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "\t",
+            charactersIgnoringModifiers: "\t",
+            isARepeat: false,
+            keyCode: 48,
+        ))
         #expect(try #require(gestures.handle(key)).modifierFlags.contains(.control))
         #expect(!canvas.floatingVisibility.isRevealed)
+    }
+
+    @Test
+    func `adding and releasing Shift keeps the floating arrangement held`() throws {
+        let environment = try TabManagerTestEnvironment()
+        let state = environment.makeWindowState()
+        let canvas = TabCanvasManager(
+            tabManager: environment.tabManager,
+            windowState: state,
+            pagePool: environment.pagePool,
+            groupManager: environment.groupManager,
+        )
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let gestures = CanvasPageGestures(
+            window: window,
+            canvas: canvas,
+            floatingEligible: { true },
+            floatingContains: { _ in false },
+            floatingControlsContain: { _ in false },
+            floatingHasKeyboardFocus: { false },
+            isEligible: { _ in true },
+        )
+        canvas.revealFloatingTabs()
+        let reveal = FloatingRevealKey.current.flag
+        for flags: NSEvent.ModifierFlags in [[reveal, .shift], reveal, [reveal, .capsLock]] {
+            let event = try #require(NSEvent.keyEvent(
+                with: .flagsChanged,
+                location: .zero,
+                modifierFlags: flags,
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: 56,
+            ))
+            _ = gestures.handle(event)
+            #expect(canvas.floatingVisibility.isHeld)
+        }
+        let release = try #require(NSEvent.keyEvent(
+            with: .flagsChanged,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: 59,
+        ))
+        _ = gestures.handle(release)
+        #expect(canvas.floatingVisibility.isHeld == false)
     }
 
     @Test

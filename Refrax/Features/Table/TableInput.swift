@@ -9,6 +9,8 @@ import AppKit
 final class TableInput {
     private unowned let table: TableController
     private var router = TableScrollRouter()
+    /// Whether the last routed event requested camera movement.
+    private(set) var didNavigate = false
     private var momentumWindow: DispatchWorkItem?
     private var smoothWheelQuiet: DispatchWorkItem?
 
@@ -24,13 +26,18 @@ final class TableInput {
         table.onForcedRest = { [weak self] in self?.forcedRest() }
     }
 
+    isolated deinit {
+        momentumWindow?.cancel()
+        smoothWheelQuiet?.cancel()
+    }
+
     /// Whether a slide owns the scroll events now, wherever the pointer is.
     var isSliding: Bool {
         router.isSliding
     }
 
-    /// Routes a scroll event. `canStart` is `false` while something above the page (a card,
-    /// the island, the desk) owns the pointer. Returns `true` when the table took the event.
+    /// Routes a scroll event. `canStart` is `false` while a control or a manipulation
+    /// owns the pointer. Returns `true` when the table took the event.
     func route(_ event: NSEvent, canStart: @autoclosure () -> Bool) -> Bool {
         let sample = TableScrollRouter.Sample(
             source: TableScrollSource.classify(
@@ -42,8 +49,12 @@ final class TableInput {
             shift: event.modifierFlags.contains(.shift),
         )
         let controlDown = event.modifierFlags.contains(.control)
-        let mayStart = controlDown && canStart() && table.canSlide(atWindowPoint: event.locationInWindow)
+        let mayStart = controlDown && event.modifierFlags.intersection([.command, .option]).isEmpty && canStart() && table.canSlide(atWindowPoint: event.locationInWindow)
         let decision = router.route(sample, controlDown: controlDown, canStart: mayStart)
+        switch decision {
+        case .begin, .pan, .step: didNavigate = true
+        default: didNavigate = false
+        }
         return perform(decision, sample: sample)
     }
 
@@ -65,16 +76,23 @@ final class TableInput {
         case .pass:
             return false
         case .consume:
+            if sample.source == .smoothWheel, router.state == .smoothDraining {
+                armSmoothWheelQuiet()
+            }
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
             table.beginPan(delta, fingersDown: !sample.phase.isEmpty)
-            armSmoothWheelQuiet(for: sample)
+            if sample.source == .smoothWheel {
+                armSmoothWheelQuiet()
+            }
             return true
         case let .pan(delta):
             momentumWindow?.cancel()
             table.pan(delta)
-            armSmoothWheelQuiet(for: sample)
+            if sample.source == .smoothWheel {
+                armSmoothWheelQuiet()
+            }
             return true
         case .liftOff:
             let work = DispatchWorkItem { [weak self] in
@@ -84,23 +102,26 @@ final class TableInput {
             momentumWindow = work
             DispatchQueue.main.asyncAfter(deadline: .now() + Layout.momentumWindow, execute: work)
             return true
-        case .settle:
+        case .settle, .settleAndPass:
             momentumWindow?.cancel()
             smoothWheelQuiet?.cancel()
             table.endPan()
-            return true
+            if router.state == .smoothDraining {
+                armSmoothWheelQuiet()
+            }
+            return decision != .settleAndPass
         case let .step(direction):
+            table.endPan()
             table.step(direction)
             return true
         }
     }
 
-    private func armSmoothWheelQuiet(for sample: TableScrollRouter.Sample) {
-        guard sample.source == .smoothWheel else { return }
+    private func armSmoothWheelQuiet() {
         smoothWheelQuiet?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            _ = perform(router.smoothWheelWentQuiet(), sample: sample)
+            _ = perform(router.smoothWheelWentQuiet(), sample: TableScrollRouter.Sample(source: .smoothWheel, delta: .zero))
         }
         smoothWheelQuiet = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Layout.smoothWheelQuiet, execute: work)

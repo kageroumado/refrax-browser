@@ -14,7 +14,7 @@ import AppKit
 /// - **⌃** held alone reveals floating tabs; releasing it leaves pinned previews visible.
 ///   Other input within the delay keeps Control available for clicks and shortcuts.
 /// - **⌃ + scroll** over the page slides the table (``TableInput``): the first scroll event
-///   cancels the peek, and the page never sees the gesture.
+///   reveals the floating tabs and keeps them visible while the camera moves.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and a mouse wheel zooms about the pointer. One more tap of
@@ -57,6 +57,7 @@ final class CanvasPageGestures {
     private unowned let canvas: TabCanvasManager
     private let floatingEligible: () -> Bool
     private let floatingContains: (CGPoint) -> Bool
+    private let floatingControlsContain: (CGPoint) -> Bool
     private let floatingHasKeyboardFocus: () -> Bool
     private var resignObserver: (any NSObjectProtocol)?
     private let isEligible: (CGPoint) -> Bool
@@ -78,12 +79,13 @@ final class CanvasPageGestures {
     /// - Parameter isEligible: Whether a gesture with the pointer at this point (window
     ///   coordinates) may reach the canvas: the window's state allows it and the point is
     ///   over the page.
-    init(window: NSWindow, canvas: TabCanvasManager, floatingEligible: @escaping () -> Bool, floatingContains: @escaping (CGPoint) -> Bool, floatingHasKeyboardFocus: @escaping () -> Bool, isEligible: @escaping (CGPoint) -> Bool) {
+    init(window: NSWindow, canvas: TabCanvasManager, floatingEligible: @escaping () -> Bool, floatingContains: @escaping (CGPoint) -> Bool, floatingControlsContain: @escaping (CGPoint) -> Bool, floatingHasKeyboardFocus: @escaping () -> Bool, isEligible: @escaping (CGPoint) -> Bool) {
         self.window = window
         self.canvas = canvas
         self.isEligible = isEligible
         self.floatingEligible = floatingEligible
         self.floatingContains = floatingContains
+        self.floatingControlsContain = floatingControlsContain
         self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
         self.resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -118,8 +120,18 @@ final class CanvasPageGestures {
             tableInput?.interrupt()
         }
         if event.type == .scrollWheel, !canvas.isPanningFromPage, let tableInput,
-           tableInput.route(event, canStart: !canvas.isActive && !floatingContains(event.locationInWindow)) {
-            interruptControl()
+           tableInput.route(
+               event,
+               canStart: floatingEligible() && !canvas.isActive
+                   && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow),
+           ) {
+            cancelPeek()
+            controlDownAt = nil
+            lastControlTap = nil
+            if tableInput.didNavigate, FloatingRevealKey.current.matchesHold(event.modifierFlags),
+               !canvas.floatingVisibility.isHeld, floatingEligible() {
+                canvas.revealFloatingTabs()
+            }
             return nil
         }
         if [
@@ -266,7 +278,8 @@ final class CanvasPageGestures {
         if canvas.floatingVisibility.isHeld, modifiers.contains(revealKey.flag), floatingHasKeyboardFocus() {
             return event
         }
-        if modifiers == revealKey.flag {
+        if revealKey.matchesHold(modifiers) {
+            guard !canvas.floatingVisibility.isHeld, pendingPeek == nil else { return event }
             controlDownAt = now
             if isMoveMode {
                 return event
@@ -322,7 +335,7 @@ final class CanvasPageGestures {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             pendingPeek = nil
-            guard NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask) == FloatingRevealKey.current.flag,
+            guard FloatingRevealKey.current.matchesHold(NSEvent.modifierFlags),
                   !canvas.isActive, floatingEligible(), window?.isKeyWindow == true
             else { return }
             controlDownAt = nil

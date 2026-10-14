@@ -43,7 +43,7 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         case pass
         /// The table swallows the event and does nothing with it.
         case consume
-        /// A slide starts with this pan. Any peek of the floating tabs is cancelled.
+        /// A slide starts with this pan.
         case begin(CGSize)
         /// The slide follows this pan.
         case pan(CGSize)
@@ -51,6 +51,8 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         case liftOff
         /// The slide is over: the table springs to rest.
         case settle
+        /// Finish table motion and deliver the new gesture’s first event to the page.
+        case settleAndPass
         /// One wheel notch: the table steps once.
         case step(TableDirection)
     }
@@ -69,6 +71,8 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         case draining
         /// A smooth wheel is sliding the table.
         case smoothTracking
+        /// A released smooth wheel drains until its events go quiet.
+        case smoothDraining
     }
 
     /// Momentum slower than this many points per event ends the slide where it is, instead
@@ -80,7 +84,7 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
     /// Whether a slide is underway, so its events stay with the table wherever the pointer is.
     var isSliding: Bool {
         switch state {
-        case .tracking, .awaitingMomentum, .momentum, .draining, .smoothTracking: true
+        case .tracking, .awaitingMomentum, .momentum, .draining, .smoothTracking, .smoothDraining: true
         case .idle, .passing: false
         }
     }
@@ -104,15 +108,16 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
     /// The pause after lift-off has passed with no momentum: settle if still waiting.
     mutating func momentumWindowElapsed() -> Decision {
         guard state == .awaitingMomentum else { return .consume }
-        state = .idle
+        state = .draining
         return .settle
     }
 
     /// A smooth wheel has gone quiet: settle its slide.
     mutating func smoothWheelWentQuiet() -> Decision {
-        guard state == .smoothTracking else { return .consume }
+        let wasTracking = state == .smoothTracking
+        guard wasTracking || state == .smoothDraining else { return .consume }
         state = .idle
-        return .settle
+        return wasTracking ? .settle : .consume
     }
 
     /// A click, a key, ⌃ let go, or the window losing key ends the slide where it is. The
@@ -126,9 +131,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
             state = .draining
             return .settle
         case .smoothTracking:
-            state = .idle
+            state = .smoothDraining
             return .settle
-        case .idle, .passing, .draining:
+        case .idle, .passing, .draining, .smoothDraining:
             return .consume
         }
     }
@@ -151,6 +156,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
     }
 
     private mutating func routeSmoothWheel(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
+        if state == .smoothDraining {
+            return .consume
+        }
         if state == .smoothTracking {
             return .pan(sample.delta)
         }
@@ -162,6 +170,9 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
     private mutating func routeGesture(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
         let phase = sample.phase
         if state == .draining, !phase.contains(.began), !phase.contains(.mayBegin) {
+            if phase.contains(.cancelled) {
+                state = .idle
+            }
             return .consume
         }
         if phase.contains(.began) {
@@ -171,7 +182,7 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
             }
             let wasSliding = isSliding && state != .draining
             state = .passing
-            return wasSliding ? .settle : .pass
+            return wasSliding ? .settleAndPass : .pass
         }
         if phase.contains(.changed) {
             return state == .tracking ? .pan(sample.delta) : .pass
@@ -204,7 +215,7 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         if phase.contains(.mayBegin) {
             switch state {
             case .awaitingMomentum, .momentum:
-                state = .idle
+                state = .draining
                 return .settle
             case .draining:
                 state = .idle

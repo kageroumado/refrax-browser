@@ -5,6 +5,16 @@ import Testing
 @testable import Refrax
 
 struct FloatingTabsTests {
+    @Test(arguments: FloatingRevealKey.allCases) @MainActor
+    func `Shift and Caps Lock preserve the held reveal`(key: FloatingRevealKey) throws {
+        #expect(key.matchesHold(key.flag))
+        #expect(key.matchesHold([key.flag, .shift]))
+        #expect(key.matchesHold([key.flag, .capsLock]))
+        #expect(key.matchesHold(.shift) == false)
+        let other = try #require(FloatingRevealKey.allCases.first { $0 != key })
+        #expect(key.matchesHold([key.flag, other.flag]) == false)
+    }
+
     @Test
     func `releasing control keeps only pinned previews`() {
         var state = FloatingTabVisibility()

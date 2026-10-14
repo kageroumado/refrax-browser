@@ -118,6 +118,54 @@ struct TableScrollRouterTests {
     }
 
     @Test
+    func `Late momentum stays with the table after the lift-off timeout`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.route(gesture(.ended), controlDown: true, canStart: true)
+        #expect(router.momentumWindowElapsed() == .settle)
+        #expect(router.route(momentum(.began, 0, -20), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(momentum(.changed, 0, -8), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(momentum(.ended), controlDown: false, canStart: true) == .consume)
+        #expect(router.state == .idle)
+        #expect(router.route(gesture(.began, 0, -4), controlDown: false, canStart: true) == .pass)
+    }
+
+    @Test
+    func `A new page gesture receives its beginning while table momentum settles`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.route(gesture(.ended), controlDown: true, canStart: true)
+        _ = router.route(momentum(.began, 0, -20), controlDown: true, canStart: true)
+        #expect(router.route(gesture(.began, 0, -3), controlDown: false, canStart: true) == .settleAndPass)
+        #expect(router.route(gesture(.changed, 0, -8), controlDown: false, canStart: true) == .pass)
+        #expect(router.state == .passing)
+    }
+
+    @Test
+    func `Touching down arrests old momentum until the new gesture begins`() {
+        var router = TableScrollRouter()
+        _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
+        _ = router.route(gesture(.ended), controlDown: true, canStart: true)
+        _ = router.route(momentum(.began, 0, -20), controlDown: true, canStart: true)
+        #expect(router.route(gesture(.mayBegin), controlDown: false, canStart: true) == .settle)
+        #expect(router.route(momentum(.changed, 0, -8), controlDown: false, canStart: true) == .consume)
+        #expect(router.route(gesture(.began, 0, -3), controlDown: false, canStart: true) == .pass)
+    }
+
+    @Test
+    func `Smooth wheel tails stay out of the page after releasing Control`() {
+        var router = TableScrollRouter()
+        let sample = Sample(source: .smoothWheel, delta: CGSize(width: 0, height: -3))
+        _ = router.route(sample, controlDown: true, canStart: true)
+        #expect(router.interrupt() == .settle)
+        #expect(router.route(sample, controlDown: false, canStart: true) == .consume)
+        #expect(router.route(sample, controlDown: false, canStart: true) == .consume)
+        #expect(router.smoothWheelWentQuiet() == .consume)
+        #expect(router.state == .idle)
+        #expect(router.route(sample, controlDown: false, canStart: true) == .pass)
+    }
+
+    @Test
     func `A cancelled gesture settles`() {
         var router = TableScrollRouter()
         _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
