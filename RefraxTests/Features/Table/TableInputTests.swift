@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import Refrax
 
+@MainActor
 struct TableScrollSourceTests {
     @Test
     func `Phased events are a trackpad, momentum included`() {
@@ -17,6 +18,7 @@ struct TableScrollSourceTests {
     }
 }
 
+@MainActor
 struct TableScrollRouterTests {
     private typealias Sample = TableScrollRouter.Sample
 
@@ -267,6 +269,7 @@ struct TableMotionTests {
     }
 }
 
+@MainActor
 struct TableEditTests {
     private let a = UUID()
     private let b = UUID()
@@ -311,6 +314,7 @@ struct TableEditTests {
     }
 }
 
+@MainActor
 struct TableFreeRestTests {
     private let camera = TableCamera(viewport: CGSize(width: 1_000, height: 600))
     private let a = UUID()

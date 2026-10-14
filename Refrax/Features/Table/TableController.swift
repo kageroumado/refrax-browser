@@ -40,6 +40,9 @@ final class TableController {
     private enum Layout {
         /// Motion with no input or frame for this long is settled by force.
         static let watchdogQuiet: CFTimeInterval = 0.25
+        /// A trackpad gesture reports its own end, so fingers resting mid-slide hold the view;
+        /// the watchdog steps in only if that end never comes.
+        static let fingersDownQuiet: CFTimeInterval = 5
         /// How often the watchdog looks while the view is away from rest.
         static let watchdogInterval: TimeInterval = 0.1
         /// Full-resolution snapshots kept.
@@ -89,6 +92,7 @@ final class TableController {
     @ObservationIgnored private var stepTimer: DispatchWorkItem?
     @ObservationIgnored private var lastActivity: CFTimeInterval = 0
     @ObservationIgnored private var watchdog: DispatchWorkItem?
+    @ObservationIgnored private var panHasFingersDown = false
     /// The focus when the current motion began, for the beam of a long jump.
     @ObservationIgnored private var motionOrigin: UUID?
     /// The side focus last arrived from: the neighbor an edit keeps in view first.
@@ -206,8 +210,9 @@ final class TableController {
 
     // MARK: - Sliding
 
-    /// A slide starts and follows the fingers.
-    func beginPan(_ delta: CGSize) {
+    /// A slide starts and follows the fingers; `fingersDown` while a trackpad gesture with
+    /// phases is in progress.
+    func beginPan(_ delta: CGSize, fingersDown: Bool = false) {
         stepTimer?.cancel()
         stepTimer = nil
         stepQueue.removeAll()
@@ -218,6 +223,7 @@ final class TableController {
         }
         beginMotion()
         isPanning = true
+        panHasFingersDown = fingersDown
         pan(delta)
     }
 
@@ -562,7 +568,8 @@ final class TableController {
     private func watchdogCheck() {
         watchdog = nil
         guard isMoving else { return }
-        guard CACurrentMediaTime() - lastActivity >= Layout.watchdogQuiet else {
+        let quiet = isPanning && panHasFingersDown ? Layout.fingersDownQuiet : Layout.watchdogQuiet
+        guard CACurrentMediaTime() - lastActivity >= quiet else {
             scheduleWatchdog()
             return
         }

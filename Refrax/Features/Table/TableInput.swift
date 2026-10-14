@@ -68,7 +68,7 @@ final class TableInput {
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
-            table.beginPan(delta)
+            table.beginPan(delta, fingersDown: !sample.phase.isEmpty)
             armSmoothWheelQuiet(for: sample)
             return true
         case let .pan(delta):
