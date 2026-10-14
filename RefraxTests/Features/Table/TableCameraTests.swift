@@ -70,7 +70,7 @@ struct TableCameraTests {
         let layout = TableLayout(rows: [row([(a, .half), (b, .half), (c, .half)])])
         let visible = camera.visibleSlabs(in: layout, at: .resting(on: layout))
         #expect(visible.map(\.tabID) == [a, b])
-        #expect(visible.allSatisfy(\.isWhole))
+        #expect(visible.allSatisfy { $0.isWhole })
         #expect(camera.liveSlabs(in: layout).count == 2)
     }
 
