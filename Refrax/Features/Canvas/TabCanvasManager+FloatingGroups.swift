@@ -147,6 +147,7 @@ extension TabCanvasManager {
         for tab in members {
             groupManager.moveTabToGroup(tab, group: group, in: windowState.activeSpace)
         }
+        arrangeFloatingGroupMembers(group, around: members.first)
         selectedFloatingTabIDs = []
         beginRenaming(group)
     }
@@ -164,11 +165,15 @@ extension TabCanvasManager {
         groupManager.renameGroup(group, to: name)
     }
 
-    /// Adds `tabs` to `group`. A card from outside the floating layer gets a place below the group.
+    /// Adds `tabs` to `group` and arranges its cards around a member already there.
     func addToFloatingGroup(_ tabs: [Tab], group: TabGroup) {
+        let joining = tabs.filter { $0.group?.id != group.id && !$0.isFavorite }
+        guard !joining.isEmpty else { return }
         let area = floatingArea
         let outline = floatingGroupItems(in: area).flatMap { [$0] + $0.children }.first { $0.id == group.id }?.outline
-        for tab in tabs where tab.group?.id != group.id && !tab.isFavorite {
+        let joiningIDs = Set(joining.map(\.id))
+        let anchor = group.sortedTabs.first { !joiningIDs.contains($0.id) && storedFloatingPlacement(for: $0) != nil }
+        for tab in joining {
             groupManager.moveTabToGroup(tab, group: group, in: group.space)
             if storedFloatingPlacement(for: tab) == nil, let outline {
                 var placement = floatingPlacement(for: tab)
@@ -177,6 +182,7 @@ extension TabCanvasManager {
             }
         }
         dissolveLoneSiteStacks()
+        arrangeFloatingGroupMembers(group, around: anchor)
     }
 
     /// Every tab in `group` and its nested groups.

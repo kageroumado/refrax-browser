@@ -84,10 +84,11 @@ struct FloatingGroupLayoutTests {
     }
 
     @Test
-    func `Fanning near the trailing edge turns back into the window`() {
+    func `Fanning near the window edges keeps cards inside the placement area`() {
         let size = CGSize(width: 250, height: 34)
-        let origins = FloatingGroupLayout.fanOrigins(count: 4, size: size, from: CGPoint(x: 1_200, y: 100), in: area)
-        #expect(origins.allSatisfy { $0.x + size.width <= area.maxX })
+        let origins = FloatingGroupLayout.fanOrigins(count: 4, size: size, from: CGPoint(x: 1_200, y: 780), in: area)
+        let usable = FloatingTabPlacement.availableArea(in: area)
+        #expect(origins.allSatisfy { usable.contains(CGRect(origin: $0, size: size)) })
     }
 
     @Test

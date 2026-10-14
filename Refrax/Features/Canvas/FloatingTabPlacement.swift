@@ -171,12 +171,14 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         move(to: CGPoint(x: x, y: frame.minY), in: bounds)
     }
 
-    private static func availableArea(in bounds: CGRect) -> CGRect {
+    static let edgeInset: CGFloat = 16
+
+    static func availableArea(in bounds: CGRect) -> CGRect {
         CGRect(
-            x: bounds.minX + 16,
-            y: bounds.minY + 16,
-            width: max(1, bounds.width - 32),
-            height: max(1, bounds.height - 32),
+            x: bounds.minX + edgeInset,
+            y: bounds.minY + edgeInset,
+            width: max(1, bounds.width - 2 * edgeInset),
+            height: max(1, bounds.height - 2 * edgeInset),
         )
     }
 

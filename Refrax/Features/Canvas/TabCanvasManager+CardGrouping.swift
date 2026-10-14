@@ -39,14 +39,6 @@ extension TabCanvasManager {
         beginRenaming(group)
     }
 
-    /// Adds `tab` to `group` from a menu, and sets the group's cards together, so a card from
-    /// across the window never stretches the group's outline over the page.
-    func joinFloatingGroup(_ tab: Tab, group: TabGroup) {
-        addToFloatingGroup([tab], group: group)
-        guard tab.group?.id == group.id else { return }
-        arrangeFloatingGroupMembers(group, around: group.sortedTabs.first { $0.id != tab.id && showsAsGroupCard($0) })
-    }
-
     /// Lays `group`'s cards out together in rows under its header, from `anchor`'s place, or
     /// from the first shown member's, or from the first free cell beside the rail when none
     /// has a place yet.

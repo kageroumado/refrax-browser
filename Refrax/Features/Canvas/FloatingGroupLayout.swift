@@ -93,14 +93,20 @@ nonisolated enum FloatingGroupLayout {
     /// ⌈√count⌉ cards, filling right then down, turning back left at `area`'s trailing edge.
     static func fanOrigins(count: Int, size: CGSize, from origin: CGPoint, in area: CGRect) -> [CGPoint] {
         guard count > 0 else { return [] }
-        let columns = max(1, Int(Double(count).squareRoot().rounded(.up)))
+        let usable = FloatingTabPlacement.availableArea(in: area)
+        let requestedColumns = max(1, Int(Double(count).squareRoot().rounded(.up)))
+        let fittingColumns = max(1, Int((usable.width + fanGap) / (size.width + fanGap)))
+        let columns = min(requestedColumns, fittingColumns)
+        let rows = Int(ceil(Double(count) / Double(columns)))
         let step = CGSize(width: size.width + fanGap, height: size.height + fanGap)
         let span = CGFloat(columns) * step.width - fanGap
-        let startX = origin.x + span > area.maxX ? max(area.minX, area.maxX - span) : origin.x
+        let height = CGFloat(rows) * step.height - fanGap
+        let startX = min(max(usable.minX, origin.x), max(usable.minX, usable.maxX - span))
+        let startY = min(max(usable.minY, origin.y), max(usable.minY, usable.maxY - height))
         return (0 ..< count).map { index in
             CGPoint(
                 x: startX + CGFloat(index % columns) * step.width,
-                y: origin.y + CGFloat(index / columns) * step.height,
+                y: startY + CGFloat(index / columns) * step.height,
             )
         }
     }

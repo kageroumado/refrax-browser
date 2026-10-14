@@ -214,7 +214,7 @@ struct TabActions {
             .sorted { $0.createdAt < $1.createdAt }
             .map { group in
                 MenuAction("tab.groupWith.group.\(group.id)", group.name, symbol: "rectangle.3.group", group: .move) {
-                    canvas.joinFloatingGroup(tab, group: group)
+                    canvas.addToFloatingGroup([tab], group: group)
                 }
             }
         let loose = space.mainTabs
