@@ -7,6 +7,24 @@ struct FloatingArrangementTests {
     private let compact = CGSize(width: 250, height: 34)
 
     @Test
+    func `New cards beside the rail and under the page card take separate places`() {
+        let rail = CGRect(x: 12, y: 100, width: 48, height: 560)
+        let pageCard = CGRect(x: 68, y: 140, width: 520, height: 56)
+        var occupied: [FloatingTabPlacement] = []
+        for _ in 0 ..< FloatingTabPlacement.startingSlotCount {
+            guard let slot = FloatingTabPlacement.freeStartingSlot(
+                nearest: nil, avoiding: occupied, in: bounds, shape: .tab, clearing: rail, below: [pageCard], gap: 8,
+            ) else { break }
+            let frame = slot.frame(in: bounds)
+            #expect(!frame.intersects(rail))
+            #expect(!frame.intersects(pageCard))
+            #expect(!occupied.contains { $0.frame(in: bounds).intersects(frame) })
+            occupied.append(slot)
+        }
+        #expect(occupied.count >= 2)
+    }
+
+    @Test
     func `The arrange area sits beside the island, away from it`() {
         let leftRail = CGRect(x: 12, y: 100, width: 48, height: 400)
         let left = FloatingArrangement.arrangeArea(in: bounds, rail: leftRail)

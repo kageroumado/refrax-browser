@@ -190,10 +190,10 @@ final class TabCanvasManager {
         let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
         guard let placement = FloatingTabPlacement.freeStartingSlot(
             nearest: source.isEmpty ? nil : CGPoint(x: source.midX, y: source.midY), avoiding: occupied, in: area,
-            shape: startingFloatingShape(for: tab),
+            shape: startingFloatingShape(for: tab), clearing: startingSlotRail, below: startingSlotReserved,
+            gap: ControlIslandPlacement.adjacentGap,
         ) else { return }
         updateFloatingPlacement(placement, for: tab)
-        keepClearOfRail([tab], in: area)
         fileIntoSiteStack(tab)
         rayRevision += 1
         rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
@@ -203,6 +203,16 @@ final class TabCanvasManager {
     func finishRay(_ revision: Int) {
         guard rayRequest?.revision == revision else { return }
         rayRequest = nil
+    }
+
+    /// The rail a new card's starting place steps clear of, while the island shows it.
+    private var startingSlotRail: CGRect {
+        showsFloatingControls ? windowState.controlIsland.railFrame : .zero
+    }
+
+    /// The page card beside the rail, which shows with the revealed layer: a new card starts below it.
+    private var startingSlotReserved: [CGRect] {
+        showsFloatingControls ? [windowState.pageCardFrame] : []
     }
 
     /// The control the ray leaves from: the lens while it is up, else the page card, else the rail.
@@ -428,9 +438,9 @@ final class TabCanvasManager {
         for tab in unplacedFloatingTabs {
             guard let placement = FloatingTabPlacement.freeStartingSlot(
                 nearest: nil, avoiding: occupied, in: area, shape: startingFloatingShape(for: tab),
+                clearing: startingSlotRail, below: startingSlotReserved, gap: ControlIslandPlacement.adjacentGap,
             ) else { break }
             updateFloatingPlacement(placement, for: tab)
-            keepClearOfRail([tab], in: area)
             occupied.append(floatingPlacement(for: tab))
         }
         for tab in floatingTabs where tab.group == nil && storedFloatingPlacement(for: tab) != nil {

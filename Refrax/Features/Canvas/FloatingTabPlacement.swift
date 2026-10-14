@@ -44,14 +44,30 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
 
     /// The starting slot whose card would cover none of `occupied`, nearest to `anchor`;
     /// without an anchor, the first free slot in grid order.
+    ///
+    /// Each slot first steps `gap` clear of `rail` and below any of `reserved` it would sit
+    /// under (the page card), and only then is checked, so two cards never land on the same
+    /// cleared place.
     static func freeStartingSlot(
         nearest anchor: CGPoint?, avoiding occupied: [FloatingTabPlacement], in bounds: CGRect, shape: FloatingCardShape,
+        clearing rail: CGRect = .zero, below reserved: [CGRect] = [], gap: CGFloat = 0,
     ) -> FloatingTabPlacement? {
         let taken = occupied.map { $0.frame(in: bounds) }
-        let free = (0 ..< startingSlotCount).map { initial(index: $0, count: startingSlotCount, shape: shape) }
+        let free = (0 ..< startingSlotCount)
+            .map { index in
+                var slot = initial(index: index, count: startingSlotCount, shape: shape)
+                slot.keepClear(of: rail, gap: gap, in: bounds)
+                for area in reserved where !area.isEmpty {
+                    let frame = slot.frame(in: bounds)
+                    if frame.intersects(area.insetBy(dx: -gap, dy: -gap)) {
+                        slot.move(to: CGPoint(x: frame.minX, y: area.maxY + gap), in: bounds)
+                    }
+                }
+                return slot
+            }
             .filter { slot in
                 let frame = slot.frame(in: bounds)
-                return !taken.contains { $0.intersects(frame) }
+                return !taken.contains { $0.intersects(frame) } && !reserved.contains { $0.intersects(frame) }
             }
         guard let anchor else { return free.first }
         return free.min { lhs, rhs in

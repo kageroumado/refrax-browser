@@ -65,7 +65,9 @@ extension TabCanvasManager {
         let bounds = floatingArea
         let units = arrangedUnits(in: bounds, only: selection).sorted { $0.lastUsed > $1.lastUsed }
         guard !units.isEmpty else { return }
-        let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
+        // The page card unfolds beside the rail while the layer shows, so cards line up past both.
+        let controls = [windowState.controlIsland.railFrame, windowState.pageCardFrame].filter { !$0.isEmpty }
+        let rail = showsFloatingControls ? controls.reduce(CGRect.null) { $0.union($1) } : .zero
         var area = FloatingArrangement.arrangeArea(in: bounds, rail: rail)
         var fromTrailing = FloatingArrangement.fillsFromTrailing(bounds: bounds, rail: rail)
         if selection != nil, let first = units.first?.frame {
