@@ -55,7 +55,7 @@ struct FloatingTourTests {
         /// Gives tabs a place of their own, as the window does when a page is displaced.
         func placeTabs(_ tabs: [Tab]) {
             for (index, tab) in tabs.enumerated() {
-                canvas.updateFloatingPlacement(.init(x: 0.2 + 0.3 * Double(index), y: 0.3, isCompact: true, isPinned: false), for: tab)
+                canvas.updateFloatingPlacement(.init(x: 0.2 + 0.3 * Double(index), y: 0.3, shape: .tab, isPinned: false), for: tab)
             }
         }
 

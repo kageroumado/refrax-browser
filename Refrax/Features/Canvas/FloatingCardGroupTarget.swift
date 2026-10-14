@@ -18,8 +18,9 @@ struct FloatingCardGroupTarget: View {
     var body: some View {
         if let id = canvas.floatingDropCardID, let tab = canvas.visibleFloatingTabs.first(where: { $0.id == id }) {
             let frame = canvas.floatingFrame(for: tab, in: area)
-            let radius = FloatingCardChrome.cornerRadius(isKept: canvas.floatingPlacement(for: tab).isPinned)
-            let shape = RoundedRectangle(cornerRadius: radius)
+            let placement = canvas.floatingPlacement(for: tab)
+            let radius = FloatingCardChrome.cornerRadius(for: placement.shape, isKept: placement.isPinned)
+            let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
             ZStack {
                 shape.fill(Color.appAccentColor.opacity(Layout.fillOpacity))
                 shape.strokeBorder(Color.appAccentColor.opacity(Layout.strokeOpacity), lineWidth: Layout.lineWidth)

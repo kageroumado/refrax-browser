@@ -27,9 +27,9 @@ struct FloatingTabsTests {
         #expect(state.shows(isPinned: true))
     }
 
-    @Test(arguments: [true, false])
-    func `placement stays reachable after resize and out of bounds drag`(compact: Bool) {
-        var placement = FloatingTabPlacement(x: 0.4, y: 0.6, isCompact: compact, isPinned: false)
+    @Test(arguments: FloatingCardShape.allCases)
+    func `placement stays reachable after resize and out of bounds drag`(shape: FloatingCardShape) {
+        var placement = FloatingTabPlacement(x: 0.4, y: 0.6, shape: shape, isPinned: false)
         let large = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
         placement.move(to: CGPoint(x: 9_000, y: -800), in: large)
         #expect(placement.x == 1)
@@ -53,7 +53,7 @@ struct FloatingTabsTests {
     @Test @MainActor
     func `floating and desk edits preserve each other across serialization`() throws {
         let tab = try Tab(space: nil, url: #require(URL(string: "https://example.com")))
-        let placement = FloatingTabPlacement(x: 0.72, y: 0.3, isCompact: false, isPinned: true)
+        let placement = FloatingTabPlacement(x: 0.72, y: 0.3, shape: .live, isPinned: true)
         tab.floatingPlacement = placement
         #expect(tab.boardFrame == nil)
         tab.boardFrame = CGRect(x: 80, y: 90, width: 320, height: 240)
@@ -79,62 +79,63 @@ struct FloatingTabsTests {
 
     @Test
     func `invalid coordinates stay inside the window`() {
-        let placement = FloatingTabPlacement(x: .nan, y: .infinity, isCompact: false, isPinned: false)
+        let placement = FloatingTabPlacement(x: .nan, y: .infinity, shape: .live, isPinned: false)
         let area = CGRect(x: 0, y: 0, width: 1_200, height: 800)
         #expect(area.contains(placement.frame(in: area)))
     }
 
     @Test
-    func `resizing preserves the top left and persists through compact mode`() throws {
+    func `resizing preserves the top left and the live size persists through other shapes`() throws {
         let area = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
-        var placement = FloatingTabPlacement(x: 0.2, y: 0.3, isCompact: false, isPinned: true)
+        var placement = FloatingTabPlacement(x: 0.2, y: 0.3, shape: .live, isPinned: true)
         let origin = placement.frame(in: area).origin
         placement.resize(to: CGSize(width: 650, height: 450), in: area)
         #expect(abs(placement.frame(in: area).minX - origin.x) < 0.001)
         #expect(abs(placement.frame(in: area).minY - origin.y) < 0.001)
         #expect(placement.size == CGSize(width: 650, height: 450))
-        placement.isCompact = true
+        placement.shape = .tab
         let data = try JSONEncoder().encode(placement)
         var restored = try JSONDecoder().decode(FloatingTabPlacement.self, from: data)
         #expect(restored.size.height == FloatingTabPlacement.headerHeight)
-        restored.isCompact = false
+        restored.shape = .live
         #expect(restored.size == CGSize(width: 650, height: 450))
     }
 
     @Test
     func `oversized and invalid resize stays reachable`() {
         let area = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
-        var placement = FloatingTabPlacement(x: 0.7, y: 0.7, isCompact: false, isPinned: false)
+        var placement = FloatingTabPlacement(x: 0.7, y: 0.7, shape: .live, isPinned: false)
         let origin = placement.frame(in: area).origin
         placement.resize(to: CGSize(width: 9_000, height: 9_000), in: area)
         #expect(abs(placement.frame(in: area).minX - origin.x) < 0.001)
         #expect(abs(placement.frame(in: area).minY - origin.y) < 0.001)
         #expect(area.contains(placement.frame(in: area)))
-        placement.resize(to: CGSize(width: CGFloat.nan, height: -100), in: area)
+        placement.resize(to: CGSize(width: CGFloat.nan, height: 120), in: area)
         #expect(area.contains(placement.frame(in: area)))
-        #expect(placement.size.height == 180)
+        #expect(placement.shape == .live)
+        #expect(placement.size.height == FloatingCardShape.live.minimumSize.height)
     }
 
     @Test
     func `saved placements without dimensions use the default preview size`() throws {
-        let data = Data(#"{"x":0.2,"y":0.3,"isCompact":false,"isPinned":true}"#.utf8)
+        let data = Data(#"{"x":0.2,"y":0.3,"shape":"live","isPinned":true}"#.utf8)
         let placement = try JSONDecoder().decode(FloatingTabPlacement.self, from: data)
-        #expect(placement.size == CGSize(width: 340, height: 250))
+        #expect(placement.size == FloatingCardShape.Layout.liveNaturalSize)
     }
 
     @Test
-    func `expanding and compacting keep the tab in place`() {
+    func `changing shape keeps the card's top-leading corner and its kept state`() {
         let area = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
-        var placement = FloatingTabPlacement(x: 0.3, y: 0.2, isCompact: true, isPinned: false)
+        var placement = FloatingTabPlacement(x: 0.3, y: 0.2, shape: .tab, isPinned: false)
         let origin = placement.frame(in: area).origin
-        placement.setCompact(false, in: area)
+        placement.setShape(.live, in: area)
         #expect(abs(placement.frame(in: area).minX - origin.x) < 0.001)
         #expect(abs(placement.frame(in: area).minY - origin.y) < 0.001)
         placement.isPinned = true
-        placement.setCompact(true, in: area)
+        placement.setShape(.icon, in: area)
         #expect(abs(placement.frame(in: area).minX - origin.x) < 0.001)
         #expect(abs(placement.frame(in: area).minY - origin.y) < 0.001)
-        #expect(placement.isPinned == false)
+        #expect(placement.isPinned)
     }
     @Test @MainActor
     func `empty space passes clicks to the page`() {

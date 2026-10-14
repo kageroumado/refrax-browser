@@ -263,8 +263,8 @@ final class FloatingTourManager {
         let reference = tabManager.createTab(url: FloatingTabsTutorial.Page.arrivalDetails.url, in: space, makeActive: false)
         draft.activePage.title = FloatingTabsTutorial.Page.tripDraft.title
         reference.activePage.title = FloatingTabsTutorial.Page.arrivalDetails.title
-        canvas.updateFloatingPlacement(.init(x: 0.1, y: 0.4, isCompact: true, isPinned: false), for: draft)
-        canvas.updateFloatingPlacement(.init(x: 0.8, y: 0.4, isCompact: false, isPinned: false), for: reference)
+        canvas.updateFloatingPlacement(.init(x: 0.1, y: 0.4, shape: .tab, isPinned: false), for: draft)
+        canvas.updateFloatingPlacement(.init(x: 0.8, y: 0.4, shape: .live, isPinned: false), for: reference)
         if windowState.activeTab == nil {
             tabManager.setActiveTab(draft, in: windowState)
         }

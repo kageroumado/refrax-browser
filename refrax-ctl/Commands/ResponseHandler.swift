@@ -488,7 +488,7 @@ func printCanvas(_ info: CTL.CanvasInfo) {
     if let floating = info.floating {
         print("Floating tabs: \(floating.isRevealed ? "revealed" : "hidden") · \(floating.tiles.filter(\.isPinned).count) pinned previews")
         for tile in floating.tiles where tile.isVisible {
-            print("  \(Int(tile.x)),\(Int(tile.y))  \(tile.isCompact ? "compact" : "preview")\(tile.isPinned ? " · pinned" : "")  \(tile.title)  [\(tile.tabID)]")
+            print("  \(Int(tile.x)),\(Int(tile.y))  \(tile.shape.rawValue)\(tile.isPinned ? " · pinned" : "")  \(tile.title)  [\(tile.tabID)]")
         }
     }
     print("Canvas: \(status) · desk \(Int(info.deskWidth))×\(Int(info.deskHeight)) · \(info.tiles.count) tiles · \(info.overlappingPairs) overlapping pairs")

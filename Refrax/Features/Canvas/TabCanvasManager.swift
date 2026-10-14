@@ -193,7 +193,7 @@ final class TabCanvasManager {
         let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
         guard let placement = FloatingTabPlacement.freeStartingSlot(
             nearest: source.isEmpty ? nil : CGPoint(x: source.midX, y: source.midY), avoiding: occupied, in: area,
-            isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+            shape: startingFloatingShape(for: tab),
         ) else { return }
         updateFloatingPlacement(placement, for: tab)
         keepClearOfRail([tab], in: area)
@@ -242,11 +242,18 @@ final class TabCanvasManager {
     }
 
     func floatingFrame(for tab: Tab, in area: CGRect) -> CGRect {
-        var frame = floatingPlacement(for: tab).frame(in: area)
-        if tab.id == windowState.activeTabID {
+        let placement = floatingPlacement(for: tab)
+        var frame = placement.frame(in: area)
+        if tab.id == windowState.activeTabID, placement.shape != .icon {
             frame.size.height = 58
         }
         return frame
+    }
+
+    /// The card's frame and the outer half of its resize zones: where the pointer reaches it.
+    func floatingHitFrame(for tab: Tab, in area: CGRect) -> CGRect {
+        let outset = FloatingCardShape.Layout.resizeOutset
+        return floatingFrame(for: tab, in: area).insetBy(dx: -outset, dy: -outset)
     }
 
     var visibleFloatingTabs: [Tab] {
@@ -271,11 +278,17 @@ final class TabCanvasManager {
         }
     }
 
+    /// The shape a card starts in: a live page for a tab the desk shows as a preview, a tab
+    /// otherwise.
+    func startingFloatingShape(for tab: Tab) -> FloatingCardShape {
+        tab.boardFrame == nil || tab.boardIsCompact ? .tab : .live
+    }
+
     func floatingPlacement(for tab: Tab) -> FloatingTabPlacement {
         storedFloatingPlacement(for: tab) ?? .initial(
             index: floatingTabs.firstIndex(where: { $0.id == tab.id }) ?? 0,
             count: floatingTabs.count,
-            isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+            shape: startingFloatingShape(for: tab),
         )
     }
 
@@ -289,6 +302,21 @@ final class TabCanvasManager {
             tabManager.state.pipCoordinator.onTabActivated(tab, in: tabManager.state)
         }
         tabManager.state.scheduleSave()
+    }
+
+    /// Changes a card's shape where it stands, with the shape motion.
+    func setFloatingShape(_ shape: FloatingCardShape, for tab: Tab, in area: CGRect) {
+        var next = floatingPlacement(for: tab)
+        next.setShape(shape, in: area)
+        withAnimation(Self.shapeAnimation) {
+            updateFloatingPlacement(next, for: tab)
+        }
+    }
+
+    /// The motion of a shape change: frame and radius together on a spring with no bounce.
+    /// Under Reduce Motion the frame changes at once and the card's content fades.
+    static var shapeAnimation: Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : FloatingCardShape.Layout.shapeSpring
     }
 
     func revealFloatingTabs() {
@@ -405,7 +433,7 @@ final class TabCanvasManager {
         var occupied = floatingTabs.compactMap { storedFloatingPlacement(for: $0) }
         for tab in unplacedFloatingTabs {
             guard let placement = FloatingTabPlacement.freeStartingSlot(
-                nearest: nil, avoiding: occupied, in: area, isCompact: tab.boardFrame == nil || tab.boardIsCompact,
+                nearest: nil, avoiding: occupied, in: area, shape: startingFloatingShape(for: tab),
             ) else { break }
             updateFloatingPlacement(placement, for: tab)
             keepClearOfRail([tab], in: area)

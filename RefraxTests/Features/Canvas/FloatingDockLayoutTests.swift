@@ -124,7 +124,7 @@ struct FloatingDockLayoutTests {
 
     @Test
     func `A stored placement without a dock decodes undocked at the default width`() throws {
-        let json = Data(#"{"x":0.2,"y":0.4,"isCompact":false,"isPinned":true}"#.utf8)
+        let json = Data(#"{"x":0.2,"y":0.4,"shape":"live","isPinned":true}"#.utf8)
         let placement = try JSONDecoder().decode(FloatingTabPlacement.self, from: json)
         #expect(placement.dock == nil)
         #expect(!placement.isDocked)

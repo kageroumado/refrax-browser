@@ -118,7 +118,7 @@ struct ControlIslandTabInfoTests {
         let space = env.makeSpace()
         let cardWindow = env.makeActiveWindowState(with: space)
         let tab = try env.createActiveTab(url: #require(URL(string: "about:blank#current-tab")), in: space, for: cardWindow)
-        tab.floatingPlacement = FloatingTabPlacement(x: 0.6, y: 0.3, isCompact: false, isPinned: true)
+        tab.floatingPlacement = FloatingTabPlacement(x: 0.6, y: 0.3, shape: .live, isPinned: true)
         let originalPlacement = tab.floatingPlacement
         let otherSpace = env.makeSpace(name: "Other Window")
         let otherWindow = env.makeActiveWindowState(with: otherSpace)

@@ -36,7 +36,7 @@ struct PageActionsMenuTests {
         func keepRegion(on tab: Tab) throws {
             var placement = canvas.floatingPlacement(for: tab)
             placement.isPinned = true
-            placement.isCompact = false
+            placement.shape = .live
             placement.region = FloatingPageRegion(
                 sourceURL: tab.activePage.url, viewportSize: CGSize(width: 800, height: 600), rect: CGRect(x: 10, y: 10, width: 200, height: 100),
             )
@@ -71,20 +71,21 @@ struct PageActionsMenuTests {
         _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
         let tree = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Preview ▸ (3)",
-            "  Show as Preview", "  Dock Left", "  Dock Right", "——", "Select for Group", "——", "Favorite", "Tab ▸ (3)",
+            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Preview ▸ (4)",
+            "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Select for Group", "——", "Favorite", "Tab ▸ (3)",
             "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
             "Close Tab",
         ])
         #expect(!tree.ids.contains("tab.look"))
-        #expect(tree.outline.contains("  Show as Preview"))
+        #expect(tree.outline.contains("  Show Live Page"))
+        #expect(!tree.outline.contains("  Show as Tab"))
     }
 
     @Test
-    func `the active tab's floating card keeps the presentation toggle for the page card`() throws {
+    func `the active tab's floating card keeps the shape verbs for the page card`() throws {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.active, surface: .floatingCard)
-        #expect(!tree.ids.contains("tab.compact"))
+        #expect(!tree.ids.contains { $0.hasPrefix("tab.shape.") })
         #expect(!tree.ids.contains("tab.look"))
     }
 
@@ -93,7 +94,7 @@ struct PageActionsMenuTests {
         let fixture = try Fixture()
         var placement = fixture.canvas.floatingPlacement(for: fixture.other)
         placement.isPinned = true
-        placement.isCompact = false
+        placement.shape = .live
         fixture.canvas.updateFloatingPlacement(placement, for: fixture.other)
         fixture.canvas.selectedFloatingTabIDs = [fixture.other.id, fixture.active.id]
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
@@ -121,8 +122,9 @@ struct PageActionsMenuTests {
         try fixture.keepRegion(on: fixture.active)
         let page = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(page.outline.contains("Hide Preview"))
-        #expect(page.outline.contains("Preview ▸ (5)"))
-        #expect(page.outline.contains("  Show as Compact Tab"))
+        #expect(page.outline.contains("Preview ▸ (6)"))
+        #expect(page.outline.contains("  Show as Icon"))
+        #expect(page.outline.contains("  Show as Tab"))
         #expect(page.outline.contains("  Adjust Region…"))
         #expect(page.outline.contains("  Preview Zoom ▸ (6)"))
         #expect(page.outline.contains("    Show Whole Page"))
@@ -155,7 +157,7 @@ struct PageActionsMenuTests {
             bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas,
         )
         #expect(rows.outline == [
-            "Keep Visible", "Preview ▸ (3)", "  Show as Preview", "  Dock Left", "  Dock Right", "——", "Select for Group", "——",
+            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Select for Group", "——",
             "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window",
             "Open Reflected Window", "——", "Close Tab",
         ])

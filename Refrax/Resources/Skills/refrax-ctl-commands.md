@@ -115,6 +115,8 @@ refrax-ctl canvas drag TAB --to X,Y [--duration S] [--fling]   # As the pointer 
 refrax-ctl canvas drag TAB --to=-400,300 --fling              # Negative X needs --to=; off the edge closes the tab
 refrax-ctl canvas lab grid|overlap|zone|topics|crowd|unplaced          # Debug builds: fresh space in a preset layout
 refrax-ctl canvas floating dock-left|dock-right|undock --tab TAB       # Dock a page to a window side at full height, or return it
+refrax-ctl canvas floating shape --tab TAB icon|tab|live             # Favicon icon, favicon + title tab, or live page
+refrax-ctl canvas floating resize --tab TAB --width W --height H     # From the bottom-right corner; the shape follows the size
 ```
 
 ## Space Operations

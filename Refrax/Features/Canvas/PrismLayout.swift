@@ -91,7 +91,7 @@ nonisolated struct PrismLayout: Equatable, Sendable {
     static func placeholderFrames(in bounds: CGRect, railFrame: CGRect) -> [CGRect] {
         let mirrored = !railFrame.isEmpty && railFrame.midX > bounds.midX
         return Layout.placeholderPlacements.map { place in
-            FloatingTabPlacement(x: mirrored ? 1 - place.x : place.x, y: place.y, isCompact: true, isPinned: false).frame(in: bounds)
+            FloatingTabPlacement(x: mirrored ? 1 - place.x : place.x, y: place.y, shape: .tab, isPinned: false).frame(in: bounds)
         }
     }
 
