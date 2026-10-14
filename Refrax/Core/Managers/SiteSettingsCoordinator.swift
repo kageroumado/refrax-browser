@@ -15,7 +15,7 @@ final class SiteSettingsCoordinator {
     private let siteSettingsManager: SiteSettingsManager
     private let browserSettings: BrowserSettings
 
-    private var enginePolicyObservation: Task<Void, Never>?
+    private var observesJavaScriptDefaults = false
 
     /// Receives ``enginePolicy`` whenever a site setting or a browser default it reads changes.
     var onEnginePolicyChange: ((SiteSettingsPolicy) -> Void)? {
@@ -174,16 +174,24 @@ final class SiteSettingsCoordinator {
         onEnginePolicyChange?(enginePolicy)
     }
 
+    /// Publishes the policy whenever the JavaScript defaults change. Tracking re-arms on the main
+    /// actor only while the coordinator is alive, so nothing reads the settings after it is gone.
+    /// Never an `Observations` task here: its iterator evaluates once more after cancellation and
+    /// reads the model after its context is torn down.
     private func observeJavaScriptDefaults() {
-        enginePolicyObservation?.cancel()
-        let browserSettings = browserSettings
-        let changes = Observations {
-            (browserSettings.enableJavaScript, browserSettings.allowJavaScriptWhitelist)
-        }
-        enginePolicyObservation = Task(name: "Site settings engine policy") { [weak self] in
-            for await _ in changes.dropFirst() {
+        guard !observesJavaScriptDefaults else { return }
+        observesJavaScriptDefaults = true
+        trackJavaScriptDefaults()
+    }
+
+    private func trackJavaScriptDefaults() {
+        withObservationTracking {
+            _ = (browserSettings.enableJavaScript, browserSettings.allowJavaScriptWhitelist)
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 publishEnginePolicy()
+                trackJavaScriptDefaults()
             }
         }
     }

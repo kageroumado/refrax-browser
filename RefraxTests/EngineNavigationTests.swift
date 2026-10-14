@@ -144,15 +144,17 @@ struct EngineNavigationHandlerTests {
 @Suite("Engine site settings policy", .tags(.engines))
 @MainActor
 struct EngineSiteSettingsPolicyTests {
-    let environment: SettingsApplierTestEnvironment
+    // The coordinator goes first so its observation ends before the environment's store.
     let coordinator: SiteSettingsCoordinator
+    let environment: SettingsApplierTestEnvironment
 
     init() throws {
-        self.environment = try SettingsApplierTestEnvironment()
+        let environment = try SettingsApplierTestEnvironment()
         self.coordinator = SiteSettingsCoordinator(
             siteSettingsManager: environment.siteSettingsManager,
             browserSettings: environment.settings,
         )
+        self.environment = environment
     }
 
     private func site(_ domain: String, _ change: (SiteSettings) -> Void) {

@@ -149,6 +149,7 @@ struct TableScrollRouterTests {
     }
 }
 
+@MainActor
 struct TableMotionTests {
     private let camera = TableCamera(viewport: CGSize(width: 1_000, height: 600))
     private let a = UUID()
