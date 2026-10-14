@@ -9,7 +9,7 @@ import AppKit
 /// - `MenuBarManager+AppMenu.swift`: App menu + preferences action.
 /// - `MenuBarManager+FileMenu.swift`: File menu + save/export/print actions.
 /// - `MenuBarManager+EditMenu.swift`: Edit menu + browser undo/redo + find.
-/// - `MenuBarManager+ViewMenu.swift`: View menu + tab/zoom/sidebar actions.
+/// - `MenuBarManager+ViewMenu.swift`: View menu + tab/zoom/island actions.
 /// - `MenuBarManager+HistoryMenu.swift`: History menu + recently closed actions.
 /// - `MenuBarManager+BookmarksMenu.swift`: Bookmarks menu actions.
 /// - `MenuBarManager+DevelopMenu.swift`: Develop menu actions + dynamic titles.

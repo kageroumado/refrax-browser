@@ -113,7 +113,6 @@ final class Tab {
     var layoutConfigurationData: Data? {
         didSet {
             cachedLayoutConfiguration = nil
-            cachedSortedPageIDs = nil // Sort order may have changed
         }
     }
 
@@ -144,13 +143,6 @@ final class Tab {
     /// Invalidated when ``layoutConfigurationData`` changes.
     @Transient
     private var cachedLayoutConfiguration: LayoutConfiguration??
-
-    /// Cached sorted page IDs to avoid recomputation during Equatable checks.
-    ///
-    /// Invalidated when pages or layout configuration changes.
-    /// This is a performance optimization for TabView's equality comparison.
-    @Transient
-    private var cachedSortedPageIDs: [UUID]?
 
     /// Preview page for link preview popover.
     ///
@@ -247,10 +239,10 @@ final class Tab {
     /// Archive group and is unloaded from memory. After a configurable period
     /// (and the user activating the app), the tab is permanently deleted.
     ///
-    /// - Note: Archived tabs are non-activatable. Clicking shows a restore prompt.
+    /// - Note: Archived tabs are restored from History › Archived or Command Lens ("archived").
     var archivedAt: Date?
 
-    /// The home address a tab carried as a sidebar pin.
+    /// The home address a pinned tab carried.
     ///
     /// ``FavoriteMigration`` reads it once to give the favorite it becomes a bookmark at
     /// this address, then clears it. A favorite's home is ``linkedBookmark``'s URL.
@@ -318,20 +310,6 @@ final class Tab {
             let rhsPos = config.panePositions[rhs.id] ?? .single
             return lhsPos.sortOrder < rhsPos.sortOrder
         }
-    }
-
-    /// Cached sorted page IDs for efficient equality checks.
-    ///
-    /// This avoids recomputing ``sortedPages`` and mapping to IDs on every
-    /// ``TabView`` equality comparison. The cache is invalidated when pages
-    /// are added or removed.
-    var sortedPageIDs: [UUID] {
-        if let cached = cachedSortedPageIDs {
-            return cached
-        }
-        let ids = sortedPages.map(\.id)
-        cachedSortedPageIDs = ids
-        return ids
     }
 
     /// Gets the page at a specific layout position.
@@ -484,7 +462,7 @@ final class Tab {
         status == .favorite
     }
 
-    /// Whether this tab sits in a pinned group, which the sidebar lists in its pinned section.
+    /// Whether this tab sits in a pinned group.
     var isInPinnedGroup: Bool {
         group?.isPinned == true
     }
@@ -600,7 +578,6 @@ final class Tab {
     func _addPage(_ page: TabPage, at position: PanePosition) {
         page.position = position
         pages.append(page)
-        cachedSortedPageIDs = nil // Invalidate cache
 
         var config = layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
         config.panePositions[page.id] = position
@@ -618,7 +595,6 @@ final class Tab {
     ///   to ensure proper session cleanup and state synchronization.
     func _removePage(_ page: TabPage) {
         pages.removeAll { $0.id == page.id }
-        cachedSortedPageIDs = nil // Invalidate cache
 
         var config = layoutConfiguration
         config?.panePositions.removeValue(forKey: page.id)

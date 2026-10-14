@@ -102,7 +102,7 @@ struct ControlIslandPageBranch: View {
     private func identity(_ tab: Tab) -> some View {
         Button {
             tabInfo.show()
-            windowState.addressBarFrame = frame
+            windowState.pageCardFrame = frame
             windowState.openCommandLens(prefill: url?.absoluteString ?? "", anchor: frame)
         } label: {
             HStack(spacing: Layout.faviconGap) {
@@ -134,7 +134,7 @@ struct ControlIslandPageBranch: View {
     private var engineBadge: some View {
         if let engineID = page?.activeEngineID, engineID != .systemWebKit, let icon = engineRegistry.icon(for: engineID) {
             let descriptor = engineRegistry.descriptor(for: engineID)
-            AddressBarEngineBadge(icon: icon, engineName: descriptor.map { "\($0.displayName) (\($0.engineVersion))" } ?? engineID.rawValue)
+            PageEngineBadge(icon: icon, engineName: descriptor.map { "\($0.displayName) (\($0.engineVersion))" } ?? engineID.rawValue)
         }
     }
 

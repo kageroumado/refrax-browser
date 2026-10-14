@@ -15,7 +15,7 @@ final class ControlIslandConfiguration {
     private(set) var avoidsPageControls: Bool
     /// The glass clears and the glyphs recede while the pointer is far away or still.
     private(set) var restsWhenIdle: Bool
-    /// The glass carries the active space's color, as the sidebar does.
+    /// The glass carries the active space's color.
     private(set) var tintsWithSpaceColor: Bool
     /// Snapped to the window's left or right edge, the rail slides past it and returns when the
     /// pointer reaches that edge, as the Dock hides.

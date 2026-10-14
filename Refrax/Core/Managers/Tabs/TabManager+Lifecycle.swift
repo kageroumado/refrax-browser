@@ -239,10 +239,6 @@ extension TabManager {
         pagePool.removePages(for: tab)
 
         mutationPipeline.withMutation { effects in
-            // Capture removal context before modifying state
-            let wasPinned = tab.isInPinnedGroup
-            let wasInGroupID = tab.groupID
-
             if let groupID = tab.groupID,
                let group = space.groups.first(where: { $0.id == groupID }) {
                 group._removeTab(tab)
@@ -252,14 +248,6 @@ extension TabManager {
             state.modelContext.delete(tab)
             // Pass mainTabIndex for smart adjacent tab selection in the pipeline
             effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex)
-
-            // Populate incremental removal tracking
-            effects.removedItemID = tab.id
-            effects.removalContext = TabMutationPipeline.RemovalContext(
-                spaceID: space.id,
-                wasPinned: wasPinned,
-                wasInGroupID: wasInGroupID,
-            )
         }
 
         if registerUndo {

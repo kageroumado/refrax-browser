@@ -6,48 +6,8 @@ extension MenuBarManager {
     func createViewMenu() -> NSMenuItem {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
-        // updateViewMenu keeps the engine item's title and the sidebar mode checkmarks current.
+        // updateViewMenu keeps the engine, favorite, and mute items' titles current.
         viewMenu.delegate = self
-
-        // Show/Hide Sidebar
-        let sidebarItem = NSMenuItem(
-            title: "Toggle Sidebar",
-            action: #selector(toggleSidebar(_:)),
-            keyEquivalent: "s",
-        )
-        sidebarItem.keyEquivalentModifierMask = [.command]
-        sidebarItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: nil)
-        sidebarItem.target = self
-        viewMenu.addItem(sidebarItem)
-
-        // Sidebar Mode submenu
-        let sidebarModeItem = NSMenuItem(title: "Sidebar Mode", action: nil, keyEquivalent: "")
-        sidebarModeItem.image = NSImage(systemSymbolName: "sidebar.squares.left", accessibilityDescription: nil)
-        let sidebarModeMenu = NSMenu(title: "Sidebar Mode")
-        sidebarModeMenu.delegate = self
-
-        let overlayModeItem = NSMenuItem(
-            title: "Overlay",
-            action: #selector(setSidebarModeOverlay(_:)),
-            keyEquivalent: "",
-        )
-        overlayModeItem.target = self
-        overlayModeItem.tag = MenuItemTag.sidebarModeOverlay.rawValue
-        sidebarModeMenu.addItem(overlayModeItem)
-
-        let compactModeItem = NSMenuItem(
-            title: "Compact",
-            action: #selector(setSidebarModeCompact(_:)),
-            keyEquivalent: "",
-        )
-        compactModeItem.target = self
-        compactModeItem.tag = MenuItemTag.sidebarModeCompact.rawValue
-        sidebarModeMenu.addItem(compactModeItem)
-
-        sidebarModeItem.submenu = sidebarModeMenu
-        viewMenu.addItem(sidebarModeItem)
-
-        viewMenu.addItem(.separator())
 
         // Tab Navigation
         let nextTabItem = NSMenuItem(
@@ -288,11 +248,6 @@ extension MenuBarManager {
     }
 
     @objc
-    func toggleSidebar(_ sender: Any?) {
-        activeWindowController?.toggleSidebar(sender)
-    }
-
-    @objc
     func selectNextTab(_: Any?) {
         activeWindowController?.selectNextTab()
     }
@@ -425,13 +380,11 @@ extension MenuBarManager {
 
     @objc
     func focusBrowserControls(_: Any?) {
-        activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.focus()
     }
 
     @objc
     func showCurrentTabInfo(_: Any?) {
-        activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.tabInfo.show()
     }
 
@@ -442,7 +395,6 @@ extension MenuBarManager {
 
     @objc
     func customizeControls(_: Any?) {
-        activeWindowController?.useFloatingTabs()
         activeWindowController?.windowState.controlIsland.showsCustomization = true
     }
 
@@ -475,23 +427,11 @@ extension MenuBarManager {
         ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()
     }
 
-    // MARK: - Sidebar Mode Actions
-
-    @objc
-    func setSidebarModeOverlay(_: Any?) {
-        NSApp.typedDelegate.settings.defaultSidebarMode = .overlay
-    }
-
-    @objc
-    func setSidebarModeCompact(_: Any?) {
-        NSApp.typedDelegate.settings.defaultSidebarMode = .compact
-    }
-
     // MARK: - View Menu Validation
 
-    /// Updates sidebar mode menu item checkmarks based on current setting.
+    /// Updates the engine, favorite, and mute items for the focused page.
     func updateViewMenu(_ menu: NSMenu) {
-        guard menu.title == "View" || menu.title == "Sidebar Mode" else { return }
+        guard menu.title == "View" else { return }
 
         if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {
             let page = activeWindowController?.windowState.focusedWebPage
@@ -512,29 +452,6 @@ extension MenuBarManager {
             } ?? false
             muteItem.title = isMuted ? "Unmute Tab" : "Mute Tab"
             muteItem.image = NSImage(systemSymbolName: isMuted ? "speaker.wave.2" : "speaker.slash", accessibilityDescription: nil)
-        }
-
-        // Find sidebar mode submenu
-        let sidebarModeMenu: NSMenu? = if menu.title == "Sidebar Mode" {
-            menu
-        } else {
-            menu.item(withTitle: "Sidebar Mode")?.submenu
-        }
-
-        guard let sidebarModeMenu else { return }
-
-        let currentMode = NSApp.typedDelegate.settings.defaultSidebarMode
-
-        // Update checkmarks
-        for item in sidebarModeMenu.items {
-            switch item.tag {
-            case MenuItemTag.sidebarModeOverlay.rawValue:
-                item.state = currentMode == .overlay ? .on : .off
-            case MenuItemTag.sidebarModeCompact.rawValue:
-                item.state = currentMode == .compact ? .on : .off
-            default:
-                break
-            }
         }
     }
 }

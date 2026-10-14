@@ -3,8 +3,8 @@
 
     /// Generates bulk tabs with realistic data for scroll performance testing.
     ///
-    /// Creates tabs with varied domains and paths to stress-test the sidebar
-    /// tab list under load. Favicons are intentionally varied (diverse domains)
+    /// Creates tabs with varied domains and paths to stress-test the floating
+    /// layer and the desk under load. Favicons are intentionally varied (diverse domains)
     /// to exercise all rendering code paths.
     enum DebugTabGenerator {
         private static let domains = [

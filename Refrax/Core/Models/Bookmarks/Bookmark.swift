@@ -9,13 +9,13 @@ import SwiftUI
 ///
 /// - **Organized**: Placed in hierarchical folders up to 3 levels deep
 /// - **Tagged**: Multiple tags for flexible categorization
-/// - **Favorited**: Displayed as tiles in the sidebar for quick access
+/// - **Favorited**: Displayed as tiles in the favorites grid for quick access
 /// - **Space-Assigned**: Optionally tied to a specific browsing space
 /// - **Offline-Ready**: Downloaded as HTML for offline reading
 ///
 /// ## Favorites System
 ///
-/// When a bookmark is marked as a favorite (`isFavorite = true`), it appears in the sidebar
+/// When a bookmark is marked as a favorite (`isFavorite = true`), it appears in the favorites grid
 /// as a tile. Favorites have two modes:
 ///
 /// - **Shortcut** (`.shortcut`): Clicking navigates the current tab to the URL
@@ -93,7 +93,7 @@ final class Bookmark {
     
     // MARK: - Favorites Display
 
-    /// Whether this bookmark appears in the sidebar favorites grid
+    /// Whether this bookmark appears in the favorites grid
     var isFavorite: Bool
     
     /// Interaction mode when favorited
@@ -156,7 +156,7 @@ final class Bookmark {
     ///   - url: The webpage URL to bookmark
     ///   - title: Display title (defaults to URL host if not provided)
     ///   - folder: Optional parent folder
-    ///   - isFavorite: Whether to show in sidebar favorites (default: false)
+    ///   - isFavorite: Whether to show in favorites (default: false)
     ///   - favoriteMode: Interaction mode if favorited (default: .liveFavorite)
     ///   - favoritePosition: Grid position if favorited (default: 0,0)
     ///   - tags: Categorization tags (default: empty)
@@ -333,7 +333,7 @@ final class Bookmark {
 
 /// Interaction mode for favorited bookmarks.
 ///
-/// Determines what happens when a favorited bookmark is clicked in the sidebar grid.
+/// Determines what happens when a favorited bookmark is clicked in the favorites grid.
 enum FavoriteMode: String, Codable {
     /// A favorite: a tab in every space whose home is this bookmark's URL.
     ///

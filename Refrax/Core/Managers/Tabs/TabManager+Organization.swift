@@ -96,32 +96,6 @@ extension TabManager {
         closeTabsInBatch(tabsToClose, undoActionName: "Close Other Tabs")
     }
 
-    /// Closes tabs except the specified tab in the list.
-    func closeOtherTabs(except tab: Tab, in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab).filter { $0.id != tab.id }
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Other Tabs")
-    }
-
-    /// Closes tabs above the specified tab in the list.
-    func closeTabsAbove(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[..<index].compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Tabs Above")
-    }
-
-    /// Closes tabs below the specified tab in the list.
-    func closeTabsBelow(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[(index + 1)...].compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Tabs Below")
-    }
-
-    /// Closes all tabs in the given list items.
-    func closeAllTabs(in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close All Tabs")
-    }
-
     /// Closes the specified tabs.
     ///
     /// Used for closing multiple selected tabs at once.
@@ -132,34 +106,6 @@ extension TabManager {
     func closeTabs(_ tabs: [Tab], bypassArchive: Bool = false) {
         guard !tabs.isEmpty else { return }
         closeTabsInBatch(tabs, undoActionName: "Close \(tabs.count) Tabs", bypassArchive: bypassArchive)
-    }
-
-    // MARK: - Request Batch Close (with Confirmation)
-
-    /// Requests to close all tabs except the specified one, with confirmation if needed.
-    func requestCloseOtherTabs(except tab: Tab, in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab).filter { $0.id != tab.id }
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close tabs above the specified tab, with confirmation if needed.
-    func requestCloseTabsAbove(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[..<index].compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close tabs below the specified tab, with confirmation if needed.
-    func requestCloseTabsBelow(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[(index + 1)...].compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close all tabs in the given list items, with confirmation if needed.
-    func requestCloseAllTabs(in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
     }
 
     /// Moves multiple tabs to a different space.

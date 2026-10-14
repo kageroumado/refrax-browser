@@ -4,15 +4,4 @@ nonisolated enum MenuSurface: Sendable {
     case floatingCard
     /// The ⋯ of the current page's card, beside the control rail.
     case pageCard
-    /// A tab row in the full sidebar.
-    case sidebarRow
-    /// A tab button in the compact sidebar.
-    case compactRow
-
-    var isCard: Bool {
-        switch self {
-        case .floatingCard, .pageCard: true
-        case .sidebarRow, .compactRow: false
-        }
-    }
 }

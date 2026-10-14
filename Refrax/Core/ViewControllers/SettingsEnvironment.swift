@@ -16,7 +16,6 @@ struct SettingsEnvironment {
     let extensionManager: ExtensionManager
     let bookmarksManager: BookmarksManager
     let tabManager: TabManager
-    let calendarManager: CalendarManager
     let cookieInspectorManager: CookieInspectorManager
     let scheduledTasksManager: ScheduledTasksManager
     let archiveManager: TabArchiveManager
@@ -43,7 +42,6 @@ struct SettingsEnvironmentModifier: ViewModifier {
             .environment(environment.extensionManager)
             .environment(environment.bookmarksManager)
             .environment(environment.tabManager)
-            .environment(environment.calendarManager)
             .environment(environment.cookieInspectorManager)
             .environment(environment.scheduledTasksManager)
             .environment(environment.archiveManager)

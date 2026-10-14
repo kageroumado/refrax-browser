@@ -113,7 +113,7 @@ extension TabManager {
 // MARK: - Migration
 
 extension TabManager {
-    /// Turns sidebar pins and cards shown in every space into favorites, once per store.
+    /// Turns pinned tabs and cards shown in every space into favorites, once per store.
     ///
     /// Runs at launch after the spaces load. See ``FavoriteMigration`` for the mapping.
     func migrateFavoritesIfNeeded() {
@@ -158,9 +158,9 @@ extension TabManager {
     }
 }
 
-/// The once-per-store move of sidebar pins and "Show in Every Space" cards into favorites.
+/// The once-per-store move of pinned tabs and "Show in Every Space" cards into favorites.
 ///
-/// Sidebar pins (stored status `pinned`) read as `.favorite` while still sitting in a space;
+/// Pinned tabs (stored status `pinned`) read as `.favorite` while still sitting in a space;
 /// see ``TabStatus/init(rawValue:)``. Each becomes a favorite with its pin address as home,
 /// except a pin inside a pinned group, which stays in its group as a regular tab (the group
 /// keeps its pin), and a pin in a private or locked space, which stays there as a regular

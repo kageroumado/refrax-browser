@@ -165,7 +165,7 @@ struct TabManagerTestEnvironment {
     /// Creates a WindowState and associates it with the window manager for testing.
     ///
     /// Also sets `tabManager.testActiveWindowState` and `groupManager.testActiveWindowState`
-    /// so that methods like `selectNextTab()` and `createGroup()` without explicit space
+    /// so that methods like `closeAllTabs()` and `createGroup()` without explicit space
     /// can find the active window state without an actual window controller.
     func makeActiveWindowState(with space: Space? = nil) -> WindowState {
         let windowState = makeWindowState()

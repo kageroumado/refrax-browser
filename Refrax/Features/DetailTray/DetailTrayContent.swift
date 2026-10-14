@@ -327,7 +327,7 @@ private enum DetailTrayToolbarConstants {
 /// Capsule-shaped toolbar for the detail tray's normal mode buttons.
 ///
 /// Places buttons inside a shared capsule container, centered at the bottom.
-/// Uses the same sizing as SidebarControlButton (32pt buttons, 12pt icons).
+/// 32pt buttons with 12pt icons.
 struct DetailTrayToolbar<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -344,7 +344,7 @@ struct DetailTrayToolbar<Content: View>: View {
 
 /// A button for use inside DetailTrayToolbar (capsule style).
 ///
-/// Uses same sizing as SidebarControlButton but without individual background or hover effect.
+/// 32pt buttons with 12pt icons, without individual background or hover effect.
 struct DetailTrayToolbarButton: View {
     let icon: String
     let action: () -> Void
@@ -380,7 +380,7 @@ struct DetailTrayToolbarButton: View {
 
 /// Circular button for the detail tray's edit/selection mode.
 ///
-/// Uses the same sizing as SidebarControlButton without hover effect.
+/// 32pt buttons with 12pt icons, without hover effect.
 struct DetailTrayCircleButton: View {
     let icon: String
     let action: () -> Void

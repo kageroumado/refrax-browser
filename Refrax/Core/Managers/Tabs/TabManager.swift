@@ -424,9 +424,6 @@ extension TabManager {
             // Build per-space group indexes for O(1) lookups
             var groupIndexBySpace: [Space.ID: [UUID: TabGroup]] = [:]
 
-            // Track removed IDs by space for incremental update
-            var removedIDsBySpace: [Space.ID: Set<UUID>] = [:]
-
             for tab in tabsToClose {
                 guard let space = tab.space,
                       let index = space.tabs.firstIndex(of: tab) else {
@@ -435,9 +432,6 @@ extension TabManager {
 
                 let closedInfo = ClosedTabInfo(tab: tab)
                 closedInfos.append(closedInfo)
-
-                // Track for incremental update
-                removedIDsBySpace[space.id, default: []].insert(tab.id)
 
                 pagePool.removePages(for: tab)
 
@@ -461,18 +455,6 @@ extension TabManager {
                 effects.tabsToRemoveFromIndex.append(tab)
                 effects.didChangeList = true
                 effects.spaceIDsToSyncActiveTab.insert(space.id)
-            }
-
-            // Populate incremental removal tracking
-            // For single-space batch (common case), enable incremental update
-            if removedIDsBySpace.count == 1,
-               let (spaceID, removedIDs) = removedIDsBySpace.first {
-                effects.batchRemovedIDs = removedIDs
-                effects.removalContext = TabMutationPipeline.RemovalContext(
-                    spaceID: spaceID,
-                    wasPinned: false, // Mixed in batch, but doesn't affect removal
-                    wasInGroupID: nil,
-                )
             }
         }
 
@@ -517,10 +499,6 @@ extension TabManager {
             return
         }
 
-        // Capture state before removal for incremental tracking
-        let wasPinned = tab.isInPinnedGroup
-        let wasInGroupID = tab.groupID
-
         // Get index in mainTabs for proper adjacency fallback
         let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
 
@@ -533,14 +511,6 @@ extension TabManager {
             space.tabs.remove(at: index)
             state.modelContext.delete(tab)
             effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex)
-
-            // Populate incremental removal tracking for LayoutManager
-            effects.removedItemID = tab.id
-            effects.removalContext = TabMutationPipeline.RemovalContext(
-                spaceID: space.id,
-                wasPinned: wasPinned,
-                wasInGroupID: wasInGroupID,
-            )
         }
     }
 
@@ -573,120 +543,6 @@ extension TabManager {
         config.panePositions[firstPage.id] = firstPosition
         config.panePositions[newPage.id] = position
         tab.layoutConfiguration = config
-    }
-
-    func collectTabsRecursively(from groupID: UUID, in space: Space, into tabs: inout [Tab]) {
-        let groupTabs = space.tabs.filter { $0.groupID == groupID }
-        tabs.append(contentsOf: groupTabs)
-
-        let nestedGroups = space.groups.filter { $0.parentGroupID == groupID }
-        for nested in nestedGroups {
-            collectTabsRecursively(from: nested.id, in: space, into: &tabs)
-        }
-    }
-
-    func updateGroupMembership(for tab: Tab, newGroupID: UUID?) {
-        guard newGroupID != tab.groupID else { return }
-
-        if tab.groupID != nil {
-            groupManager.removeTabFromGroup(tab, skipReordering: true)
-        }
-
-        if let newGroupID,
-           let space = tab.space,
-           let newGroup = space.groups.first(where: { $0.id == newGroupID }) {
-            groupManager.moveTabToGroup(tab, group: newGroup, skipReordering: true)
-        }
-    }
-
-    func updateGroupPinState(_ group: TabGroup, for collection: SidebarCollection) {
-        if collection == .pinned, !group.isPinned {
-            setGroupPinStateRecursively(group, isPinned: true)
-        } else if collection == .normal, group.isPinned {
-            setGroupPinStateRecursively(group, isPinned: false)
-        }
-    }
-
-    func findEffectiveTargetIndex(
-        for group: TabGroup,
-        localTarget: Int,
-        items: [TabListItem],
-        layoutManager: Sidebar.LayoutManager,
-    ) -> Int {
-        var effectiveIndex = localTarget
-        let descendants = layoutManager.getAllDescendantIDs(of: group.id)
-
-        while effectiveIndex < items.count,
-              descendants.contains(items[effectiveIndex].id) {
-            effectiveIndex += 1
-        }
-
-        return min(effectiveIndex, items.count - 1)
-    }
-
-    func calculateNewPosition(
-        for itemID: UUID,
-        targetItem: TabListItem,
-        targetMetadata: Sidebar.LayoutManager.ItemMetadata,
-        items: [TabListItem],
-        layoutManager: Sidebar.LayoutManager,
-        movingDown: Bool,
-    ) -> Int {
-        let siblings = items.compactMap { item -> (id: UUID, position: Int)? in
-            guard item.id != itemID,
-                  let metadata = layoutManager.metadata[item.id],
-                  metadata.parentGroupID == targetMetadata.parentGroupID,
-                  metadata.nestingLevel == targetMetadata.nestingLevel else {
-                return nil
-            }
-            return (item.id, item.position)
-        }.sorted { $0.position < $1.position }
-
-        guard let targetSiblingIndex = siblings.firstIndex(where: { $0.id == targetItem.id }) else {
-            return targetItem.position
-        }
-
-        let multiplier = multiplier(forLevel: targetMetadata.nestingLevel)
-
-        if movingDown {
-            if targetSiblingIndex >= siblings.count - 1 {
-                return siblings[targetSiblingIndex].position + multiplier
-            } else {
-                let targetPos = siblings[targetSiblingIndex].position
-                let nextPos = siblings[targetSiblingIndex + 1].position
-                return nextPos - targetPos > 1 ? (targetPos + nextPos) / 2 : targetPos + 1
-            }
-        } else {
-            if targetSiblingIndex == 0 {
-                return max(1, siblings[0].position - multiplier)
-            } else {
-                let prevPos = siblings[targetSiblingIndex - 1].position
-                let targetPos = siblings[targetSiblingIndex].position
-                return targetPos - prevPos > 1 ? (prevPos + targetPos) / 2 : targetPos - 1
-            }
-        }
-    }
-
-    func multiplier(forLevel level: Int) -> Int {
-        positioner.multiplier(forLevel: level)
-    }
-
-    /// Recursively sets the pinned state for a group and its nested groups.
-    ///
-    /// The group's tabs follow it into or out of the sidebar's pinned section through
-    /// ``Tab/isInPinnedGroup``.
-    ///
-    /// - Parameters:
-    ///   - group: The group to update.
-    ///   - isPinned: The new pinned state.
-    func setGroupPinStateRecursively(_ group: TabGroup, isPinned: Bool) {
-        guard let space = group.space else { return }
-
-        group.isPinned = isPinned
-
-        for nestedGroup in space.groups where nestedGroup.parentGroupID == group.id {
-            setGroupPinStateRecursively(nestedGroup, isPinned: isPinned)
-        }
     }
 
     // MARK: - Popup Relationship Management

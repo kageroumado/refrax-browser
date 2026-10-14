@@ -121,9 +121,9 @@ struct CrashPageView: View {
 
                 Spacer()
 
-                AddressBarCopyLinkButton(
+                CopyLinkButton(
                     copyURL: copyURL,
-                    copyMarkdown: copyMarkdownLink
+                    copyMarkdown: copyMarkdownLink,
                 )
             }
             .padding(.horizontal, 8)
@@ -184,7 +184,7 @@ struct CrashPageView: View {
                 } label: {
                     Label(
                         isMultiPageTab ? "Close Page" : "Close Tab",
-                        systemImage: "xmark"
+                        systemImage: "xmark",
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -303,7 +303,7 @@ private struct CrashInfo {
                     "Try reloading — the issue may be temporary",
                     "Check if the page has a lighter or mobile version",
                     "Disable extensions that might increase memory usage",
-                ]
+                ],
             )
 
         case .exceededCPULimit:
@@ -318,7 +318,7 @@ private struct CrashInfo {
                     "Check if content blockers are enabled for this site",
                     "The site may be running resource-intensive scripts",
                     "Try the page in a different browser to confirm the issue",
-                ]
+                ],
             )
 
         case .crashed, .sharedProcessCrashed:
@@ -338,7 +338,7 @@ private struct CrashInfo {
                     "Disable extensions for this site to rule out conflicts",
                     "Clear the site's data and cookies",
                     "If the problem persists, the website may have a bug",
-                ]
+                ],
             )
 
         case .requestedByBrowser:
@@ -351,7 +351,7 @@ private struct CrashInfo {
                 suggestions: [
                     "Try reloading the page",
                     "This is usually a temporary condition",
-                ]
+                ],
             )
 
         case .unknown:
@@ -364,7 +364,7 @@ private struct CrashInfo {
                 suggestions: [
                     "Try reloading the page",
                     "If the problem persists, try closing and reopening the tab",
-                ]
+                ],
             )
         }
     }

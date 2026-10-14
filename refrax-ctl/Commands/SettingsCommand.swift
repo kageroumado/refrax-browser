@@ -81,7 +81,7 @@ struct SettingsCommand: AsyncParsableCommand {
               refrax-ctl settings set enableJavaScript on
               refrax-ctl settings set webpageDarkMode followSystem
               refrax-ctl settings set pageFilter sepia
-              refrax-ctl settings set showTabPreviews toggle
+              refrax-ctl settings set shiftClickLinkPreviewEnabled toggle
             """,
         )
 

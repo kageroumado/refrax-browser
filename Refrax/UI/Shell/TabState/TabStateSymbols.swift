@@ -16,7 +16,7 @@ struct TabStateSymbols: View {
     @Environment(WebPagePool.self) private var pagePool
     @Environment(WindowState.self) private var windowState
     @Environment(ModifierKeysState.self) private var modifierKeys
-    @Environment(Sidebar.MediaControlsManager.self) private var mediaControls
+    @Environment(MediaControlsManager.self) private var mediaControls
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Layout {

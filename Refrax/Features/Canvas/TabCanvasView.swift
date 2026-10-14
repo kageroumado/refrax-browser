@@ -3,13 +3,9 @@ import SwiftUI
 
 /// The window-wide layer the canvas appears in, above the browser and below Command Lens.
 ///
-/// While the canvas is open it fills the whole window, sidebar included, and the
-/// toolbar's buttons are hidden: only the traffic lights and the tabs remain. The
-/// buttons are hidden rather than the toolbar, which would change the titlebar's height
-/// and resize the page underneath.
+/// While the canvas is open it fills the whole window.
 struct TabCanvasLayer: View {
     @Environment(TabCanvasManager.self) private var manager
-    @Environment(WindowState.self) private var windowState
     @Environment(BrowserSettings.self) private var settings
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -30,11 +26,6 @@ struct TabCanvasLayer: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
-        .onChange(of: manager.isActive) { _, isActive in
-            for item in windowState.window?.toolbar?.items ?? [] {
-                item.isHidden = isActive || windowState.usesFloatingTabs
-            }
-        }
     }
 
     private enum Layout {

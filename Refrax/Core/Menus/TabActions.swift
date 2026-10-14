@@ -6,8 +6,7 @@ import Foundation
 /// lives in, its duplicate, its close, and Look.
 ///
 /// Placement actions need the canvas and the area the card is laid out in, so they appear only
-/// on card surfaces that pass both. The sidebar row brings its own identity, organization, and
-/// window verbs, so the card verbs appear only on cards.
+/// on surfaces that pass both.
 struct TabActions {
     let tab: Tab
     let surface: MenuSurface
@@ -22,24 +21,20 @@ struct TabActions {
     func actions() -> [MenuAction] {
         let behaviors = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
         var actions: [MenuAction] = []
-        if surface.isCard, tab.id != windowState.activeTabID, let canvas {
+        if tab.id != windowState.activeTabID, let canvas {
             actions.append(MenuAction("tab.look", "Look, then Return", symbol: "eye", group: .open) { canvas.lookAtFloatingTab(tab) })
         }
-        if surface.isCard, let canvas {
+        if let canvas {
             actions += placementActions(canvas: canvas)
             actions += dockActions(canvas: canvas)
             actions += selectionActions(canvas: canvas)
         }
         actions += favoriteActions(behaviors)
         actions += mediaActions()
-        if surface.isCard {
-            actions += identityActions()
-        }
+        actions += identityActions()
         actions.append(MenuAction("tab.duplicate", "Duplicate Tab", symbol: "plus.square.on.square", group: .tab) { behaviors.duplicate() })
-        if surface.isCard {
-            actions += spaceActions() + windowActions()
-            actions.append(MenuAction("tab.close", "Close Tab", symbol: "xmark", group: .close) { tabs.requestCloseTab(tab) })
-        }
+        actions += spaceActions() + windowActions()
+        actions.append(MenuAction("tab.close", "Close Tab", symbol: "xmark", group: .close) { tabs.requestCloseTab(tab) })
         return actions
     }
 
@@ -127,7 +122,7 @@ struct TabActions {
         var actions: [MenuAction] = []
         if !tab.isFavorite, tab.space != nil {
             actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option]), group: .window) {
-                if surface.isCard, let canvas {
+                if let canvas {
                     canvas.moveFloatingTabToNewWindow(tab, in: area)
                 } else {
                     tabs.moveTabToNewWindow(tab, from: windowState)

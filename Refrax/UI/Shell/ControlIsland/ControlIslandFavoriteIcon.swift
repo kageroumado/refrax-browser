@@ -6,18 +6,21 @@ struct ControlIslandFavoriteIcon: View {
     let isSelected: Bool
     @Environment(\.appearsActive) private var appearsActive
 
-    private enum Layout {
+    enum Layout {
+        static let faviconSize: CGFloat = 32
+        /// One favorite's row on the rail: its icon with 6 points above and below.
+        static let rowHeight: CGFloat = faviconSize + 12
         static let selectionWidth: CGFloat = 3
         static let selectionHeight: CGFloat = 16
     }
 
     var body: some View {
-        FaviconView(data: favorite.largeFaviconData, url: tab.activePage.url, size: CompactTabButton.Layout.faviconSize)
+        FaviconView(data: favorite.largeFaviconData, url: tab.activePage.url, size: Layout.faviconSize)
             .faviconBackground()
-            .overlay { CompactTabLoadingRing(tab: tab, size: CompactTabButton.Layout.faviconSize) }
+            .overlay { TabLoadingRing(tab: tab, size: Layout.faviconSize) }
             .saturation(appearsActive ? 1 : 0)
             .frame(maxWidth: .infinity)
-            .frame(height: CompactTabButton.Layout.buttonHeight)
+            .frame(height: Layout.rowHeight)
             .overlay(alignment: .leading) {
                 if isSelected {
                     Capsule()

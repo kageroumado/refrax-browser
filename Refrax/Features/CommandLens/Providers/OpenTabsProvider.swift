@@ -9,7 +9,7 @@ import Foundation
 /// ## Tab Categories
 ///
 /// Tabs are categorized and displayed with different icons:
-/// - **Main tabs**: Regular tabs in the sidebar (`rectangle.on.rectangle`)
+/// - **Main tabs**: Regular tabs in the current space (`rectangle.on.rectangle`)
 /// - **Live favorites**: Persistent favorites grid tabs (`star.fill`)
 struct OpenTabsProvider: CommandLensSuggestionProvider {
     let id = "open-tabs"

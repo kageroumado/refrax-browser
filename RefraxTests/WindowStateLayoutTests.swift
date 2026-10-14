@@ -11,14 +11,6 @@ import Testing
 @Suite("WindowState Regression", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateRegressionTests {
-    @Test
-    func `Windows start with floating tabs and a full-width page`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-        #expect(windowState.usesFloatingTabs)
-        #expect(windowState.isSidebarCollapsed)
-    }
-
     // MARK: - Active Space Tests
 
     @Test
@@ -154,22 +146,6 @@ struct WindowStateRegressionTests {
         #expect(!windowState.isInLayoutMode)
     }
 
-    // MARK: - Sidebar State Tests
-
-    @Test
-    func `WindowState sidebar collapsed state persists`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        windowState.isSidebarCollapsed = true
-
-        #expect(windowState.isSidebarCollapsed)
-
-        windowState.isSidebarCollapsed = false
-
-        #expect(!windowState.isSidebarCollapsed)
-    }
-
     // MARK: - Multiple Windows Tests
 
     @Test
@@ -237,87 +213,6 @@ struct WindowStateTabSwitchingTests {
         env.tabManager.setActiveTab(tab, in: windowState)
 
         #expect(windowState.activeTabID == tab.id)
-    }
-
-    @Test
-    func `Select next tab advances selection`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        let windowState = env.makeActiveWindowState(with: space)
-
-        let tab1 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://one.com")),
-            in: space,
-            makeActive: true,
-        )
-        let tab2 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://two.com")),
-            in: space,
-            makeActive: true,
-        )
-
-        env.tabManager.setActiveTab(tab1, in: windowState)
-
-        // Use explicit list for deterministic ordering
-        env.tabManager.selectNextTab(in: [tab1, tab2])
-
-        #expect(windowState.activeTabID == tab2.id)
-    }
-
-    @Test
-    func `Select previous tab goes back`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        let windowState = env.makeActiveWindowState(with: space)
-
-        let tab1 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://one.com")),
-            in: space,
-            makeActive: true,
-        )
-        let tab2 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://two.com")),
-            in: space,
-            makeActive: true,
-        )
-
-        env.tabManager.setActiveTab(tab2, in: windowState)
-
-        // Use explicit list for deterministic ordering
-        env.tabManager.selectPreviousTab(in: [tab1, tab2])
-
-        #expect(windowState.activeTabID == tab1.id)
-    }
-
-    @Test
-    func `Select next tab wraps at end`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        let windowState = env.makeActiveWindowState(with: space)
-
-        let tab1 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://one.com")),
-            in: space,
-            makeActive: true,
-        )
-        let tab2 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://two.com")),
-            in: space,
-            makeActive: true,
-        )
-        let tab3 = try env.tabManager.createTab(
-            url: #require(URL(string: "https://three.com")),
-            in: space,
-            makeActive: true,
-        )
-
-        env.tabManager.setActiveTab(tab3, in: windowState)
-
-        // selectNextTab at end stays at end (no wrapping) per TabManagerActivationTests
-        env.tabManager.selectNextTab(in: [tab1, tab2, tab3])
-
-        // At end of list, stays at current tab
-        #expect(windowState.activeTabID == tab3.id)
     }
 }
 

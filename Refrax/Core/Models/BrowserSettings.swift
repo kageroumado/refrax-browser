@@ -99,13 +99,6 @@ final class BrowserSettings {
     /// (same as custom and space colors).
     var websiteColorUseSolidBlend: Bool
 
-    // MARK: - Appearance: Sidebar
-
-    /// Raw value for default sidebar mode when collapsed.
-    ///
-    /// Use ``defaultSidebarMode`` computed property for type-safe access.
-    var defaultSidebarModeRaw: String
-
     // MARK: - Rendering Engine
 
     /// The engine pages render with unless their tab was moved to another one, as an
@@ -143,11 +136,6 @@ final class BrowserSettings {
         get { BackgroundRemovalMode(rawValue: backgroundRemovalModeRaw) ?? .none }
         set { backgroundRemovalModeRaw = newValue.rawValue }
     }
-
-    // MARK: - Tabs: Previews
-
-    /// Whether to show tab preview thumbnails on hover.
-    var showTabPreviews: Bool
 
     // MARK: - Tabs: Archive
 
@@ -354,21 +342,6 @@ final class BrowserSettings {
         return settings
     }
 
-    // MARK: - Getting Started
-
-    /// Whether to show the sidebar guide in the main content area when no tab is open.
-    ///
-    /// Defaults to true on first launch. Users can dismiss via the "Don't show again"
-    /// button in the guide, or re-enable it from Settings > General.
-    var showSidebarHints: Bool = true
-
-    // MARK: - Browsing: Gestures
-
-    /// Whether two-finger swipe gesture is enabled for switching spaces.
-    ///
-    /// When enabled, swiping horizontally on the sidebar switches between spaces.
-    var spaceSwipeGestureEnabled: Bool
-
     // MARK: - Browsing: Link Previews
 
     /// Whether Shift+Click triggers a Quick Look preview for links.
@@ -520,22 +493,6 @@ final class BrowserSettings {
     /// When enabled and using "Save to Photos" mode, the downloaded video
     /// file is deleted after successful import to the Photos library.
     var ytdlpDeleteAfterPhotosImport: Bool
-
-    // MARK: - Widgets: Calendar
-
-    /// Whether to show the calendar widget in the sidebar.
-    var showCalendarWidget: Bool
-
-    /// Number of hours to look ahead for upcoming events.
-    var calendarLookAheadHours: Int
-
-    /// Whether to auto-expand when an event starts within 15 minutes.
-    var calendarAutoExpandOnImminent: Bool
-
-    /// JSON-encoded array of enabled calendar identifiers.
-    ///
-    /// Use ``enabledCalendarIDs`` computed property for type-safe access.
-    var enabledCalendarIDsJSON: String
 
     // MARK: - Advanced: JavaScript
 
@@ -717,7 +674,6 @@ final class BrowserSettings {
     /// Creates settings with default values.
     init() {
         self.searchEngineID = nil
-        self.showTabPreviews = false
         self.themeRawValue = AppearanceTheme.system.rawValue
         self.customAccentColorHex = Defaults.accentColorHex
         self.customWindowBackgroundColorHex = Defaults.windowBackgroundColorHex
@@ -727,8 +683,6 @@ final class BrowserSettings {
         self.enableSpaceWindowColoring = false
         self.enableWebsiteWindowColoring = false
         self.websiteColorUseSolidBlend = true
-        self.spaceSwipeGestureEnabled = true
-        self.defaultSidebarModeRaw = SidebarMode.compact.rawValue
         self.blockThirdPartyCookies = true
         self.doNotTrack = true
         self.enableGlobalPrivacyControl = true
@@ -772,10 +726,6 @@ final class BrowserSettings {
         self.enabledAppShortcutsRaw = ""
         self.appShortcutColorsJSON = "{}"
         self.appShortcutNamesJSON = "{}"
-        self.showCalendarWidget = false
-        self.calendarLookAheadHours = 24
-        self.calendarAutoExpandOnImminent = true
-        self.enabledCalendarIDsJSON = "[]"
         self.autoFillModeRaw = AutoFillMode.builtIn.rawValue
         self.requireAuthForAutoFill = false
         self.clipboardLinkMonitoring = false
@@ -862,16 +812,6 @@ final class BrowserSettings {
         }
     }
 
-    /// The default sidebar mode when collapsed.
-    var defaultSidebarMode: SidebarMode {
-        get {
-            SidebarMode(rawValue: defaultSidebarModeRaw) ?? .compact
-        }
-        set {
-            defaultSidebarModeRaw = newValue.rawValue
-        }
-    }
-
     /// The engine pages render with unless their tab was moved to another one.
     var defaultEngineID: EngineID {
         get {
@@ -909,28 +849,6 @@ final class BrowserSettings {
     /// Check if an app shortcut type is enabled.
     func isAppShortcutEnabled(_ type: AppShortcutType) -> Bool {
         enabledAppShortcuts.contains(type)
-    }
-
-    /// Set of enabled calendar identifiers for the calendar widget.
-    var enabledCalendarIDs: Set<String> {
-        get {
-            guard let data = enabledCalendarIDsJSON.data(using: .utf8),
-                  let ids = try? JSONDecoder().decode([String].self, from: data) else {
-                return []
-            }
-            return Set(ids)
-        }
-        set {
-            if let data = try? JSONEncoder().encode(Array(newValue)),
-               let json = String(data: data, encoding: .utf8) {
-                enabledCalendarIDsJSON = json
-            }
-        }
-    }
-
-    /// Check if a calendar is enabled for the widget.
-    func isCalendarEnabled(_ calendarID: String) -> Bool {
-        enabledCalendarIDs.contains(calendarID)
     }
 
     /// Enable or disable an app shortcut type.
@@ -1052,7 +970,6 @@ final class BrowserSettings {
     @MainActor
     func resetToDefaults() {
         defaultSearchEngine = .duckDuckGo
-        showTabPreviews = false
         theme = .system
         customAccentColorHex = Defaults.accentColorHex
         customWindowBackgroundColor = Color.Components(encoded: Defaults.windowBackgroundColorHex)
@@ -1063,8 +980,6 @@ final class BrowserSettings {
         enableSpaceWindowColoring = false
         enableWebsiteWindowColoring = false
         websiteColorUseSolidBlend = true
-        spaceSwipeGestureEnabled = true
-        defaultSidebarMode = .compact
         defaultEngineID = .systemWebKit
         blockThirdPartyCookies = true
         doNotTrack = true
@@ -1187,40 +1102,6 @@ enum AppearanceTheme: String, Codable, CaseIterable {
             .dark
         case .system:
             nil
-        }
-    }
-}
-
-// MARK: - Sidebar Mode
-
-/// Display mode for the sidebar when collapsed.
-///
-/// Controls how the sidebar appears and behaves when not pinned open.
-enum SidebarMode: String, Codable, CaseIterable, Sendable {
-    /// Sidebar appears as a full overlay on hover.
-    ///
-    /// The default mode. Shows the complete sidebar with tabs, groups, and all
-    /// navigation elements when the cursor enters the activation zone.
-    case overlay
-
-    /// Sidebar shows a compact strip with minimal tab information.
-    ///
-    /// A narrower (60px) always-visible strip showing tab favicons and basic
-    /// state. Useful for users who want persistent tab visibility without
-    /// the full sidebar taking space.
-    case compact
-
-    var displayName: String {
-        switch self {
-        case .overlay: "Overlay"
-        case .compact: "Compact"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .overlay: "Full sidebar appears on hover"
-        case .compact: "Narrow strip always visible"
         }
     }
 }

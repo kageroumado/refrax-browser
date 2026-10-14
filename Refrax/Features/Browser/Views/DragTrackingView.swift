@@ -13,7 +13,7 @@ enum DragValidationResult {
 
 /// NSView-based drag tracker using NSDraggingDestination protocol
 ///
-/// This view tracks drag operations from the sidebar and allows dropping tabs into empty layout slots.
+/// This view tracks drags carrying a tab's identifier and allows dropping tabs into empty layout slots.
 /// It uses AppKit's native drag-and-drop infrastructure for reliable cross-view drag handling.
 struct DragTrackingView: NSViewRepresentable {
     let onDragMove: (CGPoint, NSPasteboard) -> DragValidationResult
@@ -43,12 +43,12 @@ final class DragTrackingNSView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        registerForDraggedTypes([DragPasteboardType.refraxTabID, .string])
+        registerForDraggedTypes([.string])
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        registerForDraggedTypes([DragPasteboardType.refraxTabID, .string])
+        registerForDraggedTypes([.string])
     }
 
     /// Allow mouse events to pass through to views beneath this drag tracking overlay.

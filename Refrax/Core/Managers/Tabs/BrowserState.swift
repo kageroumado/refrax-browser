@@ -131,48 +131,6 @@ final class BrowserState {
     /// ```
     private(set) var tabContentVersion: UInt64 = 0
 
-    // MARK: - Incremental Layout Update Callbacks
-
-    /// Callback for incremental single-item removal in layout.
-    ///
-    /// When set, `TabMutationPipeline` invokes this after a single tab is removed,
-    /// allowing `LayoutManager` to update incrementally instead of triggering a
-    /// full layout rebuild.
-    ///
-    /// - Parameters:
-    ///   - itemID: The ID of the removed item.
-    ///   - context: Information about where the item was located.
-    /// - Returns: `true` if the removal was handled incrementally (skip full rebuild).
-    @ObservationIgnored
-    var onIncrementalRemoval: ((UUID, TabMutationPipeline.RemovalContext) -> Bool)?
-
-    /// Callback for incremental batch removal in layout.
-    ///
-    /// When set, `TabMutationPipeline` invokes this after multiple tabs are removed
-    /// in a batch operation, allowing `LayoutManager` to update incrementally.
-    ///
-    /// - Parameters:
-    ///   - itemIDs: The set of IDs of removed items.
-    ///   - spaceID: The space where the removal occurred.
-    /// - Returns: `true` if the removal was handled incrementally (skip full rebuild).
-    @ObservationIgnored
-    var onBatchRemoval: ((Set<UUID>, Space.ID) -> Bool)?
-
-    /// The version counter at which the last incremental update was applied.
-    ///
-    /// Used by `LayoutManager.rebuildLayout()` to skip full rebuilds when the
-    /// version was already handled incrementally via callbacks.
-    @ObservationIgnored
-    private(set) var lastIncrementallyHandledVersion: UInt64 = 0
-
-    /// Marks the current `tabListVersion` as handled incrementally.
-    ///
-    /// Called by `TabMutationPipeline` after a successful incremental update
-    /// callback, signaling `LayoutManager` to skip the full rebuild.
-    func markIncrementallyHandled() {
-        lastIncrementallyHandledVersion = tabListVersion
-    }
-    
     // MARK: - Dependencies
 
     @ObservationIgnored
@@ -289,7 +247,7 @@ final class BrowserState {
     /// binary is missing or stale).
     ///
     /// Set at launch and on control-mode changes after the silent install
-    /// attempt; drives the sidebar install button and the Settings row.
+    /// attempt; drives the Settings row.
     /// Cleared after a successful authorized install.
     var cliHelperNeedsPrivilegedInstall = false
     

@@ -2,48 +2,25 @@ import AppKit
 import OrderedCollections
 import SwiftUI
 
-// MARK: - Environment Keys
-
-private struct FaviconBackgroundColorKey: EnvironmentKey {
-    static let defaultValue: Color? = nil
-}
-
-private struct DelayFaviconFallbackKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
-private struct FaviconSizeKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 32
-}
-
 private extension EnvironmentValues {
-    /// The computed size of the favicon container, passed to child views.
-    var faviconSize: CGFloat {
-        get { self[FaviconSizeKey.self] }
-        set { self[FaviconSizeKey.self] = newValue }
-    }
+    // The computed size of the favicon container, passed to child views.
+    @Entry var faviconSize: CGFloat = 32
 }
 
 extension EnvironmentValues {
-    /// Background color for favicons with transparency and fallback views.
-    ///
-    /// When set, FaviconView displays:
-    /// - Alpha favicons: inset to 75% with squircle background
-    /// - Fallbacks: full size with squircle background
-    /// - Solid favicons: full size, no background
-    var faviconBackgroundColor: Color? {
-        get { self[FaviconBackgroundColorKey.self] }
-        set { self[FaviconBackgroundColorKey.self] = newValue }
-    }
+    // Background color for favicons with transparency and fallback views.
+    //
+    // When set, FaviconView displays:
+    // - Alpha favicons: inset to 75% with squircle background
+    // - Fallbacks: full size with squircle background
+    // - Solid favicons: full size, no background
+    @Entry var faviconBackgroundColor: Color?
 
-    /// When true, delays showing the fallback content briefly.
-    ///
-    /// Use this when favicon data is expected to arrive shortly (e.g., after
-    /// page loading finishes) to prevent a brief flash of the letter fallback.
-    var delayFaviconFallback: Bool {
-        get { self[DelayFaviconFallbackKey.self] }
-        set { self[DelayFaviconFallbackKey.self] = newValue }
-    }
+    // When true, delays showing the fallback content briefly.
+    //
+    // Use this when favicon data is expected to arrive shortly (e.g., after
+    // page loading finishes) to prevent a brief flash of the letter fallback.
+    @Entry var delayFaviconFallback: Bool = false
 }
 
 // MARK: - View Modifier
@@ -80,7 +57,7 @@ extension View {
 /// // With explicit size
 /// FaviconView(data: bookmark.faviconData, url: bookmark.url, size: 48)
 ///
-/// // With background for transparent favicons (compact sidebar style)
+/// // With background for transparent favicons
 /// FaviconView(data: tab.faviconData, url: tab.url, size: 32)
 ///     .faviconBackground(.secondary.opacity(0.2))
 /// ```
@@ -398,7 +375,6 @@ nonisolated struct DecodedFavicon: Sendable {
         return false
     }
 }
-
 
 // MARK: - Preview
 

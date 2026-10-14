@@ -11,8 +11,8 @@ import QuartzCore
 /// - Content extends behind the toolbar (fullSizeContentView)
 /// - Uses page theme color when scrolled to top
 final class FloatingPageWindow: NSWindow, NSToolbarDelegate {
-    /// Minimum window width to accommodate toolbar with address bar.
-    /// Practical minimum ensuring address bar is usable (~200px minimum).
+    /// Minimum window width to accommodate the toolbar with its address field.
+    /// Practical minimum ensuring the address field is usable (~200px minimum).
     static let minimumWidth: CGFloat = 450
 
     /// Minimum window height for usability.

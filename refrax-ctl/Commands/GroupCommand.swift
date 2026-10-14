@@ -187,7 +187,7 @@ struct GroupCommand: AsyncParsableCommand {
             commandName: "collapse",
             abstract: "Toggle group collapsed state",
             discussion: """
-            Toggles whether the group is collapsed or expanded in the sidebar.
+            Folds the group to its header, or unfolds it to its tabs.
             
             Examples:
               refrax-ctl group collapse ABC123

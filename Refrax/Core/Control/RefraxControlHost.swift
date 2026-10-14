@@ -133,9 +133,9 @@ actor RefraxControlHost {
 
     // MARK: - CLI Helper Installation
 
-    /// Absolute path where the CLI helper is installed for PATH access.
-    /// Where the CLI helper is installed. A debug build installs its own helper beside the
-    /// release one, because a debug helper drives only the debug app.
+    // Absolute path where the CLI helper is installed for PATH access.
+    // Where the CLI helper is installed. A debug build installs its own helper beside the
+    // release one, because a debug helper drives only the debug app.
     #if DEBUG
         nonisolated static let cliHelperDestination = "/usr/local/bin/refrax-ctl-debug"
     #else
@@ -163,7 +163,7 @@ actor RefraxControlHost {
     ///
     /// Never prompts: when `/usr/local/bin` isn't user-writable the helper is
     /// left untouched and the returned status reports what's still needed.
-    /// Surface that through UI (sidebar button, Settings row) and let the user
+    /// Surface that through the Settings row and let the user
     /// trigger ``installCLIHelperWithAuthorization()`` explicitly.
     ///
     /// - Returns: The helper status after the attempt.
@@ -178,8 +178,8 @@ actor RefraxControlHost {
     /// Installs the CLI helper, escalating with the system administrator
     /// prompt when `/usr/local/bin` isn't user-writable.
     ///
-    /// Call only from an explicit user action (the Settings row or the sidebar
-    /// install button) — the click is the consent, so no explanatory alert is
+    /// Call only from an explicit user action (the Settings row) — the click
+    /// is the consent, so no explanatory alert is
     /// shown before the system authentication panel.
     ///
     /// - Returns: `true` when the installed helper matches the bundled one afterwards.
@@ -266,7 +266,7 @@ actor RefraxControlHost {
 
     /// Copies a binary from source to destination, skipping if already up to date.
     nonisolated static func copyBinary(
-        from source: String, to destination: String, createDirectory: String? = nil
+        from source: String, to destination: String, createDirectory: String? = nil,
     ) {
         let fm = FileManager.default
 
@@ -319,8 +319,12 @@ actor RefraxControlHost {
         while !Task.isCancelled {
             let clientFD = accept(fd, nil, nil)
             guard clientFD >= 0 else {
-                if Task.isCancelled { break }
-                if errno == EINTR { continue }
+                if Task.isCancelled {
+                    break
+                }
+                if errno == EINTR {
+                    continue
+                }
                 os_log("Accept failed: %{public}@", log: Self.logger, type: .error, String(cString: strerror(errno)))
                 continue
             }
@@ -407,22 +411,30 @@ actor RefraxControlHost {
         defer { chunk.deallocate() }
 
         while true {
-            if Date() > deadline { return nil }
+            if Date() > deadline {
+                return nil
+            }
 
             var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
             let pollResult = poll(&pfd, 1, 250)
 
             if pollResult < 0 {
-                if errno == EINTR { continue }
+                if errno == EINTR {
+                    continue
+                }
                 return nil
             }
 
-            if pollResult == 0 { continue }
+            if pollResult == 0 {
+                continue
+            }
 
             if pfd.revents & Int16(POLLIN) != 0 {
                 let bytesRead = read(fd, chunk, chunkSize)
                 if bytesRead < 0 {
-                    if errno == EINTR { continue }
+                    if errno == EINTR {
+                        continue
+                    }
                     return nil
                 }
                 if bytesRead == 0 {
@@ -454,7 +466,9 @@ actor RefraxControlHost {
             while offset < total {
                 let bytesWritten = write(fd, baseAddress + offset, total - offset)
                 if bytesWritten < 0 {
-                    if errno == EINTR { continue }
+                    if errno == EINTR {
+                        continue
+                    }
                     return false
                 }
                 offset += bytesWritten

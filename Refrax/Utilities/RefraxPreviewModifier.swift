@@ -121,10 +121,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             tabManager: tabManager,
             windowState: windowState,
         )
-        let tabPreviewManager = TabPreviewManager(
-            previewProvider: tabPreviewProvider,
-            browserSettings: settings,
-        )
 
         let customSearchEngineManager = CustomSearchEngineManager(modelContext: modelContext)
 
@@ -153,15 +149,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             floatingTour: floatingTourManager,
         )
 
-        let sidebarManagers = SidebarManagers(
-            tabManager: tabManager,
-            bookmarksManager: bookmarksManager,
-            windowState: windowState,
-            groupManager: groupManager,
-            undoRedoManager: undoRedoManager,
-            settings: settings,
-        )
-        
         browserState.downloadManager = downloadManager
         browserState.pagePool = pagePool
         browserState.extensionManager = extensionManager
@@ -198,9 +185,8 @@ struct RefraxPreviewModifier: PreviewModifier {
         pagePool.spaceDataStoreManager = spaceManager.dataStoreManager
         pagePool.completeSetup()
 
-        // MARK: - Calendar, Clipboard & Reminders
+        // MARK: - Clipboard & Reminders
 
-        let calendarManager = CalendarManager(settings: settings)
         let clipboardMonitor = ClipboardMonitor(settings: settings)
         let pageReminderManager = PageReminderManager()
         let favoritePreviewManager = FavoritePreviewManager(
@@ -237,7 +223,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             extensionManager: extensionManager,
             dialogState: dialogState,
             tabPreviewProvider: tabPreviewProvider,
-            tabPreviewManager: tabPreviewManager,
             downloadManager: downloadManager,
             shelfManager: ShelfManager(),
             webInspectorManager: webInspectorManager,
@@ -247,29 +232,8 @@ struct RefraxPreviewModifier: PreviewModifier {
             modifierKeysState: modifierKeysState,
             tabSwitcherManager: tabSwitcherManager,
             tabCanvasManager: tabCanvasManager,
-            sidebarManagers: sidebarManagers,
-            cellEnvironment: SidebarCellEnvironment(
-                layoutManager: sidebarManagers.layoutManager,
-                dragCoordinator: sidebarManagers.dragCoordinator,
-                selectionManager: sidebarManagers.selectionManager,
-                tabManager: tabManager,
-                windowState: windowState,
-                browserState: browserState,
-                dependencyContainer: sidebarManagers.dependencyContainer,
-                geometryState: sidebarManagers.geometryState,
-                modifierKeysState: modifierKeysState,
-                tabPreviewManager: tabPreviewManager,
-                pagePool: pagePool,
-                historyManager: historyManager,
-                groupManager: groupManager,
-                filterManager: sidebarManagers.filterManager,
-                settings: settings,
-                mediaControlsManager: sidebarManagers.mediaControlsManager,
-                autoArchiveManager: autoArchiveManager,
-                windowManager: windowManager,
-            ),
+            mediaControlsManager: MediaControlsManager(tabManager: tabManager, windowState: windowState),
             undoRedoManager: undoRedoManager,
-            calendarManager: calendarManager,
             clipboardMonitor: clipboardMonitor,
             screenshotCoordinator: ScreenshotCoordinator(),
             recordingCoordinator: RecordingCoordinator(),
@@ -284,7 +248,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             humanInterventionManager: HumanInterventionManager(),
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),
-            guidedTourManager: GuidedTourManager(),
             floatingTourManager: floatingTourManager,
             engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
         )

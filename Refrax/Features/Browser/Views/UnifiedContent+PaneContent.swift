@@ -119,9 +119,6 @@ struct PaneContentWrapper: View {
                         cachedTrayTrailingEdge = newValue
                         updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
                     }
-                    .onChange(of: windowState.sidebarOverlayTrailingEdge) { _, _ in
-                        updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
-                    }
             }
         }
         .modifier(DialogModifiers(dialogState: dialogState))
@@ -289,13 +286,10 @@ struct PaneContentWrapper: View {
 
     /// Updates the link preview leading padding based on container position and overlay state.
     ///
-    /// If the container's leading edge is covered by the sidebar overlay or detail tray,
-    /// positions the preview just past the obstruction's trailing edge.
+    /// If the container's leading edge is covered by the detail tray,
+    /// positions the preview just past the tray's trailing edge.
     private func updateLinkPreviewOffset(containerMinX: CGFloat, animated: Bool = true) {
-        // Use the greater of sidebar overlay and detail tray trailing edges.
-        // When the tray is visible, it's already positioned past the sidebar overlay,
-        // so max() naturally picks the outermost obstruction.
-        let obstruction = max(windowState.sidebarOverlayTrailingEdge, cachedTrayTrailingEdge)
+        let obstruction = cachedTrayTrailingEdge
 
         let newOffset: CGFloat = if obstruction > 0, containerMinX < obstruction {
             obstruction - containerMinX + Constants.linkPreviewPadding

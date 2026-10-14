@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Individual favorite tile displayed in the sidebar grid.
+/// Individual favorite tile in the favorites grid.
 ///
 /// Tiles adapt their size and layout based on:
 /// - Content type (bookmark vs folder)
@@ -19,17 +19,14 @@ import SwiftUI
 ///
 /// - **Tap**: Activates bookmark or opens folder menu
 /// - **Long press**: Shows context menu
-/// - **Drag**: Managed by FavoritesGrid
 struct FavoriteTileView: View {
     @Environment(BookmarksManager.self) private var bookmarksManager
     @Environment(TabManager.self) private var tabManager
     @Environment(WindowState.self) private var windowState
-    @Environment(DragCoordinator.self) private var dragCoordinator
     @Environment(WebPagePool.self) private var pagePool
     @Environment(ModifierKeysState.self) private var modifierKeysState
 
     let item: FavoriteItem
-    let isDragging: Bool
     let shouldShowTitle: Bool
 
     @State private var isHovered = false
@@ -76,7 +73,6 @@ struct FavoriteTileView: View {
                 bookmarkTile
             }
         }
-        .opacity(isDragging ? 0.5 : 1.0)
         .scaleEffect(isPressed ? 0.95 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
         .accessibilityIdentifier("Favorite")
@@ -92,7 +88,7 @@ struct FavoriteTileView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            SidebarContextMenus.Favorite(
+            FavoriteContextMenus.Favorite(
                 item: item,
                 onOpen: handleTap,
                 onOpenInWindow: appShortcutOpenInWindowAction,
@@ -171,11 +167,6 @@ struct FavoriteTileView: View {
         }
     }
 
-    /// Effective hover state: disabled when any drag is happening to prevent visual noise.
-    private var effectiveHover: Bool {
-        isHovered && !dragCoordinator.isDragging
-    }
-
     /// Background style with two-tiered hover behavior:
     /// - Live favorites: subtle default, muted on hover (darkens)
     /// - Non-live favorites: muted default, subtle on hover (lightens)
@@ -187,7 +178,7 @@ struct FavoriteTileView: View {
             .emphasized
         } else {
             // Light by default, darken on hover
-            effectiveHover ? .muted : .subtle
+            isHovered ? .muted : .subtle
         }
     }
     
@@ -198,7 +189,7 @@ struct FavoriteTileView: View {
             .adaptiveBackground(backgroundStyle, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius))
             .adaptiveBackgroundBlur()
             .overlay(alignment: .topTrailing) {
-                if showHomeButton, effectiveHover {
+                if showHomeButton, isHovered {
                     homeButton
                 } else if isShortcut {
                     shortcutIndicator
@@ -388,7 +379,7 @@ struct FavoriteTileView: View {
     // MARK: - Context Menus
 
     private func folderContextMenu(_ folder: BookmarkFolder) -> some View {
-        SidebarContextMenus.FolderFavorite(folder: folder)
+        FavoriteContextMenus.FolderFavorite(folder: folder)
     }
 }
 
@@ -713,7 +704,6 @@ private enum Metrics {
 extension FavoriteTileView: Equatable {
     static func == (lhs: FavoriteTileView, rhs: FavoriteTileView) -> Bool {
         lhs.item.id == rhs.item.id &&
-            lhs.isDragging == rhs.isDragging &&
             lhs.shouldShowTitle == rhs.shouldShowTitle
     }
 }

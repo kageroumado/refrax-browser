@@ -33,7 +33,7 @@ extension TabCanvasManager {
     /// The page docked to `edge` in this window's space. The current page fills the window, so
     /// it never shows docked.
     func dockedTab(on edge: FloatingDockEdge) -> Tab? {
-        guard windowState.usesFloatingTabs, !windowState.isSpaceLocked else { return nil }
+        guard !windowState.isSpaceLocked else { return nil }
         return floatingTabs.first { $0.id != windowState.activeTabID && storedFloatingPlacement(for: $0)?.dock == edge }
     }
 
@@ -121,7 +121,6 @@ extension TabCanvasManager {
     /// Docks the current page to `edge`.
     func dockCurrentPage(to edge: FloatingDockEdge) {
         guard let tab = windowState.activeTab else { return }
-        onUseFloatingTabs?()
         dock(tab, to: edge)
     }
 
@@ -162,7 +161,7 @@ extension TabCanvasManager {
     /// Marks the side a lone card docks to while its pointer is at `pointer`.
     func updateDockTarget(at pointer: CGPoint, dragging tabs: [Tab], in area: CGRect) {
         var target: FloatingDockTarget?
-        if windowState.usesFloatingTabs, tabs.count == 1, let tab = tabs.first, tab.id != windowState.activeTabID,
+        if tabs.count == 1, let tab = tabs.first, tab.id != windowState.activeTabID,
            let edge = FloatingDockLayout.snapEdge(at: pointer, in: area, rail: dockRail) {
             target = FloatingDockTarget(edge: edge, tabID: tab.id)
             floatingDropGroupID = nil
@@ -220,7 +219,7 @@ extension TabCanvasManager {
 
     /// The control that stands for the current page: its card beside the rail, else the rail.
     private var pageCardFrame: CGRect {
-        windowState.addressBarFrame.isEmpty ? dockRail ?? .zero : windowState.addressBarFrame
+        windowState.pageCardFrame.isEmpty ? dockRail ?? .zero : windowState.pageCardFrame
     }
 
     /// A floating frame for a page that has none, so undocking has somewhere to return it.

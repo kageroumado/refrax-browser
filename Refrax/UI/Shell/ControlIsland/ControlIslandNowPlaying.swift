@@ -4,7 +4,7 @@ import SwiftUI
 /// with play or pause, mute, volume, Go to Tab and Picture in Picture.
 struct ControlIslandNowPlaying: View {
     @Binding var isPresented: Bool
-    @Environment(Sidebar.MediaControlsManager.self) private var mediaControls
+    @Environment(MediaControlsManager.self) private var mediaControls
 
     enum Layout {
         static let width: CGFloat = 300

@@ -14,7 +14,7 @@ import WebKit
 ///
 /// ## Architecture
 ///
-/// The builder follows a composition pattern similar to `SidebarContextMenus`:
+/// The builder follows a composition pattern:
 /// - Separate helper methods for each element type (data, links, images, videos)
 /// - Items are grouped by element type with separators between groups
 /// - A separator divides custom items from WebKit's default items

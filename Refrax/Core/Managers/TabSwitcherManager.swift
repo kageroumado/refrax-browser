@@ -16,6 +16,12 @@ final class TabSwitcherManager {
     private var presentedTabIDs: [Tab.ID] = []
     private var selectedTabID: Tab.ID?
 
+    /// The recency order a run of Next Tab and Previous Tab walks, fixed at the run's first
+    /// step so each step moves one tab further instead of trading places with the last one.
+    @ObservationIgnored private var walkTabIDs: [Tab.ID] = []
+    /// The tab the walk last opened; when another tab becomes active, the next step starts a new walk.
+    @ObservationIgnored private var walkTabID: Tab.ID?
+
     private enum Constants {
         static let maxRecentTabs = 5
         static let minimumTabsForSwitcher = 2
@@ -60,14 +66,19 @@ final class TabSwitcherManager {
 
     /// Pointer invocation stays open until selection, another click on the trigger, or dismissal.
     func toggle() {
-        if isActive { cancel() }
-        else { present(commitsOnRelease: false) }
+        if isActive {
+            cancel()
+        } else {
+            present(commitsOnRelease: false)
+        }
     }
 
     private func present(commitsOnRelease: Bool) {
         guard canShowSwitcher else { return }
         activationTask?.cancel()
-        if let id = windowState.activeTabID { recordTabActivation(id) }
+        if let id = windowState.activeTabID {
+            recordTabActivation(id)
+        }
         recentlyUsedTabIDs = recentTabs.map(\.id)
         previewProvider.cleanupStaleEntries()
         presentedTabIDs = recentlyUsedTabIDs
@@ -76,8 +87,12 @@ final class TabSwitcherManager {
         isActive = true
     }
 
-    func selectNext() { moveSelection(by: 1) }
-    func selectPrevious() { moveSelection(by: -1) }
+    func selectNext() {
+        moveSelection(by: 1)
+    }
+    func selectPrevious() {
+        moveSelection(by: -1)
+    }
 
     private func moveSelection(by offset: Int) {
         let tabs = recentTabs
@@ -87,7 +102,9 @@ final class TabSwitcherManager {
     }
 
     func controlReleased() {
-        if commitsOnControlRelease { dismiss() }
+        if commitsOnControlRelease {
+            dismiss()
+        }
     }
 
     /// Commits the selected identity, preserving the destination's space and page ownership.
@@ -99,7 +116,31 @@ final class TabSwitcherManager {
     func activate(tabID: Tab.ID) {
         guard isActive else { return }
         cancel()
+        open(tabID: tabID)
+    }
+
+    /// Opens the tab `offset` places further back in recency, the Recent list's order: 1 for
+    /// Next Tab (⌘⇧]), -1 for Previous Tab (⌘⇧[). Repeated steps walk the order as it stood at
+    /// the first step and stop at either end.
+    func stepThroughRecent(by offset: Int) {
+        guard !isActive else { return }
+        if walkTabIDs.isEmpty || walkTabID != windowState.activeTabID {
+            if let id = windowState.activeTabID {
+                recordTabActivation(id)
+            }
+            walkTabIDs = recentTabs.map(\.id)
+        }
+        let current = walkTabIDs.firstIndex { $0 == windowState.activeTabID } ?? 0
+        let target = current + offset
+        guard walkTabIDs.indices.contains(target), target != current else { return }
+        walkTabID = walkTabIDs[target]
+        open(tabID: walkTabIDs[target])
+    }
+
+    /// Activates a tab, switching to its space first when it lives in another one.
+    private func open(tabID: Tab.ID) {
         guard let tab = tabManager.state.tab(for: tabID), !tab.isArchived else { return }
+        activationTask?.cancel()
         activationTask = Task.immediate(name: "Activate recent tab") { [weak self] in
             guard let self else { return }
             if let space = tab.space, space.id != windowState.activeSpaceID || windowState.isSpaceLocked {

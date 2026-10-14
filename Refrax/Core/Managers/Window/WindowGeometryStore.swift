@@ -1,7 +1,6 @@
 import AppKit
 
-/// Geometry of a browser window: frame plus the chrome dimensions the user
-/// controls by dragging (sidebar width).
+/// Geometry of a browser window: its frame.
 ///
 /// Captured when a window closes and reapplied to newly created windows, so
 /// window size survives the gap AppKit state restoration doesn't cover:
@@ -13,24 +12,16 @@ struct SavedWindowGeometry: Codable {
     var frameY: Double
     var frameWidth: Double
     var frameHeight: Double
-    var sidebarWidth: Double
-    var isSidebarCollapsed: Bool
 
     var frame: NSRect {
         NSRect(x: frameX, y: frameY, width: frameWidth, height: frameHeight)
     }
 
-    init(
-        frame: NSRect,
-        sidebarWidth: CGFloat,
-        isSidebarCollapsed: Bool,
-    ) {
-        frameX = frame.origin.x
-        frameY = frame.origin.y
-        frameWidth = frame.size.width
-        frameHeight = frame.size.height
-        self.sidebarWidth = sidebarWidth
-        self.isSidebarCollapsed = isSidebarCollapsed
+    init(frame: NSRect) {
+        self.frameX = frame.origin.x
+        self.frameY = frame.origin.y
+        self.frameWidth = frame.size.width
+        self.frameHeight = frame.size.height
     }
 }
 

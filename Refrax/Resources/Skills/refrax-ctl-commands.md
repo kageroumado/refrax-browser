@@ -28,8 +28,8 @@ refrax-ctl tab rename ID NAME                  # Set custom name (empty to clear
 refrax-ctl tab mute ID                         # Toggle media mute
 refrax-ctl tab back [--tab ID] [--page ID]     # Navigate back
 refrax-ctl tab forward [--tab ID] [--page ID]  # Navigate forward
-refrax-ctl tab next                            # Select next tab
-refrax-ctl tab previous                        # Select previous tab
+refrax-ctl tab next                            # Next tab in recency (the Recent list's order)
+refrax-ctl tab previous                        # Previous, more recent tab
 refrax-ctl tab close-others ID                 # Close all other tabs
 refrax-ctl tab reopen                          # Reopen last closed tab
 refrax-ctl tab recently-closed [--json]        # List recently closed tabs
@@ -219,7 +219,7 @@ refrax-ctl window minimize
 ## UI Controls
 
 ```bash
-refrax-ctl ui toggle sidebar|command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
+refrax-ctl ui toggle command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
 refrax-ctl ui ax-tree [--depth N] [--id IDENTIFIER]   # Dump accessibility tree
 refrax-ctl ui ax-click IDENTIFIER                      # Click by accessibility identifier
 refrax-ctl hotkey cmd,k                                # Simulate keyboard shortcut

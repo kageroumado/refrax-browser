@@ -178,41 +178,4 @@ struct MenuComposerTests {
         #expect(topLevel(withEmail).contains("October 14 ▸ (3)"))
         #expect(topLevel(withEmail).contains("Send Email"))
     }
-
-    @Test
-    func `the sidebar tab row is fifteen rows`() {
-        let groups = [action("Work", .move), action("Reading", .move)]
-        let spaces = [action("Home", .move), action("Research", .move)]
-        let sort = TabSortCriterion.Category.allCases.flatMap { category in
-            category.criteria.map { action($0.displayName, .sort(category.displayName)) }
-        }
-        let actions = [
-            action("Rename", .tab, primary: true), action("Get Info", .tab), action("Preview", .tab), action("Pin", .tab),
-            action("Move to Favorites", .tab), action("Mark as Unread", .tab),
-            action("Go to Home", .go), action("Set Current Page as Home", .go),
-            action("Reload", .reload), action("Duplicate", .reload),
-            action("Remove from Group", .move), action("Move to Group", .move, primary: true, children: groups), action("Add to New Group…", .move),
-            action("Move to Space", .move, children: spaces), action("Move to New Window", .move),
-            action("Copy URL", .copy), action("Copy URL as Markdown", .copy),
-            action("Share…", .share),
-            action("Sort Tabs", .sort, children: sort),
-            action("Open Reflected Window", .window),
-            action("Archive Tab", .close, primary: true), action("Delete Immediately", .close, destructive: true),
-            action("Archive Other", .close), action("Archive Above", .close), action("Archive Below", .close),
-            action("Delete Other", .close, destructive: true), action("Delete Above", .close, destructive: true), action("Delete Below", .close, destructive: true),
-        ]
-        let tree = MenuComposer.compose(actions)
-        #expect(tree.rowCount == 15)
-        #expect(topLevel(tree) == [
-            "Rename", "Tab ▸ (5)", "——", "Go to Home", "Set Current Page as Home", "——", "Reload", "Duplicate", "——",
-            "Move to Group ▸ (2)", "Move ▸ (4)", "——", "Copy URL", "Copy URL as Markdown", "——", "Share…", "Sort Tabs ▸ (8)", "Open Reflected Window", "——",
-            "Archive Tab", "Close ▸ (7)",
-        ])
-        let close = tree.outline.drop { $0 != "Close ▸ (7)" }.dropFirst().prefix(7)
-        #expect(Array(close) == [
-            "  Archive Other", "  Archive Above", "  Archive Below", "  Delete Immediately", "  Delete Other", "  Delete Above", "  Delete Below",
-        ])
-        let sortRows = tree.outline.drop { $0 != "Sort Tabs ▸ (8)" }.dropFirst().prefix(11)
-        #expect(sortRows.filter { $0 == "  ——" }.count == 3)
-    }
 }

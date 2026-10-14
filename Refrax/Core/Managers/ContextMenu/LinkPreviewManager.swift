@@ -396,20 +396,11 @@ final class LinkPreviewManager: NSObject {
 
     /// Calculates the preview panel size based on the content area.
     private func calculatePreviewSize(for webView: WKWebView) -> NSSize {
-        // Try to get size from splitViewController's content area
         if let windowController = webView.window?.windowController as? RefraxWindowController {
-            let splitVC = windowController.splitViewController
-            if splitVC.splitViewItems.count > 1 {
-                let contentItem = splitVC.splitViewItems[1]
-                let contentFrame = contentItem.viewController.view.frame
-                return NSSize(
-                    width: contentFrame.width * 0.8,
-                    height: contentFrame.height * 0.9,
-                )
-            }
+            let pageArea = windowController.pageAreaSize
+            return NSSize(width: pageArea.width * 0.8, height: pageArea.height * 0.9)
         }
 
-        // Fallback to window-based sizing
         if let window = webView.window {
             return NSSize(
                 width: window.frame.width * 0.6,
@@ -426,21 +417,7 @@ final class LinkPreviewManager: NSObject {
             return NSRect(origin: .zero, size: size)
         }
 
-        // Get the content area frame in screen coordinates
-        let contentFrame: NSRect
-        if let windowController = window.windowController as? RefraxWindowController {
-            let splitVC = windowController.splitViewController
-            if splitVC.splitViewItems.count > 1 {
-                let contentItem = splitVC.splitViewItems[1]
-                let contentView = contentItem.viewController.view
-                let viewFrame = contentView.convert(contentView.bounds, to: nil)
-                contentFrame = window.convertToScreen(viewFrame)
-            } else {
-                contentFrame = window.convertToScreen(window.contentLayoutRect)
-            }
-        } else {
-            contentFrame = window.convertToScreen(window.contentLayoutRect)
-        }
+        let contentFrame = window.convertToScreen(window.contentLayoutRect)
 
         // Center the panel in the content area
         let x = contentFrame.midX - size.width / 2

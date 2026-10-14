@@ -29,7 +29,7 @@ struct ControlIslandFavoriteTabs: View {
 
     /// The column's height for `count` favorites with tabs, with the chevron when the grid holds more.
     static func height(for count: Int, overflows: Bool = false) -> CGFloat {
-        CGFloat(min(count, Layout.maximumVisible)) * CompactTabButton.Layout.buttonHeight
+        CGFloat(min(count, Layout.maximumVisible)) * ControlIslandFavoriteIcon.Layout.rowHeight
             + (overflows || count > Layout.maximumVisible ? Layout.moreHeight : 0)
     }
 
@@ -94,7 +94,7 @@ struct ControlIslandFavoriteTabs: View {
 
     private var insertionIndex: Int? {
         guard draggedID != nil, let dropPoint else { return nil }
-        let rowHeight = CompactTabButton.Layout.buttonHeight
+        let rowHeight = ControlIslandFavoriteIcon.Layout.rowHeight
         return min(visible.count, max(0, Int((dropPoint.y + rowHeight / 2) / rowHeight)))
     }
 
@@ -105,8 +105,8 @@ struct ControlIslandFavoriteTabs: View {
                 .fill(.primary)
                 .frame(width: Layout.insertionWidth, height: Layout.insertionHeight)
                 .offset(y: min(
-                    CGFloat(visible.count) * CompactTabButton.Layout.buttonHeight - Layout.insertionHeight,
-                    max(0, CGFloat(index) * CompactTabButton.Layout.buttonHeight),
+                    CGFloat(visible.count) * ControlIslandFavoriteIcon.Layout.rowHeight - Layout.insertionHeight,
+                    max(0, CGFloat(index) * ControlIslandFavoriteIcon.Layout.rowHeight),
                 ))
                 .allowsHitTesting(false)
         }
@@ -165,7 +165,7 @@ struct ControlIslandFavoriteTabs: View {
             ControlIslandFavoriteIcon(favorite: favorite, tab: tab, isSelected: selected)
         }
         .draggable(ControlIslandFavoriteDrag(id: favorite.id)) {
-            FaviconView(data: favorite.largeFaviconData, url: favorite.url, size: CompactTabButton.Layout.faviconSize)
+            FaviconView(data: favorite.largeFaviconData, url: favorite.url, size: ControlIslandFavoriteIcon.Layout.faviconSize)
                 .faviconBackground()
         }
         .dragConfiguration(DragConfiguration(

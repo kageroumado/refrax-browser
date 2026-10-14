@@ -236,7 +236,6 @@ func printSpaces(_ spaces: [CTL.SpaceInfo]) {
 func printWindowInfo(_ info: CTL.WindowInfoData) {
     print("Position: \(info.x), \(info.y)")
     print("Size: \(info.width)x\(info.height)")
-    print("Sidebar: \(info.isSidebarCollapsed ? "collapsed" : "visible")")
 }
 
 // MARK: - New Formatters

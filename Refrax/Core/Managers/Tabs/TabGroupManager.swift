@@ -4,28 +4,6 @@ import Observation
 import SwiftData
 import SwiftUI
 
-// MARK: - Group Collapse Handler Protocol
-
-/// Protocol for incremental layout updates during group collapse/expand.
-///
-/// Allows `TabGroupManager` to notify `LayoutManager` of collapse state changes
-/// without triggering full layout rebuilds. The handler can update visibility
-/// of descendant items in O(n) time instead of O(n log n) hierarchy rebuilds.
-protocol GroupCollapseHandler: AnyObject {
-    /// Gets all descendant IDs of a group.
-    ///
-    /// - Parameter groupID: The group to get descendants for.
-    /// - Returns: Set of all descendant IDs (tabs and nested groups). Empty if group not found.
-    func getAllDescendantIDs(of groupID: UUID) -> Set<UUID>
-
-    /// Sets visibility of items without full layout rebuild.
-    ///
-    /// - Parameters:
-    ///   - itemIDs: The items to show or hide.
-    ///   - hidden: If `true`, hides items. If `false`, shows items.
-    func setItemsHidden(_ itemIDs: Set<UUID>, hidden: Bool)
-}
-
 /// Manages tab groups within spaces.
 ///
 /// `TabGroupManager` handles group lifecycle and organization:
@@ -70,12 +48,6 @@ final class TabGroupManager {
     ///
     /// Set after initialization.
     unowned var pagePool: WebPagePool!
-
-    /// Handler for incremental layout updates during collapse/expand.
-    ///
-    /// When set, `toggleGroupCollapsed` uses this to update item visibility
-    /// incrementally instead of triggering a full layout rebuild.
-    weak var collapseHandler: (any GroupCollapseHandler)?
 
     // MARK: - Initialization
     
@@ -445,44 +417,9 @@ final class TabGroupManager {
     // MARK: - Group State
     
     /// Toggles a group's collapsed state.
-    ///
-    /// When a `collapseHandler` is set and the group is in the active space,
-    /// updates item visibility incrementally instead of triggering a full
-    /// layout rebuild. This reduces collapse/expand from O(n log n) to O(n).
-    ///
-    /// The visibility change is wrapped in animation so items fade in/out
-    /// smoothly during collapse/expand transitions.
     func toggleGroupCollapsed(_ group: TabGroup) {
-        let willCollapse = !group.isCollapsed
-
-        // Try incremental update via collapse handler
-        var handledIncrementally = false
-        if let handler = collapseHandler {
-            let descendants = handler.getAllDescendantIDs(of: group.id)
-            if !descendants.isEmpty {
-                // Animate the visibility change for smooth collapse/expand.
-                // group.isCollapsed must be set inside withAnimation so that
-                // views keyed on it (badge, squircle, container bg) animate too.
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    group.isCollapsed = willCollapse
-                    handler.setItemsHidden(descendants, hidden: willCollapse)
-                }
-                handledIncrementally = true
-            }
-        }
-
-        // Fallback if no incremental handler (e.g. no descendants)
-        if !handledIncrementally {
-            group.isCollapsed = willCollapse
-        }
-
+        group.isCollapsed.toggle()
         state.incrementListVersion()
-
-        // Mark as handled if we used incremental update
-        if handledIncrementally {
-            state.markIncrementallyHandled()
-        }
-
         scheduleSave()
     }
 

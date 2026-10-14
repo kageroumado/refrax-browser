@@ -2,12 +2,12 @@ import SwiftUI
 
 struct ControlIslandFavorites: View {
     @Binding var isPresented: Bool
-    @Environment(Sidebar.LayoutManager.self) private var layout
+    @Environment(BookmarksManager.self) private var bookmarksManager
     @Environment(WindowState.self) private var windowState
 
     var body: some View {
         VStack(spacing: 16) {
-            if layout.favoritesLayout.isEmpty {
+            if bookmarksManager.favorites.isEmpty {
                 Image(systemName: "star")
                     .font(.title2)
                     .foregroundStyle(.secondary)

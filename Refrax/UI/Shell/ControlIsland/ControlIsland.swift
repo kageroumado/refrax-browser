@@ -17,7 +17,7 @@ struct ControlIsland: View {
     @Environment(FloatingTourManager.self) private var tour
     @Environment(AppUpdateManager.self) private var updates
     @Environment(TabGroupManager.self) private var groups
-    @Environment(Sidebar.MediaControlsManager.self) private var mediaControls
+    @Environment(MediaControlsManager.self) private var mediaControls
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -175,7 +175,7 @@ struct ControlIsland: View {
 
     /// The space color is drawn as the rail's own layer under the symbols, so it can fade with
     /// the glass: a tint inside the glass would drop to white the moment the glass starts to clear.
-    /// The window's resolved background, the same color the sidebar tints its blur with: the
+    /// The window's resolved background, the same color the window tints its blur with: the
     /// space color, the website color, or the custom color, whichever the window settings resolve.
     private var spaceTint: Color {
         windowState.controlIslandTint
@@ -318,7 +318,7 @@ struct ControlIsland: View {
                 state.showsAddress = false
             }
         }
-        .onChange(of: pageBranchFrame, initial: true) { windowState.addressBarFrame = pageBranchFrame }
+        .onChange(of: pageBranchFrame, initial: true) { windowState.pageCardFrame = pageBranchFrame }
         .onChange(of: showsPageBranch && !canvas.recentIsOpen && !windowState.showsAnchoredLens ? pageBranchFrame : .zero, initial: true) { _, card in
             state.pageCardFrame = card
         }
@@ -337,11 +337,6 @@ struct ControlIsland: View {
         }
         .onExitCommand {
             state.dismiss()
-        }
-        .onChange(of: windowState.showsCompactAddressBar) { _, shown in
-            if shown {
-                windowState.showsCompactAddressBar = false
-            }
         }
         .onDisappear {
             state.pointerMoved = nil
@@ -749,7 +744,7 @@ struct ControlIsland: View {
         let page = windowState.focusedWebPage
         let canGoForward = page?.canGoForward == true
         return HStack(spacing: 0) {
-            AddressBarBackButton(
+            PageBackButton(
                 webPage: page, canGoBack: page?.canGoBack == true,
                 targetSize: CGSize(width: canGoForward ? Layout.contentWidth / 2 : Layout.contentWidth, height: Layout.rowHeight),
                 highlightsOnHover: false, symbolWeight: Layout.navigationSymbolWeight,
@@ -760,7 +755,7 @@ struct ControlIsland: View {
             .help("Back · ⌥ for history")
             .accessibilityLabel("Back")
             if canGoForward {
-                AddressBarForwardButton(
+                PageForwardButton(
                     webPage: page, canGoForward: true,
                     targetSize: CGSize(width: Layout.contentWidth / 2, height: Layout.rowHeight),
                     highlightsOnHover: false, symbolWeight: Layout.navigationSymbolWeight,

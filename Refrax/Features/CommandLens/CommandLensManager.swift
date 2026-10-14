@@ -165,6 +165,7 @@ final class CommandLensManager {
             SiteControlProvider(siteSettingsManager: siteSettingsManager, browserSettings: browserSettings),
             ExtensionControlProvider(extensionManager: extensionManager),
             OpenTabsProvider(tabManager: tabManager),
+            ArchivedTabsProvider(tabManager: tabManager),
             LocalNetworkProvider(source: localNetworkSource),
             SearchEngineProvider(customSearchEngineManager: customSearchEngineManager),
             BaseDomainSynthesisProvider(frequentDestinations: historyManager.frequentDestinations),
@@ -1485,6 +1486,17 @@ final class CommandLensManager {
         }
     }
 
+    /// Opens a tab just restored from the archive, switching to its space first.
+    private func showPlace(ofRestored tab: Tab) {
+        Task.immediate(name: "Open restored tab") {
+            if let space = tab.space, space.id != windowState.activeSpaceID {
+                await tabManager.spaceManager.switchToSpace(space, for: windowState)
+            }
+            guard tab.space?.id == windowState.activeSpaceID else { return }
+            tabManager.setActiveTab(tab, in: windowState)
+        }
+    }
+
     func look(at suggestion: CommandLensSuggestion) {
         switch suggestion.type {
         case let .openTab(id):
@@ -1522,6 +1534,14 @@ final class CommandLensManager {
                 closeCurrentLens()
                 reset()
             }
+
+        case let .archivedTab(tabID):
+            if let tab = tabManager.state.tab(for: tabID), tab.isArchived {
+                try? tabManager.archiveManager.restoreTab(tab)
+                showPlace(ofRestored: tab)
+            }
+            closeCurrentLens()
+            reset()
 
         case let .searchProvider(engine):
             selectSearchProvider(engine)
