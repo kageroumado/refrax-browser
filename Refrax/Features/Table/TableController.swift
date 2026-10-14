@@ -373,41 +373,15 @@ final class TableController {
             return
         }
         let old = layout
-        var next = layout
-        let present = Set(key.tabIDs)
-        let removed = old.tabIDs.filter { !present.contains($0) }
-        for tabID in removed {
-            next = next.removing(tabID)
-        }
-        let added = key.tabIDs.filter { next.position(of: $0) == nil }
-        for tabID in added.reversed() where tabID != key.activeTabID {
-            next = next.inserting(tabID, focus: false)
-        }
-        if let active = key.activeTabID, added.contains(active) {
-            next = next.inserting(active, focus: true)
-            arrivalSide = .left
-        }
-        if !removed.isEmpty || !added.isEmpty {
-            next = next.settlingFocus(keepingNeighborOn: arrivalSide)
-        }
-
-        // A closed current slab gives way to the neighbor sliding into its gap, whichever
-        // tab the window picked.
-        if let previous = old.focusedTabID, removed.contains(previous), let neighbor = next.focusedTabID,
-           key.activeTabID != neighbor, !(key.activeTabID.map { added.contains($0) } ?? false),
-           let neighborTab = tabManager.state.tab(for: neighbor) {
-            move(to: next)
+        let change = TableSync.following(old, tabIDs: key.tabIDs, activeTabID: key.activeTabID, arrivalSide: arrivalSide)
+        arrivalSide = change.arrivalSide
+        if let neighbor = change.activating, let neighborTab = tabManager.state.tab(for: neighbor) {
+            move(to: change.layout)
             tabManager.setActiveTab(neighborTab, in: windowState, displacingPrevious: false)
             return
         }
-        if let active = key.activeTabID, let target = next.position(of: active), next.focusedTabID != active {
-            if let focus = next.focus, focus.row == target.row {
-                arrivalSide = target.slab > focus.slab ? .left : .right
-            }
-            next = next.focusing(active)
-        }
-        guard next != old else { return }
-        move(to: next)
+        guard change.layout != old else { return }
+        move(to: change.layout)
     }
 
     private func load(_ space: Space, key: SyncKey) {
@@ -650,6 +624,56 @@ final class TableController {
         while captureOrder.count > Layout.snapshotLimit {
             captures.removeValue(forKey: captureOrder.removeFirst())
         }
+    }
+}
+
+/// How the table follows a change in its space's tabs: the layout it moves to, and the
+/// neighbor the window activates when the current slab closed.
+///
+/// A current slab that leaves the table while the window still shows its tab (a page made a
+/// favorite, which the window shows on its own) keeps the window on that page; its neighbor
+/// becomes the table's focus for when the table shows again.
+nonisolated struct TableSync: Equatable, Sendable {
+    var layout: TableLayout
+    /// The neighbor sliding into a closed current slab's gap, which the window activates.
+    var activating: UUID?
+    /// The side focus last arrived from.
+    var arrivalSide: TableDirection
+
+    static func following(_ old: TableLayout, tabIDs: [UUID], activeTabID: UUID?, arrivalSide: TableDirection) -> TableSync {
+        var arrivalSide = arrivalSide
+        var next = old
+        let present = Set(tabIDs)
+        let removed = old.tabIDs.filter { !present.contains($0) }
+        for tabID in removed {
+            next = next.removing(tabID)
+        }
+        let added = tabIDs.filter { next.position(of: $0) == nil }
+        for tabID in added.reversed() where tabID != activeTabID {
+            next = next.inserting(tabID, focus: false)
+        }
+        if let activeTabID, added.contains(activeTabID) {
+            next = next.inserting(activeTabID, focus: true)
+            arrivalSide = .left
+        }
+        if !removed.isEmpty || !added.isEmpty {
+            next = next.settlingFocus(keepingNeighborOn: arrivalSide)
+        }
+
+        // A closed current slab gives way to the neighbor sliding into its gap, whichever
+        // tab the window picked; a slab whose tab the window still shows keeps the window there.
+        if let previous = old.focusedTabID, removed.contains(previous), previous != activeTabID,
+           let neighbor = next.focusedTabID, activeTabID != neighbor,
+           !(activeTabID.map { added.contains($0) } ?? false) {
+            return TableSync(layout: next, activating: neighbor, arrivalSide: arrivalSide)
+        }
+        if let activeTabID, let target = next.position(of: activeTabID), next.focusedTabID != activeTabID {
+            if let focus = next.focus, focus.row == target.row {
+                arrivalSide = target.slab > focus.slab ? .left : .right
+            }
+            next = next.focusing(activeTabID)
+        }
+        return TableSync(layout: next, arrivalSide: arrivalSide)
     }
 }
 
