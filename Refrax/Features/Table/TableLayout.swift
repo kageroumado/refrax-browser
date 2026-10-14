@@ -165,6 +165,16 @@ nonisolated struct TableLayout: Codable, Equatable, Sendable {
             return clamped(result)
         }
 
+        /// The offset nearest `offset` that shows the slabs at `index` and `neighbor` both
+        /// whole, or `nil` when the neighbor does not exist or the two do not fit together.
+        func offset(showing index: Int, beside neighbor: Int, from offset: Double) -> Double? {
+            guard slabs.indices.contains(neighbor) else { return nil }
+            let low = max(end(of: index), end(of: neighbor)) - 1
+            let high = min(start(of: index), start(of: neighbor))
+            guard low <= high + TableLayout.tolerance else { return nil }
+            return clamped(min(max(offset, low), max(low, high)))
+        }
+
         /// The row with its offset clamped and its remembered slab valid and whole.
         func normalized() -> Row {
             var row = self
@@ -378,6 +388,23 @@ nonisolated struct TableLayout: Codable, Equatable, Sendable {
         layout.rows[position.row].removeSlab(at: position.slab)
         layout.rows.insert(Row(slabs: [slab]), at: position.row + 1)
         layout.focusedRow = position.row + 1
+        return layout
+    }
+
+    /// The current row's resting offset resolved again after an edit, by the on-overflow rule
+    /// a pan ends with: the current slab whole, and a neighbor beside it in view when both
+    /// fit, the one on `side` first, moving the least.
+    func settlingFocus(keepingNeighborOn side: TableDirection = .left) -> TableLayout {
+        guard let focus else { return self }
+        var layout = self
+        var row = rows[focus.row]
+        let index = focus.slab
+        let first = side == .right ? index + 1 : index - 1
+        let second = side == .right ? index - 1 : index + 1
+        row.offset = row.offset(showing: index, beside: first, from: row.offset)
+            ?? row.offset(showing: index, beside: second, from: row.offset)
+            ?? row.offset(revealing: index, from: row.offset)
+        layout.rows[focus.row] = row
         return layout
     }
 

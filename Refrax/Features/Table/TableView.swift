@@ -143,52 +143,83 @@ private struct TableSnapshotView: View {
     let cutEdge: HorizontalEdge?
 
     @Environment(TableController.self) private var table
+    @Environment(WindowState.self) private var windowState
 
     private enum Layout {
         static let cutDimming: Double = 0.22
-        static let placeholderSpacing: CGFloat = 8
-        static let faviconSize: CGFloat = 20
+        static let placeholderSpacing: CGFloat = 10
+        static let faviconSize: CGFloat = 32
+        static let titleWidthFraction: CGFloat = 0.8
     }
 
     var body: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
+        Group {
             if let image = table.snapshot(for: tab.id) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    if let cutEdge {
+                        LinearGradient(
+                            colors: [Color.black.opacity(Layout.cutDimming), .clear],
+                            startPoint: cutEdge == .leading ? .leading : .trailing,
+                            endPoint: cutEdge == .leading ? .trailing : .leading,
+                        )
+                    }
+                }
             } else {
                 placeholder
                     .task(id: tab.id) { table.requestSnapshot(for: tab) }
             }
-            if let cutEdge {
-                LinearGradient(
-                    colors: [Color.black.opacity(Layout.cutDimming), .clear],
-                    startPoint: cutEdge == .leading ? .leading : .trailing,
-                    endPoint: cutEdge == .leading ? .trailing : .leading,
-                )
-            }
         }
         .clipped()
+        .task(id: TableSnapshotRequest(tabID: tab.id, isCut: cutEdge != nil)) {
+            if cutEdge != nil {
+                table.captureIfLoaded(tab)
+            }
+        }
         .accessibilityElement()
         .accessibilityLabel(tab.displayTitle)
     }
 
+    /// The tab's favicon and title on the window's tinted background, for a slab with no
+    /// snapshot yet.
     private var placeholder: some View {
-        VStack(spacing: Layout.placeholderSpacing) {
-            if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFit().frame(width: Layout.faviconSize, height: Layout.faviconSize)
-            } else {
-                Image(systemName: "globe").font(.title3).foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            VStack(spacing: Layout.placeholderSpacing) {
+                favicon
+                Text(tab.displayTitle)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: geometry.size.width * Layout.titleWidthFraction)
             }
-            Text(tab.displayTitle)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .padding()
+        .background(windowState.controlIslandTint)
+        .background(.regularMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    @ViewBuilder
+    private var favicon: some View {
+        if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
+            Image(nsImage: image).resizable().scaledToFit().frame(width: Layout.faviconSize, height: Layout.faviconSize)
+        } else {
+            Image(systemName: "globe")
+                .font(.system(size: Layout.faviconSize * 0.75))
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
+        }
+    }
+}
+
+private struct TableSnapshotRequest: Equatable {
+    var tabID: UUID
+    var isCut: Bool
 }
 
 /// Hairlines between slabs that abut in view.

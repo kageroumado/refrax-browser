@@ -70,7 +70,7 @@ struct TableCameraTests {
         let layout = TableLayout(rows: [row([(a, .half), (b, .half), (c, .half)])])
         let visible = camera.visibleSlabs(in: layout, at: .resting(on: layout))
         #expect(visible.map(\.tabID) == [a, b])
-        #expect(visible.allSatisfy { $0.isWhole })
+        #expect(visible.allSatisfy(\.isWhole))
         #expect(camera.liveSlabs(in: layout).count == 2)
     }
 
@@ -369,5 +369,46 @@ struct TableCameraTests {
         #expect(!TableSpring.isSettled(from: start, to: target, elapsed: 0, rowHeight: 800))
         #expect(!TableSpring.isSettled(from: start, to: target, elapsed: 0.15, rowHeight: 800))
         #expect(TableSpring.isSettled(from: start, to: target, elapsed: 1, rowHeight: 800))
+    }
+
+    // MARK: - Resting after an edit
+
+    /// Cycles the current slab until it reaches `width`, settling after each press as the
+    /// window does.
+    private func cycle(_ layout: TableLayout, to width: TableWidth) -> TableLayout {
+        var layout = layout
+        while let focus = layout.focus, layout[focus].width != width {
+            layout = layout.cyclingWidth().settlingFocus(keepingNeighborOn: .left)
+        }
+        return layout
+    }
+
+    @Test
+    func `Two halves cycled from full rest side by side, the second current`() {
+        var layout = TableLayout(tabIDs: [a, b])
+        layout = cycle(layout, to: .half)
+        layout = layout.movingFocus(.right)
+        layout = cycle(layout, to: .half)
+        #expect(layout.focusedTabID == b)
+        #expect(approx(layout.rows[0].offset, 0))
+        let visible = camera.visibleSlabs(in: layout, at: .resting(on: layout))
+        #expect(visible.map(\.tabID) == [a, b])
+        #expect(visible.allSatisfy(\.isWhole))
+    }
+
+    @Test
+    func `Narrowing a slab brings back the neighbor focus came from when both fit`() {
+        let layout = TableLayout(rows: [row([(a, .half), (b, .full), (c, .full)], offset: 0.5, focus: 1)])
+        let narrowed = layout.cyclingWidth().settlingFocus(keepingNeighborOn: .left)
+        #expect(approx(narrowed.rows[0].offset, 0))
+        #expect(narrowed.rows[0].isWhole(0, at: narrowed.rows[0].offset))
+        #expect(narrowed.rows[0].isWhole(1, at: narrowed.rows[0].offset))
+    }
+
+    @Test
+    func `A full slab after an edit is whole on its own`() {
+        let layout = TableLayout(rows: [row([(a, .half), (b, .full)], offset: 0.5, focus: 1)])
+        let settled = layout.settlingFocus(keepingNeighborOn: .left)
+        #expect(approx(settled.rows[0].offset, 0.5))
     }
 }

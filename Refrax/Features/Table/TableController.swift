@@ -34,8 +34,8 @@ final class TableController {
         static let reducedMotionFade: TimeInterval = 0.15
         /// The longest the cover waits for live slabs to draw.
         static let revealTimeout: TimeInterval = 0.6
-        /// How long after resting the live slabs are captured again for the next motion.
-        static let restCaptureDelay: TimeInterval = 0.4
+        /// How long after the cover lifts the live slabs are captured for the next motion.
+        static let restCaptureDelay: TimeInterval = 0.12
         /// Recent velocity samples older than this are ignored.
         static let velocityWindow: TimeInterval = 0.08
         /// Full-size snapshots kept for the next motion.
@@ -95,6 +95,8 @@ final class TableController {
     @ObservationIgnored private var stepTimer: DispatchWorkItem?
     /// The focus when the current motion began, for the beam of a long jump.
     @ObservationIgnored private var motionOrigin: UUID?
+    /// The side focus last arrived from: the neighbor an edit keeps in view first.
+    @ObservationIgnored private var arrivalSide = TableDirection.left
     @ObservationIgnored private var beamRevision = 0
     @ObservationIgnored private var spaceID: UUID?
     @ObservationIgnored private var storedLayout: TableLayout?
@@ -260,6 +262,9 @@ final class TableController {
 
     /// Moves the current slab past its neighbor, or into the neighboring row (⌃⌘⇧ arrows).
     func moveFocusedSlab(_ direction: TableDirection) {
+        if direction == .left || direction == .right {
+            arrivalSide = direction.opposite
+        }
         edit { $0.movingFocusedSlab(direction) }
     }
 
@@ -319,6 +324,13 @@ final class TableController {
         guard generation == restGeneration else { return }
         drawnTabIDs.insert(tabID)
         revealIfDrawn()
+    }
+
+    /// Captures a slab that came partly into view at rest, once, when its tab has a loaded
+    /// page in the pool, so the slide that brings it in starts from what it shows.
+    func captureIfLoaded(_ tab: Tab) {
+        guard captures[tab.id] == nil, pagePool.existingPage(for: tab.activePage) != nil else { return }
+        Task { await capture(tab) }
     }
 
     /// Captures a slab the cover has no image for: the live page when the pool holds it,
@@ -385,6 +397,10 @@ final class TableController {
         }
         if let active = key.activeTabID, added.contains(active) {
             next = next.inserting(active, focus: true)
+            arrivalSide = .left
+        }
+        if !removed.isEmpty || !added.isEmpty {
+            next = next.settlingFocus(keepingNeighborOn: arrivalSide)
         }
 
         // A closed current slab gives way to the neighbor sliding into its gap, whichever
@@ -396,7 +412,10 @@ final class TableController {
             tabManager.setActiveTab(neighborTab, in: windowState, displacingPrevious: false)
             return
         }
-        if let active = key.activeTabID, next.position(of: active) != nil, next.focusedTabID != active {
+        if let active = key.activeTabID, let target = next.position(of: active), next.focusedTabID != active {
+            if let focus = next.focus, focus.row == target.row {
+                arrivalSide = target.slab > focus.slab ? .left : .right
+            }
             next = next.focusing(active)
         }
         guard next != old else { return }
@@ -459,7 +478,7 @@ final class TableController {
         Task { [weak self] in
             guard let self else { return }
             await captureLiveSlabs()
-            let next = transform(layout)
+            let next = transform(layout).settlingFocus(keepingNeighborOn: arrivalSide)
             guard next != layout else { return }
             move(to: next)
         }
@@ -483,6 +502,9 @@ final class TableController {
                 settle()
             }
             return
+        }
+        if step == .left || step == .right {
+            arrivalSide = step.opposite
         }
         move(to: layout.movingFocus(step))
         let timer = DispatchWorkItem { [weak self] in self?.playNextStep() }
@@ -645,7 +667,8 @@ final class TableController {
     }
 
     private func capture(_ tab: Tab) async {
-        guard !capturing.contains(tab.id), let page = pagePool.existingPage(for: tab.activePage) else { return }
+        guard !capturing.contains(tab.id), let page = pagePool.existingPage(for: tab.activePage),
+              page.url != nil, !page.isLoading else { return }
         let bounds = page.contentView.bounds
         guard bounds.width > 0, bounds.height > 0 else { return }
         capturing.insert(tab.id)
