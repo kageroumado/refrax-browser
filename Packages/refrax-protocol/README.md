@@ -2,6 +2,13 @@
 
 RefraxProtocol defines the Swift requests and responses shared by Refrax and its automation clients. It carries flat JSON messages over a Unix socket to control tabs, page content, and browser state.
 
+```swift
+.package(path: "path/to/refrax/Packages/refrax-protocol")
+```
+
+<details>
+<summary>Operations and protocol reference</summary>
+
 ## Overview
 
 Each message has a `type` discriminator:
@@ -35,25 +42,6 @@ Each message has a `type` discriminator:
 | **Compound** | Navigate-and-read, click-and-read, fill-form, scroll-and-read |
 | **Programs** | Execute multi-step automation programs with security policies |
 
-## Usage
-
-Point `Package.swift` at this package in a local Refrax checkout:
-
-```swift
-let package = Package(
-    dependencies: [
-        .package(path: "path/to/refrax/Packages/refrax-protocol"),
-    ],
-    targets: [
-        .target(name: "MyTool", dependencies: [
-            .product(name: "RefraxProtocol", package: "refrax-protocol"),
-        ]),
-    ]
-)
-```
-
-Then import the module:
-
 ```swift
 import RefraxProtocol
 
@@ -78,7 +66,8 @@ default:
 }
 ```
 
-## Requirements
+</details>
 
-- macOS 15+
-- Swift 6.0+
+## Notes
+
+- macOS 15+ · Swift 6 · package product `RefraxProtocol`.

@@ -6,36 +6,27 @@ Refrax lets each tab use WebKit or Chromium while keeping the same spaces, histo
 
 ![Refrax](.github/screenshot.avif)
 
-## Browse and automate
+## Highlights
 
-- Organize vertical tabs into spaces and groups.
-- Use the command palette for plain-language commands.
-- Install Chromium in **Settings → Engines**, then choose a default or reload individual tabs in another engine.
-- Drive tabs, spaces, navigation and screenshots with `refrax-ctl`.
+- Switch individual tabs between WebKit and Chromium while keeping shared browser state.
+- Lock spaces with Touch ID and organize tabs into spaces and groups.
+- Automate either engine through the same `refrax-ctl` interface.
 
-The app updates itself. [Engine contract and architecture](REFERENCE.md) describe how alternate renderers connect.
+<details>
+<summary>Full feature list</summary>
 
-## Requirements
+- Per-tab rendering engine selection and configurable default engine.
+- Vertical tabs, spaces, groups, shared history, and site settings.
+- Touch ID locks for spaces.
+- Content blocking, per-site settings, routing rules, and pinned-tab previews across both engines.
+- Command palette with plain-language commands.
+- CLI control of tabs, spaces, navigation, page content, and screenshots.
+- Chromium installation through **Settings → Engines**; in-app updates.
 
-- **macOS 26+**
-- **Xcode 26+** to build, with Swift 6.2 strict concurrency enabled
+</details>
 
-## Building
+## Notes
 
-First-time setup installs Homebrew, SwiftFormat, SwiftLint, and a pre-commit hook:
-
-```bash
-./setup.sh
-```
-
-Then open `Refrax.xcodeproj` in Xcode and build the `Refrax` scheme.
-
-> **Note:** Code signing is intentionally not configured in this repository. To build
-> locally, set your own `DEVELOPMENT_TEAM` and bundle identifiers in Xcode's signing
-> settings, and provide your own iCloud container if you want CloudKit sync to work.
-
-## Contribute
-
-[Contributing](CONTRIBUTING.md) · [Security reports](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Trademark policy](TRADEMARK.md)
-
-Contact: <mail@kagerou.glass>
+- macOS 26+; Xcode 26+ for development.
+- [Engine reference](REFERENCE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md).
+- [Code of conduct](CODE_OF_CONDUCT.md) · [Trademark policy](TRADEMARK.md) · <mail@kagerou.glass>.

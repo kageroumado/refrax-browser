@@ -2,6 +2,9 @@
 
 These patches let Chromium run inside Refrax’s AppKit event loop, route page controls through Refrax, and use its Keychain credentials. Code that can live outside upstream files belongs in `Engines/Chromium/refrax`, linked as `//refrax`.
 
+<details>
+<summary>Patch reference</summary>
+
 `forge prepare` applies these diffs after ungoogled-chromium’s patches, in filename order with `patch -p1`.
 
 ## `base-mac-attach-pump.patch`
@@ -71,3 +74,5 @@ installs `SecretKeyProvider` (`//refrax/host/secret_key_provider.cc`), whose key
 Refrax keeps in its own keychain. Chrome's `KeychainKeyProvider` would create a keychain item
 owned by the host's code signature; after an update signed differently, reading it stops at a
 keychain prompt, and every HTTP load waits on the cookie store until someone answers it.
+
+</details>
