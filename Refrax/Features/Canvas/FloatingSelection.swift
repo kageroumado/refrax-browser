@@ -40,8 +40,8 @@ struct FloatingLassoSurface: View {
     }
 }
 
-/// The options for the selected cards, in a glass capsule under the selection: Group, Arrange,
-/// Move to Space, and Close.
+/// The options for the selected cards, in a glass capsule under the selection: Group, filled
+/// as the primary option, then Arrange, Move to Space, and Close.
 struct FloatingSelectionCapsule: View {
     let area: CGRect
     @Environment(TabCanvasManager.self) private var canvas
@@ -80,8 +80,7 @@ struct FloatingSelectionCapsule: View {
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, Layout.buttonPadding)
-            button("Group", systemImage: "rectangle.3.group") { canvas.groupFloatingSelection() }
-                .disabled(count < 2)
+            groupButton(isPrimary: count > 1)
             Menu {
                 ForEach(FloatingArrangement.allCases, id: \.self) { arrangement in
                     Button(arrangement.title, systemImage: arrangement.symbol) {
@@ -118,6 +117,22 @@ struct FloatingSelectionCapsule: View {
         .shadow(color: .black.opacity(0.18), radius: Layout.shadowRadius, y: Layout.shadowY)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(count) selected tabs")
+    }
+
+    /// Group, the selection's primary option: filled with the accent once two or more cards are selected.
+    private func groupButton(isPrimary: Bool) -> some View {
+        Button { canvas.groupFloatingSelection() } label: {
+            Label("Group", systemImage: "rectangle.3.group")
+                .fontWeight(isPrimary ? .semibold : nil)
+                .foregroundStyle(isPrimary ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .padding(.horizontal, Layout.buttonPadding)
+                .frame(height: Layout.buttonHeight)
+                .background(isPrimary ? Color.appAccentColor : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isPrimary)
+        .help("Group the selected tabs")
     }
 
     private func button(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
