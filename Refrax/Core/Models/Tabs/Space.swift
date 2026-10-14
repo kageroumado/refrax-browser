@@ -122,6 +122,25 @@ final class Space {
     /// stacked site fall into its stack.
     var stacksBySite: Bool = false
 
+    // MARK: - Table
+
+    /// The encoded ``TableLayout``: the space's tabs as rows of slabs. `nil` until the table
+    /// is first laid out. Use ``table`` for typed access.
+    var tableLayoutData: Data?
+
+    /// The space's table, normalized to its invariants; empty when none is stored.
+    var table: TableLayout {
+        get {
+            guard let tableLayoutData,
+                  let layout = try? JSONDecoder().decode(TableLayout.self, from: tableLayoutData)
+            else { return TableLayout() }
+            return layout.normalized()
+        }
+        set {
+            tableLayoutData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue)
+        }
+    }
+
     /// Whether control-server clients may read this space's HttpOnly cookies and cookie values.
     ///
     /// A shared-store (`.global`) space never does: its store is the one every other shared

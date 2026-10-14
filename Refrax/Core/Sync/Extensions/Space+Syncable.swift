@@ -24,6 +24,7 @@ extension Space: Syncable {
         record["customDownloadPath"] = customDownloadPath as NSString?
         record["downloadColorTag"] = downloadColorTag as NSNumber?
         record["lockTimeoutOverride"] = lockTimeoutOverride as NSNumber?
+        record["tableLayoutData"] = tableLayoutData as NSData?
 
         // To-many relationships (tabs, groups) are NOT encoded here.
         // They are inferred from child references (Tab/TabGroup → Space).
@@ -70,6 +71,7 @@ extension Space: Syncable {
         space.customDownloadPath = record["customDownloadPath"] as? String
         space.downloadColorTag = record["downloadColorTag"] as? Int
         space.lockTimeoutOverride = record["lockTimeoutOverride"] as? Int
+        space.tableLayoutData = record["tableLayoutData"] as? Data
 
         return space
     }
