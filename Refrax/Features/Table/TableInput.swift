@@ -35,6 +35,10 @@ final class TableInput {
         router.isSliding
     }
 
+    func step(_ direction: TableDirection) {
+        table.step(direction)
+    }
+
     /// Routes a scroll event. `canStart` is `false` while a control or a manipulation
     /// owns the pointer. Returns `true` when table navigation took the event.
     func route(_ event: NSEvent, canStart: @autoclosure () -> Bool) -> Bool {

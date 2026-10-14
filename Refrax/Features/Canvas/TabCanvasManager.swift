@@ -455,14 +455,6 @@ final class TabCanvasManager {
         floatingVisibility.endManipulation()
     }
 
-    func navigateFloatingTabs(toward direction: CanvasNavigation.Direction, in bounds: CGRect) {
-        let tiles = floatingTabs.filter { storedFloatingPlacement(for: $0)?.isDocked != true && !isFolded($0) }.map {
-            CanvasNavigation.Tile(id: $0.id, frame: tablePlacement(for: $0).frame(in: floatingArea), groupID: $0.group?.id)
-        }
-        guard let current = focusedFloatingTabID ?? tiles.first?.id else { return }
-        revealSpatialDestination(CanvasNavigation.neighbor(from: current, toward: direction, in: tiles) ?? current)
-    }
-
     /// All navigation surfaces resolve directional neighbors from the same card rectangles.
     func spatialNeighbor(from id: Tab.ID, toward direction: TableDirection, among ids: Set<Tab.ID>) -> Tab.ID? {
         if floatingTabs.contains(where: { ids.contains($0.id) && storedFloatingPlacement(for: $0) == nil }) {

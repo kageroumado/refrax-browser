@@ -13,8 +13,8 @@ import AppKit
 ///   pinch turns out to be its own.
 /// - **⌃** held alone reveals floating tabs; releasing it leaves pinned previews visible.
 ///   Other input within the delay keeps Control available for clicks and shortcuts.
-/// - **⌃ + scroll** over the page slides the table (``TableInput``): the first scroll event
-///   reveals the floating tabs and keeps them visible while the camera moves.
+/// - **⌃ + scroll** over the page follows adjacent tabs (``TableInput``): each destination
+///   appears at the page edge before a wheel step reaches it.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and Option-wheel zooms about the pointer. One more tap of
@@ -65,7 +65,7 @@ final class CanvasPageGestures {
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
-    /// Slides the table with ⌃ + scroll; consulted before any other scroll handling.
+    /// Routes ⌃ + scroll and directional keys through the page's adjacent tabs.
     var tableInput: TableInput?
     /// When ⌃ last went down with no other input since, for telling taps from holds.
     private var controlDownAt: Date?
@@ -217,9 +217,9 @@ final class CanvasPageGestures {
         }
         if canvas.floatingVisibility.isRevealed, !floatingHasKeyboardFocus() {
             let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control]).subtracting(FloatingRevealKey.current.flag)
-            if modifiers.isEmpty, let direction = CanvasNavigation.Direction(rawValue: event.keyCode),
-               let bounds = window?.contentView?.bounds {
-                canvas.navigateFloatingTabs(toward: direction, in: bounds)
+            if modifiers.isEmpty, let tableInput,
+               let direction = TableDirection.allCases.first(where: { $0.canvasDirection.rawValue == event.keyCode }) {
+                tableInput.step(direction)
                 return nil
             }
             if modifiers.isEmpty, event.keyCode == 36 {
