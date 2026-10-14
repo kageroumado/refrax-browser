@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 import Testing
 import WebKit
-
 @testable import Refrax
 
 // MARK: - WebPage Lifecycle Regression Tests
@@ -15,13 +14,13 @@ import WebKit
 struct WebPageLifecycleTests {
     // MARK: - Page Creation Tests
 
-    @Test("TabPage created with correct URL")
-    func tabPageCreatedWithURL() throws {
+    @Test
+    func `TabPage created with correct URL`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com/page")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com/page")),
             in: space,
             makeActive: false,
         )
@@ -29,13 +28,13 @@ struct WebPageLifecycleTests {
         #expect(tab.activePage.url.absoluteString == "https://example.com/page")
     }
 
-    @Test("TabPage URL is correct after creation")
-    func tabPageURLCorrectAfterCreation() throws {
+    @Test
+    func `TabPage URL is correct after creation`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
             loadImmediately: false,
@@ -44,13 +43,13 @@ struct WebPageLifecycleTests {
         #expect(tab.activePage.url.absoluteString == "https://example.com")
     }
 
-    @Test("TabPage title can be set")
-    func tabPageTitleCanBeSet() throws {
+    @Test
+    func `TabPage title can be set`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -60,13 +59,13 @@ struct WebPageLifecycleTests {
         #expect(tab.activePage.title == "Test Title")
     }
 
-    @Test("TabPage favicon data can be set")
-    func tabPageFaviconDataCanBeSet() throws {
+    @Test
+    func `TabPage favicon data can be set`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -79,14 +78,14 @@ struct WebPageLifecycleTests {
 
     // MARK: - Page Pool Tests
 
-    @Test("Page pool returns existing page for tab")
-    func pagePoolReturnsExistingPage() throws {
+    @Test
+    func `Page pool returns existing page for tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
             loadImmediately: true,
@@ -101,13 +100,13 @@ struct WebPageLifecycleTests {
         #expect(page1 === page2)
     }
 
-    @Test("Existing page returns nil for unloaded tab")
-    func existingPageReturnsNilForUnloaded() throws {
+    @Test
+    func `Existing page returns nil for unloaded tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
             loadImmediately: false,
@@ -120,14 +119,14 @@ struct WebPageLifecycleTests {
 
     // MARK: - Tab Close Cleanup Tests
 
-    @Test("Closing tab triggers cleanup")
-    func closingTabTriggersCleanup() throws {
+    @Test
+    func `Closing tab triggers cleanup`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -142,12 +141,12 @@ struct WebPageLifecycleTests {
         _ = tabPageID
     }
 
-    @Test("Closing live favorite does not remove from space")
-    func closingLiveFavoriteNoSpace() throws {
+    @Test
+    func `Closing live favorite does not remove from space`() throws {
         let env = try TabManagerTestEnvironment()
 
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
         )
         env.modelContext.insert(bookmark)
@@ -158,22 +157,22 @@ struct WebPageLifecycleTests {
 
         env.tabManager.closeLiveFavoriteTab(liveFavoriteTab)
 
-        #expect(!env.browserState.liveFavoriteTabs.contains { $0.id == liveFavoriteTab.id })
+        #expect(!env.browserState.favoriteTabs.contains { $0.id == liveFavoriteTab.id })
     }
 
     // MARK: - Split View Tests
 
-    @Test("Tab supports multiple pages for split view")
-    func tabSupportsMultiplePages() throws {
+    @Test
+    func `Tab supports multiple pages for split view`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
 
-        let tab = Tab(space: space, url: URL(string: "https://primary.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://primary.com")))
         context.insert(tab)
 
         // Add a secondary page
-        let secondaryPage = TabPage(url: URL(string: "https://secondary.com")!)
+        let secondaryPage = try TabPage(url: #require(URL(string: "https://secondary.com")))
         secondaryPage.tab = tab
         tab.pages.append(secondaryPage)
 
@@ -182,13 +181,13 @@ struct WebPageLifecycleTests {
         #expect(tab.pages.count == 2)
     }
 
-    @Test("Tab activePage returns primary page by default")
-    func tabActivePageReturnsPrimary() throws {
+    @Test
+    func `Tab activePage returns primary page by default`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
 
-        let tab = Tab(space: space, url: URL(string: "https://primary.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://primary.com")))
         context.insert(tab)
 
         // activePage should return the primary page by default
@@ -197,21 +196,21 @@ struct WebPageLifecycleTests {
 
     // MARK: - Tab Restore Tests
 
-    @Test("Restored tab has correct URL")
-    func restoredTabHasCorrectURL() throws {
+    @Test
+    func `Restored tab has correct URL`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let originalTab = env.tabManager.createTab(
-            url: URL(string: "https://restore.com")!,
+        let originalTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://restore.com")),
             in: space,
             makeActive: true,
         )
 
         env.tabManager.closeTab(originalTab)
 
-        let closedInfo = env.undoRedoManager.recentlyClosedTabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyClosedTabs.first)
 
         env.tabManager.restoreTab(closedInfo)
 
@@ -219,14 +218,14 @@ struct WebPageLifecycleTests {
         #expect(restoredTab?.activePage.url.absoluteString == "https://restore.com")
     }
 
-    @Test("Restored tab preserves custom name")
-    func restoredTabPreservesCustomName() throws {
+    @Test
+    func `Restored tab preserves custom name`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let originalTab = env.tabManager.createTab(
-            url: URL(string: "https://named.com")!,
+        let originalTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://named.com")),
             in: space,
             makeActive: true,
         )
@@ -234,7 +233,7 @@ struct WebPageLifecycleTests {
 
         env.tabManager.closeTab(originalTab)
 
-        let closedInfo = env.undoRedoManager.recentlyClosedTabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyClosedTabs.first)
 
         env.tabManager.restoreTab(closedInfo)
 
@@ -248,13 +247,13 @@ struct WebPageLifecycleTests {
 @Suite("WebPage State", .tags(.tabManager), .serialized)
 @MainActor
 struct WebPageStateTests {
-    @Test("TabPage persists URL")
-    func tabPagePersistsURL() throws {
+    @Test
+    func `TabPage persists URL`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://persist.com/path")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://persist.com/path")),
             in: space,
             makeActive: false,
         )
@@ -268,13 +267,13 @@ struct WebPageStateTests {
         #expect(fetched.first?.url.absoluteString == "https://persist.com/path")
     }
 
-    @Test("TabPage persists title")
-    func tabPagePersistsTitle() throws {
+    @Test
+    func `TabPage persists title`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -289,16 +288,16 @@ struct WebPageStateTests {
         #expect(fetched.first?.title == "Persisted Title")
     }
 
-    @Test("TabPage URL persists")
-    func tabPageURLPersists() throws {
+    @Test
+    func `TabPage URL persists`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
 
-        let tab = Tab(space: space, url: URL(string: "https://primary.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://primary.com")))
         context.insert(tab)
 
-        let secondaryPage = TabPage(url: URL(string: "https://secondary.com")!)
+        let secondaryPage = try TabPage(url: #require(URL(string: "https://secondary.com")))
         secondaryPage.tab = tab
         tab.pages.append(secondaryPage)
 

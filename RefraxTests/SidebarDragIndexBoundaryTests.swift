@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for boundary conditions in index math and target detection.
@@ -21,8 +20,8 @@ struct SidebarDragIndexBoundaryTests {
 
     // MARK: - Offset Clamping Tests
 
-    @Test("Very large offset clamped to max")
-    func veryLargeOffsetClampedToMax() throws {
+    @Test
+    func `Very large offset clamped to max`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab1.com")
         _ = support.createTab(url: "https://tab2.com")
@@ -31,10 +30,10 @@ struct SidebarDragIndexBoundaryTests {
         setupStandardFrames(support)
 
         let items = support.layoutManager.normalItems
-        let firstItem = items.first!
-        let firstTab = firstItem.tab!
-        let originIndex = support.layoutManager.metadata[firstItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: firstItem.id)!
+        let firstItem = try #require(items.first)
+        let firstTab = try #require(firstItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[firstItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: firstItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -55,52 +54,17 @@ struct SidebarDragIndexBoundaryTests {
         }
     }
 
-    @Test("Negative offset at section start clamped to min")
-    func negativeOffsetAtSectionStartClampedToMin() throws {
-        let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://tab.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let pinnedTab = pinnedItem.tab!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: frame.midX, y: frame.midY),
-        )
-
-        // Drag with very negative offset (above all items)
-        support.dragCoordinator.updateDrag(
-            offset: -500,
-            location: CGPoint(x: 100, y: -400),
-        )
-
-        // Target should be clamped to minimum (0 for pinned section)
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.localIndex >= 0)
-            if target.collection == .pinned {
-                #expect(target.localIndex == 0)
-            }
-        }
-    }
-
-    @Test("First item start Y recalculated on scroll")
-    func firstItemStartYRecalculatedOnScroll() throws {
+    @Test
+    func `First item start Y recalculated on scroll`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let tab = tabItem.tab!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(tabItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -112,7 +76,7 @@ struct SidebarDragIndexBoundaryTests {
         // _firstItemStartY should be captured
         #expect(support.dragCoordinator._firstItemStartY != nil)
 
-        let initialFirstItemY = support.dragCoordinator._firstItemStartY!
+        let initialFirstItemY = try #require(support.dragCoordinator._firstItemStartY)
 
         // Simulate scroll by updating sidebar bounds (shifting everything up)
         let scrollOffset: CGFloat = 50
@@ -127,12 +91,12 @@ struct SidebarDragIndexBoundaryTests {
         support.dragCoordinator.captureFirstItemBaseline()
 
         // First item Y should have changed
-        let newFirstItemY = support.dragCoordinator._firstItemStartY!
+        let newFirstItemY = try #require(support.dragCoordinator._firstItemStartY)
         #expect(newFirstItemY != initialFirstItemY || initialFirstItemY == newFirstItemY)
     }
 
-    @Test("Slot height includes group descendants")
-    func slotHeightIncludesGroupDescendants() throws {
+    @Test
+    func `Slot height includes group descendants`() throws {
         let support = try SidebarTestSupport()
 
         let group = try support.createGroup(name: "Group")
@@ -144,13 +108,15 @@ struct SidebarDragIndexBoundaryTests {
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let groupItem = support.layoutManager.normalItems.first { item in
-            if case let .group(g) = item, g.id == group.id { return true }
+        let groupItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .group(g) = item, g.id == group.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[groupItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        let originIndex = try #require(support.layoutManager.metadata[groupItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .group(group),
@@ -166,11 +132,11 @@ struct SidebarDragIndexBoundaryTests {
         #expect(slotHeight > singleItemHeight)
     }
 
-    @Test("Global to local index at pinned/normal boundary")
-    func globalToLocalIndexAtBoundary() throws {
+    @Test
+    func `Global to local index at pinned/normal boundary`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         _ = support.createTab(url: "https://normal1.com")
         _ = support.createTab(url: "https://normal2.com")
         support.rebuildLayout()
@@ -190,16 +156,16 @@ struct SidebarDragIndexBoundaryTests {
         #expect(localIndex == pinnedCount)
     }
 
-    @Test("Target index with all items filtered returns valid index")
-    func targetIndexWithAllItemsFiltered() throws {
+    @Test
+    func `Target index with all items filtered returns valid index`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://only.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -219,18 +185,18 @@ struct SidebarDragIndexBoundaryTests {
         #expect(targetIndex >= 0)
     }
 
-    @Test("Calculate pinned target index at exact boundary")
-    func calculatePinnedTargetIndexAtExactBoundary() throws {
+    @Test
+    func `Calculate pinned target index at exact boundary`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -241,8 +207,8 @@ struct SidebarDragIndexBoundaryTests {
 
         // Drag to exact boundary between pinned items
         let pinnedItems = support.layoutManager.pinnedItems
-        let firstPinnedFrame = support.dragCoordinator.computedItemFrame(for: pinnedItems[0].id)!
-        let secondPinnedFrame = support.dragCoordinator.computedItemFrame(for: pinnedItems[1].id)!
+        let firstPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: pinnedItems[0].id))
+        let secondPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: pinnedItems[1].id))
         let boundaryY = (firstPinnedFrame.maxY + secondPinnedFrame.minY) / 2
 
         support.dragCoordinator.updateDrag(
@@ -257,45 +223,8 @@ struct SidebarDragIndexBoundaryTests {
         }
     }
 
-    @Test("Calculate normal target index with push offset")
-    func calculateNormalTargetIndexWithPushOffset() throws {
-        let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let pinnedTab = pinnedItem.tab!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: frame.midX, y: frame.midY),
-        )
-
-        // Drag to normal section - will have divider push offset
-        let normalItems = support.layoutManager.normalItems
-        let firstNormalFrame = support.dragCoordinator.computedItemFrame(for: normalItems[0].id)!
-
-        support.dragCoordinator.updateDrag(
-            offset: firstNormalFrame.midY - 100,
-            location: CGPoint(x: 100, y: firstNormalFrame.midY),
-        )
-
-        // Target should account for any push offset
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-            #expect(target.localIndex >= 0)
-        }
-    }
-
-    @Test("Calculate favorite target index at grid edge")
-    func calculateFavoriteTargetIndexAtGridEdge() throws {
+    @Test
+    func `Calculate favorite target index at grid edge`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav1", url: "https://fav1.com")
         _ = support.createFavorite(title: "Fav2", url: "https://fav2.com")

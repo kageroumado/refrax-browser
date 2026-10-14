@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 import Testing
-
 @testable import Refrax
 
 // MARK: - Tab Model Regression Tests
@@ -14,14 +13,14 @@ import Testing
 struct TabModelRegressionTests {
     // MARK: - Age Category Tests
 
-    @Test("Tab age category is recent within 6 hours")
-    func tabAgeCategoryRecent() throws {
+    @Test
+    func `Tab age category is recent within 6 hours`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -30,12 +29,12 @@ struct TabModelRegressionTests {
         #expect(tab.ageCategory == .recent)
     }
 
-    @Test("Tab age category changes based on lastAccessed")
-    func tabAgeCategoryBasedOnLastAccessed() throws {
+    @Test
+    func `Tab age category changes based on lastAccessed`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         env.modelContext.insert(tab)
 
         // Set lastAccessed to 7 hours ago (ageCategory uses lastAccessed, not createdAt)
@@ -49,14 +48,14 @@ struct TabModelRegressionTests {
         #expect(tab.ageCategory == .old12h)
     }
 
-    @Test("Tab lastAccessed updates on activation")
-    func tabLastAccessedUpdates() throws {
+    @Test
+    func `Tab lastAccessed updates on activation`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -74,69 +73,53 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Status Tests
 
-    @Test("Tab status regular by default")
-    func tabStatusRegularByDefault() throws {
+    @Test
+    func `Tab status regular by default`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
 
         #expect(tab.status == .regular)
-        #expect(!tab.isPinned)
-        #expect(!tab.isLiveFavorite)
+        #expect(!tab.isInPinnedGroup)
+        #expect(!tab.isFavorite)
     }
 
-    @Test("Tab status pinned when isPinned true")
-    func tabStatusPinned() throws {
+    @Test
+    func `Favorite status is exempt from cleanup`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let favoriteTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
-            isPinned: true,
             makeActive: true,
         )
+        env.tabManager.makeFavorite(favoriteTab)
 
-        #expect(tab.status == .pinned)
-        #expect(tab.isPinned)
-    }
-
-    @Test("Pinned tab status is exempt from cleanup")
-    func pinnedTabStatusExemptFromCleanup() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-
-        let pinnedTab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
-            in: space,
-            isPinned: true,
-            makeActive: true,
-        )
-
-        let regularTab = env.tabManager.createTab(
-            url: URL(string: "https://other.com")!,
+        let regularTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://other.com")),
             in: space,
             makeActive: true,
         )
 
-        #expect(pinnedTab.status.isExemptFromCleanup)
+        #expect(favoriteTab.status.isExemptFromCleanup)
         #expect(!regularTab.status.isExemptFromCleanup)
     }
 
     // MARK: - Tab Display Title Tests
 
-    @Test("Tab displayTitle uses customName when set")
-    func tabDisplayTitleUsesCustomName() throws {
+    @Test
+    func `Tab displayTitle uses customName when set`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -146,13 +129,13 @@ struct TabModelRegressionTests {
         #expect(tab.displayTitle == "My Custom Name")
     }
 
-    @Test("Tab displayTitle falls back to page title")
-    func tabDisplayTitleFallsBackToPageTitle() throws {
+    @Test
+    func `Tab displayTitle falls back to page title`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -162,13 +145,13 @@ struct TabModelRegressionTests {
         #expect(tab.displayTitle == "Page Title")
     }
 
-    @Test("Tab displayTitle returns cleaned URL when title empty")
-    func tabDisplayTitleReturnsCleanedURL() throws {
+    @Test
+    func `Tab displayTitle returns cleaned URL when title empty`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com/path")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com/path")),
             in: space,
             makeActive: true,
         )
@@ -183,14 +166,14 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Unread State Tests
 
-    @Test("Tab isUnread is false when makeActive is true")
-    func tabUnreadFalseWhenActive() throws {
+    @Test
+    func `Tab isUnread is false when makeActive is true`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -199,14 +182,14 @@ struct TabModelRegressionTests {
         #expect(!tab.isUnread)
     }
 
-    @Test("Tab isUnread is true when makeActive is false")
-    func tabUnreadTrueWhenNotActive() throws {
+    @Test
+    func `Tab isUnread is true when makeActive is false`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -215,13 +198,13 @@ struct TabModelRegressionTests {
         #expect(tab.isUnread)
     }
 
-    @Test("Tab isUnread can be toggled")
-    func tabUnreadCanBeToggled() throws {
+    @Test
+    func `Tab isUnread can be toggled`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -237,16 +220,16 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Group Membership Tests
 
-    @Test("Tab can be assigned to group")
-    func tabCanBeAssignedToGroup() throws {
+    @Test
+    func `Tab can be assigned to group`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             groupID: group.id,
             makeActive: true,
@@ -255,13 +238,13 @@ struct TabModelRegressionTests {
         #expect(tab.groupID == group.id)
     }
 
-    @Test("Tab without group has nil groupID")
-    func tabWithoutGroupHasNilGroupID() throws {
+    @Test
+    func `Tab without group has nil groupID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -271,26 +254,26 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Position Tests
 
-    @Test("Tab positions maintain ordering")
-    func tabPositionsOrdering() throws {
+    @Test
+    func `Tab positions maintain ordering`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         // Create tabs - they use fractional indexing, so positions are large numbers
         // but maintain relative ordering
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://three.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://three.com")),
             in: space,
             makeActive: true,
         )
@@ -302,13 +285,13 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Page Tests
 
-    @Test("Tab has primary page after creation")
-    func tabHasactivePage() throws {
+    @Test
+    func `Tab has primary page after creation`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -319,13 +302,13 @@ struct TabModelRegressionTests {
 
     // MARK: - Tab Persistence Tests
 
-    @Test("Tab survives context save and fetch")
-    func tabSurvivesContextSave() throws {
+    @Test
+    func `Tab survives context save and fetch`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -340,13 +323,13 @@ struct TabModelRegressionTests {
         #expect(fetched.first?.activePage.url.absoluteString == "https://example.com")
     }
 
-    @Test("Tab customName persists")
-    func tabCustomNamePersists() throws {
+    @Test
+    func `Tab customName persists`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -367,28 +350,28 @@ struct TabModelRegressionTests {
 @Suite("Tab Sorting Regression", .tags(.tabManager), .serialized)
 @MainActor
 struct TabSortingRegressionTests {
-    @Test("Sort by name orders alphabetically")
-    func sortByName() throws {
+    @Test
+    func `Sort by name orders alphabetically`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tabC = env.tabManager.createTab(
-            url: URL(string: "https://c.com")!,
+        let tabC = try env.tabManager.createTab(
+            url: #require(URL(string: "https://c.com")),
             in: space,
             makeActive: true,
         )
         tabC.activePage.title = "Charlie"
 
-        let tabA = env.tabManager.createTab(
-            url: URL(string: "https://a.com")!,
+        let tabA = try env.tabManager.createTab(
+            url: #require(URL(string: "https://a.com")),
             in: space,
             makeActive: true,
         )
         tabA.activePage.title = "Alpha"
 
-        let tabB = env.tabManager.createTab(
-            url: URL(string: "https://b.com")!,
+        let tabB = try env.tabManager.createTab(
+            url: #require(URL(string: "https://b.com")),
             in: space,
             makeActive: true,
         )
@@ -402,24 +385,24 @@ struct TabSortingRegressionTests {
         #expect(sorted[2].activePage.title == "Charlie")
     }
 
-    @Test("Sort by domain orders by host")
-    func sortByDomain() throws {
+    @Test
+    func `Sort by domain orders by host`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://zebra.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://zebra.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://apple.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://apple.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://mango.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://mango.com")),
             in: space,
             makeActive: true,
         )
@@ -432,28 +415,28 @@ struct TabSortingRegressionTests {
         #expect(sorted[2].activePage.url.host == "zebra.com")
     }
 
-    @Test("Sort by recent orders by lastAccessed")
-    func sortByRecent() throws {
+    @Test
+    func `Sort by recent orders by lastAccessed`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tabOld = env.tabManager.createTab(
-            url: URL(string: "https://old.com")!,
+        let tabOld = try env.tabManager.createTab(
+            url: #require(URL(string: "https://old.com")),
             in: space,
             makeActive: true,
         )
         tabOld.lastAccessed = Date().addingTimeInterval(-3_600)
 
-        let tabNew = env.tabManager.createTab(
-            url: URL(string: "https://new.com")!,
+        let tabNew = try env.tabManager.createTab(
+            url: #require(URL(string: "https://new.com")),
             in: space,
             makeActive: true,
         )
         tabNew.lastAccessed = Date()
 
-        let tabMid = env.tabManager.createTab(
-            url: URL(string: "https://mid.com")!,
+        let tabMid = try env.tabManager.createTab(
+            url: #require(URL(string: "https://mid.com")),
             in: space,
             makeActive: true,
         )
@@ -466,35 +449,6 @@ struct TabSortingRegressionTests {
         #expect(sorted[0].activePage.url.host == "new.com")
         #expect(sorted[2].activePage.url.host == "old.com")
     }
-
-    @Test("Pinned tabs remain pinned after sort")
-    func pinnedTabsRemainPinned() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let pinnedTab = env.tabManager.createTab(
-            url: URL(string: "https://pinned.com")!,
-            in: space,
-            isPinned: true,
-            makeActive: true,
-        )
-        pinnedTab.activePage.title = "Zebra"
-
-        let regularTab = env.tabManager.createTab(
-            url: URL(string: "https://regular.com")!,
-            in: space,
-            makeActive: true,
-        )
-        regularTab.activePage.title = "Alpha"
-
-        // Sort by name - Alpha would normally come first
-        env.tabManager.sortTabs(by: .nameAscending, in: space)
-
-        // But pinned should stay separate in its own section
-        #expect(pinnedTab.isPinned)
-        #expect(!regularTab.isPinned)
-    }
 }
 
 // MARK: - Tab Close Behavior Tests
@@ -502,24 +456,24 @@ struct TabSortingRegressionTests {
 @Suite("Tab Close Behavior", .tags(.tabManager), .serialized)
 @MainActor
 struct TabCloseBehaviorTests {
-    @Test("Closing active tab activates adjacent tab")
-    func closingActiveTabActivatesAdjacent() throws {
+    @Test
+    func `Closing active tab activates adjacent tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
-        let tab3 = env.tabManager.createTab(
-            url: URL(string: "https://three.com")!,
+        let tab3 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://three.com")),
             in: space,
             makeActive: true,
         )
@@ -535,14 +489,14 @@ struct TabCloseBehaviorTests {
         #expect(activeID == tab1.id || activeID == tab3.id)
     }
 
-    @Test("Closing last tab in space leaves no active tab")
-    func closingLastTabLeavesNoActive() throws {
+    @Test
+    func `Closing last tab in space leaves no active tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -554,24 +508,24 @@ struct TabCloseBehaviorTests {
         #expect(windowState.activeTabID == nil)
     }
 
-    @Test("Close other tabs keeps active tab")
-    func closeOtherTabsKeepsActive() throws {
+    @Test
+    func `Close other tabs keeps active tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let keepTab = env.tabManager.createTab(
-            url: URL(string: "https://keep.com")!,
+        let keepTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://keep.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://close1.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://close1.com")),
             in: space,
             makeActive: true,
         )
-        _ = env.tabManager.createTab(
-            url: URL(string: "https://close2.com")!,
+        _ = try env.tabManager.createTab(
+            url: #require(URL(string: "https://close2.com")),
             in: space,
             makeActive: true,
         )
@@ -584,14 +538,14 @@ struct TabCloseBehaviorTests {
         #expect(space.tabs.first?.id == keepTab.id)
     }
 
-    @Test("Close tab adds to recently closed")
-    func closeTabAddsToRecentlyClosed() throws {
+    @Test
+    func `Close tab adds to recently closed`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )

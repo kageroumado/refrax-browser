@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Comprehensive tests for cross-zone drag interactions.
@@ -16,19 +15,19 @@ import Testing
 struct SidebarDragCrossZoneTests {
     // MARK: - Test Helpers
 
-    /// Creates a standard test setup with favorites, pinned tabs, and normal tabs.
+    /// Creates a standard test setup with favorites, pinned groups, and normal tabs.
     private func createStandardSetup(_ support: SidebarTestSupport) throws -> (
         favorites: [FavoriteItem],
-        pinnedTabs: [Tab],
+        pinnedGroups: [TabGroup],
         normalTabs: [Tab],
     ) {
         // Create favorites first
         let fav1 = support.createFavorite(title: "Fav 1", url: "https://fav1.com")
         let fav2 = support.createFavorite(title: "Fav 2", url: "https://fav2.com")
 
-        // Create pinned tabs
-        let pinned1 = support.createTab(url: "https://pinned1.com", isPinned: true)
-        let pinned2 = support.createTab(url: "https://pinned2.com", isPinned: true)
+        // Create pinned groups
+        let pinned1 = try support.createGroup(name: "Pinned 1", isPinned: true)
+        let pinned2 = try support.createGroup(name: "Pinned 2", isPinned: true)
 
         // Create normal tabs
         let normal1 = support.createTab(url: "https://normal1.com")
@@ -39,27 +38,29 @@ struct SidebarDragCrossZoneTests {
 
         return (
             favorites: [fav1, fav2],
-            pinnedTabs: [pinned1, pinned2],
+            pinnedGroups: [pinned1, pinned2],
             normalTabs: [normal1, normal2, normal3],
         )
     }
 
     // MARK: - Tab → Favorites Tests
 
-    @Test("Tab dragged to favorites grid gets convertToFavorite target")
-    func tabToFavoritesTarget() throws {
+    @Test
+    func `Tab dragged to favorites grid gets convertToFavorite target`() throws {
         let support = try SidebarTestSupport()
         let (_, _, normalTabs) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTabs[0].id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTabs[0].id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTabs[0]),
             originPosition: .normal(localIndex: localIndex),
@@ -82,21 +83,23 @@ struct SidebarDragCrossZoneTests {
         #expect(support.dragCoordinator.activeDropZone == .favoritesGrid)
     }
 
-    @Test("Tab outside favorites grid does not trigger conversion")
-    func tabOutsideFavoritesNoConversion() throws {
+    @Test
+    func `Tab outside favorites grid does not trigger conversion`() throws {
         let support = try SidebarTestSupport()
         let (_, _, normalTabs) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
         support.dragCoordinator.updateFavoritesGridFrame(CGRect(x: 0, y: 0, width: 200, height: 80))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTabs[0].id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTabs[0].id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTabs[0]),
             originPosition: .normal(localIndex: localIndex),
@@ -117,8 +120,8 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Committed tab→favorite conversion creates favorite")
-    func tabToFavoriteCommitCreates() throws {
+    @Test
+    func `Committed tab→favorite conversion creates favorite`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Existing", url: "https://existing.com")
         let tab = support.createTab(url: "https://newTab.com")
@@ -127,14 +130,16 @@ struct SidebarDragCrossZoneTests {
 
         let initialFavoritesCount = support.layoutManager.favoritesLayout.count
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -156,8 +161,8 @@ struct SidebarDragCrossZoneTests {
         #expect(support.layoutManager.favoritesLayout.count == initialFavoritesCount + 1)
     }
 
-    @Test("Multiple tabs dragged to favorites all convert")
-    func multipleTabsToFavoritesAllConvert() throws {
+    @Test
+    func `Multiple tabs dragged to favorites all convert`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Existing", url: "https://existing.com")
         let tab1 = support.createTab(url: "https://tab1.com")
@@ -168,16 +173,18 @@ struct SidebarDragCrossZoneTests {
 
         let initialFavoritesCount = support.layoutManager.favoritesLayout.count
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab1.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab1.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         // Start drag with multiple items
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             items: [.tab(tab1), .tab(tab2), .tab(tab3)],
             originPosition: .normal(localIndex: localIndex),
@@ -201,8 +208,8 @@ struct SidebarDragCrossZoneTests {
 
     // MARK: - Favorites → Tab List Tests
 
-    @Test("Favorite dragged to normal section gets convertToTab target")
-    func favoriteToNormalTarget() throws {
+    @Test
+    func `Favorite dragged to normal section gets convertToTab target`() throws {
         let support = try SidebarTestSupport()
         let (favorites, _, _) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
@@ -231,8 +238,8 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Favorite dragged to pinned section gets convertToTab with isPinned true")
-    func favoriteToPinnedTarget() throws {
+    @Test
+    func `Favorite dragged to pinned section gets convertToTab target`() throws {
         let support = try SidebarTestSupport()
         let (favorites, _, _) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
@@ -260,8 +267,8 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Favorite→Tab conversion honors drop position")
-    func favoriteToTabHonorsPosition() throws {
+    @Test
+    func `Favorite→Tab conversion honors drop position`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
         _ = support.createTab(url: "https://tab1.com")
@@ -283,7 +290,7 @@ struct SidebarDragCrossZoneTests {
         // With 3 tabs and prepend ordering, the middle item is at index 1.
         // Tabs are ordered [tab3, tab2, tab1] due to prepend, so index 1 is tab2.
         let middleItem = support.layoutManager.normalItems[1]
-        let middleFrame = support.dragCoordinator.computedItemFrame(for: middleItem.id)!
+        let middleFrame = try #require(support.dragCoordinator.computedItemFrame(for: middleItem.id))
 
         support.dragCoordinator.updateDrag(
             offset: middleFrame.midY,
@@ -301,20 +308,22 @@ struct SidebarDragCrossZoneTests {
 
     // MARK: - Pinned ↔ Normal Section Tests
 
-    @Test("Normal tab dragged to pinned section gets reorder with .pinned collection")
-    func normalToPinnedReorder() throws {
+    @Test
+    func `Normal tab dragged to pinned section gets reorder with .pinned collection`() throws {
         let support = try SidebarTestSupport()
         let (_, _, normalTabs) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTabs[0].id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTabs[0].id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTabs[0]),
             originPosition: .normal(localIndex: localIndex),
@@ -335,58 +344,26 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Pinned tab dragged to normal section gets reorder with .normal collection")
-    func pinnedToNormalReorder() throws {
-        let support = try SidebarTestSupport()
-        let (_, pinnedTabs, _) = try createStandardSetup(support)
-        support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
-
-        let pinnedItem = support.layoutManager.pinnedItems.first { item in
-            if case let .tab(tab) = item, tab.id == pinnedTabs[0].id { return true }
-            return false
-        }!
-
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        let pinnedFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTabs[0]),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: pinnedFrame.midX, y: pinnedFrame.midY),
-        )
-
-        // Drag to normal section
-        let targetY: CGFloat = 250
-        support.dragCoordinator.updateDrag(
-            offset: targetY - 120,
-            location: CGPoint(x: 100, y: targetY),
-        )
-
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        } else {
-            Issue.record("Expected reorder to normal, got \(support.dragCoordinator._dropTarget)")
-        }
-    }
-
-    @Test("Tab pin state changes on cross-section commit")
-    func pinStateChangesOnCommit() throws {
+    @Test
+    func `Tab dropped in the pinned section becomes a favorite`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://test.com")
-        _ = support.createTab(url: "https://other.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        #expect(tab.isPinned == false)
+        #expect(!tab.isFavorite)
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -403,14 +380,13 @@ struct SidebarDragCrossZoneTests {
         let didCommit = support.dragCoordinator.commitDrag()
         #expect(didCommit)
 
-        // Tab should now be pinned
-        #expect(tab.isPinned == true)
+        #expect(tab.isFavorite)
     }
 
     // MARK: - Group → Favorites Tests (Should Block)
 
-    @Test("Group dragged to favorites grid returns no valid target")
-    func groupToFavoritesBlocked() throws {
+    @Test
+    func `Group dragged to favorites grid returns no valid target`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
         let group = try support.createGroup(name: "Test Group")
@@ -418,14 +394,16 @@ struct SidebarDragCrossZoneTests {
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let groupItem = support.layoutManager.normalItems.first { item in
-            if case let .group(g) = item, g.id == group.id { return true }
+        let groupItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .group(g) = item, g.id == group.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[groupItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[groupItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let groupFrame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        let groupFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
         support.dragCoordinator.startDrag(
             item: .group(group),
             originPosition: .normal(localIndex: localIndex),
@@ -450,22 +428,24 @@ struct SidebarDragCrossZoneTests {
 
     // MARK: - Empty Section Edge Cases
 
-    @Test("Tab to empty favorites grid works")
-    func tabToEmptyFavoritesGrid() throws {
+    @Test
+    func `Tab to empty favorites grid works`() throws {
         let support = try SidebarTestSupport()
         // No favorites created
         let tab = support.createTab(url: "https://test.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -486,22 +466,24 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Tab to empty pinned section uses drop zone")
-    func tabToEmptyPinnedSection() throws {
+    @Test
+    func `Tab to empty pinned section uses drop zone`() throws {
         let support = try SidebarTestSupport()
         // No pinned tabs
         let tab = support.createTab(url: "https://test.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -518,12 +500,12 @@ struct SidebarDragCrossZoneTests {
         #expect(support.dragCoordinator.shouldShowPinDropZone == true)
     }
 
-    @Test("Favorite to empty normal section creates tab at position 0")
-    func favoriteToEmptyNormalSection() throws {
+    @Test
+    func `Favorite to empty normal section creates tab at position 0`() throws {
         let support = try SidebarTestSupport()
         let fav = support.createFavorite(title: "Fav", url: "https://fav.com")
-        // Create only pinned tabs, no normal tabs
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        // Create only a pinned group, no normal tabs
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
@@ -553,8 +535,8 @@ struct SidebarDragCrossZoneTests {
 
     // MARK: - Position Edge Cases
 
-    @Test("Favorite to first position in tab list")
-    func favoriteToFirstPosition() throws {
+    @Test
+    func `Favorite to first position in tab list`() throws {
         let support = try SidebarTestSupport()
         let fav = support.createFavorite(title: "Fav", url: "https://fav.com")
         _ = support.createTab(url: "https://tab1.com")
@@ -571,8 +553,8 @@ struct SidebarDragCrossZoneTests {
 
         // Drag just above the FIRST item in the visual layout (not tab1, which may not be first)
         // Tabs are prepended, so the most recently created tab is first in the layout.
-        let firstItem = support.layoutManager.normalItems.first!
-        let firstFrame = support.dragCoordinator.computedItemFrame(for: firstItem.id)!
+        let firstItem = try #require(support.layoutManager.normalItems.first)
+        let firstFrame = try #require(support.dragCoordinator.computedItemFrame(for: firstItem.id))
 
         support.dragCoordinator.updateDrag(
             offset: firstFrame.minY - 10,
@@ -588,8 +570,8 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Favorite to last position in tab list")
-    func favoriteToLastPosition() throws {
+    @Test
+    func `Favorite to last position in tab list`() throws {
         let support = try SidebarTestSupport()
         let fav = support.createFavorite(title: "Fav", url: "https://fav.com")
         _ = support.createTab(url: "https://tab1.com")
@@ -605,8 +587,8 @@ struct SidebarDragCrossZoneTests {
         )
 
         // Drag below all tabs
-        let lastItem = support.layoutManager.normalItems.last!
-        let lastFrame = support.dragCoordinator.computedItemFrame(for: lastItem.id)!
+        let lastItem = try #require(support.layoutManager.normalItems.last)
+        let lastFrame = try #require(support.dragCoordinator.computedItemFrame(for: lastItem.id))
 
         let targetY = lastFrame.maxY + 20
         support.dragCoordinator.updateDrag(
@@ -626,20 +608,22 @@ struct SidebarDragCrossZoneTests {
 
     // MARK: - Overlay Mode Transitions
 
-    @Test("Overlay mode changes to tile when dragging over favorites grid")
-    func overlayModeChangesToTile() throws {
+    @Test
+    func `Overlay mode changes to tile when dragging over favorites grid`() throws {
         let support = try SidebarTestSupport()
         let (_, _, normalTabs) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTabs[0].id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTabs[0].id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTabs[0]),
             originPosition: .normal(localIndex: localIndex),
@@ -663,20 +647,22 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Overlay mode changes back to tabRow when leaving favorites grid")
-    func overlayModeChangesBackToTabRow() throws {
+    @Test
+    func `Overlay mode changes back to tabRow when leaving favorites grid`() throws {
         let support = try SidebarTestSupport()
         let (_, _, normalTabs) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTabs[0].id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTabs[0].id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTabs[0]),
             originPosition: .normal(localIndex: localIndex),
@@ -706,8 +692,8 @@ struct SidebarDragCrossZoneTests {
         #expect(support.dragCoordinator.currentOverlayMode == .tabRow)
     }
 
-    @Test("Favorite always starts in tile mode")
-    func favoriteStartsInTileMode() throws {
+    @Test
+    func `Favorite always starts in tile mode`() throws {
         let support = try SidebarTestSupport()
         let (favorites, _, _) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
@@ -727,8 +713,8 @@ struct SidebarDragCrossZoneTests {
         }
     }
 
-    @Test("Favorite overlay changes to tabRow when over tab list")
-    func favoriteOverlayChangesToTabRow() throws {
+    @Test
+    func `Favorite overlay changes to tabRow when over tab list`() throws {
         let support = try SidebarTestSupport()
         let (favorites, _, _) = try createStandardSetup(support)
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))

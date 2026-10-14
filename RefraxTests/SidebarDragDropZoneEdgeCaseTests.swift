@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for drop zone edge cases:
@@ -23,8 +22,8 @@ struct SidebarDragDropZoneEdgeCaseTests {
 
     // MARK: - No Favorites AND No Pinned Tests
 
-    @Test("Favorites and pinned drop zones are targetable when neither section exists")
-    func dropZonesTargetableWhenNoFavoritesAndNoPinned() throws {
+    @Test
+    func `Favorites and pinned drop zones are targetable when neither section exists`() throws {
         let support = try SidebarTestSupport()
         // Create only normal tabs - no favorites, no pinned
         _ = support.createTab(url: "https://tab1.com")
@@ -37,12 +36,12 @@ struct SidebarDragDropZoneEdgeCaseTests {
         #expect(support.layoutManager.pinnedItems.isEmpty)
 
         // Use the first item in the layout (which has the frame at y=100)
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -80,20 +79,20 @@ struct SidebarDragDropZoneEdgeCaseTests {
         #expect(support.dragCoordinator.activeDropZone == .pinnedSection)
     }
 
-    @Test("Drop zone detection uses adjusted frames for hit testing")
-    func dropZoneDetectionUsesAdjustedFrames() throws {
+    @Test
+    func `Drop zone detection uses adjusted frames for hit testing`() throws {
         let support = try SidebarTestSupport()
         // No favorites, no pinned - only normal tabs
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support, startY: 100)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -127,19 +126,19 @@ struct SidebarDragDropZoneEdgeCaseTests {
         // This test documents the expected behavior - detection should use adjusted bounds
     }
 
-    @Test("Pinned zone targetable in gap between favorites zone and pushed normal section")
-    func pinnedZoneTargetableInGap() throws {
+    @Test
+    func `Pinned zone targetable in gap between favorites zone and pushed normal section`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support, startY: 100)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -178,8 +177,8 @@ struct SidebarDragDropZoneEdgeCaseTests {
 
     // MARK: - Favorites Exist But No Pinned Tests
 
-    @Test("BUG: Pinned drop zone positioned incorrectly when favorites exist")
-    func pinnedZoneIncorrectWhenFavoritesExist() throws {
+    @Test
+    func `BUG: Pinned drop zone positioned incorrectly when favorites exist`() throws {
         let support = try SidebarTestSupport()
         // Create favorites but no pinned tabs
         _ = support.createFavorite(title: "Fav1", url: "https://fav1.com")
@@ -196,12 +195,12 @@ struct SidebarDragDropZoneEdgeCaseTests {
         #expect(!support.layoutManager.favoritesLayout.isEmpty)
         #expect(support.layoutManager.pinnedItems.isEmpty)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -241,8 +240,8 @@ struct SidebarDragDropZoneEdgeCaseTests {
         }
     }
 
-    @Test("Tab dropped in pinned zone gap creates pinned tab when favorites exist")
-    func dropInPinnedZoneCreatessPinnedTab() throws {
+    @Test
+    func `Tab dropped in pinned zone gap targets the pinned section when favorites exist`() throws {
         let support = try SidebarTestSupport()
         // Create favorites but no pinned tabs
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
@@ -260,12 +259,12 @@ struct SidebarDragDropZoneEdgeCaseTests {
             CGRect(x: 0, y: sidebarBounds.minY + Zones.addressBarOffset, width: 200, height: 100),
         )
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -288,7 +287,7 @@ struct SidebarDragDropZoneEdgeCaseTests {
             location: CGPoint(x: 100, y: pinnedProbeY),
         )
 
-        // The drop target must create a pinned tab
+        // The drop target must be the pinned section
         switch support.dragCoordinator._dropTarget {
         case let .reorder(target):
             #expect(target.collection == .pinned)
@@ -301,19 +300,19 @@ struct SidebarDragDropZoneEdgeCaseTests {
 
     // MARK: - Frame Adjustment Tests
 
-    @Test("Section frames are correctly adjusted by tabListPushOffset")
-    func sectionFramesAdjustedByPushOffset() throws {
+    @Test
+    func `Section frames are correctly adjusted by tabListPushOffset`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support, startY: 100)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -346,19 +345,19 @@ struct SidebarDragDropZoneEdgeCaseTests {
         )
     }
 
-    @Test("Drop zone progress affects push offset calculation")
-    func dropZoneProgressAffectsPushOffset() throws {
+    @Test
+    func `Drop zone progress affects push offset calculation`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support, startY: 100)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -393,19 +392,19 @@ struct SidebarDragDropZoneEdgeCaseTests {
 
     // MARK: - Detection Priority Tests
 
-    @Test("Pinned zone has correct priority when both zones showing")
-    func pinnedZonePriorityWhenBothShowing() throws {
+    @Test
+    func `Pinned zone has correct priority when both zones showing`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support, startY: 100)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let tab = normalItem.tab!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let tab = try #require(normalItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),

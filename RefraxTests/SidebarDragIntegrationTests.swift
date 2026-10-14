@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 // MARK: - Complex Drag Scenarios Integration Tests
@@ -10,13 +9,13 @@ import Testing
 struct SidebarDragIntegrationTests {
     // MARK: - Multi-Section Drag Tests
 
-    @Test("Drag tab from normal to pinned section with existing pinned items")
-    func dragNormalTabToPinnedSection() throws {
+    @Test
+    func `Drag tab from normal to pinned section with existing pinned items`() throws {
         let support = try SidebarTestSupport()
 
         // Create complex setup: 2 pinned, 3 normal tabs
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab1 = support.createTab(url: "https://normal1.com")
         _ = support.createTab(url: "https://normal2.com")
         _ = support.createTab(url: "https://normal3.com")
@@ -27,15 +26,17 @@ struct SidebarDragIntegrationTests {
         // Find the first normal tab
         let pinnedItems = support.layoutManager.pinnedItems
         let normalItems = support.layoutManager.normalItems
-        let normalTabItem = normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab1.id { return true }
+        let normalTabItem = try #require(normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab1.id {
+                return true
+            }
             return false
-        }!
+        })
 
         // Start drag from normal section
-        let originIndex = support.layoutManager.metadata[normalTabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[normalTabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalTabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalTabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab1),
             originPosition: .normal(localIndex: localIndex),
@@ -61,61 +62,10 @@ struct SidebarDragIntegrationTests {
         #expect(support.dragCoordinator.activeDropZone == .pinnedSection)
     }
 
-    @Test("Drag pinned tab to normal section")
-    func dragPinnedTabToNormalSection() throws {
-        let support = try SidebarTestSupport()
-
-        // Create setup: 2 pinned, 2 normal tabs
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-
-        support.rebuildLayout()
-        support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
-
-        let pinnedItems = support.layoutManager.pinnedItems
-
-        // Find the pinned tab item
-        let pinnedTabItem = pinnedItems.first { item in
-            if case let .tab(tab) = item, tab.id == pinnedTab.id { return true }
-            return false
-        }!
-
-        let originIndex = support.layoutManager.metadata[pinnedTabItem.id]!.globalIndex
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedTabItem.id)!
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag down into normal section - use midpoint of section for reliable detection
-        let normalSectionFrame = support.dragCoordinator.computedNormalSectionFrame
-        let targetY = normalSectionFrame.midY
-        support.dragCoordinator.updateDrag(
-            offset: targetY - startFrame.midY,
-            location: CGPoint(x: startFrame.midX, y: targetY),
-        )
-
-        // Verify drop target is normal section
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        } else {
-            Issue.record("Expected reorder target for normal section, got \(support.dragCoordinator._dropTarget)")
-        }
-
-        // The activeDropZone may be nil or .normalSection depending on whether
-        // the section is considered a "zone" vs just the default reorder area
-        let zone = support.dragCoordinator.activeDropZone
-        #expect(zone == nil || zone == .normalSection)
-    }
-
     // MARK: - Grouped Tabs Tests
 
-    @Test("Drag ungrouped tab to group header")
-    func dragTabToGroupHeader() throws {
+    @Test
+    func `Drag ungrouped tab to group header`() throws {
         let support = try SidebarTestSupport()
 
         // Create setup: a group with 2 tabs, and 2 ungrouped tabs
@@ -130,15 +80,19 @@ struct SidebarDragIntegrationTests {
 
         // Find the ungrouped tab and group items
         let items = support.layoutManager.pinnedItems + support.layoutManager.normalItems
-        let ungroupedTabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == ungroupedTab.id { return true }
+        let ungroupedTabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == ungroupedTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let groupItem = items.first { item in
-            if case let .group(g) = item, g.id == group.id { return true }
+        let groupItem = try #require(items.first { item in
+            if case let .group(g) = item, g.id == group.id {
+                return true
+            }
             return false
-        }!
+        })
 
         // Register frames in the frame registry so getVisibleItems() can find items
         for item in items {
@@ -147,9 +101,9 @@ struct SidebarDragIntegrationTests {
             }
         }
 
-        let originIndex = support.layoutManager.metadata[ungroupedTabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[ungroupedTabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: ungroupedTabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: ungroupedTabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(ungroupedTab),
             originPosition: .normal(localIndex: localIndex),
@@ -157,7 +111,7 @@ struct SidebarDragIntegrationTests {
         )
 
         // Drag to group header
-        let groupFrame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        let groupFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
         support.dragCoordinator.updateDrag(
             offset: groupFrame.midY - startFrame.midY,
             location: CGPoint(x: groupFrame.midX, y: groupFrame.midY),
@@ -175,8 +129,8 @@ struct SidebarDragIntegrationTests {
         #expect(support.dragCoordinator.activeDropZone == .groupHeader(group.id))
     }
 
-    @Test("Drag grouped tab out of group")
-    func dragGroupedTabOutOfGroup() throws {
+    @Test
+    func `Drag grouped tab out of group`() throws {
         let support = try SidebarTestSupport()
 
         // Create setup: a group with tabs, and ungrouped tabs
@@ -190,20 +144,24 @@ struct SidebarDragIntegrationTests {
 
         // Find the grouped tab
         let items = support.layoutManager.pinnedItems + support.layoutManager.normalItems
-        let groupedTabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == groupedTab.id { return true }
+        let groupedTabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == groupedTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
         // Find the ungrouped tab for target location
-        let ungroupedTabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == ungroupedTab.id { return true }
+        let ungroupedTabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == ungroupedTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[groupedTabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[groupedTabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: groupedTabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupedTabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(groupedTab),
             originPosition: .normal(localIndex: localIndex),
@@ -211,7 +169,7 @@ struct SidebarDragIntegrationTests {
         )
 
         // Drag to the ungrouped tab area (within normal section, outside the group)
-        let ungroupedFrame = support.dragCoordinator.computedItemFrame(for: ungroupedTabItem.id)!
+        let ungroupedFrame = try #require(support.dragCoordinator.computedItemFrame(for: ungroupedTabItem.id))
         let targetY = ungroupedFrame.midY
 
         support.dragCoordinator.updateDrag(
@@ -235,8 +193,8 @@ struct SidebarDragIntegrationTests {
 
     // MARK: - Drop Zone Tests (No Existing Pinned/Favorites)
 
-    @Test("Drag tab above tab list shows drop zones when no pinned or favorites exist")
-    func dragAboveTabListShowsDropZones() throws {
+    @Test
+    func `Drag tab above tab list shows drop zones when no pinned or favorites exist`() throws {
         let support = try SidebarTestSupport()
 
         // Create only normal tabs (no pinned, no favorites)
@@ -249,14 +207,16 @@ struct SidebarDragIntegrationTests {
 
         // Find the tab item
         let items = support.layoutManager.normalItems
-        let tabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab.id { return true }
+        let tabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab),
             originPosition: .normal(localIndex: localIndex),
@@ -291,8 +251,8 @@ struct SidebarDragIntegrationTests {
         #expect(pushOffset > 0)
     }
 
-    @Test("Drag tab above tab list shows only pin drop zone when favorites exist")
-    func dragAboveTabListWithExistingFavorites() throws {
+    @Test
+    func `Drag tab above tab list shows only pin drop zone when favorites exist`() throws {
         let support = try SidebarTestSupport()
 
         // Create normal tabs and a favorite
@@ -307,14 +267,16 @@ struct SidebarDragIntegrationTests {
         support.dragCoordinator.updateFavoritesGridFrame(CGRect(x: 0, y: 0, width: 200, height: 80))
 
         let items = support.layoutManager.normalItems
-        let tabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab.id { return true }
+        let tabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab),
             originPosition: .normal(localIndex: localIndex),
@@ -334,8 +296,8 @@ struct SidebarDragIntegrationTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone == false)
     }
 
-    @Test("Drop zone coordinate transformation with tabListPushOffset")
-    func dropZoneCoordinateTransformation() throws {
+    @Test
+    func `Drop zone coordinate transformation with tabListPushOffset`() throws {
         let support = try SidebarTestSupport()
 
         // Create normal tabs only
@@ -346,14 +308,16 @@ struct SidebarDragIntegrationTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
         let items = support.layoutManager.normalItems
-        let tabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab.id { return true }
+        let tabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab),
             originPosition: .normal(localIndex: localIndex),
@@ -385,8 +349,8 @@ struct SidebarDragIntegrationTests {
 
     // MARK: - Favorite Conversion Tests
 
-    @Test("Drag tab to favorites grid converts to favorite")
-    func dragTabToFavoritesGridConverts() throws {
+    @Test
+    func `Drag tab to favorites grid converts to favorite`() throws {
         let support = try SidebarTestSupport()
 
         // Create tabs and favorites
@@ -401,14 +365,16 @@ struct SidebarDragIntegrationTests {
         support.dragCoordinator.updateFavoritesGridFrame(favoritesFrame)
 
         let items = support.layoutManager.normalItems
-        let tabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab.id { return true }
+        let tabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab),
             originPosition: .normal(localIndex: localIndex),
@@ -432,8 +398,8 @@ struct SidebarDragIntegrationTests {
         #expect(support.dragCoordinator.activeDropZone == .favoritesGrid)
     }
 
-    @Test("Drag favorite to normal section converts to tab")
-    func dragFavoriteToNormalConverts() throws {
+    @Test
+    func `Drag favorite to normal section converts to tab`() throws {
         let support = try SidebarTestSupport()
 
         // Create tabs and favorites
@@ -471,13 +437,13 @@ struct SidebarDragIntegrationTests {
 
     // MARK: - Complex Multi-Item Scenarios
 
-    @Test("Complex scenario: multiple pinned, normal, grouped, and favorites")
-    func complexMultiSectionScenario() throws {
+    @Test
+    func `Complex scenario: multiple pinned, normal, grouped, and favorites`() throws {
         let support = try SidebarTestSupport()
 
         // Create complex setup
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
 
         let group = try support.createGroup(name: "Work")
         _ = support.createTab(url: "https://work1.com", groupID: group.id)
@@ -501,26 +467,30 @@ struct SidebarDragIntegrationTests {
         let normalItems = support.layoutManager.normalItems
 
         // Find the ungrouped normal tab
-        let normalTabItem = normalItems.first { item in
-            if case let .tab(tab) = item, tab.id == normalTab.id { return true }
+        let normalTabItem = try #require(normalItems.first { item in
+            if case let .tab(tab) = item, tab.id == normalTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
         // Test 1: Drag to group header
-        let originIndex = support.layoutManager.metadata[normalTabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[normalTabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalTabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalTabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(normalTab),
             originPosition: .normal(localIndex: localIndex),
             startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
         )
 
-        let groupItem = normalItems.first { item in
-            if case .group = item { return true }
+        let groupItem = try #require(normalItems.first { item in
+            if case .group = item {
+                return true
+            }
             return false
-        }!
-        let groupFrame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        })
+        let groupFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
 
         support.dragCoordinator.updateDrag(
             offset: groupFrame.midY - startFrame.midY,
@@ -553,8 +523,8 @@ struct SidebarDragIntegrationTests {
         }
     }
 
-    @Test("Nested groups: drag tab between nested groups")
-    func nestedGroupsDragBetween() throws {
+    @Test
+    func `Nested groups: drag tab between nested groups`() throws {
         let support = try SidebarTestSupport()
 
         // Create nested groups
@@ -569,20 +539,24 @@ struct SidebarDragIntegrationTests {
 
         // Find the child tab
         let items = support.layoutManager.pinnedItems + support.layoutManager.normalItems
-        let childTabItem = items.first { item in
-            if case let .tab(tab) = item, tab.id == childTab.id { return true }
+        let childTabItem = try #require(items.first { item in
+            if case let .tab(tab) = item, tab.id == childTab.id {
+                return true
+            }
             return false
-        }!
+        })
 
         // Find the parent group header
-        let parentGroupItem = items.first { item in
-            if case let .group(g) = item, g.id == parentGroup.id { return true }
+        let parentGroupItem = try #require(items.first { item in
+            if case let .group(g) = item, g.id == parentGroup.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[childTabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[childTabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: childTabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: childTabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(childTab),
             originPosition: .normal(localIndex: localIndex),
@@ -590,7 +564,7 @@ struct SidebarDragIntegrationTests {
         )
 
         // Drag to parent group header
-        let parentFrame = support.dragCoordinator.computedItemFrame(for: parentGroupItem.id)!
+        let parentFrame = try #require(support.dragCoordinator.computedItemFrame(for: parentGroupItem.id))
         support.dragCoordinator.updateDrag(
             offset: 0,
             location: CGPoint(x: 100, y: parentFrame.midY),
@@ -608,46 +582,8 @@ struct SidebarDragIntegrationTests {
 
     // MARK: - Edge Cases
 
-    @Test("Drag pinned tab when it's the only pinned tab")
-    func dragOnlyPinnedTab() throws {
-        let support = try SidebarTestSupport()
-
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-
-        support.rebuildLayout()
-        support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag down to normal section - use actual frame position
-        let normalFrame = support.dragCoordinator.computedNormalSectionFrame
-        let targetY = normalFrame.midY
-        support.dragCoordinator.updateDrag(
-            offset: targetY - startFrame.midY,
-            location: CGPoint(x: startFrame.midX, y: targetY),
-        )
-
-        // Should target normal section (unpinning)
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        } else {
-            Issue.record("Expected reorder to normal section")
-        }
-    }
-
-    @Test("Drag group with children maintains exclusion set")
-    func dragGroupMaintainsExclusionSet() throws {
+    @Test
+    func `Drag group with children maintains exclusion set`() throws {
         let support = try SidebarTestSupport()
 
         let group = try support.createGroup(name: "Test Group")
@@ -659,14 +595,16 @@ struct SidebarDragIntegrationTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
         let items = support.layoutManager.pinnedItems + support.layoutManager.normalItems
-        let groupItem = items.first { item in
-            if case let .group(g) = item, g.id == group.id { return true }
+        let groupItem = try #require(items.first { item in
+            if case let .group(g) = item, g.id == group.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[groupItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[groupItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
         support.dragCoordinator.startDrag(
             item: .group(group),
             originPosition: .normal(localIndex: localIndex),
