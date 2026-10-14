@@ -64,8 +64,10 @@ struct SharedTableTests {
         let placements = tabs.map { canvas.tablePlacement(for: $0) }
         table.step(.right)
         #expect(window.activeTabID == tabs[1].id)
+        #expect(table.departingTab?.id == tabs[0].id)
         table.step(.left)
         #expect(window.activeTabID == tabs[0].id)
+        #expect(table.departingTab?.id == tabs[1].id)
         table.step(.left)
         #expect(window.activeTabID == tabs[2].id)
         table.step(.left)

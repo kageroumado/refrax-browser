@@ -11,8 +11,8 @@ import AppKit
 ///   reaches the page untouched. The direction is only known once the fingers move, so
 ///   the gesture's `began` event is held back until then and handed to the page when the
 ///   pinch turns out to be its own.
-/// - **⌃** held alone shows adjacent pages immediately; releasing it leaves pinned previews visible.
-///   A click or key shortcut returns Control to the page.
+/// - **⌃** held alone shows adjacent pages immediately; clicks keep those destinations
+///   available while the key is down. Releasing it leaves pinned previews visible.
 /// - **⌃ + scroll** over the page follows adjacent tabs (``TableInput``): each destination
 ///   appears at the page edge before a wheel step reaches it.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
@@ -163,6 +163,13 @@ final class CanvasPageGestures {
 
     private func handleMouse(_ event: NSEvent) -> NSEvent? {
         guard canvas.isPanningFromPage else {
+            if canvas.isMomentaryNavigation {
+                if event.type == .leftMouseDown {
+                    controlDownAt = nil
+                    lastControlTap = nil
+                }
+                return FloatingPreviewInput.removingRevealModifier(from: event)
+            }
             if event.type == .leftMouseDown {
                 interruptControl()
             }

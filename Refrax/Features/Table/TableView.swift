@@ -14,6 +14,26 @@ struct TableView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color(nsColor: .windowBackgroundColor)
+            if canvas.isMomentaryNavigation, let departing = table.departingTab {
+                let frame = canvas.pageFrame(for: departing, in: table.viewportFrame)
+                Group {
+                    if let image = table.departingSnapshot {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        PagePlaceholder(tab: departing)
+                    }
+                }
+                .frame(width: table.viewport.width, height: table.viewport.height)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: Layout.inspectionCornerRadius, style: .continuous))
+                .scaleEffect(canvas.floatingCamera.scale, anchor: .topLeading)
+                .offset(x: frame.minX, y: frame.minY)
+                .opacity(table.pageTravelOpacity)
+                .zIndex(1)
+                .allowsHitTesting(false)
+            }
             if let tab = windowState.activeTab {
                 let frame = canvas.pageFrame(for: tab, in: table.viewportFrame)
                 UnifiedContentView(tab: tab)
@@ -41,7 +61,7 @@ struct TableView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .overlay {
-            if canvas.isMomentaryNavigation && !canvas.isActive {
+            if canvas.isMomentaryNavigation && !canvas.isActive && table.departingTab == nil {
                 TableEdgeNavigationView()
             }
         }

@@ -309,6 +309,22 @@ struct FloatingPreviewTests {
 
         _ = gestures.handle(try flags(FloatingRevealKey.current.flag))
         #expect(canvas.isMomentaryNavigation)
+        for type: NSEvent.EventType in [.leftMouseDown, .leftMouseUp] {
+            let click = try #require(NSEvent.mouseEvent(
+                with: type,
+                location: CGPoint(x: 40, y: 60),
+                modifierFlags: FloatingRevealKey.current.flag,
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1,
+            ))
+            let forwarded = try #require(gestures.handle(click))
+            #expect(!forwarded.modifierFlags.contains(FloatingRevealKey.current.flag))
+            #expect(canvas.isMomentaryNavigation)
+        }
         _ = gestures.handle(try flags([]))
         #expect(!canvas.floatingVisibility.isHeld)
     }

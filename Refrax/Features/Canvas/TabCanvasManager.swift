@@ -512,7 +512,8 @@ final class TabCanvasManager {
         guard floatingCamera != target else { return }
         let animate = (floatingVisibility.isRevealed || floatingCamera.scale != 1)
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(animate ? .easeOut(duration: 0.12) : nil) { floatingCamera = target }
+        let duration = windowState.tableController?.departingTab == nil ? 0.12 : TableController.pageTravelAnimationDuration
+        withAnimation(animate ? .easeInOut(duration: duration) : nil) { floatingCamera = target }
     }
 
     /// The active page and its card share one table anchor and camera projection.

@@ -5,11 +5,14 @@ import SwiftUI
 @MainActor
 @Observable
 final class TableController {
+    static let pageTravelAnimationDuration: TimeInterval = 0.32
+
     private enum Layout {
         static let snapshotLimit = 12
         static let moveStep: CGFloat = 24
         static let gestureStepDistance: CGFloat = 48
         static let smoothWheelFirstStepDistance: CGFloat = 16
+        static let pageTravelDuration: Duration = .milliseconds(320)
     }
 
     private(set) var viewport: CGSize = .zero
@@ -18,6 +21,10 @@ final class TableController {
     private(set) var blockedDirection: TableDirection?
     private(set) var approachDirection: TableDirection?
     private(set) var approachFraction: CGFloat = 0
+    private(set) var departingTab: Tab?
+    private(set) var departingSnapshot: NSImage?
+    private(set) var pageTravelOpacity: Double = 0
+    @ObservationIgnored private var pageTravelTask: Task<Void, Never>?
     @ObservationIgnored private var gestureDistance: CGFloat = 0
     @ObservationIgnored private var gestureDirection: TableDirection?
     @ObservationIgnored private var gestureHasStepped = false
@@ -121,8 +128,22 @@ final class TableController {
             return
         }
         blockedDirection = nil
-        canvas.revealSpatialDestination(tab.id)
+        pageTravelTask?.cancel()
+        departingTab = currentTab
+        departingSnapshot = currentTab.flatMap { snapshot(for: $0.id) }
+        pageTravelOpacity = 1
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
+        pageTravelTask = Task(name: "Finish table page travel") { [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: Self.pageTravelAnimationDuration)) {
+                self.pageTravelOpacity = 0
+            }
+            try? await Task.sleep(for: Layout.pageTravelDuration)
+            guard !Task.isCancelled else { return }
+            self.departingTab = nil
+            self.departingSnapshot = nil
+        }
     }
 
     func clearBlockedDirection() {
