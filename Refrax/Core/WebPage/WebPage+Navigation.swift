@@ -737,6 +737,9 @@ extension WebPage {
         tabPage.url = newURL
         if let title = currentItem.title, !title.isEmpty {
             tabPage.title = title
+        } else if urlChanged {
+            // A new document starts untitled until its own title arrives.
+            tabPage.title = title
         }
 
         if !newURL.isDeepLink {
@@ -773,10 +776,9 @@ extension WebPage {
                     isPageVisible: visibilityStartTime != nil,
                 )
             }
-        } else if let url, url.isFileURL {
-            // For local files without <title> (markdown, JSON, plain text, etc.),
-            // use the filename as the tab title
-            tabPage.title = url.lastPathComponent
+        } else if let name = url?.documentFileName {
+            // A document without a <title> (PDF, image, Markdown, JSON, plain text) is named by its file.
+            tabPage.title = name
         }
 
         // For local files, set an SF Symbol favicon based on file type

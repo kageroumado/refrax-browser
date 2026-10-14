@@ -117,7 +117,7 @@ private struct PageCardPasswordSaveLatch: ViewModifier {
     func body(content: Content) -> some View {
         content.onChange(of: autoFillState.hasPendingSaveRequest) { _, pending in
             guard pending, settings.autoFillMode == .builtIn, windowState.window?.isKeyWindow == true else { return }
-            windowState.controlIsland.tabInfo.show()
+            windowState.controlIsland.tabInfo.showBriefly()
         }
     }
 }

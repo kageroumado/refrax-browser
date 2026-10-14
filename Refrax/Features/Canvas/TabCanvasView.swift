@@ -81,7 +81,7 @@ struct TabCanvasView: View {
 
 // MARK: - Toolbar
 
-/// Actions on the current selection, plus fit-everything.
+/// The space's tab count, actions on the current selection, plus fit-everything.
 private struct CanvasToolbar: View {
     @Environment(TabCanvasManager.self) private var manager
 
@@ -91,10 +91,19 @@ private struct CanvasToolbar: View {
 
             Divider().frame(height: Layout.dividerHeight)
 
-            if !manager.selectedTabIDs.isEmpty {
-                Text("\(manager.selectedTabIDs.count) selected")
+            if manager.selectedTabIDs.isEmpty {
+                Text(tabCount)
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .padding(.horizontal, Layout.spacing / 2)
+
+                Divider().frame(height: Layout.dividerHeight)
+            } else {
+                Text("\(manager.selectedTabIDs.count) of \(tabCount) selected")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                     .padding(.trailing, Layout.spacing / 2)
 
                 toolbarButton("Zoom", systemImage: "arrow.up.left.and.arrow.down.right") { manager.zoomToSelection() }
@@ -121,6 +130,12 @@ private struct CanvasToolbar: View {
         .padding(.vertical, Layout.verticalPadding)
         .glassEffect(.regular, in: Capsule())
         .shadow(color: .black.opacity(0.18), radius: Layout.shadowRadius, y: Layout.shadowY)
+    }
+
+    /// The space's tabs on the desk: "6 tabs".
+    private var tabCount: String {
+        let count = manager.tabs.count
+        return "\(count) \(count == 1 ? "tab" : "tabs")"
     }
 
     private func toolbarButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {

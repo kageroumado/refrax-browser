@@ -281,19 +281,19 @@ struct SettingsSidebarView: View {
         }
     }
 
+    /// The selected row is drawn here in Refrax's accent: a source list's own selection always
+    /// takes the system accent and ignores `.tint`.
+    private enum SelectionLayout {
+        static let cornerRadius: CGFloat = 8
+        static let horizontalInset: CGFloat = 10
+        static let verticalInset: CGFloat = 1
+    }
+
     var body: some View {
-        List(selection: $selectedCategory) {
+        List {
             if searchText.isEmpty {
-                // Show all categories when not searching
                 ForEach(SettingsCategory.allCases) { category in
-                    Label {
-                        Text(category.title)
-                    } icon: {
-                        Image(systemName: category.icon)
-                            .symbolRenderingMode(category.iconRenderingMode)
-                            .foregroundStyle(Color.appAccentColor)
-                    }
-                    .tag(category)
+                    categoryRow(category)
                 }
             } else {
                 // Show categories with matching items
@@ -326,7 +326,49 @@ struct SettingsSidebarView: View {
         .searchable(text: $searchText, placement: .sidebar, prompt: "Search Settings")
         .navigationTitle("Settings")
         .frame(minWidth: 220)
-        .tint(Color.appAccentColor)
+        .onMoveCommand { direction in
+            moveSelection(direction)
+        }
+    }
+
+    private func categoryRow(_ category: SettingsCategory) -> some View {
+        let isSelected = category == selectedCategory
+        return Button {
+            selectedCategory = category
+        } label: {
+            Label {
+                Text(category.title)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+            } icon: {
+                Image(systemName: category.icon)
+                    .symbolRenderingMode(isSelected ? .monochrome : category.iconRenderingMode)
+                    .foregroundStyle(isSelected ? Color.white : Color.appAccentColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: SelectionLayout.cornerRadius, style: .continuous)
+                .fill(isSelected ? Color.appAccentColor : Color.clear)
+                .padding(.horizontal, SelectionLayout.horizontalInset)
+                .padding(.vertical, SelectionLayout.verticalInset),
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// Up and Down step through the categories while the sidebar has focus.
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        let categories = SettingsCategory.allCases
+        guard searchText.isEmpty, let index = categories.firstIndex(of: selectedCategory) else { return }
+        switch direction {
+        case .up where index > categories.startIndex:
+            selectedCategory = categories[categories.index(before: index)]
+        case .down where categories.index(after: index) < categories.endIndex:
+            selectedCategory = categories[categories.index(after: index)]
+        default:
+            break
+        }
     }
 }
 

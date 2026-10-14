@@ -75,7 +75,7 @@ enum CanvasHint: String {
     var text: String {
         switch self {
         case .enteringCanvas: "Pinch in to see all your tabs"
-        case .leavingCanvas: "Pinch out on a tab to open it · Esc to go back"
+        case .leavingCanvas: "Double-click or pinch out to open a tab · Esc to go back"
         }
     }
 

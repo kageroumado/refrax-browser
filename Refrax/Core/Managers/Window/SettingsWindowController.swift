@@ -10,8 +10,8 @@ import SwiftUI
 /// ## Window Style
 ///
 /// The settings window uses a panel-style appearance similar to Safari's preferences:
-/// - Fixed size (500x400)
-/// - Utility window style for lighter visual weight
+/// - 800×550, resizable between 750×500 and 1000×800
+/// - Transparent titlebar with a unified toolbar
 /// - Auto-centers on first appearance
 /// - Not restorable (settings state doesn't need persistence)
 ///
@@ -89,7 +89,7 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
         // Create window with panel styling
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Settings"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
 

@@ -909,17 +909,32 @@ final class CommandLensManager {
     /// Sorts suggestions based on heuristics.
     ///
     /// Order:
-    /// 1. URL navigation suggestion (from inline completion or direct URL input) - if available
-    /// 2. The root of that site, when the URL points at a subpage - so a completion to the
+    /// 1. Commands the input names outright ("move to work", "new space") - see
+    ///    ``CommandLensRanking/isExactCommandMatch(query:title:)``; they replace an inline completion
+    /// 2. URL navigation suggestion (from inline completion or direct URL input) - if available
+    /// 3. The root of that site, when the URL points at a subpage - so a completion to the
     ///    most-visited deep link is always one row away from the homepage
-    /// 3. Search suggestion for raw input - always available
-    /// 4. Ask AI suggestion - when input looks like an AI query
-    /// 5. All other suggestions in their original order (by provider priority)
+    /// 4. Search suggestion for raw input - always available
+    /// 5. All other suggestions in their original order (by provider priority); only places to go
+    ///    when the input is an address
     private func sortSuggestionsWithHeuristics(_ suggestions: [CommandLensSuggestion]) -> [CommandLensSuggestion] {
         var result: [CommandLensSuggestion] = []
         var remaining = suggestions
 
-        // 1. URL navigation suggestion first (if valid URL from completion or direct input).
+        if inputLooksLikeAddress {
+            remaining.removeAll { !CommandLensRanking.isNavigation($0.type) }
+        } else {
+            // 1. Exact commands lead; a completion they displace would send Return elsewhere.
+            let (exact, rest) = CommandLensRanking.partitionExactCommands(remaining, query: inputText)
+            if !exact.isEmpty {
+                result = exact
+                remaining = rest
+                inlineCompletion = nil
+                inlineCompletionRange = nil
+            }
+        }
+
+        // 2. URL navigation suggestion (if valid URL from completion or direct input).
         //    A local device row for the same URL takes its place, keeping the gateway badge.
         if let urlSuggestion = createURLNavigationSuggestion() {
             if let localIndex = remaining.firstIndex(where: { isLocalDevice($0, at: urlSuggestion.url) }) {
@@ -927,7 +942,7 @@ final class CommandLensManager {
             } else {
                 result.append(urlSuggestion)
 
-                // 2. Site root right under it; drop the provider's copy further down
+                // 3. Site root right under it; drop the provider's copy further down
                 if let rootSuggestion = createSiteRootSuggestion(for: urlSuggestion) {
                     result.append(rootSuggestion)
                     remaining.removeAll { $0.type == .url && $0.url == rootSuggestion.url }
@@ -935,15 +950,20 @@ final class CommandLensManager {
             }
         }
 
-        // 3. Search suggestion
+        // 4. Search suggestion
         if let searchSuggestion = createSearchSuggestion() {
             result.append(searchSuggestion)
         }
 
-        // 4. All other suggestions in original order
+        // 5. All other suggestions in original order
         result.append(contentsOf: remaining)
 
         return result
+    }
+
+    /// Whether the input is a domain, URL, IP address, or local address rather than words.
+    private var inputLooksLikeAddress: Bool {
+        isValidURL(inputText.trimmingCharacters(in: .whitespaces))
     }
 
     private func isLocalDevice(_ suggestion: CommandLensSuggestion, at url: URL?) -> Bool {

@@ -180,30 +180,51 @@ struct SettingsColorPicker: View {
         static let swatchSize: CGFloat = 20
         static let swatchRingSize: CGFloat = 27
         static let swatchSpacing: CGFloat = 3
+        /// From the label to the swatches when they stack.
+        static let stackedSpacing: CGFloat = 6
     }
 
+    /// The label beside the swatches when the row is wide enough for both on one line, else
+    /// above them; the label never wraps.
     var body: some View {
-        HStack {
-            Text(label)
-            Spacer()
-            HStack(spacing: Layout.swatchSpacing) {
-                systemSwatch
-
-                if let defaultColor {
-                    swatch(defaultColor.color, label: "Default", accessibilityLabel: "Refrax default")
-                }
-
-                ForEach(GroupColor.allCases, id: \.self) { groupColor in
-                    swatch(groupColor.color, label: groupColor.rawValue, accessibilityLabel: groupColor.rawValue)
-                }
-
-                CustomColorSwatch(
-                    selectedColor: $selectedColor,
-                    hoveredLabel: $hoveredLabel,
-                    presets: GroupColor.allCases.map(\.color) + (defaultColor.map { [$0.color] } ?? []),
-                )
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                labelText
+                Spacer()
+                swatches
+            }
+            VStack(alignment: .leading, spacing: Layout.stackedSpacing) {
+                labelText
+                swatches
             }
         }
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private var swatches: some View {
+        HStack(spacing: Layout.swatchSpacing) {
+            systemSwatch
+
+            if let defaultColor {
+                swatch(defaultColor.color, label: "Default", accessibilityLabel: "Refrax default")
+            }
+
+            ForEach(GroupColor.allCases, id: \.self) { groupColor in
+                swatch(groupColor.color, label: groupColor.rawValue, accessibilityLabel: groupColor.rawValue)
+            }
+
+            CustomColorSwatch(
+                selectedColor: $selectedColor,
+                hoveredLabel: $hoveredLabel,
+                presets: GroupColor.allCases.map(\.color) + (defaultColor.map { [$0.color] } ?? []),
+            )
+        }
+        .fixedSize()
     }
 
     // MARK: - System Swatch

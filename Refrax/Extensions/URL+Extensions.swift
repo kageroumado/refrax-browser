@@ -169,6 +169,14 @@ extension URL {
         scheme == DeepLink.scheme
     }
 
+    /// The document's file name, for a page that has no title of its own (a PDF, an image,
+    /// a plain-text file): the URL's last path component, or `nil` for a bare host or root path.
+    nonisolated var documentFileName: String? {
+        let name = lastPathComponent
+        guard !name.isEmpty, name != "/" else { return nil }
+        return name
+    }
+
     /// URL formatted for display (protocol and www prefix removed).
     ///
     /// Used for consistent URL display across tabs, bookmarks, and drag overlays.

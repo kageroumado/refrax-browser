@@ -52,6 +52,20 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
         return windowManager.activeWindowController
     }
 
+    /// The key or main window when neither it nor any window it is attached to (as a sheet
+    /// or child) is a browser window.
+    var focusedWindowOutsideBrowser: NSWindow? {
+        guard let window = focusedWindow() else { return nil }
+        var candidate: NSWindow? = window
+        while let current = candidate {
+            if current.windowController is RefraxWindowController {
+                return nil
+            }
+            candidate = current.sheetParent ?? current.parent
+        }
+        return window
+    }
+
     // MARK: - Initialization
 
     /// The window menu actions target first: the key window, else the main window.
