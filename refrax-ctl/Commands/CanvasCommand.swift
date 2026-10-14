@@ -60,8 +60,10 @@ struct CanvasCommand: AsyncParsableCommand {
     struct Floating: AsyncParsableCommand {
         static let configuration = CommandConfiguration(commandName: "floating", abstract: "Reveal, place, and pin floating tabs")
 
-        @Argument(help: "show, hide, hold, release, pin, unpin, compact, preview, move, resize, dock-left, dock-right, undock")
+        @Argument(help: "show, hide, hold, release, pin, unpin, shape, move, resize, dock-left, dock-right, undock")
         var action: String
+        @Argument(help: "For shape: icon, tab, or live")
+        var shape: String?
         @Option(name: .long, help: "Tab ref for a presentation or position change")
         var tab: String?
         @Option(name: .long, help: "Top-left destination in window points: X,Y")
@@ -75,7 +77,14 @@ struct CanvasCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard let action = ControlRequest.FloatingTabsParams.Action(rawValue: action) else {
-                throw ValidationError("Use show, hide, hold, release, pin, unpin, compact, preview, move, resize, dock-left, dock-right, or undock")
+                throw ValidationError("Use show, hide, hold, release, pin, unpin, shape, move, resize, dock-left, dock-right, or undock")
+            }
+            var cardShape: ControlRequest.FloatingTabsParams.Shape?
+            if action == .shape {
+                guard let shape, let value = ControlRequest.FloatingTabsParams.Shape(rawValue: shape) else {
+                    throw ValidationError("shape takes icon, tab, or live")
+                }
+                cardShape = value
             }
             var x: Double?
             var y: Double?
@@ -87,7 +96,7 @@ struct CanvasCommand: AsyncParsableCommand {
                 x = first
                 y = second
             }
-            try sendAndHandle(.floatingTabs(.init(action: action, tab: tab, x: x, y: y, width: width, height: height)), json: json)
+            try sendAndHandle(.floatingTabs(.init(action: action, tab: tab, x: x, y: y, width: width, height: height, shape: cardShape)), json: json)
         }
     }
 

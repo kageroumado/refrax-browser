@@ -10,15 +10,21 @@ import CoreGraphics
 nonisolated enum FloatingCardChrome {
     static let transientCornerRadius: CGFloat = CanvasTileLayout.slabCornerRadius
     static let keptCornerRadius: CGFloat = 16
+    /// The icon's continuous radius, kept and transient: a squircle, not a pill.
+    static let keptIconCornerRadius: CGFloat = 12
+    static let transientIconCornerRadius: CGFloat = 10
 
-    /// The card's outer radius.
-    static func cornerRadius(isKept: Bool) -> CGFloat {
-        isKept ? keptCornerRadius : transientCornerRadius
+    /// The card's outer radius, drawn with continuous corners.
+    static func cornerRadius(for shape: FloatingCardShape, isKept: Bool) -> CGFloat {
+        switch shape {
+        case .icon: isKept ? keptIconCornerRadius : transientIconCornerRadius
+        case .tab, .live: isKept ? keptCornerRadius : transientCornerRadius
+        }
     }
 
     /// The live preview's radius, concentric with the card around the preview inset.
     static func previewCornerRadius(isKept: Bool) -> CGFloat {
-        cornerRadius(isKept: isKept) - FloatingTabPlacement.previewInset
+        cornerRadius(for: .live, isKept: isKept) - FloatingTabPlacement.previewInset
     }
 
     /// A drop shadow, black at `opacity`, blurred by `radius`, and dropped by `y`.

@@ -475,9 +475,10 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 windowState.recordInteraction(with: tab.activePage.id)
                 return
             }
-            if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingFrame(for: $0, in: floatingView.bounds).contains(point) }) {
+            if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingHitFrame(for: $0, in: floatingView.bounds).contains(point) }) {
                 let frame = tabCanvasManager.floatingFrame(for: tab, in: floatingView.bounds)
-                if point.y > frame.minY + FloatingTabPlacement.headerHeight, tab.id != windowState.activeTabID {
+                if tabCanvasManager.floatingPlacement(for: tab).shape == .live, frame.contains(point),
+                   point.y > frame.minY + FloatingTabPlacement.headerHeight, tab.id != windowState.activeTabID {
                     windowState.recordInteraction(with: tab.activePage.id)
                 }
             } else {

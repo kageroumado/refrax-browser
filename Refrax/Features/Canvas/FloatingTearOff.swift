@@ -57,7 +57,8 @@ final class FloatingTearOffGhost {
         self.panel = PassThroughPanel(frame: CGRect(origin: .zero, size: size), hasShadow: true)
         let favicon = tab.activePage.faviconData.flatMap(NSImage.init(data:))
         panel.contentView = NSHostingView(rootView: FloatingTearOffCard(
-            title: tab.displayTitle, favicon: favicon, snapshot: placement.isCompact ? nil : snapshot, isKept: placement.isPinned,
+            title: tab.displayTitle, favicon: favicon, snapshot: placement.shape == .live ? snapshot : nil,
+            shape: placement.shape, isKept: placement.isPinned,
         ).frame(width: size.width, height: size.height))
     }
 
@@ -81,26 +82,27 @@ private struct FloatingTearOffCard: View {
     let title: String
     let favicon: NSImage?
     let snapshot: NSImage?
+    let shape: FloatingCardShape
     let isKept: Bool
 
     private typealias Header = FloatingCardChrome.Header
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: Header.itemSpacing) {
-                Group {
-                    if let favicon {
-                        Image(nsImage: favicon).resizable().scaledToFit()
-                    } else {
-                        Image(systemName: "globe")
-                    }
+            if shape == .icon {
+                faviconImage
+                    .frame(width: FloatingCardShape.Layout.iconFaviconSize, height: FloatingCardShape.Layout.iconFaviconSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(spacing: Header.itemSpacing) {
+                    faviconImage
+                        .frame(width: Header.glyphBox, height: Header.glyphBox)
+                    Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .frame(width: Header.glyphBox, height: Header.glyphBox)
-                Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 0)
+                .padding(.horizontal, Header.leadingPadding)
+                .frame(height: Header.height)
             }
-            .padding(.horizontal, Header.leadingPadding)
-            .frame(height: Header.height)
             if let snapshot {
                 Image(nsImage: snapshot)
                     .resizable()
@@ -111,7 +113,15 @@ private struct FloatingTearOffCard: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.regularMaterial, in: .rect(cornerRadius: FloatingCardChrome.cornerRadius(isKept: isKept)))
+        .background(.regularMaterial, in: .rect(cornerRadius: FloatingCardChrome.cornerRadius(for: shape, isKept: isKept), style: .continuous))
+    }
+
+    @ViewBuilder private var faviconImage: some View {
+        if let favicon {
+            Image(nsImage: favicon).resizable().scaledToFit()
+        } else {
+            Image(systemName: "globe")
+        }
     }
 }
 

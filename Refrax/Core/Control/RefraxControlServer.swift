@@ -2468,7 +2468,7 @@ final class RefraxControlServer {
             case .dockRight: canvas.dock(tab, to: .trailing)
             default: canvas.undock(tab)
             }
-        case .pin, .unpin, .compact, .preview, .move, .resize:
+        case .pin, .unpin, .shape, .move, .resize:
             guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
             let tab = try resolveTabRef(ref)
             guard canvas.floatingTabs.contains(where: { $0.id == tab.id }) else {
@@ -2479,10 +2479,14 @@ final class RefraxControlServer {
             }
             var placement = canvas.floatingPlacement(for: tab)
             switch params.action {
-            case .pin: placement.isPinned = true; placement.setCompact(false, in: bounds)
+            case .pin: placement.isPinned = true
             case .unpin: placement.isPinned = false
-            case .compact: placement.setCompact(true, in: bounds)
-            case .preview: placement.setCompact(false, in: bounds)
+            case .shape:
+                guard let shape = params.shape.flatMap({ FloatingCardShape(rawValue: $0.rawValue) }) else {
+                    throw ControlError.invalidParams("Shape requires icon, tab, or live")
+                }
+                canvas.setFloatingShape(shape, for: tab, in: bounds)
+                return try canvasStateResponse()
             case .move:
                 guard let x = params.x, let y = params.y, x.isFinite, y.isFinite else {
                     throw ControlError.invalidParams("Move requires finite x and y coordinates")
@@ -2493,7 +2497,6 @@ final class RefraxControlServer {
                       width.isFinite, height.isFinite, width > 0, height > 0 else {
                     throw ControlError.invalidParams("Resize requires positive finite width and height")
                 }
-                placement.setCompact(false, in: bounds)
                 placement.resize(to: CGSize(width: width, height: height), in: bounds)
             default: break
             }
@@ -2642,7 +2645,7 @@ final class RefraxControlServer {
                 y: frame.minY,
                 width: frame.width,
                 height: frame.height,
-                isCompact: placement.isCompact,
+                shape: ControlRequest.FloatingTabsParams.Shape(rawValue: placement.shape.rawValue) ?? .tab,
                 isPinned: placement.isPinned,
                 isVisible: visible.contains(tab.id),
             )

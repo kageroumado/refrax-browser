@@ -677,10 +677,27 @@ public extension ControlRequest {
 
     struct FloatingTabsParams: Codable, Sendable {
         public enum Action: String, Codable, Sendable {
-            case show, hide, hold, release, pin, unpin, compact, preview, move, resize, undock
+            case show
+            case hide
+            case hold
+            case release
+            case pin
+            case unpin
+            case shape
+            case move
+            case resize
+            case undock
             case dockLeft = "dock-left"
             case dockRight = "dock-right"
         }
+
+        /// A floating card's shape: a favicon icon, a tab of favicon and title, or a live page.
+        public enum Shape: String, Codable, Sendable, CaseIterable {
+            case icon
+            case tab
+            case live
+        }
+
         public var action: Action
         public var tab: String?
         public var x: Double?
@@ -688,14 +705,20 @@ public extension ControlRequest {
 
         public var width: Double?
         public var height: Double?
+        /// The shape the `shape` action gives the card.
+        public var shape: Shape?
 
-        public init(action: Action, tab: String? = nil, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil) {
+        public init(
+            action: Action, tab: String? = nil, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil,
+            shape: Shape? = nil,
+        ) {
             self.action = action
             self.tab = tab
             self.x = x
             self.y = y
             self.width = width
             self.height = height
+            self.shape = shape
         }
     }
 
@@ -2650,7 +2673,7 @@ public enum CTL {
         public let y: Double
         public let width: Double
         public let height: Double
-        public let isCompact: Bool
+        public let shape: ControlRequest.FloatingTabsParams.Shape
         public let isPinned: Bool
         public let isVisible: Bool
         public init(
@@ -2660,7 +2683,7 @@ public enum CTL {
             y: Double,
             width: Double,
             height: Double,
-            isCompact: Bool,
+            shape: ControlRequest.FloatingTabsParams.Shape,
             isPinned: Bool,
             isVisible: Bool,
         ) {
@@ -2670,7 +2693,7 @@ public enum CTL {
             self.y = y
             self.width = width
             self.height = height
-            self.isCompact = isCompact
+            self.shape = shape
             self.isPinned = isPinned
             self.isVisible = isVisible
         }

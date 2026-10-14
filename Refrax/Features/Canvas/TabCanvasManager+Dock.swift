@@ -226,7 +226,7 @@ extension TabCanvasManager {
     /// A floating frame for a page that has none, so undocking has somewhere to return it.
     private func startingPlacement(for tab: Tab, in bounds: CGRect) -> FloatingTabPlacement {
         let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
-        return FloatingTabPlacement.freeStartingSlot(nearest: nil, avoiding: occupied, in: bounds, isCompact: false)
+        return FloatingTabPlacement.freeStartingSlot(nearest: nil, avoiding: occupied, in: bounds, shape: .live)
             ?? floatingPlacement(for: tab)
     }
 

@@ -153,22 +153,18 @@ struct TabActions {
             MenuAction("tab.keepVisible", placement.isPinned ? "Hide Preview" : "Keep Visible", symbol: "pin", group: .preview, isPrimary: true) {
                 var next = placement
                 next.isPinned.toggle()
-                if next.isPinned {
-                    next.isCompact = false
-                }
                 canvas.updateFloatingPlacement(next, for: tab)
             },
         ]
         if surface == .pageCard {
-            let title = placement.isCompact ? "Show as Preview" : "Show as Compact Tab"
-            actions.append(MenuAction("tab.compact", title, symbol: "rectangle.expand.vertical", group: .preview) {
-                var next = placement
-                next.setCompact(!next.isCompact, in: area)
-                canvas.updateFloatingPlacement(next, for: tab)
-                if tab.id == windowState.activeTabID {
-                    canvas.toggleFloatingTabs()
-                }
-            })
+            for shape in FloatingCardShape.allCases where shape != placement.shape {
+                actions.append(MenuAction("tab.shape.\(shape.rawValue)", shape.showTitle, symbol: shape.symbol, group: .preview) {
+                    canvas.setFloatingShape(shape, for: tab, in: area)
+                    if tab.id == windowState.activeTabID {
+                        canvas.toggleFloatingTabs()
+                    }
+                })
+            }
         }
         guard regionsEnabled else { return actions }
         let regionTitle = placement.region == nil ? "Keep Part Visible… (Experimental)" : "Adjust Region…"

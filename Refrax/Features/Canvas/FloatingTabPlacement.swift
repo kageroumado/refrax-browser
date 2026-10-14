@@ -5,8 +5,11 @@ import Foundation
 nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     var x: Double
     var y: Double
-    var isCompact: Bool
+    var shape: FloatingCardShape
     var isPinned: Bool
+    /// The tab shape's width, kept while the card wears another shape.
+    var tabWidth: Double?
+    /// The live page's size, kept while the card wears another shape.
     var previewWidth: Double?
     var previewHeight: Double?
     var region: FloatingPageRegion?
@@ -25,13 +28,13 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         dockFraction ?? FloatingDockLayout.defaultFraction
     }
 
-    static func initial(index: Int, count: Int = 10, isCompact: Bool = true) -> Self {
+    static func initial(index: Int, count: Int = 10, shape: FloatingCardShape = .tab) -> Self {
         let columns = max(2, Int(ceil(Double(count) / 5)))
         let rows = max(2, Int(ceil(Double(count) / Double(columns))))
         return Self(
             x: Double(index % columns) / Double(columns - 1),
             y: min(1, Double(index / columns) / Double(rows - 1)),
-            isCompact: isCompact,
+            shape: shape,
             isPinned: false,
         )
     }
@@ -42,10 +45,10 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     /// The starting slot whose card would cover none of `occupied`, nearest to `anchor`;
     /// without an anchor, the first free slot in grid order.
     static func freeStartingSlot(
-        nearest anchor: CGPoint?, avoiding occupied: [FloatingTabPlacement], in bounds: CGRect, isCompact: Bool,
+        nearest anchor: CGPoint?, avoiding occupied: [FloatingTabPlacement], in bounds: CGRect, shape: FloatingCardShape,
     ) -> FloatingTabPlacement? {
         let taken = occupied.map { $0.frame(in: bounds) }
-        let free = (0 ..< startingSlotCount).map { initial(index: $0, count: startingSlotCount, isCompact: isCompact) }
+        let free = (0 ..< startingSlotCount).map { initial(index: $0, count: startingSlotCount, shape: shape) }
             .filter { slot in
                 let frame = slot.frame(in: bounds)
                 return !taken.contains { $0.intersects(frame) }
@@ -60,11 +63,13 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     static let headerHeight: CGFloat = 34
     static let previewInset: CGFloat = 6
 
+    /// The card's size in its shape, before the window's area limits it.
     var size: CGSize {
-        isCompact ? CGSize(width: 250, height: Self.headerHeight) : CGSize(
-            width: Self.dimension(previewWidth, fallback: 340, minimum: 250),
-            height: Self.dimension(previewHeight, fallback: 250, minimum: 180),
-        )
+        switch shape {
+        case .icon: shape.naturalSize
+        case .tab: shape.fitted(CGSize(width: tabWidth ?? .nan, height: .nan))
+        case .live: shape.fitted(CGSize(width: previewWidth ?? .nan, height: previewHeight ?? .nan))
+        }
     }
 
     func frame(in bounds: CGRect) -> CGRect {
@@ -85,23 +90,44 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         y = Self.unit((origin.y - area.minY) / max(1, area.height - frame.height))
     }
 
-    /// Changes presentation while keeping the tab anchored where it was placed.
-    mutating func setCompact(_ value: Bool, in bounds: CGRect) {
+    /// Changes shape at the size the card last had in it, keeping its top-leading corner.
+    mutating func setShape(_ shape: FloatingCardShape, in bounds: CGRect) {
         let origin = frame(in: bounds).origin
-        isCompact = value
-        if value {
-            isPinned = false
-        }
+        self.shape = shape
         move(to: origin, in: bounds)
     }
 
-    /// Resizes from the lower-right corner while keeping the upper-left corner in place.
+    /// Resizes from the bottom-trailing corner, keeping the top-leading corner in place; a size
+    /// past a shape threshold changes the shape, and a dimension that is not finite keeps its size.
     mutating func resize(to size: CGSize, in bounds: CGRect) {
-        let origin = frame(in: bounds).origin
+        let start = frame(in: bounds)
+        let width = size.width.isFinite ? size.width : start.width
+        let height = size.height.isFinite ? size.height : start.height
+        let translation = CGSize(width: width - start.width, height: height - start.height)
+        resize(dragging: .bottomTrailing, from: start, by: translation, in: bounds)
+    }
+
+    /// Resizes as the pointer drags `handle` by `translation` from where the card was at
+    /// `start`, with the opposite sides fixed. The shape follows the size it is dragged to;
+    /// on crossing into a new shape, the card takes that shape's size closest to the pointer.
+    ///
+    /// - Returns: Whether the shape changed.
+    @discardableResult
+    mutating func resize(dragging handle: FloatingResizeHandle, from start: CGRect, by translation: CGSize, in bounds: CGRect) -> Bool {
+        let proposed = handle.proposedSize(from: start.size, translation: translation)
+        let previous = shape
+        shape = FloatingCardShape.shape(after: shape, proposing: proposed)
         let area = Self.availableArea(in: bounds)
-        previewWidth = min(Self.dimension(size.width, fallback: self.size.width, minimum: 250), area.maxX - origin.x)
-        previewHeight = min(Self.dimension(size.height, fallback: self.size.height, minimum: 180), area.maxY - origin.y)
-        move(to: origin, in: bounds)
+        let frame = handle.frame(from: start, size: shape.fitted(proposed), minimum: shape.minimumSize, within: area)
+        switch shape {
+        case .icon: break
+        case .tab: tabWidth = frame.width
+        case .live:
+            previewWidth = frame.width
+            previewHeight = frame.height
+        }
+        move(to: frame.origin, in: bounds)
+        return shape != previous
     }
 
     /// Moves the card sideways off `obstacle` until `gap` separates them at their closest
@@ -114,11 +140,6 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
         guard !obstacle.isEmpty, horizontal < gap - 0.5, vertical < gap - 0.5 else { return }
         let x = frame.midX >= obstacle.midX ? obstacle.maxX + gap : obstacle.minX - gap - frame.width
         move(to: CGPoint(x: x, y: frame.minY), in: bounds)
-    }
-
-    private static func dimension(_ value: Double?, fallback: Double, minimum: Double) -> Double {
-        guard let value, value.isFinite else { return fallback }
-        return max(minimum, value)
     }
 
     private static func availableArea(in bounds: CGRect) -> CGRect {

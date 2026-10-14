@@ -30,12 +30,14 @@ extension TabManager {
         spaceManager.makeDefaultSpace()
     }
 
-    /// Restores spaces from persistence on app launch, then runs the favorites migration.
+    /// Restores spaces from persistence on app launch, then runs the floating shape and
+    /// favorites migrations.
     ///
     /// - Returns: The default space to show in new windows.
     @discardableResult
     func restoreFromPersistence() -> Space {
         let space = spaceManager.restoreFromPersistence()
+        migrateFloatingShapesIfNeeded()
         migrateFavoritesIfNeeded()
         return space
 

@@ -135,25 +135,34 @@ private struct FloatingTabCard: View {
 
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(WindowState.self) private var windowState
-    @State private var resizeOrigin: CGSize?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var faviconSpace
+    /// The card's frame when the current resize began; its sides opposite the handle stay put.
+    @State private var resizeStart: CGRect?
+    /// When the current resize last changed the shape: updates while that motion runs join it.
+    @State private var shapeChangedAt: Date?
     @State private var isHovering = false
     @State private var tearOff: FloatingTearOffGhost?
     @State private var isOutsideWindow = false
 
     private typealias Header = FloatingCardChrome.Header
+    private typealias ShapeLayout = FloatingCardShape.Layout
 
     private enum Layout {
-        static let resizeHandleSize: CGFloat = 22
-        static let resizeHandleRadius: CGFloat = 6
-        static let resizeHandleInset: CGFloat = 3
-        static let resizeSymbolSize: CGFloat = 9
         static let mainPageRowHeight: CGFloat = 24
         /// The card's opacity while a copy of it follows the pointer outside the window.
         static let leavingOpacity: Double = 0.4
         static let moveStep: CGFloat = 24
-        static let resizeStep: CGFloat = 40
+        /// How far the icon's state badge reaches past its top-trailing corner.
+        static let iconBadgeOffset: CGFloat = 8
+        static let iconBadgePadding: CGFloat = 2
+        /// How long a resize keeps animating after a shape change: the spring's duration.
+        static let shapeMotionDuration: TimeInterval = 0.2
     }
 
+    private var shape: FloatingCardShape {
+        placement.shape
+    }
     private var isMainPage: Bool {
         tab.id == windowState.activeTabID
     }
@@ -163,40 +172,58 @@ private struct FloatingTabCard: View {
     private var isKept: Bool {
         placement.isPinned
     }
-    private var cornerRadius: CGFloat {
-        FloatingCardChrome.cornerRadius(isKept: isKept)
+    private var outline: RoundedRectangle {
+        RoundedRectangle(cornerRadius: FloatingCardChrome.cornerRadius(for: shape, isKept: isKept), style: .continuous)
     }
-    /// The header's controls and the resize handle show while the pointer is on the card or
-    /// its options are open.
+    /// The header's controls show while the pointer is on the card or its options are open.
     private var showsControls: Bool {
         isHovering || canvas.menuTabID == tab.id
+    }
+    private var isHighlighted: Bool {
+        canvas.selectedFloatingTabIDs.contains(tab.id) || hasInput
+            || (tab.id == canvas.focusedFloatingTabID && canvas.floatingVisibility.isRevealed)
     }
 
     var body: some View {
         let shadow = FloatingCardChrome.shadow(isKept: isKept)
-        VStack(spacing: 0) {
-            header
-                .frame(height: Header.height)
-            if isMainPage {
-                Text("Open full-size")
-                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Header.leadingPadding).frame(height: Layout.mainPageRowHeight)
-            } else if !placement.isCompact {
-                FloatingTabPreview(tab: tab, viewportSize: area.size)
-                    .frame(height: max(0, placement.frame(in: area).height - Header.height - FloatingTabPlacement.previewInset))
-                    .clipShape(.rect(cornerRadius: FloatingCardChrome.previewCornerRadius(isKept: isKept)))
-                    .padding([.horizontal, .bottom], FloatingTabPlacement.previewInset)
+        ZStack(alignment: .top) {
+            if shape == .icon {
+                iconFace
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    header
+                        .frame(height: Header.height)
+                    if isMainPage {
+                        Text("Open full-size")
+                            .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Header.leadingPadding).frame(height: Layout.mainPageRowHeight)
+                    } else if shape == .live {
+                        FloatingTabPreview(tab: tab, viewportSize: area.size)
+                            .frame(height: max(0, placement.frame(in: area).height - Header.height - FloatingTabPlacement.previewInset))
+                            .clipShape(.rect(cornerRadius: FloatingCardChrome.previewCornerRadius(isKept: isKept), style: .continuous))
+                            .padding([.horizontal, .bottom], FloatingTabPlacement.previewInset)
+                            .transition(.opacity)
+                    }
+                }
+                .transition(.opacity)
             }
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .transaction(value: shape) { transaction in
+            if reduceMotion {
+                transaction.animation = ShapeLayout.reducedMotionFade
+            }
+        }
+        .glassEffect(.regular, in: outline)
         .overlay {
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(canvas.selectedFloatingTabIDs.contains(tab.id) || hasInput || (tab.id == canvas.focusedFloatingTabID && canvas.floatingVisibility.isRevealed) ? Color.appAccentColor : .clear, lineWidth: 2)
+            outline
+                .strokeBorder(isHighlighted ? Color.appAccentColor : .clear, lineWidth: 2)
                 .allowsHitTesting(false)
         }
-        .overlay(alignment: .bottomTrailing) {
-            if !placement.isCompact, !isMainPage, showsControls {
-                resizeHandle
+        .overlay(alignment: .topLeading) {
+            if !isMainPage {
+                resizeHandles
             }
         }
         .shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y)
@@ -209,59 +236,151 @@ private struct FloatingTabCard: View {
         .closesOnMiddleClick(tab)
     }
 
-    private var resizeHandle: some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: Layout.resizeSymbolSize, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: Layout.resizeHandleSize, height: Layout.resizeHandleSize)
-            .background(.regularMaterial, in: .rect(cornerRadius: Layout.resizeHandleRadius))
-            .contentShape(Rectangle())
-            .padding(Layout.resizeHandleInset)
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("floatingTabs"))
-                .onChanged { value in
-                    canvas.beginFloatingManipulation()
-                    let size = resizeOrigin ?? placement.frame(in: area).size
-                    resizeOrigin = size
-                    resize(to: CGSize(
-                        width: size.width + value.translation.width,
-                        height: size.height + value.translation.height,
-                    ))
-                }
-                .onEnded { _ in
-                    resizeOrigin = nil
-                    canvas.endFloatingManipulation()
-                })
-            .accessibilityLabel("Resize \(tab.displayTitle) preview")
-            .accessibilityAdjustableAction { direction in
-                let delta = direction == .increment ? Layout.resizeStep : -Layout.resizeStep
-                resize(to: CGSize(width: placement.size.width + delta, height: placement.size.height + delta))
+    // MARK: Faces
+
+    /// The favicon, one object across shapes: it travels between the icon's center and the
+    /// header's leading edge as the shape changes.
+    private func favicon(side: CGFloat) -> some View {
+        Group {
+            if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
+                Image(nsImage: image).resizable().scaledToFit()
+            } else {
+                Image(systemName: "globe").resizable().scaledToFit()
             }
-            .help("Drag to resize preview")
+        }
+        .frame(width: side, height: side)
+        .modifier(FaviconTravel(id: tab.id, namespace: faviconSpace, isEnabled: !reduceMotion))
     }
 
-    private func resize(to size: CGSize) {
-        var next = placement
-        next.resize(to: size, in: area)
-        canvas.updateFloatingPlacement(next, for: tab)
+    /// The icon shape: the favicon alone, its state as a badge on the top-trailing corner,
+    /// and the title in the tooltip. The badge reads as state only; the corner under it
+    /// resizes the card.
+    private var iconFace: some View {
+        cardHandle(
+            favicon(side: ShapeLayout.iconFaviconSize)
+                .frame(maxWidth: .infinity, maxHeight: .infinity),
+        )
+        .help(tab.displayTitle)
+        .overlay(alignment: .topTrailing) {
+            TabStateSymbols(tab: tab)
+                .padding(.horizontal, Layout.iconBadgePadding)
+                .background(.regularMaterial, in: Capsule())
+                .fixedSize()
+                .offset(x: Layout.iconBadgeOffset, y: -Layout.iconBadgeOffset)
+                .allowsHitTesting(false)
+        }
     }
 
-    /// A title bar: favicon, title, and state at rest; the presentation toggle, close, and the
+    /// A title bar: favicon, title, and state at rest; the shape button, close, and the
     /// options join them on hover. The header is the card's drag handle.
     private var header: some View {
         HStack(spacing: 0) {
-            HStack(spacing: Header.itemSpacing) {
-                Group {
-                    if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
-                        Image(nsImage: image).resizable().scaledToFit()
-                    } else {
-                        Image(systemName: "globe")
-                    }
-                }
-                .frame(width: Header.glyphBox, height: Header.glyphBox)
+            cardHandle(HStack(spacing: Header.itemSpacing) {
+                favicon(side: Header.glyphBox)
                 FloatingTabTitle(tab: tab)
                 TabStateSymbols(tab: tab)
                 Spacer(minLength: 0)
+            })
+
+            if canvas.retainedInputTabID == tab.id, !canvas.floatingVisibility.isRevealed {
+                Button("Finish") { canvas.finishPreviewInteraction() }
+                    .labelStyle(.titleOnly)
+                    .padding(.leading, Header.itemSpacing)
             }
+            if showsControls {
+                if !isMainPage {
+                    shapeButton
+                }
+                closeButton
+                PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
+                    .frame(width: Header.controlSize, height: Header.controlSize)
+            }
+        }
+        .labelStyle(.iconOnly)
+        .controlSize(.small)
+        .buttonStyle(.plain)
+        .padding(.leading, Header.leadingPadding)
+        .padding(.trailing, showsControls ? Header.trailingPadding : Header.leadingPadding)
+    }
+
+    /// Moves the card to the next shape in the cycle where it stands: a tab opens to its live
+    /// page, a live page folds to an icon.
+    private var shapeButton: some View {
+        let next = shape.next
+        let symbol = next == .live ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left"
+        return headerControl(next.showTitle, symbol: symbol) {
+            canvas.setFloatingShape(next, for: tab, in: area)
+        }
+    }
+
+    // MARK: Resizing
+
+    /// Eight invisible zones on the card's outer edge, one per corner and edge, each with its
+    /// window resize pointer.
+    private var resizeHandles: some View {
+        GeometryReader { proxy in
+            ForEach(FloatingResizeHandle.allCases, id: \.self) { handle in
+                let zone = handle.hitFrame(
+                    in: proxy.size, thickness: ShapeLayout.resizeEdgeThickness, corner: ShapeLayout.resizeCornerSide,
+                )
+                Color.clear
+                    .frame(width: zone.width, height: zone.height)
+                    .contentShape(Rectangle())
+                    .pointerStyle(.frameResize(position: handle.pointerPosition))
+                    .gesture(resizeGesture(handle))
+                    .offset(x: zone.minX, y: zone.minY)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private func resizeGesture(_ handle: FloatingResizeHandle) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("floatingTabs"))
+            .onChanged { value in
+                canvas.beginFloatingManipulation()
+                let start = resizeStart ?? placement.frame(in: area)
+                resizeStart = start
+                var next = placement
+                if next.resize(dragging: handle, from: start, by: value.translation, in: area) {
+                    shapeChangedAt = .now
+                }
+                let joinsShapeMotion = shapeChangedAt.map { Date.now.timeIntervalSince($0) < Layout.shapeMotionDuration } ?? false
+                if joinsShapeMotion {
+                    withAnimation(TabCanvasManager.shapeAnimation) {
+                        canvas.updateFloatingPlacement(next, for: tab)
+                    }
+                } else {
+                    canvas.updateFloatingPlacement(next, for: tab)
+                }
+            }
+            .onEnded { _ in
+                resizeStart = nil
+                shapeChangedAt = nil
+                canvas.endFloatingManipulation()
+            }
+    }
+
+    private var closeButton: some View {
+        headerControl("Close Tab", symbol: "xmark") {
+            canvas.tabManager.requestCloseTab(tab)
+        }
+    }
+
+    private func headerControl(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: symbol, action: action)
+            .font(.system(size: Header.symbolPointSize))
+            .foregroundStyle(.secondary)
+            .frame(width: Header.controlSize, height: Header.controlSize).contentShape(Rectangle())
+            .help(title)
+            .accessibilityLabel(title)
+    }
+
+    // MARK: Moving
+
+    /// Makes `content` the card's handle: a click opens the card, a Shift-click toggles its
+    /// selection, and a drag moves it.
+    private func cardHandle(_ content: some View) -> some View {
+        content
             .contentShape(Rectangle())
             .onTapGesture {
                 if NSEvent.modifierFlags.contains(.shift) {
@@ -288,51 +407,13 @@ private struct FloatingTabCard: View {
             .accessibilityAction(named: "Move right") { moveBy(dx: Layout.moveStep, dy: 0) }
             .accessibilityAction(named: "Move up") { moveBy(dx: 0, dy: -Layout.moveStep) }
             .accessibilityAction(named: "Move down") { moveBy(dx: 0, dy: Layout.moveStep) }
-
-            if canvas.retainedInputTabID == tab.id, !canvas.floatingVisibility.isRevealed {
-                Button("Finish") { canvas.finishPreviewInteraction() }
-                    .labelStyle(.titleOnly)
-                    .padding(.leading, Header.itemSpacing)
-            }
-            if showsControls {
+            .accessibilityActions {
                 if !isMainPage {
-                    presentationButton
+                    ForEach(FloatingCardShape.allCases.filter { $0 != shape }, id: \.self) { other in
+                        Button(other.showTitle) { canvas.setFloatingShape(other, for: tab, in: area) }
+                    }
                 }
-                closeButton
-                PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
-                    .frame(width: Header.controlSize, height: Header.controlSize)
             }
-        }
-        .labelStyle(.iconOnly)
-        .controlSize(.small)
-        .buttonStyle(.plain)
-        .padding(.leading, Header.leadingPadding)
-        .padding(.trailing, showsControls ? Header.trailingPadding : Header.leadingPadding)
-    }
-
-    /// Switches the card between compact and preview where it stands.
-    private var presentationButton: some View {
-        let title = placement.isCompact ? "Show as Preview" : "Show as Compact Tab"
-        return headerControl(title, symbol: placement.isCompact ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") {
-            var next = placement
-            next.setCompact(!placement.isCompact, in: area)
-            canvas.updateFloatingPlacement(next, for: tab)
-        }
-    }
-
-    private var closeButton: some View {
-        headerControl("Close Tab", symbol: "xmark") {
-            canvas.tabManager.requestCloseTab(tab)
-        }
-    }
-
-    private func headerControl(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: symbol, action: action)
-            .font(.system(size: Header.symbolPointSize))
-            .foregroundStyle(.secondary)
-            .frame(width: Header.controlSize, height: Header.controlSize).contentShape(Rectangle())
-            .help(title)
-            .accessibilityLabel(title)
     }
 
     // MARK: Leaving the Window
@@ -376,5 +457,21 @@ private struct FloatingTabCard: View {
         let origin = next.frame(in: area).origin
         next.move(to: CGPoint(x: origin.x + dx, y: origin.y + dy), in: area)
         canvas.updateFloatingPlacement(next, for: tab)
+    }
+}
+
+/// Moves a card's favicon between its places in two shapes as one object; under Reduce
+/// Motion the favicon stays where each shape puts it.
+private struct FaviconTravel: ViewModifier {
+    let id: Tab.ID
+    let namespace: Namespace.ID
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.matchedGeometryEffect(id: id, in: namespace)
+        } else {
+            content
+        }
     }
 }
