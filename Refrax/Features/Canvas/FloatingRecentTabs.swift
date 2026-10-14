@@ -9,6 +9,10 @@ struct FloatingRecentTabs: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Recent").font(.headline)
+                Text(openCount)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 Spacer()
                 Button("Done") { canvas.recentIsOpen = false }
             }
@@ -48,5 +52,11 @@ struct FloatingRecentTabs: View {
                 }
             }
         }.padding(16).buttonStyle(.plain)
+    }
+
+    /// "12 tabs": every tab open in this window's space, placed or not.
+    private var openCount: String {
+        let count = canvas.floatingTabs.count
+        return "\(count) \(count == 1 ? "tab" : "tabs")"
     }
 }

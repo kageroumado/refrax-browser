@@ -24,10 +24,15 @@ struct AnchoredLensOverlay: View {
     @State private var contentHeight: CGFloat = 400
     /// The anchor the lens opened at, kept through the closing animation.
     @State private var anchor: CGRect = .zero
+    /// Counts openings and closings; a closing animation hides the lens only while it is the
+    /// latest change, so a lens reopened mid-close stays up.
+    @State private var generation = 0
 
     private enum Constants {
         static let expandDuration: CGFloat = 0.28
         static let collapseDuration: CGFloat = 0.2
+        /// Time past the collapse after which the closed field is removed regardless.
+        static let closeGrace: CGFloat = 0.15
         /// The field's width once it has unfolded from the card.
         static let fieldWidth: CGFloat = 640
     }
@@ -109,6 +114,7 @@ struct AnchoredLensOverlay: View {
     }
 
     private func openLens() {
+        generation += 1
         anchor = windowState.commandLensEntrance?.anchor ?? windowState.pageCardFrame
         phase = .matchingAnchor
 
@@ -122,16 +128,31 @@ struct AnchoredLensOverlay: View {
         }
     }
 
+    /// Folds the field back onto the card and removes it. When the centered lens takes over,
+    /// or motion is reduced, the field leaves at once so two lenses never share the screen.
     private func closeLens() {
-        let animation: Animation? = reduceMotion
-            ? nil
-            : .spring(duration: Constants.collapseDuration)
+        generation += 1
+        let closing = generation
+        guard !reduceMotion, !windowState.showsCommandLens else {
+            phase = .hidden
+            return
+        }
 
-        withAnimation(animation) {
+        withAnimation(.spring(duration: Constants.collapseDuration)) {
             phase = .matchingAnchor
             opacity = 0
         } completion: {
-            phase = .hidden
+            hide(ifStill: closing)
         }
+        // The completion is skipped when the animation is replaced; this ends the close anyway.
+        Task(name: "End the anchored lens close") {
+            try? await Task.sleep(for: .seconds(Constants.collapseDuration + Constants.closeGrace))
+            hide(ifStill: closing)
+        }
+    }
+
+    private func hide(ifStill closing: Int) {
+        guard generation == closing else { return }
+        phase = .hidden
     }
 }

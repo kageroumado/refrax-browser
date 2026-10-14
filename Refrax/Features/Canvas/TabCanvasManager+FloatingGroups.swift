@@ -335,7 +335,7 @@ extension TabCanvasManager {
     func moveFloatingSelection(to space: Space) {
         let moving = selectedFloatingTabs.filter { !$0.isFavorite }
         selectedFloatingTabIDs = []
-        tabManager.moveTabs(moving, to: space)
+        tabManager.moveTabs(moving, to: space, confirmingIn: windowState)
     }
 
     /// Spaces a tab or group in the active space can move to.

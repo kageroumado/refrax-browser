@@ -241,6 +241,8 @@ struct ControlIsland: View {
                     FloatingRecentTabs(area: area)
                         .frame(width: recentFrame.width, height: recentFrame.height)
                         .background(spaceTint, in: .rect(cornerRadius: 20))
+                        // A list read over pages: the material keeps page text from showing through.
+                        .background(.thickMaterial, in: .rect(cornerRadius: 20))
                         .glassEffect(.regular, in: .rect(cornerRadius: 20))
                         .glassEffectID("recent", in: glassNamespace)
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
@@ -459,6 +461,7 @@ struct ControlIsland: View {
         .background { dragSurface }
         .popover(isPresented: $showsFavorites, arrowEdge: opensLeft ? .leading : .trailing) {
             ControlIslandFavorites(isPresented: $showsFavorites)
+                .readablePopoverBackground()
         }
         .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
         .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
@@ -500,7 +503,7 @@ struct ControlIsland: View {
                 showsRecent ? "Recent tabs" : item.title,
                 symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
                 enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
-                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold \(revealKey.glyph) to peek · ⌥ for recent tabs · right-click to arrange",
+                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs (\(canvas.floatingTabs.count) open) · hold \(revealKey.glyph) to peek · ⌥ for recent tabs · right-click to arrange",
             ) {
                 if optionIsHeld {
                     showRecentTabs()
@@ -644,6 +647,7 @@ struct ControlIsland: View {
         .focusEffectDisabled()
         .popover(isPresented: $showsNowPlaying, arrowEdge: opensLeft ? .leading : .trailing) {
             ControlIslandNowPlaying(isPresented: $showsNowPlaying)
+                .readablePopoverBackground()
         }
         .accessibilityLabel(item.title)
         .railHelp("Now Playing · ⌃M mutes this tab")

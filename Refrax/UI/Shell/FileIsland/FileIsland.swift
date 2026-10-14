@@ -130,6 +130,7 @@ struct FileIsland: View {
                     }
                     .popover(isPresented: $state.showsAll, arrowEdge: opensLeft ? .leading : .trailing) {
                         FileIslandAllFiles(actions: actions)
+                            .readablePopoverBackground()
                     }
                     .offset(x: frame.minX, y: frame.minY)
                     .transition(.opacity)

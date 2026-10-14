@@ -1,9 +1,9 @@
 import AppKit
 
-// MARK: - View ▸ Table
+// MARK: - View ▸ Tab Layout
 
 extension MenuBarManager {
-    /// One of the Table submenu's keyed items.
+    /// One of the Tab Layout submenu's keyed items.
     private struct TableItem {
         let title: String
         let symbol: String
@@ -16,29 +16,29 @@ extension MenuBarManager {
         String(UnicodeScalar(UInt32(key))!)
     }
 
-    /// View ▸ Table: move focus with ⌃⌘ arrows, move the slab with ⌃⌘⇧ arrows, cycle its
+    /// View ▸ Tab Layout: move focus with ⌃⌘ arrows, move the tab with ⌃⌘⇧ arrows, cycle its
     /// width with ⌃⌘R, and fill the width with ⌃⌘⇧F (⌃⌘F is Enter Full Screen).
     func createTableMenuItem() -> NSMenuItem {
-        let menu = NSMenu(title: "Table")
+        let menu = NSMenu(title: "Tab Layout")
         let focus: NSEvent.ModifierFlags = [.control, .command]
         let move: NSEvent.ModifierFlags = [.control, .command, .shift]
         let groups: [[TableItem]] = [
             [
-                TableItem(title: "Focus Slab Left", symbol: "arrow.left", action: #selector(tableFocusLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Focus Slab Right", symbol: "arrow.right", action: #selector(tableFocusRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Row Up", symbol: "arrow.up", action: #selector(tableFocusUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Row Down", symbol: "arrow.down", action: #selector(tableFocusDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: focus),
+                TableItem(title: "Focus Tab Left", symbol: "arrow.left", action: #selector(tableFocusLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: focus),
+                TableItem(title: "Focus Tab Right", symbol: "arrow.right", action: #selector(tableFocusRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: focus),
+                TableItem(title: "Tab Above", symbol: "arrow.up", action: #selector(tableFocusUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: focus),
+                TableItem(title: "Tab Below", symbol: "arrow.down", action: #selector(tableFocusDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: focus),
             ],
             [
-                TableItem(title: "Move Slab Left", symbol: "arrow.left.square", action: #selector(tableMoveLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Slab Right", symbol: "arrow.right.square", action: #selector(tableMoveRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Slab Up", symbol: "arrow.up.square", action: #selector(tableMoveUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Slab Down", symbol: "arrow.down.square", action: #selector(tableMoveDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: move),
+                TableItem(title: "Move Tab Left", symbol: "arrow.left.square", action: #selector(tableMoveLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: move),
+                TableItem(title: "Move Tab Right", symbol: "arrow.right.square", action: #selector(tableMoveRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: move),
+                TableItem(title: "Move Tab Up", symbol: "arrow.up.square", action: #selector(tableMoveUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: move),
+                TableItem(title: "Move Tab Down", symbol: "arrow.down.square", action: #selector(tableMoveDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: move),
             ],
             [
-                TableItem(title: "Cycle Width", symbol: "arrow.left.and.right", action: #selector(tableCycleWidth(_:)), key: "r", modifiers: focus),
+                TableItem(title: "Cycle Tab Width", symbol: "arrow.left.and.right", action: #selector(tableCycleWidth(_:)), key: "r", modifiers: focus),
                 TableItem(title: "Fill Width", symbol: "arrow.up.left.and.arrow.down.right", action: #selector(tableToggleFill(_:)), key: "f", modifiers: move),
-                TableItem(title: "Move to New Row", symbol: "rectangle.split.1x2", action: #selector(tableMoveToNewRow(_:)), key: "", modifiers: []),
+                TableItem(title: "Start a Row Below", symbol: "rectangle.split.1x2", action: #selector(tableMoveToNewRow(_:)), key: "", modifiers: []),
             ],
         ]
         for (index, group) in groups.enumerated() {
@@ -53,7 +53,7 @@ extension MenuBarManager {
                 menu.addItem(item)
             }
         }
-        let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: "Tab Layout", action: nil, keyEquivalent: "")
         item.image = NSImage(systemSymbolName: "rectangle.split.3x1", accessibilityDescription: nil)
         item.submenu = menu
         return item

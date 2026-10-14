@@ -105,6 +105,9 @@ final class CommandLensManager {
 
     // MARK: - Private State
 
+    /// The input the current suggestions were computed for. Return on a list computed for
+    /// an earlier input follows the typed text instead of that list's first row.
+    private var suggestionsInput: String?
     private var rejectedCompletion: String?
     private var rejectedAtInputLength: Int = 0
     private var commandKeyHeldDuringCommit: Bool = false
@@ -205,6 +208,11 @@ final class CommandLensManager {
     func onInputChanged(_ text: String) {
         inputText = text
         selectionIsExplicit = false
+        // A completion that no longer extends the typed text would send Return somewhere else.
+        if let completion = inlineCompletion, !completion.lowercased().hasPrefix(normalizeForCompletion(text)) {
+            inlineCompletion = nil
+            inlineCompletionRange = nil
+        }
 
         searchTask?.cancel()
 
@@ -262,6 +270,7 @@ final class CommandLensManager {
 
             // Sort suggestions with heuristics (URL nav first, search second, then rest)
             suggestions = sortSuggestionsWithHeuristics(allSuggestions)
+            suggestionsInput = text
             isLoading = false
             selection = suggestions.isEmpty ? .none : CommandLensSelection(index: 0)
 
@@ -1361,6 +1370,7 @@ final class CommandLensManager {
         inputText = ""
         isPopupVisible = false
         suggestions = []
+        suggestionsInput = nil
         selection = .none
         selectedSearchEngine = nil
         inlineCompletion = nil
@@ -1443,7 +1453,8 @@ final class CommandLensManager {
         optionKeyHeldDuringCommit = optionKeyHeld
 
         guard selection.index != -1, let suggestion = suggestions[safe: selection.index],
-              !(isAddressMode && !selectionIsExplicit && !inputText.isEmpty) else {
+              !(isAddressMode && !selectionIsExplicit && !inputText.isEmpty),
+              !suggestionsAreStale else {
             if !inputText.isEmpty {
                 commitInput(inputText)
             }
@@ -1470,6 +1481,14 @@ final class CommandLensManager {
         case .none:
             commitSuggestion(suggestion)
         }
+    }
+
+    /// The list on screen was computed for an earlier input and the person has not picked a
+    /// row from it, so Return should act on what they typed.
+    private var suggestionsAreStale: Bool {
+        categorySearchMode == nil && !selectionIsExplicit
+            && !inputText.trimmingCharacters(in: .whitespaces).isEmpty
+            && suggestionsInput != inputText
     }
 
     func showPlace(of suggestion: CommandLensSuggestion) {
@@ -1649,7 +1668,7 @@ final class CommandLensManager {
             case let .moveCurrentTabToSpace(spaceID):
                 if let tab = windowState.activeTab, !tab.isFavorite,
                    let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
-                    Task(name: "Move tab to space from the lens") { await tabManager.moveTabsUnlocking([tab], to: space) }
+                    Task(name: "Move tab to space from the lens") { await tabManager.moveTabsUnlocking([tab], to: space, confirmingIn: windowState) }
                 }
             case .moveCurrentTabToNewWindow:
                 if let tab = windowState.activeTab {
@@ -1663,10 +1682,55 @@ final class CommandLensManager {
                 windowState.controlIsland.spaceRequest = .create
             case let .table(command):
                 windowState.tableController?.perform(command)
+            case let .copyCurrentAddress(asMarkdown):
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+                    let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: tabManager.bookmarksManager)
+                    if asMarkdown {
+                        actions.copyMarkdownLink()
+                    } else {
+                        actions.copyLink()
+                    }
+                    windowState.showToast(asMarkdown ? "Markdown link copied" : "Address copied")
+                }
+            case .downloadCurrentPage:
+                windowState.focusedWebPage?.downloadShownFile()
+            case .saveCurrentPageAs:
+                if let webPage = windowState.focusedWebPage, let window = windowState.window {
+                    Task(name: "Save page as from the lens") { await webPage.presentSavePanel(in: window) }
+                }
+            case .openAppearanceSettings:
+                NSApp.typedDelegate.settingsWindowController.showWindow(category: .appearance)
+            case .showOpenTabs:
+                showOpenTabs()
+                return
+            case .toggleCurrentTabGroupSelection:
+                if let tab = windowState.activeTab,
+                   let canvas = (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager {
+                    if canvas.selectedFloatingTabIDs.remove(tab.id) == nil {
+                        canvas.selectedFloatingTabIDs.insert(tab.id)
+                    }
+                }
+            case .groupSelectedTabs:
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.groupFloatingSelection()
             }
             closeCurrentLens()
             reset()
         }
+    }
+
+    /// Lists this space's open tabs in place of the typed words, under a header that counts them.
+    private func showOpenTabs() {
+        searchTask?.cancel()
+        let tabs = (windowState.activeSpace?.tabs ?? []).filter { !$0.isArchived }
+        inputText = ""
+        inlineCompletion = nil
+        inlineCompletionRange = nil
+        suggestions = OpenTabsEmptyStateAction.suggestions(for: tabs)
+        suggestionsInput = ""
+        isPopupVisible = !suggestions.isEmpty
+        selection = suggestions.isEmpty ? .none : CommandLensSelection(index: 0)
+        selectionIsExplicit = false
+        hadUserInteraction = true
     }
 
     private func commitInput(_ input: String) {

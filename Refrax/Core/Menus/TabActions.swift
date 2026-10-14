@@ -113,7 +113,7 @@ struct TabActions {
         let targets = destinations.map { space in
             let isLocked = lock.requiresAuth(for: space)
             return MenuAction("tab.moveToSpace.\(space.id)", space.name, symbol: isLocked ? "lock" : space.isEmoji ? nil : space.iconName, group: .move) {
-                Task(name: "Move tab to space") { await tabs.moveTabsUnlocking([tab], to: space) }
+                Task(name: "Move tab to space") { await tabs.moveTabsUnlocking([tab], to: space, confirmingIn: windowState) }
             }
         }
         return [MenuAction("tab.moveToSpace", "Move to Space", symbol: "square.stack.3d.up", group: .move, children: targets)]

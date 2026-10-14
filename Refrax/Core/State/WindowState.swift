@@ -524,6 +524,9 @@ final class WindowState {
     /// Automatically clears after a few seconds.
     var toastMessage: String?
 
+    /// The button the current toast offers beside its message, such as Undo.
+    var toastAction: ToastAction?
+
     /// Auto-dismiss task for the current toast.
     @ObservationIgnored
     private var toastDismissTask: Task<Void, any Error>?
@@ -532,14 +535,18 @@ final class WindowState {
     ///
     /// - Parameters:
     ///   - message: The message to display.
-    ///   - duration: How long to show the toast (default 4 seconds).
-    func showToast(_ message: String, duration: Duration = .seconds(4)) {
+    ///   - action: A button beside the message; pressing it runs the action and closes the toast.
+    ///   - duration: How long to show the toast: 4 seconds, or 6 with an action.
+    func showToast(_ message: String, action: ToastAction? = nil, duration: Duration? = nil) {
         toastDismissTask?.cancel()
         toastMessage = message
+        toastAction = action
 
+        let duration = duration ?? (action == nil ? .seconds(4) : .seconds(6))
         toastDismissTask = Task { [weak self] in
             try await Task.sleep(for: duration)
             self?.toastMessage = nil
+            self?.toastAction = nil
         }
     }
 
@@ -548,6 +555,7 @@ final class WindowState {
         toastDismissTask?.cancel()
         toastDismissTask = nil
         toastMessage = nil
+        toastAction = nil
     }
 
     // MARK: - Search Engine Detection

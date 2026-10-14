@@ -42,6 +42,9 @@ struct CommandLensView: View {
                 }
                 .scaleEffect(providerSwitchScale)
                 .background(fieldStyle?.tint ?? .clear, in: RoundedRectangle(cornerRadius: currentCornerRadius))
+                // Typed text and suggestions are read over pages: the material keeps page text
+                // from showing through the glass, over a white page and a black one alike.
+                .background(.thickMaterial, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffectID("textField", in: glassNamespace)
                 .overlay {
