@@ -89,7 +89,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
         case .copyLink: "Copy the page address"
         case .commandLens: "Search pages, tabs, and commands · ⌘T"
-        case .floatingTabs: "Reveal your tabs · hold ⌥ and it becomes Recent tabs · hold Control to peek"
+        case .floatingTabs: "Arrange tabs · hold ⌥ for Recent tabs"
         case .desk: "Organize tabs on the desk · ⌘⇧\\"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"

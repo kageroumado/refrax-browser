@@ -1,6 +1,6 @@
 import AppKit
 
-/// A modifier used alone to recall the arrangement. Combinations remain browser and site shortcuts.
+/// A modifier held alone to preview adjacent pages. Combinations remain browser and site shortcuts.
 enum FloatingRevealKey: String, CaseIterable {
     case control
     case option

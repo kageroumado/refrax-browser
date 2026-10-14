@@ -21,10 +21,10 @@ nonisolated enum TableScrollSource: Equatable, Sendable {
 
 /// Decides which scroll events navigate the table instead of scrolling the page.
 ///
-/// A gesture is claimed at its start: a trackpad gesture that begins with ⌃ down over the
-/// page belongs to the table until its momentum ends, even if ⌃ is let go or the pointer
-/// crosses a control. A gesture that begins without ⌃ stays the page's to its end. Notched
-/// wheel events are judged one by one.
+/// A gesture is claimed at its start: a trackpad gesture that begins with the reveal key
+/// down over the page belongs to the table until its momentum ends, even if the key is
+/// released or the pointer crosses a control. A gesture that begins on the page stays
+/// with the page to its end. Notched wheel events are judged one by one.
 ///
 /// Deltas follow `NSEvent.scrollingDeltaX/Y`.
 nonisolated struct TableScrollRouter: Equatable, Sendable {
@@ -89,17 +89,17 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         }
     }
 
-    /// Routes one sample. `controlDown` is ⌃ held with the event; `canStart` says the pointer
-    /// is over the page with nothing in the way of a slide.
-    mutating func route(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
+    /// Routes one sample. `revealDown` means the configured reveal key is held;
+    /// `canStart` means the pointer is over the page and a slide can begin.
+    mutating func route(_ sample: Sample, revealDown: Bool, canStart: Bool) -> Decision {
         switch sample.source {
         case .wheel:
-            return routeWheel(sample, controlDown: controlDown, canStart: canStart)
+            return routeWheel(sample, revealDown: revealDown, canStart: canStart)
         case .smoothWheel:
-            return routeSmoothWheel(sample, controlDown: controlDown, canStart: canStart)
+            return routeSmoothWheel(sample, revealDown: revealDown, canStart: canStart)
         case .trackpad:
             if !sample.phase.isEmpty {
-                return routeGesture(sample, controlDown: controlDown, canStart: canStart)
+                return routeGesture(sample, revealDown: revealDown, canStart: canStart)
             }
             return routeMomentum(sample)
         }
@@ -120,8 +120,8 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         return wasTracking ? .settle : .consume
     }
 
-    /// A click, a key, ⌃ let go, or the window losing key ends the slide where it is. The
-    /// rest of a gesture still under the fingers, and its momentum, are swallowed.
+    /// A click, a key, release of the reveal key, or loss of window focus ends the slide.
+    /// The remaining gesture and its momentum stay with the table.
     mutating func interrupt() -> Decision {
         switch state {
         case .tracking, .momentum:
@@ -144,30 +144,30 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
 
     // MARK: - Private
 
-    private mutating func routeWheel(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
+    private mutating func routeWheel(_ sample: Sample, revealDown: Bool, canStart: Bool) -> Decision {
         if isSliding {
             state = .idle
         }
-        guard controlDown, canStart else { return .pass }
+        guard revealDown, canStart else { return .pass }
         guard let step = TableDirection.wheelStep(deltaX: sample.delta.width, deltaY: sample.delta.height, shift: sample.shift) else {
             return .consume
         }
         return .step(step)
     }
 
-    private mutating func routeSmoothWheel(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
+    private mutating func routeSmoothWheel(_ sample: Sample, revealDown: Bool, canStart: Bool) -> Decision {
         if state == .smoothDraining {
             return .consume
         }
         if state == .smoothTracking {
             return .pan(sample.delta)
         }
-        guard controlDown, canStart else { return .pass }
+        guard revealDown, canStart else { return .pass }
         state = .smoothTracking
         return .begin(sample.delta)
     }
 
-    private mutating func routeGesture(_ sample: Sample, controlDown: Bool, canStart: Bool) -> Decision {
+    private mutating func routeGesture(_ sample: Sample, revealDown: Bool, canStart: Bool) -> Decision {
         let phase = sample.phase
         if state == .draining, !phase.contains(.began), !phase.contains(.mayBegin) {
             if phase.contains(.cancelled) {
@@ -176,7 +176,7 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
             return .consume
         }
         if phase.contains(.began) {
-            if controlDown, canStart {
+            if revealDown, canStart {
                 state = .tracking
                 return .begin(sample.delta)
             }

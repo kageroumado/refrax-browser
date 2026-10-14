@@ -266,6 +266,54 @@ struct FloatingPreviewTests {
     }
 
     @Test
+    func `holding the reveal key shows destinations before scrolling`() throws {
+        let environment = try TabManagerTestEnvironment()
+        let state = environment.makeWindowState()
+        let canvas = TabCanvasManager(
+            tabManager: environment.tabManager,
+            windowState: state,
+            pagePool: environment.pagePool,
+            groupManager: environment.groupManager,
+        )
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let gestures = CanvasPageGestures(
+            window: window,
+            canvas: canvas,
+            floatingEligible: { true },
+            floatingContains: { _ in false },
+            floatingControlsContain: { _ in false },
+            floatingHasKeyboardFocus: { false },
+            isEligible: { _ in true },
+        )
+        func flags(_ modifiers: NSEvent.ModifierFlags) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(
+                with: .flagsChanged,
+                location: .zero,
+                modifierFlags: modifiers,
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: 59,
+            ))
+        }
+
+        _ = gestures.handle(try flags(FloatingRevealKey.current.flag))
+        #expect(canvas.isMomentaryNavigation)
+        _ = gestures.handle(try flags([]))
+        #expect(!canvas.floatingVisibility.isHeld)
+    }
+
+    @Test
     func `adding and releasing Shift keeps the floating arrangement held`() throws {
         let environment = try TabManagerTestEnvironment()
         let state = environment.makeWindowState()

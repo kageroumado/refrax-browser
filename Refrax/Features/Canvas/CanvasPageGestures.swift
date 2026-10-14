@@ -11,8 +11,8 @@ import AppKit
 ///   reaches the page untouched. The direction is only known once the fingers move, so
 ///   the gesture's `began` event is held back until then and handed to the page when the
 ///   pinch turns out to be its own.
-/// - **⌃** held alone reveals floating tabs; releasing it leaves pinned previews visible.
-///   Other input within the delay keeps Control available for clicks and shortcuts.
+/// - **⌃** held alone shows adjacent pages immediately; releasing it leaves pinned previews visible.
+///   A click or key shortcut returns Control to the page.
 /// - **⌃ + scroll** over the page follows adjacent tabs (``TableInput``): each destination
 ///   appears at the page edge before a wheel step reaches it.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
@@ -40,8 +40,6 @@ final class CanvasPageGestures {
         static let trendWeight: CGFloat = 0.4
         /// Smallest scale tracked; the opening ends long before.
         static let minimumScale: CGFloat = 0.05
-        /// How long ⌃ is held alone before the desk comes up.
-        static let peekDelay: TimeInterval = 0.12
         /// Longest press of ⌃ that counts as a tap.
         static let tapDuration: TimeInterval = 0.25
         /// Longest gap between two taps of a double tap.
@@ -61,7 +59,6 @@ final class CanvasPageGestures {
     private let isEligible: (CGPoint) -> Bool
     private var pinch = PinchState.idle
     private var monitor: Any?
-    private var pendingPeek: DispatchWorkItem?
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
@@ -99,7 +96,6 @@ final class CanvasPageGestures {
     }
 
     isolated deinit {
-        pendingPeek?.cancel()
         if let resignObserver {
             NotificationCenter.default.removeObserver(resignObserver)
         }
@@ -123,7 +119,6 @@ final class CanvasPageGestures {
                canStart: floatingEligible() && !canvas.isActive
                    && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow),
            ) {
-            cancelPeek()
             controlDownAt = nil
             lastControlTap = nil
             if tableInput.didNavigate, FloatingRevealKey.current.matchesHold(event.modifierFlags),
@@ -145,7 +140,6 @@ final class CanvasPageGestures {
             .scrollWheel,
             .magnify,
         ].contains(event.type), floatingContains(event.locationInWindow) {
-            cancelPeek()
             controlDownAt = nil
             lastControlTap = nil
             return canvas.floatingVisibility.isHeld ? FloatingPreviewInput.removingRevealModifier(from: event) : event
@@ -269,7 +263,7 @@ final class CanvasPageGestures {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let revealKey = FloatingRevealKey.current
         let now = Date()
-        if !modifiers.contains(.control) {
+        if !revealKey.matchesHold(modifiers) {
             tableInput?.interrupt()
         }
         Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
@@ -278,7 +272,7 @@ final class CanvasPageGestures {
             return event
         }
         if revealKey.matchesHold(modifiers) {
-            guard !canvas.floatingVisibility.isHeld, pendingPeek == nil else { return event }
+            guard !canvas.floatingVisibility.isHeld else { return event }
             controlDownAt = now
             if isMoveMode {
                 return event
@@ -289,22 +283,19 @@ final class CanvasPageGestures {
                 // The release of this second tap belongs to the double tap; only a later
                 // tap settles.
                 controlDownAt = nil
-                cancelPeek()
                 isMoveMode = true
                 canvas.beginPan()
                 return event
             }
             if !canvas.isActive, floatingEligible() {
-                schedulePeek()
+                canvas.revealFloatingTabs()
             }
             return event
         }
 
         // ⌃ went up, or another modifier joined it.
-        cancelPeek()
-        let wasFloating = canvas.floatingVisibility.isHeld
         canvas.releaseFloatingTabs()
-        let wasTap = !wasFloating && (controlDownAt.map { now.timeIntervalSince($0) <= Constants.tapDuration } ?? false)
+        let wasTap = controlDownAt.map { now.timeIntervalSince($0) <= Constants.tapDuration } ?? false
         controlDownAt = nil
         if modifiers.isEmpty, wasTap {
             if isMoveMode {
@@ -324,38 +315,8 @@ final class CanvasPageGestures {
     /// Other input while ⌃ is down makes it part of a shortcut or ⌃-click.
     private func interruptControl() {
         canvas.releaseFloatingTabs()
-        cancelPeek()
         controlDownAt = nil
         lastControlTap = nil
-    }
-
-    private func schedulePeek() {
-        cancelPeek()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            pendingPeek = nil
-            guard FloatingRevealKey.current.matchesHold(NSEvent.modifierFlags),
-                  !canvas.isActive, floatingEligible(), window?.isKeyWindow == true
-            else { return }
-            controlDownAt = nil
-            lastControlTap = nil
-            if UserDefaults.standard.bool(forKey: "floatingTabs.toggleReveal") {
-                canvas.toggleFloatingTabs()
-                if canvas.floatingVisibility.isLatched {
-                    canvas.revealFloatingTabs()
-                }
-            } else {
-                canvas.revealFloatingTabs()
-            }
-        }
-        pendingPeek = work
-        let configured = UserDefaults.standard.object(forKey: "floatingTabs.revealDelay") as? Double ?? Constants.peekDelay
-        DispatchQueue.main.asyncAfter(deadline: .now() + min(1, max(0.08, configured)), execute: work)
-    }
-
-    private func cancelPeek() {
-        pendingPeek?.cancel()
-        pendingPeek = nil
     }
 
     // MARK: - Pinch

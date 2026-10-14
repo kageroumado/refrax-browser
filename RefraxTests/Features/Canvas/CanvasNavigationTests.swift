@@ -20,6 +20,21 @@ struct CanvasNavigationTests {
     }
 
     @Test
+    func `nearby preview rows remain connected across their table gap`() {
+        let upper = tile(0, 0)
+        let lower = tile(0, 272)
+        #expect(CanvasNavigation.neighbor(from: upper.id, toward: .down, in: [upper, lower]) == lower.id)
+        #expect(CanvasNavigation.neighbor(from: lower.id, toward: .up, in: [upper, lower]) == upper.id)
+    }
+
+    @Test
+    func `small slabs across open space remain separate`() {
+        let left = tile(0, 0, width: 40, height: 40)
+        let right = tile(100, 0, width: 40, height: 40)
+        #expect(CanvasNavigation.neighbor(from: left.id, toward: .right, in: [left, right]) == nil)
+    }
+
+    @Test
     func `An arrow follows an aligned neighbor`() {
         let origin = tile(500, 500)
         let diagonal = tile(850, 750)

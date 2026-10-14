@@ -4,7 +4,9 @@ import Foundation
 /// Spatial targeting in desk coordinates, where y increases down the screen.
 nonisolated enum CanvasNavigation {
     private enum Constants {
-        static let maximumNeighborGap: CGFloat = 64
+        static let minimumNeighborGap: CGFloat = 24
+        static let maximumNeighborGap: CGFloat = 96
+        static let neighborGapFraction: CGFloat = 0.4
         static let minimumBeamOverlap: CGFloat = 8
         static let overlapTolerance: CGFloat = 2
     }
@@ -86,7 +88,11 @@ nonisolated enum CanvasNavigation {
                 overlap = min(origin.frame.maxX, tile.frame.maxX) - max(origin.frame.minX, tile.frame.minX)
                 offset = abs(origin.frame.midX - tile.frame.midX)
             }
-            guard gap >= -Constants.overlapTolerance, gap <= Constants.maximumNeighborGap,
+            let span = horizontal
+                ? min(origin.frame.width, tile.frame.width)
+                : min(origin.frame.height, tile.frame.height)
+            let maximumGap = min(Constants.maximumNeighborGap, max(Constants.minimumNeighborGap, span * Constants.neighborGapFraction))
+            guard gap >= -Constants.overlapTolerance, gap <= maximumGap,
                   overlap >= Constants.minimumBeamOverlap else { return nil }
             return (tile, max(0, gap), offset)
         }

@@ -16,9 +16,7 @@ struct TabsSettingsView: View {
     @State private var showTimeLimitsSheet = false
     @State private var impactSound = CanvasImpactSound()
     @AppStorage("canvasImpactVolume") private var impactVolume = 0.6
-    @AppStorage("floatingTabs.revealDelay") private var revealDelay = 0.12
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
-    @AppStorage("floatingTabs.toggleReveal") private var toggleReveal = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -28,9 +26,9 @@ struct TabsSettingsView: View {
                 Picker("Reveal key", selection: $revealKey) {
                     ForEach(FloatingRevealKey.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                Toggle("Keep tabs shown after releasing the key", isOn: $toggleReveal)
-                Slider(value: $revealDelay, in: 0.08 ... 0.6, step: 0.02) { Text("Reveal delay") }
-                Text("Hold \(revealKey.title) alone for \(revealDelay, format: .number.precision(.fractionLength(2))) seconds. Click the space mark to show or hide tabs at any time.").font(.caption).foregroundStyle(.secondary)
+                Text("Hold \(revealKey.title) to see adjacent pages. Use the tabs button to arrange them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Play soft clicks when tabs collide", isOn: $settings.canvasImpactSounds)

@@ -45,7 +45,7 @@ enum FloatingTabsTutorial {
             textarea{box-sizing:border-box;width:100%;min-height:200px;margin-top:16px;padding:16px;background:var(--panel);color:var(--ink);font:inherit;border:1px solid var(--secondary);border-radius:12px}
             button{font:inherit;padding:10px 18px;background:var(--accent);color:var(--on-accent);border:0;border-radius:24px}
             </style><main><small>Refrax · Try with two pages</small><h1>\(title)</h1>\(content)
-            <p><small>Hold Control to reveal pages. Scroll between highlighted neighbors. Desk shows the full table, where you can arrange and group pages.</small></p></main></html>
+            <p><small>Hold Control to see the next page at its edge. Scroll to visit it. Desk shows the full table, where you can arrange and group pages.</small></p></main></html>
             """
         }
     }

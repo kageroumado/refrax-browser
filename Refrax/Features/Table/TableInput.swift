@@ -1,10 +1,10 @@
 import AppKit
 
-/// Turns ⌃ + scroll on the page into adjacent tab movement, ahead of the page.
+/// Turns reveal-key scrolling on the page into adjacent tab movement, ahead of the page.
 ///
-/// ``CanvasPageGestures`` hands every scroll event in the window here first; what this
-/// returns `true` for never reaches the page. A click, a key, ⌃ let go, or the window losing
-/// key ends the claimed gesture.
+/// ``CanvasPageGestures`` hands every scroll event in the window here first. A `true`
+/// result consumes that event for the table. A click, a key, release of the reveal key,
+/// or loss of window focus ends the claimed gesture.
 @MainActor
 final class TableInput {
     private unowned let table: TableController
@@ -59,9 +59,9 @@ final class TableInput {
             delta: CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY),
             shift: event.modifierFlags.contains(.shift),
         )
-        let controlDown = event.modifierFlags.contains(.control)
-        let mayStart = controlDown && event.modifierFlags.intersection([.command, .option]).isEmpty && canStart() && table.canSlide(atWindowPoint: event.locationInWindow)
-        let decision = router.route(sample, controlDown: controlDown, canStart: mayStart)
+        let revealDown = FloatingRevealKey.current.matchesHold(event.modifierFlags)
+        let mayStart = revealDown && canStart() && table.canSlide(atWindowPoint: event.locationInWindow)
+        let decision = router.route(sample, revealDown: revealDown, canStart: mayStart)
         switch decision {
         case .begin, .pan, .step: didNavigate = true
         default: didNavigate = false
