@@ -127,11 +127,8 @@ final class TabCanvasManager {
 
     // MARK: - Public State
 
-    /// Prepares the window for spatial tab navigation.
-    @ObservationIgnored var onUseFloatingTabs: (() -> Void)?
-
     var showsFloatingControls: Bool {
-        windowState.usesFloatingTabs && !isActive && !windowState.isSpaceLocked
+        !isActive && !windowState.isSpaceLocked
     }
 
     /// Whether the canvas covers the content area.
@@ -213,8 +210,8 @@ final class TabCanvasManager {
         if windowState.showsCommandLens, !windowState.commandLensFrame.isEmpty {
             return windowState.commandLensFrame
         }
-        if !windowState.addressBarFrame.isEmpty {
-            return windowState.addressBarFrame
+        if !windowState.pageCardFrame.isEmpty {
+            return windowState.pageCardFrame
         }
         return windowState.controlIsland.hitRegions.first ?? .zero
     }
@@ -322,7 +319,6 @@ final class TabCanvasManager {
     func revealFloatingTabs() {
         guard !isActive, !windowState.isSpaceLocked else { return }
         UserDefaults.standard.set(true, forKey: "floatingTabs.hasRecalledPlacement")
-        onUseFloatingTabs?()
         placeFloatingTabs()
         floatingVisibility.hold()
         windowState.controlIsland.tabInfo.hold()
@@ -398,7 +394,6 @@ final class TabCanvasManager {
         if isActive {
             dismiss(activating: nil)
         }
-        onUseFloatingTabs?()
         placeFloatingTabs()
         floatingVisibility.toggle()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
@@ -408,7 +403,6 @@ final class TabCanvasManager {
     }
 
     func openFloatingTab(_ tab: Tab) {
-        onUseFloatingTabs?()
         floatingVisibility.dismiss()
         tabManager.setActiveTab(tab, in: windowState)
     }
@@ -465,7 +459,7 @@ final class TabCanvasManager {
     @ObservationIgnored
     private var floatingSnapshotTask: Task<Void, Never>?
 
-    /// Tabs on the desk, in sidebar order.
+    /// Tabs on the desk, in the space's tab order.
     private(set) var tabs: [Tab] = []
 
     /// Visible slab rectangles, derived from each tab's saved preview rectangle and presentation.
@@ -741,7 +735,6 @@ final class TabCanvasManager {
     /// Opens the canvas for the active space.
     func show() {
         guard !isActive else { return }
-        onUseFloatingTabs?()
         dismissFloatingTabs()
 
         focusedTabID = windowState.activeTab?.id

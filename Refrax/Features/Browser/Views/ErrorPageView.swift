@@ -149,7 +149,7 @@ struct ErrorPageView: View {
 
                 Spacer()
 
-                AddressBarCopyLinkButton(
+                CopyLinkButton(
                     copyURL: copyURL,
                     copyMarkdown: copyMarkdownLink,
                 )
@@ -683,4 +683,3 @@ private struct ErrorInfo {
         }
     }
 }
-

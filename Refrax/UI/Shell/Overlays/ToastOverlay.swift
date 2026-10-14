@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Isolated overlay for toast notifications.
 ///
-/// Extracted to isolate observation of `toastMessage` and `sidebarThickness`
+/// Extracted to isolate observation of `toastMessage`
 /// from the parent container. Changes to toast state only rebuild this view.
 struct ToastOverlay: View {
     @Environment(WindowState.self) private var windowState
@@ -15,7 +15,6 @@ struct ToastOverlay: View {
                 ToastNotificationView(message: message)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, 16)
-                    .offset(x: windowState.sidebarThickness / 2)
                     .ignoresSafeArea()
                     .transition(.move(edge: .top).combined(with: .opacity))
             }

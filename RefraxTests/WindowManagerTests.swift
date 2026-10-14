@@ -151,7 +151,7 @@ struct WindowStateLensTests {
         let url = try #require(URL(string: "https://example.com/page"))
         _ = env.createActiveTab(url: url, in: space, for: windowState)
         let card = CGRect(x: 68, y: 12, width: 416, height: 44)
-        windowState.addressBarFrame = card
+        windowState.pageCardFrame = card
 
         windowState.editAddress()
 
@@ -197,7 +197,6 @@ struct WindowStateLensTests {
     func `An empty page routes either entrance to the start page lens`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
-        windowState.usesFloatingTabs = true
 
         windowState.openCommandLens()
         #expect(windowState.showsCommandLens == false)
@@ -366,32 +365,6 @@ struct WindowStateToastTests {
     }
 }
 
-// MARK: - WindowState Sidebar/Inspector Tests
-
-@Suite("WindowState Sidebar and Inspector", .tags(.windowManager), .serialized)
-@MainActor
-struct WindowStateSidebarInspectorTests {
-    @Test
-    func `Sidebar starts collapsed beside the Control Island`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isSidebarCollapsed)
-    }
-
-    @Test
-    func `Toggle sidebar changes state`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        windowState.toggleSidebar()
-        #expect(windowState.isSidebarCollapsed == false)
-
-        windowState.toggleSidebar()
-        #expect(windowState.isSidebarCollapsed == true)
-    }
-}
-
 // MARK: - WindowState Navigation Cleanup Tests
 
 @Suite("WindowState Navigation Cleanup", .tags(.windowManager), .serialized)
@@ -468,28 +441,6 @@ struct WindowStateNavigationCleanupTests {
 
         windowState.setActiveTabID(nil, for: space.id)
         #expect(windowState.activeTabID(for: space.id) == nil)
-    }
-}
-
-// MARK: - WindowState Overlay State Tests
-
-@Suite("WindowState Overlay State", .tags(.windowManager), .serialized)
-@MainActor
-struct WindowStateOverlayTests {
-    @Test
-    func `Tutorial peek starts false`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.hasShownTutorialPeek == false)
-    }
-
-    @Test
-    func `Sidebar thickness has default`() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.sidebarThickness == 300)
     }
 }
 

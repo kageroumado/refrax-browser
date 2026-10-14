@@ -1012,43 +1012,21 @@ final class WebPagePool {
 
     /// Estimates the expected frame size for a new webView based on the window layout.
     ///
-    /// Uses the NSSplitView structure to determine the content area size, then adjusts
-    /// for multi-page layouts based on the tab's layout configuration. The estimate is
-    /// intentionally slightly larger than the actual pane size because:
+    /// Starts from the active window's page area, then adjusts for multi-page layouts based
+    /// on the tab's layout configuration. The estimate is intentionally slightly larger than
+    /// the actual pane size because:
     /// - WebKit reflowing to a slightly smaller frame (what actually happens) is cheap
     /// - The exact frame is set by the adapter within the same run loop
     private func estimateExpectedFrame(for tabPage: TabPage) -> CGRect {
         let fallback = CGRect(x: 0, y: 0, width: 1_024, height: 768)
 
-        guard let windowController = windowManager?.activeWindowController,
-              let splitVC = windowController.contentViewController as? RefraxSplitViewController,
-              splitVC.splitViewItems.count > 1 else {
+        guard let pageArea = windowManager?.activeWindowController?.pageAreaSize,
+              pageArea.width > 0, pageArea.height > 0 else {
             return fallback
         }
 
-        // Get the main content area frame (splitViewItems[1] is the content, [0] is sidebar)
-        let contentFrame = splitVC.splitViewItems[1].viewController.view.frame
-        guard contentFrame.width > 0, contentFrame.height > 0 else {
-            return fallback
-        }
-
-        // Calculate leading padding based on sidebar state
-        // This mirrors MainContentView.leadingPadding logic
-        let windowState = windowController.windowState
-        let leadingPadding: CGFloat = if windowState.effectiveSidebarMode == .compact, windowState.isSidebarCollapsed {
-            // Compact mode with collapsed sidebar
-            55
-        } else if windowState.isSidebarCollapsed {
-            // Regular collapsed sidebar
-            0
-        } else {
-            // Expanded sidebar
-            8
-        }
-
-        // Available content width after padding
-        let availableWidth = contentFrame.width - leadingPadding
-        let availableHeight = contentFrame.height
+        let availableWidth = pageArea.width
+        let availableHeight = pageArea.height
 
         let tab = tabPage.tab
         let pageCount = tab?.pages.count ?? 1

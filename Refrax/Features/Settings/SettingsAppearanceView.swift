@@ -119,21 +119,6 @@ struct AppearanceSettingsView: View {
                 Text("Tint the window based on the active space or current website's theme color.")
             }
 
-            // MARK: - Sidebar
-
-            Section {
-                Picker("Default collapsed mode", selection: $settings.defaultSidebarMode) {
-                    ForEach(SidebarMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .highlightable(id: "appearance.sidebarMode", highlightedItemId: highlightedItemId)
-            } header: {
-                Text("Sidebar")
-            } footer: {
-                Text("Use View menu to temporarily switch modes for individual windows.")
-            }
-
             // MARK: - Page Appearance
 
             Section {

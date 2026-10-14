@@ -1,6 +1,6 @@
 import Foundation
 
-/// A favorite item displayed in the sidebar grid.
+/// A favorite item displayed in the favorites grid.
 ///
 /// Represents a live favorite tab, shortcut bookmark, folder, or app shortcut.
 /// Live favorites are the default and create persistent global tabs.

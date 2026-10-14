@@ -19,7 +19,6 @@ extension TabCanvasManager {
     /// the others turn them off.
     func arrange(_ arrangement: FloatingArrangement, selection: [Tab]? = nil) {
         guard let space = windowState.activeSpace, !windowState.isSpaceLocked else { return }
-        onUseFloatingTabs?()
         if !floatingVisibility.isRevealed {
             toggleFloatingTabs()
         }

@@ -57,7 +57,7 @@ extension UnifiedContentView {
     /// Calculates the frame for a pane in layout editing mode (2×2 grid with expansions)
     ///
     /// **Visual Result:** Creates the 2×2 grid layout with asymmetric padding:
-    /// - Left edge: 0pt (MainContentView already adds 8pt gap from sidebar)
+    /// - Left edge: 0pt
     /// - Top/Right/Bottom edges: 8pt padding
     /// - Spacing between slots: 8pt
     ///

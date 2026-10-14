@@ -8,7 +8,7 @@ struct TabMediaControl {
     let tab: Tab
     let pagePool: WebPagePool
     /// Records a manual pause so the paused page stays in Now Playing.
-    var mediaControls: Sidebar.MediaControlsManager?
+    var mediaControls: MediaControlsManager?
 
     var pages: [WebPage] {
         tab.pages.compactMap { pagePool.existingPage(for: $0) }

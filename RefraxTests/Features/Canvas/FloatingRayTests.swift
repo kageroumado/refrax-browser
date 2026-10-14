@@ -128,13 +128,13 @@ struct FloatingRayTriggerTests {
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-        window.addressBarFrame = CGRect(x: 4, y: 300, width: 40, height: 44)
+        window.pageCardFrame = CGRect(x: 4, y: 300, width: 40, height: 44)
         let first = try env.createActiveTab(url: #require(URL(string: "about:blank#first")), in: space, for: window)
         let second = try env.tabManager.createTab(url: #require(URL(string: "about:blank#second")), in: space, makeActive: false)
 
         env.tabManager.setActiveTab(second, in: window)
         let request = try #require(canvas.rayRequest)
-        #expect(request.source == window.addressBarFrame)
+        #expect(request.source == window.pageCardFrame)
         #expect(canvas.floatingPlacement(for: first).x == 0)
 
         env.tabManager.setActiveTab(first, in: window)

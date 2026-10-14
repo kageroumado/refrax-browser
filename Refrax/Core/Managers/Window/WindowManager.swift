@@ -228,9 +228,8 @@ final class WindowManager {
     /// A new window inherits the frontmost browser window's geometry, offset
     /// slightly so the two don't stack exactly. With no window open it reuses
     /// the persisted geometry of the last closed window, so closing the last
-    /// window and reopening one keeps the user's size, position, and sidebar
-    /// width. With neither available, it falls back to the default size,
-    /// centered.
+    /// window and reopening one keeps the user's size and position. With
+    /// neither available, it falls back to the default size, centered.
     private func sizeAndShow(_ windowController: RefraxWindowController) {
         guard let window = windowController.window else {
             windowController.showWindow(nil)
@@ -273,11 +272,7 @@ final class WindowManager {
             frame = cascaded
         }
 
-        return SavedWindowGeometry(
-            frame: frame,
-            sidebarWidth: source.windowState.sidebarThickness,
-            isSidebarCollapsed: source.windowState.isSidebarCollapsed,
-        )
+        return SavedWindowGeometry(frame: frame)
     }
 
     /// Registers a window controller for lifecycle management.
@@ -331,11 +326,7 @@ final class WindowManager {
 
         if !closedWindow.styleMask.contains(.fullScreen) {
             WindowGeometryStore.save(
-                SavedWindowGeometry(
-                    frame: closedWindow.frame,
-                    sidebarWidth: controller.windowState.sidebarThickness,
-                    isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
-                ),
+                SavedWindowGeometry(frame: closedWindow.frame),
                 screen: closedWindow.screen,
             )
         }
@@ -703,7 +694,7 @@ final class WindowManager {
 
     /// Creates a Glimpse window for quick ephemeral browsing.
     ///
-    /// Glimpse windows provide minimal UI (address bar + navigation only), no sidebar,
+    /// Glimpse windows provide minimal UI (an address field with navigation only)
     /// and are designed for quick browsing tasks. They can be opened via:
     /// - Option+Enter from Command Lens
     /// - Option+Click on a link
@@ -742,16 +733,8 @@ final class WindowManager {
         glimpseWindowControllers.append(controller)
 
         if let sourceWindow = sourceController.window {
-            // Calculate size from source window's web content area
-            var size = NSSize(width: 1_280, height: 720)
-            let splitVC = sourceController.splitViewController
-            if splitVC.splitViewItems.count > 1 {
-                let contentFrame = splitVC.splitViewItems[1].viewController.view.frame
-                size = NSSize(width: contentFrame.width, height: contentFrame.height)
-            }
-
             controller.showWindow(
-                size: size,
+                size: sourceController.pageAreaSize,
                 relativeTo: sourceWindow,
             )
         } else {

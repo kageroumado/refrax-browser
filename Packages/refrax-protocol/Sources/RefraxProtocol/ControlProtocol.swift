@@ -47,7 +47,6 @@ public enum ControlRequest: Sendable {
     case windowCenter
     case windowInfo
     case hotkey(HotkeyParams)
-    case sidebarToggle
     case commandLens
     case addressLens
 
@@ -1471,7 +1470,6 @@ extension ControlRequest: Codable {
         case windowCenter
         case windowInfo
         case hotkey
-        case sidebarToggle
         case commandLens
         case addressLens
 
@@ -1663,7 +1661,6 @@ extension ControlRequest: Codable {
         case .windowCenter: self = .windowCenter
         case .windowInfo: self = .windowInfo
         case .hotkey: self = try .hotkey(HotkeyParams(from: decoder))
-        case .sidebarToggle: self = .sidebarToggle
         case .commandLens: self = .commandLens
         case .addressLens: self = .addressLens
         // UI Accessibility Tree
@@ -1855,8 +1852,6 @@ extension ControlRequest: Codable {
         case let .hotkey(params):
             try container.encode("hotkey", forKey: .type)
             try params.encode(to: encoder)
-        case .sidebarToggle:
-            try container.encode("sidebarToggle", forKey: .type)
         case .commandLens:
             try container.encode("commandLens", forKey: .type)
         case .addressLens:
@@ -2333,14 +2328,12 @@ public enum CTL {
         public let y: Int
         public let width: Int
         public let height: Int
-        public let isSidebarCollapsed: Bool
 
-        public init(x: Int, y: Int, width: Int, height: Int, isSidebarCollapsed: Bool) {
+        public init(x: Int, y: Int, width: Int, height: Int) {
             self.x = x
             self.y = y
             self.width = width
             self.height = height
-            self.isSidebarCollapsed = isSidebarCollapsed
         }
     }
 

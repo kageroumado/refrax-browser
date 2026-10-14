@@ -5,48 +5,16 @@ struct MainContentView: View {
     @Environment(ClipboardMonitor.self) private var clipboardMonitor
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
+    @Environment(TabManager.self) private var tabManager
 
     @State private var showClipboardToast = false
     @State private var size: CGSize = .zero
 
-    /// Calculates leading padding based on sidebar state and mode.
-    ///
-    /// - Compact mode with collapsed sidebar: 55px (compact sidebar width + glass padding)
-    /// - Other collapsed states: 0px
-    /// - Expanded inset sidebar (macOS 26): 8px
-    /// - Expanded flush sidebar (macOS 27): 0px
-    private var leadingPadding: CGFloat {
-        if isCompactModeActive {
-            return Constants.compactSidebarPadding
-        }
-        if windowState.isSidebarCollapsed || !Refrax.Constants.Design.sidebarIsInset {
-            return 0
-        }
-        return Constants.leadingPadding
-    }
-
-    /// Corner radius on the content's leading edge.
-    ///
-    /// Only the inset sidebar of macOS 26 leaves a gap that shows rounded corners. In
-    /// compact mode the content extends under the edge extension, and a flush sidebar
-    /// meets the content edge to edge.
-    private var leadingCornerRadius: CGFloat {
-        if isCompactModeActive || !Refrax.Constants.Design.sidebarIsInset {
-            return 0
-        }
-        return Constants.cornerRadius
-    }
-
     /// The page's area beside pages docked to the window's sides.
     private var dockedPageFrame: CGRect {
         let bounds = CGRect(origin: .zero, size: size)
-        guard windowState.usesFloatingTabs, !bounds.isEmpty else { return bounds }
+        guard !bounds.isEmpty else { return bounds }
         return canvas.dockedPageFrame(in: bounds)
-    }
-
-    /// Whether compact sidebar mode is active (collapsed + compact mode).
-    private var isCompactModeActive: Bool {
-        !windowState.usesFloatingTabs && windowState.effectiveSidebarMode == .compact && windowState.isSidebarCollapsed
     }
 
     var body: some View {
@@ -56,15 +24,11 @@ struct MainContentView: View {
             AutoFillOverlayView()
             AgentCursorOverlay()
         }
-        .clipShape(contentShape)
-        .padding(.leading, leadingPadding)
         .padding(.leading, dockedPageFrame.minX)
         .padding(.trailing, max(0, size.width - dockedPageFrame.maxX))
         .ignoresSafeArea(edges: .vertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-        // Note: Space swipe gesture is now sidebar-only via sidebarSpaceSwipeGesture()
-        // The main content area is reserved for page back/forward navigation
         .overlay(alignment: .bottom) {
             clipboardToastOverlay
         }
@@ -77,27 +41,15 @@ struct MainContentView: View {
         .onChange(of: settings.clipboardLinkMonitoring) { _, _ in
             clipboardMonitor.syncWithSettings()
         }
-    }
-
-    private var contentShape: some InsettableShape {
-        UnevenRoundedRectangle(
-            topLeadingRadius: leadingCornerRadius,
-            bottomLeadingRadius: leadingCornerRadius,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: 0,
-        )
+        .tabCloseConfirmation(tabManager: tabManager, windowState: windowState)
     }
 
     @ViewBuilder
     private var contentRouter: some View {
         if let activeTab = windowState.activeTab {
             UnifiedContentView(tab: activeTab)
-        } else if windowState.usesFloatingTabs {
-            FloatingStartPage()
-        } else if settings.showSidebarHints {
-            SidebarHintsView()
         } else {
-            emptyStateView
+            FloatingStartPage()
         }
     }
 
@@ -112,31 +64,12 @@ struct MainContentView: View {
             .animation(.spring(duration: 0.3), value: showClipboardToast)
         }
     }
-
-    private var emptyStateView: some View {
-        VStack(spacing: Constants.emptyStateSpacing) {
-            Image(systemName: "square.on.square.dashed")
-                .font(.system(size: Constants.emptyStateIconSize))
-                .foregroundStyle(.tertiary)
-
-            Text("No Active Tab")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }
 
 // MARK: - Constants
 
 private extension MainContentView {
     enum Constants {
-        static let cornerRadius: CGFloat = 26
-        static let leadingPadding: CGFloat = 8
-        /// Leading padding when compact sidebar mode is active (compactWidth + glassEffectPadding - 1px to have a nice edge)
-        static let compactSidebarPadding: CGFloat = 55
-        static let emptyStateSpacing: CGFloat = 20
-        static let emptyStateIconSize: CGFloat = 64
         static let clipboardToastBottomPadding: CGFloat = 24
     }
 }

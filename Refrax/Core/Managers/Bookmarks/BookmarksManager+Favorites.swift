@@ -67,7 +67,7 @@ extension BookmarksManager {
 
     /// Remove a bookmark from favorites.
     ///
-    /// The bookmark still exists, just no longer shown in sidebar. If it's a live
+    /// The bookmark still exists, just no longer shown in favorites. If it's a live
     /// favorite, the tab is converted to a regular tab in the active space rather
     /// than being closed.
     ///

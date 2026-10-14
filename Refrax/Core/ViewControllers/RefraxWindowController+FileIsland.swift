@@ -27,7 +27,7 @@ extension RefraxWindowController {
         fillContentView(contentView, with: drops)
     }
 
-    /// Shows the File Island's full lists in the floating layout, or the downloads tray beside the sidebar.
+    /// Shows the File Island's full lists, or the downloads tray while the floating controls are hidden.
     func showDownloads() {
         if tabCanvasManager.showsFloatingControls {
             windowState.fileIsland.showAll()

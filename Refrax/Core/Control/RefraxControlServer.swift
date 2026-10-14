@@ -164,8 +164,6 @@ final class RefraxControlServer {
             handleWindowInfo()
         case let .hotkey(params):
             handleHotkey(params)
-        case .sidebarToggle:
-            handleSidebarToggle()
         case .commandLens:
             handleCommandLens()
         case .addressLens:
@@ -1228,14 +1226,12 @@ final class RefraxControlServer {
         }
 
         let frame = window.frame
-        let windowState = controller.windowState
 
         return .windowInfo(CTL.WindowInfoData(
             x: Int(frame.origin.x),
             y: Int(frame.origin.y),
             width: Int(frame.width),
             height: Int(frame.height),
-            isSidebarCollapsed: windowState.isSidebarCollapsed,
         ))
     }
 
@@ -1282,16 +1278,7 @@ final class RefraxControlServer {
         return .actionResult(CTL.ActionResultInfo(success: true, message: "Sent hotkey \(params.keys)"))
     }
 
-    // MARK: - Sidebar / Inspector / Lens
-
-    private func handleSidebarToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleSidebar()
-        let state = windowState.isSidebarCollapsed ? "collapsed" : "expanded"
-        return .ok("Sidebar \(state)")
-    }
+    // MARK: - Lens
 
     private func handleCommandLens() -> ControlResponse {
         guard let windowState = windowManager.activeWindowController?.windowState else {
@@ -1608,12 +1595,12 @@ final class RefraxControlServer {
     }
 
     private func handleTabNext() -> ControlResponse {
-        tabManager.selectNextTab()
+        windowManager.activeWindowController?.selectNextTab()
         return .ok("Switched to next tab")
     }
 
     private func handleTabPrevious() -> ControlResponse {
-        tabManager.selectPreviousTab()
+        windowManager.activeWindowController?.selectPreviousTab()
         return .ok("Switched to previous tab")
     }
 

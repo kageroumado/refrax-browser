@@ -22,7 +22,7 @@ extension WebPage {
 
     /// Increases zoom level to the next standard value.
     func zoomIn() {
-        let levels = Constants.AddressBar.zoomLevels
+        let levels = Constants.PageControls.zoomLevels
         let currentIndex = levels.firstIndex(where: { $0 >= currentZoom }) ?? levels.count - 1
         let nextIndex = min(currentIndex + 1, levels.count - 1)
         setZoom(levels[nextIndex])
@@ -30,7 +30,7 @@ extension WebPage {
 
     /// Decreases zoom level to the previous standard value.
     func zoomOut() {
-        let levels = Constants.AddressBar.zoomLevels
+        let levels = Constants.PageControls.zoomLevels
         let currentIndex = levels.lastIndex(where: { $0 <= currentZoom }) ?? 0
         let prevIndex = max(currentIndex - 1, 0)
         setZoom(levels[prevIndex])

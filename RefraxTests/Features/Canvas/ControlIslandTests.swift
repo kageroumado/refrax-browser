@@ -158,7 +158,6 @@ struct ControlIslandTests {
     func `controls remain available above either lens`() throws {
         let environment = try TabManagerTestEnvironment()
         let state = environment.makeWindowState()
-        state.usesFloatingTabs = true
         let canvas = TabCanvasManager(
             tabManager: environment.tabManager,
             windowState: state,

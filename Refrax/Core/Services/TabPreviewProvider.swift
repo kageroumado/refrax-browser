@@ -11,8 +11,8 @@ import WebKit
 ///
 /// ## Architecture
 ///
-/// This provider is instantiated per-window and shared between `TabPreviewManager`
-/// (hover previews) and `TabSwitcherManager` (Control+Tab thumbnails). It observes
+/// This provider is instantiated per-window and feeds `TabSwitcherManager`
+/// (Control+Tab thumbnails). It observes
 /// tab activations via `WindowState.activeTabID` and pre-caches thumbnails for
 /// recently used tabs.
 ///

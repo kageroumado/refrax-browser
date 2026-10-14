@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A lightweight window controller for ephemeral browsing sessions.
 ///
-/// Glimpse windows provide minimal UI (address bar + navigation only), no sidebar,
+/// Glimpse windows provide minimal UI (an address field with navigation only)
 /// and are designed for quick browsing tasks. They can be opened via:
 /// - Option+Enter from Command Lens
 /// - Option+Click on a link
@@ -18,7 +18,7 @@ import SwiftUI
 /// ## Architecture
 ///
 /// Uses `FloatingPageWindow` for consistent styling. The SwiftUI content view
-/// provides an address bar and space transfer button in a toolbar overlay.
+/// provides an address field and space transfer button in a toolbar overlay.
 ///
 /// ## Lifecycle
 ///
@@ -429,7 +429,7 @@ private struct GlimpseContentView: View {
 // MARK: - Glimpse Toolbar
 
 /// SwiftUI toolbar for Glimpse windows.
-/// Contains address bar and space transfer button.
+/// Contains the address field and space transfer button.
 private struct GlimpseToolbar: View {
     let glimpseState: GlimpseWindowState
     let onTransferToSpace: (Space?) -> Void
@@ -439,18 +439,6 @@ private struct GlimpseToolbar: View {
         static let trafficLightWidth: CGFloat = 78
         static let spacing: CGFloat = 8
         static let buttonHeight: CGFloat = 24
-    }
-
-    private var addressBarContext: AddressBarContext {
-        AddressBarContext(
-            webPage: glimpseState.webPage,
-            tabPage: glimpseState.tabPage,
-            onOpenLens: {
-                // Glimpse windows don't have a full command lens
-            },
-            isLensVisible: false,
-            onShowFindNavigator: {},
-        )
     }
 
     var body: some View {
@@ -468,9 +456,7 @@ private struct GlimpseToolbar: View {
     }
 
     private var centerContent: some View {
-        AddressBar()
-            .environment(\.addressBarContext, addressBarContext)
-            .environment(\.addressBarIsFloating, true)
+        PageAddressField(webPage: glimpseState.webPage)
             .frame(height: Layout.buttonHeight)
             .frame(minWidth: 150, maxWidth: 400)
             .glassEffect()

@@ -29,13 +29,13 @@ struct TabsSettingsView: View {
                     ForEach(FloatingRevealKey.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 Toggle("Keep tabs shown after releasing the key", isOn: $toggleReveal)
-                Slider(value: $revealDelay, in: 0.08...0.6, step: 0.02) { Text("Reveal delay") }
+                Slider(value: $revealDelay, in: 0.08 ... 0.6, step: 0.02) { Text("Reveal delay") }
                 Text("Hold \(revealKey.title) alone for \(revealDelay, format: .number.precision(.fractionLength(2))) seconds. Click the space mark to show or hide tabs at any time.").font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Play soft clicks when tabs collide", isOn: $settings.canvasImpactSounds)
                     .highlightable(id: "tabs.canvasImpactSounds", highlightedItemId: highlightedItemId)
-                Slider(value: $impactVolume, in: 0...1) { Text("Contact volume") }
+                Slider(value: $impactVolume, in: 0 ... 1) { Text("Contact volume") }
                 Button("Preview Sound", systemImage: "speaker.wave.2") {
                     impactSound.preview()
                 }
@@ -43,17 +43,6 @@ struct TabsSettingsView: View {
                 Text("Tab Desk")
             } footer: {
                 Text("Contact sounds follow the force and position of each collision.")
-            }
-
-            // MARK: - Previews
-
-            Section {
-                Toggle("Show tab previews on hover", isOn: $settings.showTabPreviews)
-                    .highlightable(id: "tabs.showPreviews", highlightedItemId: highlightedItemId)
-            } header: {
-                Text("Previews")
-            } footer: {
-                Text("Display a thumbnail preview when hovering over tabs in the sidebar.")
             }
 
             // MARK: - Archive
@@ -147,7 +136,7 @@ struct TabsSettingsView: View {
             Section {
                 Picker("Video fullscreen", selection: Binding(
                     get: { settings.elementFullscreenMode },
-                    set: { settings.elementFullscreenMode = $0 }
+                    set: { settings.elementFullscreenMode = $0 },
                 )) {
                     ForEach(FullscreenPresentationMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
@@ -220,17 +209,16 @@ struct TabsSettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var lastCheckText: some View {
-        Group {
-            if let lastRun = scheduledTasksManager.lastTaskRun {
-                Text("Last check: \(lastRun.relativeFormatted)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Not yet checked")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        if let lastRun = scheduledTasksManager.lastTaskRun {
+            Text("Last check: \(lastRun.relativeFormatted)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Not yet checked")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

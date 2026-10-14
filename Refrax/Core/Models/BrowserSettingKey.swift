@@ -8,14 +8,11 @@ import Foundation
 enum BrowserSettingKey: String, CaseIterable, Sendable {
     // MARK: - General
 
-    case showSidebarHints
-    case spaceSwipeGestureEnabled
     case shiftClickLinkPreviewEnabled
     case showModifierKeyHints
     case autoPiPOnTabSwitch
     case forceNativeVideoControls
     case clipboardLinkMonitoring
-    case showCalendarWidget
     case useAria2ForLargeFiles
     case enableBitTorrent
     case ytdlpEnabled
@@ -34,7 +31,6 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
 
     // MARK: - Tabs
 
-    case showTabPreviews
     case canvasImpactSounds
     case archiveEnabled
     case autoArchiveRulesEnabled
@@ -77,26 +73,6 @@ extension BrowserSettingKey {
     var metadata: SettingMetadata {
         switch self {
         // General
-        case .showSidebarHints:
-            SettingMetadata(
-                displayName: "Sidebar Guide",
-                description: "Show sidebar guide on empty tab",
-                keywords: ["sidebar", "guide", "hints", "getting started", "onboarding"],
-                icon: "lightbulb",
-                category: .general,
-                highlightID: "general.sidebarHints",
-                valueKind: .toggle,
-            )
-        case .spaceSwipeGestureEnabled:
-            SettingMetadata(
-                displayName: "Space Swipe Gesture",
-                description: "Two-finger swipe to switch spaces",
-                keywords: ["swipe", "gesture", "spaces", "sidebar"],
-                icon: "hand.draw.fill",
-                category: .general,
-                highlightID: "general.spaceSwipeGesture",
-                valueKind: .toggle,
-            )
         case .shiftClickLinkPreviewEnabled:
             SettingMetadata(
                 displayName: "Shift+Click Link Preview",
@@ -145,16 +121,6 @@ extension BrowserSettingKey {
                 icon: "doc.on.clipboard",
                 category: .general,
                 highlightID: "general.clipboardMonitoring",
-                valueKind: .toggle,
-            )
-        case .showCalendarWidget:
-            SettingMetadata(
-                displayName: "Calendar Widget",
-                description: "Show calendar events in sidebar",
-                keywords: ["calendar", "widget", "events", "sidebar", "show calendar", "calendar reminders"],
-                icon: "calendar",
-                category: .general,
-                highlightID: "general.showCalendarWidget",
                 valueKind: .toggle,
             )
         case .useAria2ForLargeFiles:
@@ -287,16 +253,6 @@ extension BrowserSettingKey {
                 icon: "speaker.wave.2",
                 category: .tabs,
                 highlightID: "tabs.canvasImpactSounds",
-                valueKind: .toggle,
-            )
-        case .showTabPreviews:
-            SettingMetadata(
-                displayName: "Tab Previews",
-                description: "Show thumbnail previews on hover",
-                keywords: ["tab thumbnails", "preview tabs", "tab preview", "hover preview", "tabs", "previews"],
-                icon: "rectangle.split.3x1",
-                category: .tabs,
-                highlightID: "tabs.showPreviews",
                 valueKind: .toggle,
             )
         case .archiveEnabled:
@@ -582,14 +538,11 @@ extension BrowserSettingKey {
     func currentValue(in settings: BrowserSettings) -> SettingValue {
         switch self {
         // General
-        case .showSidebarHints: .bool(settings.showSidebarHints)
-        case .spaceSwipeGestureEnabled: .bool(settings.spaceSwipeGestureEnabled)
         case .shiftClickLinkPreviewEnabled: .bool(settings.shiftClickLinkPreviewEnabled)
         case .showModifierKeyHints: .bool(settings.showModifierKeyHints)
         case .autoPiPOnTabSwitch: .bool(settings.autoPiPOnTabSwitch)
         case .forceNativeVideoControls: .bool(settings.forceNativeVideoControls)
         case .clipboardLinkMonitoring: .bool(settings.clipboardLinkMonitoring)
-        case .showCalendarWidget: .bool(settings.showCalendarWidget)
         case .useAria2ForLargeFiles: .bool(settings.useAria2ForLargeFiles)
         case .enableBitTorrent: .bool(settings.enableBitTorrent)
         case .ytdlpEnabled: .bool(settings.ytdlpEnabled)
@@ -604,7 +557,6 @@ extension BrowserSettingKey {
         case .enableWebsiteWindowColoring: .bool(settings.enableWebsiteWindowColoring)
         case .websiteColorUseSolidBlend: .bool(settings.websiteColorUseSolidBlend)
         // Tabs
-        case .showTabPreviews: .bool(settings.showTabPreviews)
         case .canvasImpactSounds: .bool(settings.canvasImpactSounds)
         case .archiveEnabled: .bool(settings.archiveEnabled)
         case .autoArchiveRulesEnabled: .bool(settings.autoArchiveRulesEnabled)
@@ -642,32 +594,46 @@ extension BrowserSettingKey {
     func setValue(_ value: SettingValue, in settings: BrowserSettings) {
         switch self {
         // General
-        case .showSidebarHints:
-            if case let .bool(v) = value { settings.showSidebarHints = v }
-        case .spaceSwipeGestureEnabled:
-            if case let .bool(v) = value { settings.spaceSwipeGestureEnabled = v }
         case .shiftClickLinkPreviewEnabled:
-            if case let .bool(v) = value { settings.shiftClickLinkPreviewEnabled = v }
+            if case let .bool(v) = value {
+                settings.shiftClickLinkPreviewEnabled = v
+            }
         case .showModifierKeyHints:
-            if case let .bool(v) = value { settings.showModifierKeyHints = v }
+            if case let .bool(v) = value {
+                settings.showModifierKeyHints = v
+            }
         case .autoPiPOnTabSwitch:
-            if case let .bool(v) = value { settings.autoPiPOnTabSwitch = v }
+            if case let .bool(v) = value {
+                settings.autoPiPOnTabSwitch = v
+            }
         case .forceNativeVideoControls:
-            if case let .bool(v) = value { settings.forceNativeVideoControls = v }
+            if case let .bool(v) = value {
+                settings.forceNativeVideoControls = v
+            }
         case .clipboardLinkMonitoring:
-            if case let .bool(v) = value { settings.clipboardLinkMonitoring = v }
-        case .showCalendarWidget:
-            if case let .bool(v) = value { settings.showCalendarWidget = v }
+            if case let .bool(v) = value {
+                settings.clipboardLinkMonitoring = v
+            }
         case .useAria2ForLargeFiles:
-            if case let .bool(v) = value { settings.useAria2ForLargeFiles = v }
+            if case let .bool(v) = value {
+                settings.useAria2ForLargeFiles = v
+            }
         case .enableBitTorrent:
-            if case let .bool(v) = value { settings.enableBitTorrent = v }
+            if case let .bool(v) = value {
+                settings.enableBitTorrent = v
+            }
         case .ytdlpEnabled:
-            if case let .bool(v) = value { settings.ytdlpEnabled = v }
+            if case let .bool(v) = value {
+                settings.ytdlpEnabled = v
+            }
         case .ytdlpUseCookies:
-            if case let .bool(v) = value { settings.ytdlpUseCookies = v }
+            if case let .bool(v) = value {
+                settings.ytdlpUseCookies = v
+            }
         case .ytdlpDeleteAfterPhotosImport:
-            if case let .bool(v) = value { settings.ytdlpDeleteAfterPhotosImport = v }
+            if case let .bool(v) = value {
+                settings.ytdlpDeleteAfterPhotosImport = v
+            }
         // Appearance
         case .webpageDarkMode:
             if case let .string(v) = value {
@@ -688,59 +654,103 @@ extension BrowserSettingKey {
                 }
             }
         case .preserveMediaInFilter:
-            if case let .bool(v) = value { settings.preserveMediaInFilter = v }
+            if case let .bool(v) = value {
+                settings.preserveMediaInFilter = v
+            }
         case .enableSpaceWindowColoring:
-            if case let .bool(v) = value { settings.enableSpaceWindowColoring = v }
+            if case let .bool(v) = value {
+                settings.enableSpaceWindowColoring = v
+            }
         case .enableWebsiteWindowColoring:
-            if case let .bool(v) = value { settings.enableWebsiteWindowColoring = v }
+            if case let .bool(v) = value {
+                settings.enableWebsiteWindowColoring = v
+            }
         case .websiteColorUseSolidBlend:
-            if case let .bool(v) = value { settings.websiteColorUseSolidBlend = v }
+            if case let .bool(v) = value {
+                settings.websiteColorUseSolidBlend = v
+            }
         // Tabs
-        case .showTabPreviews:
-            if case let .bool(v) = value { settings.showTabPreviews = v }
         case .canvasImpactSounds:
-            if case let .bool(v) = value { settings.canvasImpactSounds = v }
+            if case let .bool(v) = value {
+                settings.canvasImpactSounds = v
+            }
         case .archiveEnabled:
-            if case let .bool(v) = value { settings.archiveEnabled = v }
+            if case let .bool(v) = value {
+                settings.archiveEnabled = v
+            }
         case .autoArchiveRulesEnabled:
-            if case let .bool(v) = value { settings.autoArchiveRulesEnabled = v }
+            if case let .bool(v) = value {
+                settings.autoArchiveRulesEnabled = v
+            }
         case .enableAutomaticSnapshots:
-            if case let .bool(v) = value { settings.enableAutomaticSnapshots = v }
+            if case let .bool(v) = value {
+                settings.enableAutomaticSnapshots = v
+            }
         case .badgeDetectionEnabled:
-            if case let .bool(v) = value { settings.badgeDetectionEnabled = v }
+            if case let .bool(v) = value {
+                settings.badgeDetectionEnabled = v
+            }
         case .showTimeSpentInTooltips:
-            if case let .bool(v) = value { settings.showTimeSpentInTooltips = v }
+            if case let .bool(v) = value {
+                settings.showTimeSpentInTooltips = v
+            }
         case .showUnsavedFormIndicator:
-            if case let .bool(v) = value { settings.showUnsavedFormIndicator = v }
+            if case let .bool(v) = value {
+                settings.showUnsavedFormIndicator = v
+            }
         case .elementFullscreenMode:
             if case let .string(v) = value, let mode = FullscreenPresentationMode(rawValue: v) {
                 settings.elementFullscreenMode = mode
             }
         // Privacy
         case .blockThirdPartyCookies:
-            if case let .bool(v) = value { settings.blockThirdPartyCookies = v }
+            if case let .bool(v) = value {
+                settings.blockThirdPartyCookies = v
+            }
         case .doNotTrack:
-            if case let .bool(v) = value { settings.doNotTrack = v }
+            if case let .bool(v) = value {
+                settings.doNotTrack = v
+            }
         case .enableGlobalPrivacyControl:
-            if case let .bool(v) = value { settings.enableGlobalPrivacyControl = v }
+            if case let .bool(v) = value {
+                settings.enableGlobalPrivacyControl = v
+            }
         case .enableGPCTelemetry:
-            if case let .bool(v) = value { settings.enableGPCTelemetry = v }
+            if case let .bool(v) = value {
+                settings.enableGPCTelemetry = v
+            }
         case .enableAutoConsent:
-            if case let .bool(v) = value { settings.enableAutoConsent = v }
+            if case let .bool(v) = value {
+                settings.enableAutoConsent = v
+            }
         case .hideSignInPrompts:
-            if case let .bool(v) = value { settings.hideSignInPrompts = v }
+            if case let .bool(v) = value {
+                settings.hideSignInPrompts = v
+            }
         case .enableFingerprintingProtection:
-            if case let .bool(v) = value { settings.enableFingerprintingProtection = v }
+            if case let .bool(v) = value {
+                settings.enableFingerprintingProtection = v
+            }
         case .allowWebsiteNotificationRequests:
-            if case let .bool(v) = value { settings.allowWebsiteNotificationRequests = v }
+            if case let .bool(v) = value {
+                settings.allowWebsiteNotificationRequests = v
+            }
         case .automaticHistoryCleanup:
-            if case let .bool(v) = value { settings.automaticHistoryCleanup = v }
+            if case let .bool(v) = value {
+                settings.automaticHistoryCleanup = v
+            }
         case .contentProtectionBypassEnabled:
-            if case let .bool(v) = value { settings.contentProtectionBypassEnabled = v }
+            if case let .bool(v) = value {
+                settings.contentProtectionBypassEnabled = v
+            }
         case .disableBeforeUnloadAlerts:
-            if case let .bool(v) = value { settings.disableBeforeUnloadAlerts = v }
+            if case let .bool(v) = value {
+                settings.disableBeforeUnloadAlerts = v
+            }
         case .disableScrollHijacking:
-            if case let .bool(v) = value { settings.disableScrollHijacking = v }
+            if case let .bool(v) = value {
+                settings.disableScrollHijacking = v
+            }
         case .autoFillMode:
             if case let .string(v) = value {
                 if let mode = AutoFillMode.allCases.first(where: { $0.displayName == v || $0.rawValue == v }) {
@@ -748,18 +758,30 @@ extension BrowserSettingKey {
                 }
             }
         case .requireAuthForAutoFill:
-            if case let .bool(v) = value { settings.requireAuthForAutoFill = v }
+            if case let .bool(v) = value {
+                settings.requireAuthForAutoFill = v
+            }
         // Advanced
         case .enableJavaScript:
-            if case let .bool(v) = value { settings.enableJavaScript = v }
+            if case let .bool(v) = value {
+                settings.enableJavaScript = v
+            }
         case .allowJavaScriptWhitelist:
-            if case let .bool(v) = value { settings.allowJavaScriptWhitelist = v }
+            if case let .bool(v) = value {
+                settings.allowJavaScriptWhitelist = v
+            }
         case .allowPopups:
-            if case let .bool(v) = value { settings.allowPopups = v }
+            if case let .bool(v) = value {
+                settings.allowPopups = v
+            }
         case .allowSSLCertificateBypass:
-            if case let .bool(v) = value { settings.allowSSLCertificateBypass = v }
+            if case let .bool(v) = value {
+                settings.allowSSLCertificateBypass = v
+            }
         case .enableAutoCrashRecovery:
-            if case let .bool(v) = value { settings.enableAutoCrashRecovery = v }
+            if case let .bool(v) = value {
+                settings.enableAutoCrashRecovery = v
+            }
         case .controlAccessMode:
             if case let .string(v) = value {
                 if let mode = ControlAccessMode.allCases.first(where: { $0.displayName == v || $0.rawValue == v }) {

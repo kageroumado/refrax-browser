@@ -13,9 +13,9 @@ import SwiftUI
 ///
 /// ## Managed State
 ///
-/// - **Lenses**: Command lens (Cmd+K) and address bar lens for quick actions
-/// - **Layout**: Sidebar visibility, widths, and collapse states
-/// - **Overlays**: Sidebar hover overlay animation and positioning
+/// - **Lenses**: Command Lens, centered or beside the page card
+/// - **Floating layer**: Placements of floating tabs, the Control Island, and the File Island
+/// - **Detail tray**: Which tray panel is showing
 /// - **Drag Operations**: Tracks content being dragged for visual feedback
 /// - **Layout Mode**: Enable/disable interface customization mode
 ///
@@ -206,7 +206,7 @@ final class WindowState {
     /// Returns the active space if it requires authentication, otherwise nil.
     ///
     /// Use this to conditionally show the lock overlay at window level.
-    /// The overlay should cover the entire window including sidebar to prevent
+    /// The overlay covers the entire window to prevent
     /// information leakage from tab titles and group names.
     var lockedSpaceRequiringAuth: Space? {
         guard let space = activeSpace else { return nil }
@@ -439,10 +439,10 @@ final class WindowState {
     /// ⌘L and the page card's identity open it beside the card with the page address in it.
     private(set) var commandLensEntrance: CommandLensEntrance?
 
-    /// Frame of the page card (or the sidebar's address bar) in window coordinates.
+    /// Frame of the page card in window coordinates.
     ///
     /// The anchor for the lens when it opens with the page address in it.
-    var addressBarFrame: CGRect = .zero
+    var pageCardFrame: CGRect = .zero
 
     /// Frame of the Command Lens capsule in global coordinates, kept current by its overlay while the lens is up.
     var commandLensFrame: CGRect = .zero
@@ -453,35 +453,20 @@ final class WindowState {
     /// The empty page hosts Command Lens itself; each request refocuses that lens.
     var startPageLensRequest = 0
 
-    // MARK: - Split View State
-
-    /// Floating tabs provide the primary tab interface. An explicit sidebar command opens the sidebar.
-    var usesFloatingTabs = true
+    // MARK: - Floating Layer State
 
     let controlIsland = ControlIslandState()
     let fileIsland = FileIslandState()
     let pageVisit = PageVisitState()
     var floatingPlacements: [Tab.ID: FloatingTabPlacement] = [:]
 
-    /// Mirrors the sidebar split item.
-    var isSidebarCollapsed: Bool = true
-
-    // MARK: - Sidebar Overlay State
-
-    /// The effective sidebar mode for this window.
-    ///
-    /// Returns the global default from ``BrowserSettings/defaultSidebarMode``.
-    var effectiveSidebarMode: SidebarMode {
-        settings.defaultSidebarMode
-    }
-
     // MARK: - Detail Tray State
 
     /// Current mode for the detail tray (downloads, bookmarks, history, or hidden).
     ///
-    /// The detail tray is a secondary panel that slides in adjacent to the sidebar,
+    /// The detail tray is a glass panel that slides in from the window's leading edge,
     /// providing quick access to downloads, bookmarks, and history without opening
-    /// dedicated tabs. Uses Liquid Glass styling consistent with the sidebar overlay.
+    /// dedicated tabs.
     var detailTrayMode: DetailTrayMode = .hidden
 
     /// Whether the detail tray is currently visible.
@@ -495,81 +480,6 @@ final class WindowState {
     /// like `LinkHoverPreviewView` to avoid overlapping with the tray. A value of 0
     /// means the tray is hidden or not yet positioned.
     var detailTrayTrailingEdge: CGFloat = 0
-
-    /// Trailing edge of the sidebar overlay in window coordinates.
-    ///
-    /// Set by `RefraxWindowController` when the sidebar overlay shows/hides.
-    /// Accounts for compact strip width or full overlay width. A value of 0
-    /// means the overlay is hidden or the sidebar is expanded (pinned).
-    var sidebarOverlayTrailingEdge: CGFloat = 0
-
-    /// Current width of the sidebar panel.
-    ///
-    /// Dynamically updated as the user resizes the sidebar. Persisted per
-    /// window by AppKit state restoration and app-wide by `WindowGeometryStore`.
-    var sidebarThickness: CGFloat = 300
-
-    /// Tracks whether the tutorial peek animation has played this session.
-    ///
-    /// On first launch, the sidebar briefly peeks out to teach users about
-    /// the hover interaction. This flag prevents repeated animations.
-    var hasShownTutorialPeek = false
-
-    // MARK: - Compact Tab Title Tooltip
-
-    /// Frame of the currently hovered compact tab button in global coordinates.
-    ///
-    /// Used by CompactTabTitleOverlay to position the title tooltip adjacent
-    /// to the tab when hovered.
-    var compactTabTooltipFrame: CGRect = .zero
-
-    /// Title to display in the compact tab tooltip.
-    ///
-    /// Set when hovering a compact tab button after the delay expires.
-    /// Cleared when hover ends.
-    private(set) var compactTabTooltipTitle: String?
-
-    /// Centralized task for compact tab tooltip delay.
-    ///
-    /// Previously each CompactTabButton had its own `@State tooltipTask`, creating
-    /// 100+ Task allocations for windows with many tabs. Now managed centrally.
-    @ObservationIgnored
-    private var compactTabTooltipTask: Task<Void, Never>?
-
-    /// Delay before showing compact tab tooltip.
-    private static let compactTabTooltipDelay: Duration = .milliseconds(200)
-
-    /// Starts the tooltip hover delay for a compact tab.
-    ///
-    /// After the delay, the tooltip title will be set if the hover hasn't been cancelled.
-    /// Frame should be updated separately via `compactTabTooltipFrame`.
-    ///
-    /// - Parameter title: The title to show in the tooltip.
-    func startCompactTabTooltipHover(title: String) {
-        compactTabTooltipTask?.cancel()
-
-        let capturedTitle = title
-        compactTabTooltipTask = Task {
-            try? await Task.sleep(for: Self.compactTabTooltipDelay)
-            guard !Task.isCancelled else { return }
-            compactTabTooltipTitle = capturedTitle
-        }
-    }
-
-    /// Ends the tooltip hover, cancelling any pending delay and clearing the title.
-    func endCompactTabTooltipHover() {
-        compactTabTooltipTask?.cancel()
-        compactTabTooltipTask = nil
-        compactTabTooltipTitle = nil
-    }
-
-    // MARK: - Compact Address Bar
-
-    /// Whether the compact sidebar address bar overlay is visible.
-    ///
-    /// Shown when hovering the link button or during page load in compact mode.
-    /// The overlay is rendered in OverlayContainer with fixed positioning.
-    var showsCompactAddressBar = false
 
     // MARK: - Layout Mode State
 
@@ -585,7 +495,7 @@ final class WindowState {
     /// Whether the mouse cursor is currently inside the bounds of an overlay.
     ///
     /// When `true`, WKWebView's `_ignoresAllEvents` is set to block all input.
-    /// This is used when the sidebar overlay or detail tray is visible, so that
+    /// This is used while the cursor is over the detail tray or the lens is up, so that
     /// the overlay receives events instead of the underlying web content.
     var webViewsShouldIgnoreAllEvents = false
 
@@ -770,7 +680,7 @@ final class WindowState {
     ///
     /// On an empty page the start page hosts the lens itself, and either entrance refocuses it.
     func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil, source: CGRect? = nil) {
-        if usesFloatingTabs, activeTab == nil {
+        if activeTab == nil {
             startPageLensRequest &+= 1
             return
         }
@@ -780,7 +690,7 @@ final class WindowState {
 
     /// ⌘L: the lens beside the page card with the page's address in it, selected.
     func editAddress() {
-        openCommandLens(prefill: focusedPage?.url.absoluteString ?? "", anchor: addressBarFrame)
+        openCommandLens(prefill: focusedPage?.url.absoluteString ?? "", anchor: pageCardFrame)
     }
 
     /// Closes the Command Lens from either entrance.
@@ -818,13 +728,6 @@ final class WindowState {
         }
     }
     
-    // MARK: - Split View Actions
-
-    /// Toggle sidebar visibility
-    func toggleSidebar() {
-        isSidebarCollapsed.toggle()
-    }
-
     // MARK: - Detail Tray Actions
 
     /// Toggles the detail tray for a specific mode.
@@ -926,7 +829,7 @@ final class WindowState {
         }
 
         // Sync focused page with the new active tab's primary page.
-        // This ensures AddressBar and other UI that depends on focusedPageID
+        // This ensures the page card and other UI that depends on focusedPageID
         // updates immediately when switching tabs, not just on user interaction.
         focusedPageID = tab.activePage.id
     }
@@ -1027,7 +930,7 @@ final class WindowState {
 /// How the Command Lens was opened, which sets its text, its place, and where its result goes.
 ///
 /// One lens, two entrances: empty and centered (⌘T, the rail button), or beside the page card
-/// with the page address in it (⌘L, the card's identity, the sidebar's address bar). While the
+/// with the page address in it (⌘L, the card's identity). While the
 /// lens is up, keyboard focus moves to it, Escape and background clicks dismiss it, and the page
 /// beneath ignores events.
 struct CommandLensEntrance: Equatable, Sendable {
@@ -1049,25 +952,16 @@ struct CommandLensEntrance: Equatable, Sendable {
 
 // MARK: - Detail Tray Mode
 
-/// Content mode for the sidebar detail tray panel.
+/// Content mode for the detail tray panel.
 ///
-/// The detail tray is a secondary slide-out panel adjacent to the sidebar that
-/// provides quick access to downloads, bookmarks, and history. It uses the same
-/// Liquid Glass styling as the sidebar overlay and coordinates with it when the
-/// sidebar is collapsed.
+/// The detail tray is a glass panel that slides in from the window's leading edge and
+/// provides quick access to downloads, bookmarks, and history.
 ///
 /// ## Entry Points
 ///
-/// - Sidebar overlay buttons (when sidebar is collapsed)
+/// - Control Island and File Island controls
 /// - Menu bar: View → Show Downloads/Bookmarks/History
 /// - Keyboard shortcuts: ⌘⇧D (downloads), ⌘⇧B (bookmarks), ⌘Y (history)
-///
-/// ## Positioning
-///
-/// The detail tray positions itself based on sidebar state:
-/// - **Sidebar expanded**: Adjacent to sidebar trailing edge with 8px gap
-/// - **Sidebar collapsed + overlay visible**: Adjacent to overlay trailing edge
-/// - **Sidebar collapsed + overlay hidden**: Floats at left edge with glass effect
 ///
 /// - Note: The tray state is managed by ``WindowState`` and animated by
 ///   ``RefraxWindowController`` using layer-based transforms.

@@ -28,7 +28,6 @@ struct RefraxEnvironment {
     let extensionManager: ExtensionManager
     let dialogState: DialogState
     let tabPreviewProvider: TabPreviewProvider
-    let tabPreviewManager: TabPreviewManager
     let downloadManager: DownloadManager
     let shelfManager: ShelfManager
     let webInspectorManager: WebInspectorManager
@@ -38,10 +37,8 @@ struct RefraxEnvironment {
     let modifierKeysState: ModifierKeysState
     let tabSwitcherManager: TabSwitcherManager
     let tabCanvasManager: TabCanvasManager
-    let sidebarManagers: SidebarManagers
-    let cellEnvironment: SidebarCellEnvironment
+    let mediaControlsManager: MediaControlsManager
     let undoRedoManager: UndoRedoManager
-    let calendarManager: CalendarManager
     let clipboardMonitor: ClipboardMonitor
     let screenshotCoordinator: ScreenshotCoordinator
     let recordingCoordinator: RecordingCoordinator
@@ -56,7 +53,6 @@ struct RefraxEnvironment {
     let humanInterventionManager: HumanInterventionManager
     let customSearchEngineManager: CustomSearchEngineManager
     let appUpdateManager: AppUpdateManager
-    let guidedTourManager: GuidedTourManager
     let floatingTourManager: FloatingTourManager
     let engineRegistry: EngineRegistry
 }
@@ -86,7 +82,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.extensionManager)
             .environment(environment.dialogState)
             .environment(environment.tabPreviewProvider)
-            .environment(environment.tabPreviewManager)
             .environment(environment.downloadManager)
             .environment(environment.shelfManager)
             .environment(environment.webInspectorManager)
@@ -96,19 +91,8 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.modifierKeysState)
             .environment(environment.tabSwitcherManager)
             .environment(environment.tabCanvasManager)
-            .environment(environment.sidebarManagers.layoutManager)
-            .environment(environment.sidebarManagers.dragCoordinator)
-            .environment(environment.sidebarManagers.filterManager)
-            .environment(environment.sidebarManagers.selectionManager)
-            .environment(environment.sidebarManagers.mediaControlsManager)
-            .environment(environment.sidebarManagers.transitionCoordinator)
-            .environment(environment.sidebarManagers.middleClickCoordinator)
-            .environment(environment.sidebarManagers.dependencyContainer)
-            .environment(environment.sidebarManagers.frameRegistry)
-            .environment(environment.sidebarManagers.geometryState)
-            .environment(environment.cellEnvironment)
+            .environment(environment.mediaControlsManager)
             .environment(environment.undoRedoManager)
-            .environment(environment.calendarManager)
             .environment(environment.clipboardMonitor)
             .environment(environment.screenshotCoordinator)
             .environment(environment.recordingCoordinator)
@@ -123,7 +107,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.humanInterventionManager)
             .environment(environment.customSearchEngineManager)
             .environment(environment.appUpdateManager)
-            .environment(environment.guidedTourManager)
             .environment(environment.floatingTourManager)
             .environment(environment.engineRegistry)
             .preferredColorScheme(environment.settings.theme.colorScheme)

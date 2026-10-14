@@ -59,8 +59,8 @@ import SwiftUI
 /// - ``BookmarksManager``: Bookmarks, favorites, and Reading List
 /// - ``DownloadManager``: HTTP and BitTorrent downloads with pause/resume
 ///
-/// Each window maintains its own ``WindowState`` for UI-specific state (sidebar width,
-/// lens visibility) while sharing the same underlying data through the managers.
+/// Each window maintains its own ``WindowState`` for UI-specific state (floating
+/// placements, lens visibility) while sharing the same underlying data through the managers.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Storage
 
@@ -118,7 +118,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let processAudioTapManager: ProcessAudioTapManager
     let tabHealthProvider: TabHealthProvider
     let processMemoryMonitor: ProcessMemoryMonitor
-    let calendarManager: CalendarManager
     let clipboardMonitor: ClipboardMonitor
     let pageReminderManager: PageReminderManager
     let favoritePreviewManager: FavoritePreviewManager
@@ -173,7 +172,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             extensionManager: extensionManager,
             bookmarksManager: bookmarksManager,
             tabManager: tabManager,
-            calendarManager: calendarManager,
             cookieInspectorManager: cookieInspectorManager,
             scheduledTasksManager: scheduledTasksManager,
             archiveManager: archiveManager,
@@ -417,7 +415,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.processAudioTapManager = ProcessAudioTapManager(tabManager: tabManager)
         self.processMemoryMonitor = ProcessMemoryMonitor(pagePool: pagePool)
         self.tabHealthProvider = TabHealthProvider(tabManager: tabManager, pagePool: pagePool, memoryMonitor: processMemoryMonitor)
-        self.calendarManager = CalendarManager(settings: settings)
         self.clipboardMonitor = ClipboardMonitor(settings: settings)
         self.pageReminderManager = PageReminderManager()
         self.favoritePreviewManager = FavoritePreviewManager(
@@ -648,7 +645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Check if windows were restored by AppKit (RefraxWindowRestoration)
-        // If so, didDecodeRestorableState already applied sidebar/inspector/colors
+        // If so, didDecodeRestorableState already applied frame/placements/colors
         let isFirstLaunch = !windowManager.hasWindows
         if isFirstLaunch {
             prepareForFirstLaunch()
@@ -741,7 +738,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Handles app launch when AppKit has restored windows.
     ///
-    /// Window chrome (colors, sidebar width, inspector state) was already applied
+    /// Window chrome (frame, island placement, colors) was already applied
     /// by `didDecodeRestorableState` during window restoration. This method:
     /// 1. Defers to the next run loop iteration (allows first frame to render)
     /// 2. Loads tab data from the database
@@ -929,10 +926,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let files = crashReports.prefix(Self.crashReportLogLimit)
             + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
-        Task(name: "Crash report") { [telemetry, appUpdateManager] in
+        Task(name: "Crash report") { [telemetry] in
             await telemetry.submitCrashReport(files: Array(files))
             CrashMonitor.markReportsSent(crashReports)
-            appUpdateManager.crashReportSent = true
         }
     }
 
@@ -989,11 +985,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let window = controller.window,
            !window.styleMask.contains(.fullScreen) {
             WindowGeometryStore.save(
-                SavedWindowGeometry(
-                    frame: window.frame,
-                    sidebarWidth: controller.windowState.sidebarThickness,
-                    isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
-                ),
+                SavedWindowGeometry(frame: window.frame),
                 screen: window.screen,
             )
         }
@@ -1043,7 +1035,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Silently installs or updates the `refrax-ctl` helper when `/usr/local/bin`
-    /// is user-writable, and surfaces the sidebar/Settings install affordance
+    /// is user-writable, and surfaces the Settings install affordance
     /// when administrator privileges would be required. Never prompts on its own.
     private func refreshCLIHelperInstall() {
         Task { [browserState] in

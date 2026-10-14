@@ -3,15 +3,6 @@ import SwiftUI
 // MARK: - Environment Values Extension
 
 extension EnvironmentValues {
-    /// Context for overriding AddressBar behavior in different contexts.
-    ///
-    /// When set, AddressBar uses this context instead of the default WindowState-based behavior.
-    /// This enables reusing AddressBar in Glimpse and Reflected windows.
-    @Entry var addressBarContext: AddressBarContext? = nil
-    
-    /// Whether the AddressBar is floating over the main content instead of being inside the Sidebar.
-    @Entry var addressBarIsFloating: Bool = false
-
     /// Controls whether horizontal swipe gestures trigger back/forward navigation.
     @Entry var webViewAllowsBackForwardNavigationGestures: WebView.BackForwardNavigationGesturesBehavior = .enabled
 
@@ -34,7 +25,7 @@ extension EnvironmentValues {
     /// Controls whether text selection is enabled.
     @Entry var webViewTextSelection: Bool = true
 
-    /// Controls element fullscreen behavior.
+    // Controls element fullscreen behavior.
 
     /// Find navigator context for find-in-page.
     @Entry var webViewFindContext: FindContext? = nil
@@ -51,7 +42,7 @@ extension EnvironmentValues {
     /// Whether all events to the web view are blocked due to an overlay.
     ///
     /// When `true`, the web view will not receive any input events, allowing
-    /// overlaying UI elements (sidebar, detail tray) to receive all interactions.
+    /// overlaying UI elements (the detail tray, the lens) to receive all interactions.
     /// This prevents:
     /// - Clicks on web content under the overlay
     /// - Hover effects and cursor changes
@@ -98,7 +89,6 @@ extension EnvironmentValues {
     /// When `false` (default), scroll pocket renders with `NSScrollPocketStyleHard`
     /// (solid color) requiring manual color management.
     @Entry var webViewUsesAutomaticContentInsetBackgroundFill: Bool = false
-
 
     /// Custom ownership ID for multi-window scenarios.
     ///
@@ -331,63 +321,5 @@ struct ScrollPositionValue: Hashable, Sendable {
         self.edge = edge
         self.x = x
         self.y = y
-    }
-}
-
-// MARK: - Address Bar Context
-
-/// Context for overriding AddressBar behavior in different contexts.
-///
-/// This enables reusing the AddressBar component in Glimpse and Reflected windows,
-/// where the web page source and lens behavior differ from the main window.
-///
-/// ## Usage
-///
-/// Apply the context via environment modifier:
-/// ```swift
-/// AddressBar()
-///     .environment(\.addressBarContext, AddressBarContext(
-///         webPage: myWebPage,
-///         tabPage: myTabPage,
-///         onOpenLens: { /* custom lens behavior */ },
-///         isLensVisible: false
-///     ))
-/// ```
-struct AddressBarContext {
-    /// The web page to display navigation state for.
-    let webPage: WebPage?
-
-    /// The tab page to display URL from.
-    let tabPage: TabPage?
-
-    /// Action called when the address bar is tapped to open the lens.
-    let onOpenLens: () -> Void
-
-    /// Whether the lens is currently visible (controls AddressBar opacity).
-    let isLensVisible: Bool
-
-    /// Action called when find-in-page is requested.
-    let onShowFindNavigator: () -> Void
-
-    /// Creates an AddressBar context with custom behavior.
-    ///
-    /// - Parameters:
-    ///   - webPage: The web page to display navigation state for.
-    ///   - tabPage: The tab page to display URL from.
-    ///   - onOpenLens: Action called when the address bar is tapped.
-    ///   - isLensVisible: Whether the lens is currently visible.
-    ///   - onShowFindNavigator: Action called when find-in-page is requested.
-    init(
-        webPage: WebPage?,
-        tabPage: TabPage?,
-        onOpenLens: @escaping () -> Void,
-        isLensVisible: Bool,
-        onShowFindNavigator: @escaping () -> Void,
-    ) {
-        self.webPage = webPage
-        self.tabPage = tabPage
-        self.onOpenLens = onOpenLens
-        self.isLensVisible = isLensVisible
-        self.onShowFindNavigator = onShowFindNavigator
     }
 }

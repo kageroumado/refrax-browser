@@ -1,27 +1,19 @@
 import AppKit
-import Combine
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Root view for a Refrax browser window.
+/// Root controller for a Refrax browser window.
 ///
-/// Presents a two-column layout with sidebar (vertical tabs) and main content area.
-/// Overlays include lenses for quick actions and the hover-activated sidebar
-/// overlay when collapsed.
-///
-/// ## Layout Architecture
-///
-/// Uses `NSSplitViewController` to manage two resizable columns:
-///
-/// - **Sidebar**: Vertical tab list, spaces, and navigation controls
-/// - **Content**: Primary web view showing the active tab's page
+/// The page fills the window. Above it sit the floating tab layer, the tab canvas,
+/// the window overlays (lenses, toasts, the tour), the Control Island, and the
+/// File Island, each in its own hosting view over the window's content view.
 ///
 /// ## State Management
 ///
 /// Each window maintains its own ``WindowState`` for UI-specific concerns like
-/// lens visibility and panel collapse, while accessing shared resources through
-/// environment-injected managers:
+/// lens visibility and floating placements, while accessing shared resources
+/// through environment-injected managers:
 ///
 /// - ``TabManager``: Shared tabs and spaces across all windows
 /// - ``HistoryManager``: Browsing history tracking
@@ -30,7 +22,8 @@ import UniformTypeIdentifiers
 final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUserInterfaceValidations {
     // MARK: - Internal Properties (accessible to extensions)
 
-    let splitViewController: RefraxSplitViewController
+    /// The window's content view controller: the page, with the floating layers above it.
+    let rootViewController = NSViewController()
     let backgroundView: WindowBackgroundView
     var overlayView: NSView
 
@@ -46,128 +39,27 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     let dialogState: DialogState
     let historyMaintenanceService: HistoryMaintenanceService
     let tabPreviewProvider: TabPreviewProvider
-    let tabPreviewManager: TabPreviewManager
     let commandLensManager: CommandLensManager
     let tabSwitcherManager: TabSwitcherManager
     let tabCanvasManager: TabCanvasManager
-    let sidebarManagers: SidebarManagers
 
     private(set) var environment: RefraxEnvironment!
-    var sidebarTrackingView: SidebarHoverTrackingView?
-    var trackingViewWidthConstraint: NSLayoutConstraint?
-    var lastCollapsedThickness: CGFloat = 300
 
     // MARK: Detail Tray
 
     var detailTrayContainer: NSView?
     var detailTrayGlassView: NSGlassEffectView?
-    var detailTrayLeadingConstraint: NSLayoutConstraint?
     var detailTrayHideTask: Task<Void, any Error>?
     var isCursorInDetailTray = false
 
-    /// AppKit container for the sidebar overlay, animated via layer transforms.
-    var sidebarOverlayContainer: SidebarOverlayContainerView?
-
-    /// Whether the cursor is currently inside the sidebar overlay.
-    var isCursorInSidebarOverlay = false
-
-    /// Glass effect view that provides the Liquid Glass appearance for the overlay.
-    var sidebarOverlayGlassView: NSGlassEffectView?
-
-    /// Width constraint for the sidebar overlay container, updated when sidebar is resized.
-    var sidebarOverlayWidthConstraint: NSLayoutConstraint?
-
-    // MARK: Compact Sidebar Edge Extension
-
-    /// Background view that displays sampled colors from the webview edge in compact mode.
-    var edgeExtensionBackgroundView: EdgeExtensionBackgroundView?
-
-    /// Sampler that extracts colors from the webview's left edge for the background.
-    let edgeSampler = WebViewEdgeSampler()
-
-    /// Whether the sidebar overlay is currently visible.
-    var isSidebarOverlayVisible: Bool {
-        guard let container = sidebarOverlayContainer else { return false }
-        return !container.isHidden
-    }
-
-    /// Flag to prevent observer reactions during restoration
-    var isRestoringState = false
+    /// The reading state decoded by AppKit restoration, applied once tabs load.
     var restoredReadingState: WindowReadingState?
-
-    /// State machine for sidebar overlay animation
-    var isAnimatingToVisible = false
-    var isOverlayTriggered = false
-    var hideTask: Task<Void, any Error>?
-
-    /// Task for tutorial peek animation
-    var tutorialPeekTask: Task<Void, any Error>?
-
-    /// Whether the tutorial peek animation is currently showing.
-    var isTutorialPeekActive = false
-
-    /// Generation counter for overlay/chrome animations.
-    ///
-    /// Incremented each time a new animation sequence starts. Used to ensure only
-    /// the most recent animation's completion handler takes effect, preventing
-    /// race conditions where an earlier animation might "win" over a later one.
-    var overlayAnimationGeneration: UInt = 0
-
-    /// Task for sidebar expansion completion detection
-    var sidebarExpansionTask: Task<Void, any Error>?
-
-    /// Flag indicating we're doing a smooth overlay-to-sidebar transition.
-    var isTransitioningFromOverlay = false
-
-    /// Guards against rapid sidebar toggle presses during in-flight animations.
-    ///
-    /// Set at the start of any sidebar state transition (toggle, collapse,
-    /// expand-from-overlay) and cleared in the completion handler. When set,
-    /// `toggleSidebar()` returns early to prevent overlapping animations.
-    var isAnimatingSidebarTransition = false
-
-    var cancellables = Set<AnyCancellable>()
 
     /// Tasks created for @Observable observations.
     ///
     /// These must be explicitly cancelled on window close since they hold
     /// strong references to the controller via closure captures.
     var observationTasks: [Task<Void, Never>] = []
-
-    // MARK: - Sidebar Tracking
-
-    var splitViewSidebarTrackingAdapter: OverlaySidebarTrackingAdapter?
-    var originalTrafficLightOrigins: [NSWindow.ButtonType: CGPoint] = [:]
-    var originalTrafficLightGroupFrame: CGRect?
-
-    // MARK: - Compact Mode Traffic Lights
-
-    /// Glass platter behind traffic lights in compact sidebar mode (iPadOS style)
-    var compactTrafficLightPlatter: NSView?
-
-    /// Tracking area for hover detection on compact traffic lights
-    var compactTrafficLightTrackingArea: NSTrackingArea?
-
-    /// Whether the compact traffic lights are currently hovered (expanded)
-    var isCompactTrafficLightsHovered = false
-
-    /// Whether compact traffic light mode is currently active
-    var isCompactTrafficLightModeActive = false
-
-    /// Task for verifying the cursor is still over the compact traffic lights.
-    ///
-    /// NSTrackingArea can miss `mouseExited` events when the cursor moves very
-    /// fast over a small tracking rect. This task runs after the expand animation
-    /// completes to catch that case.
-    var compactTrafficLightHoverCheckTask: Task<Void, Never>?
-
-    // MARK: - Fullscreen Titlebar Reveal
-
-    /// KVO of the fullscreen titlebar's reveal state (the traffic-light alpha).
-    let fullscreenRevealObservations = WebKitObservationBag()
-
-    /// Whether AppKit's auto-hiding fullscreen titlebar is currently revealed.
-    var isFullscreenTitlebarRevealed = false
 
     // MARK: - Screen Sharing Detection
 
@@ -177,39 +69,10 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     /// WebKit audio during screen sharing.
     var windowSharingObserver: WindowSharingObserver?
 
-    var themeFrame: NSThemeFrame? {
-        window?.contentView?.superview as? NSThemeFrame
+    /// The size of the page area: the whole content view.
+    var pageAreaSize: CGSize {
+        window?.contentView?.bounds.size ?? .zero
     }
-
-    var toolbarView: NSToolbarView? {
-        window?.toolbar?._toolbarView
-    }
-
-    var sidebarTrackingSeparatorItem: NSToolbarItem? {
-        window?.toolbar?.items.first { $0.itemIdentifier == .sidebarTrackingSeparator }
-    }
-
-    var titlebarContainerView: NSTitlebarContainerView? {
-        themeFrame?.titlebarContainerView
-    }
-
-    var titlebarView: NSTitlebarView? {
-        themeFrame?.titlebarView
-    }
-
-    /// The divider offset that AppKit adds to the sidebar frame width.
-    let sidebarDividerOffset: CGFloat = 8.0
-
-    /// Tracks the last divider position we set on the toolbar view.
-    var lastToolbarDividerPosition: CGFloat?
-
-    /// The toolbar item identifiers that should move with the sidebar.
-    let sidebarToolbarItemIdentifiers: Set<NSToolbarItem.Identifier> = [
-        .toggleSidebarGrouped, .toggleFloatingTabs, .toggleTabCanvas,
-    ]
-
-    /// Tracks whether we're in fullscreen mode for proper edge reveal behavior
-    var isInFullscreen = false
 
     /// Opens the tab canvas from a pinch or ⌃-scroll on the page.
     private var canvasPageGestures: CanvasPageGestures?
@@ -226,7 +89,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         let appDelegate = NSApplication.shared.typedDelegate
         let modelContainer = appDelegate.modelContainer
 
-        self.splitViewController = RefraxSplitViewController()
         self.overlayView = NSView()
         self.backgroundView = WindowBackgroundView()
         self.windowState = WindowState(settings: appDelegate.settings, browserState: appDelegate.browserState)
@@ -241,10 +103,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         self.tabPreviewProvider = TabPreviewProvider(
             tabManager: appDelegate.tabManager,
             windowState: windowState,
-        )
-        self.tabPreviewManager = TabPreviewManager(
-            previewProvider: tabPreviewProvider,
-            browserSettings: settings,
         )
         self.tabSwitcherManager = TabSwitcherManager(
             tabManager: appDelegate.tabManager,
@@ -270,15 +128,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             localNetworkSource: appDelegate.localNetworkDirectory,
             floatingTour: floatingTourManager,
         )
-        self.sidebarManagers = SidebarManagers(
-            tabManager: appDelegate.tabManager,
-            bookmarksManager: appDelegate.bookmarksManager,
-            windowState: windowState,
-            groupManager: appDelegate.groupManager,
-            undoRedoManager: appDelegate.undoRedoManager,
-            settings: appDelegate.settings,
-        )
-
         super.init(window: window)
 
         windowState.window = window
@@ -304,7 +153,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             extensionManager: appDelegate.extensionManager,
             dialogState: dialogState,
             tabPreviewProvider: tabPreviewProvider,
-            tabPreviewManager: tabPreviewManager,
             downloadManager: appDelegate.downloadManager,
             shelfManager: appDelegate.shelfManager,
             webInspectorManager: appDelegate.webInspectorManager,
@@ -314,29 +162,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             modifierKeysState: appDelegate.modifierKeysState,
             tabSwitcherManager: tabSwitcherManager,
             tabCanvasManager: tabCanvasManager,
-            sidebarManagers: sidebarManagers,
-            cellEnvironment: SidebarCellEnvironment(
-                layoutManager: sidebarManagers.layoutManager,
-                dragCoordinator: sidebarManagers.dragCoordinator,
-                selectionManager: sidebarManagers.selectionManager,
-                tabManager: tabManager,
-                windowState: windowState,
-                browserState: appDelegate.browserState,
-                dependencyContainer: sidebarManagers.dependencyContainer,
-                geometryState: sidebarManagers.geometryState,
-                modifierKeysState: appDelegate.modifierKeysState,
-                tabPreviewManager: tabPreviewManager,
-                pagePool: appDelegate.pagePool,
-                historyManager: historyManager,
-                groupManager: appDelegate.groupManager,
-                filterManager: sidebarManagers.filterManager,
-                settings: settings,
-                mediaControlsManager: sidebarManagers.mediaControlsManager,
-                autoArchiveManager: appDelegate.autoArchiveManager,
-                windowManager: appDelegate.windowManager,
-            ),
+            mediaControlsManager: MediaControlsManager(tabManager: appDelegate.tabManager, windowState: windowState),
             undoRedoManager: appDelegate.undoRedoManager,
-            calendarManager: appDelegate.calendarManager,
             clipboardMonitor: appDelegate.clipboardMonitor,
             screenshotCoordinator: ScreenshotCoordinator(),
             recordingCoordinator: RecordingCoordinator(),
@@ -351,49 +178,30 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             humanInterventionManager: appDelegate.humanInterventionManager,
             customSearchEngineManager: appDelegate.customSearchEngineManager,
             appUpdateManager: appDelegate.appUpdateManager,
-            guidedTourManager: GuidedTourManager(),
             floatingTourManager: floatingTourManager,
             engineRegistry: appDelegate.engineRegistry,
         )
 
-        setupSplitViewController(window: window)
+        setupRootView(window: window)
 
         guard let contentView = window.contentView else { preconditionFailure() }
         setupBackgroundView(contentView: contentView)
-        // Detail tray added before sidebar overlay so it renders below the overlay sidebar.
         setupDetailTrayContainer(contentView: contentView)
-        setupSidebarOverlayContainer(contentView: contentView)
-        setupEdgeExtensionBackground(contentView: contentView)
-        tabCanvasManager.onUseFloatingTabs = { [weak self] in self?.useFloatingTabs() }
         setupFloatingTabsLayer(contentView: contentView)
         setupTabCanvasLayer(contentView: contentView)
         setupCanvasPageGestures(window: window)
         setupOverlayView(contentView: contentView)
         setupControlIslandLayer(contentView: contentView)
         setupFileIslandLayer(contentView: contentView)
-        setupSidebarTrackingRegion(contentView: contentView)
-        setupToolbar(window: window)
-        setupSidebarTrackingAdapters()
         setupUndoRedoMonitor()
 
-        observeSidebarState()
-        observeSidebarMode()
         observeWindowState()
         observeWebsiteColor()
         observeDetailTrayState()
-        observeActiveTabForEdgeSampling()
         observeSpaceLockState()
         setupWindowSharingObserver()
+        hideStandardWindowButtons()
         commandLensManager.setup()
-
-        // To run drag simulation tests, uncomment the following:
-        // #if DEBUG
-        // DragSimulator.shared.runTestSequence(
-        //     dragCoordinator: sidebarManagers.dragCoordinator,
-        //     layoutManager: sidebarManagers.layoutManager,
-        //     delay: 3.0
-        // )
-        // #endif
     }
 
     @available(*, unavailable)
@@ -403,54 +211,22 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     // MARK: - Setup
 
-    private func setupSplitViewController(window: NSWindow) {
-        splitViewController.splitView.isVertical = true
-
-        splitViewController.onToggleSidebar = { [weak self] in
-            self?.toggleSidebar(nil)
-        }
-
-        let sidebarVC = NSHostingController(rootView: SidebarContentView().refraxEnvironment(environment))
-        let contentVC = NSHostingController(rootView: MainContentView().refraxEnvironment(environment))
-
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
-        let contentItem = NSSplitViewItem(viewController: contentVC)
-
-        sidebarItem.minimumThickness = Constants.Layout.sidebarMinWidth
-        sidebarItem.maximumThickness = Constants.Layout.sidebarMaxWidth
-        sidebarItem.canCollapse = true
-        sidebarItem.revealsOnEdgeHoverInFullscreen = false
-
-        contentItem.minimumThickness = 400
-
-        splitViewController.insertSplitViewItem(sidebarItem, at: 0)
-        splitViewController.insertSplitViewItem(contentItem, at: 1)
-
-        window.contentViewController = splitViewController
-
+    /// Makes the page the window's content, at the window's full size.
+    private func setupRootView(window: NSWindow) {
+        let rootView = NSView()
+        let pageView = NSHostingView(rootView: MainContentView().refraxEnvironment(environment))
+        pageView.sizingOptions = []
+        pageView.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(pageView)
         NSLayoutConstraint.activate([
-            splitViewController.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 400),
+            pageView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            pageView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            pageView.topAnchor.constraint(equalTo: rootView.topAnchor),
+            pageView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
         ])
-
-        // Set default thicknesses (restoration will override if applicable)
-        sidebarItem.preferredThicknessFraction = 0
-
-        // Set divider position without forcing layout
-        splitViewController.splitView.setPosition(Constants.Layout.sidebarDefaultWidth, ofDividerAt: 0)
-
-        windowState.sidebarThickness = Constants.Layout.sidebarDefaultWidth
-        lastCollapsedThickness = Constants.Layout.sidebarDefaultWidth
-
-        // Start collapsed so the frame observer doesn't save an incorrect width
-        // before window restoration runs
-        sidebarItem.isCollapsed = true
-        windowState.isSidebarCollapsed = true
-
-        // To run performance profiling, uncomment the following:
-        // schedulePerformanceTest()
-
-        // DEBUG: Run drag overlay mode test (uncomment to test)
-        // scheduleDragOverlayTest()
+        rootViewController.view = rootView
+        window.contentViewController = rootViewController
+        window.contentMinSize = NSSize(width: Constants.Layout.contentMinSize, height: Constants.Layout.contentMinSize)
     }
 
     private func setupBackgroundView(contentView: NSView) {
@@ -511,7 +287,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         ])
     }
 
-    /// The tab canvas covers the whole window, above the sidebar and below Command Lens.
+    /// The tab canvas covers the whole window, above the floating layer and below Command Lens.
     private func setupTabCanvasLayer(contentView: NSView) {
         let canvasView = TransparentHostingView(rootView: TabCanvasLayer().refraxEnvironment(environment)) { [unowned self] in
             !tabCanvasManager.isActive
@@ -562,7 +338,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         let overlay = TransparentHostingView(rootView: OverlayContainer().refraxEnvironment(environment)) { [unowned self] in
             !windowState.showsCommandLens
                 && !tabSwitcherManager.isActive
-                && (!windowState.showsCompactAddressBar || windowState.usesFloatingTabs)
                 && windowState.lockedSpaceRequiringAuth == nil
                 && !windowState.isHoveringOverlayNotification
                 && environment.screenshotCoordinator.currentPreview == nil
@@ -584,235 +359,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             overlayView.topAnchor.constraint(equalTo: contentView.topAnchor),
             overlayView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
-    }
-
-    /// Sets up the AppKit-animated sidebar overlay container.
-    ///
-    /// ## Layout Structure
-    ///
-    /// The overlay mimics the real sidebar's visual appearance with proper padding
-    /// so rounded corners are visible and the detail tray positions correctly.
-    ///
-    /// ```
-    /// Window edge (x=0)
-    /// │
-    /// │←────────── Container (sidebarWidth + padding) ──────────→│
-    /// │ padding │←──────── Glass (sidebarWidth) ────────────────→│
-    /// │   8px   │ SwiftUI content (sidebarThickness)             │
-    /// │         │                                                │
-    ///
-    /// When hidden (translated left by containerWidth):
-    /// │←── Container ──→│ Window edge
-    ///          Glass ───→│
-    /// (entirely off-screen)
-    /// ```
-    ///
-    /// The glass has `padding` inset on the left so rounded corners are visible,
-    /// and fills to the container's trailing edge. Container width = sidebarWidth + padding.
-    /// Translation when hidden = -containerWidth to fully hide the glass off-screen.
-    private func setupSidebarOverlayContainer(contentView: NSView) {
-        let padding = Constants.SidebarAnimation.glassEffectPadding
-        let sidebarWidth = windowState.sidebarThickness
-        let containerWidth = sidebarWidth + padding
-
-        let container = SidebarOverlayContainerView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        // Track cursor presence to conditionally block WebKit mouse events
-        container.onCursorPresenceChanged = { [weak self] isInside in
-            guard let self else { return }
-            isCursorInSidebarOverlay = isInside
-            updateOverlayEventBlocking()
-        }
-
-        guard let glassViewClass = NSClassFromString("NSContainerConcentricGlassEffectView") as? NSGlassEffectView.Type else {
-            setupSidebarOverlayContainerFallback(contentView: contentView)
-            return
-        }
-        let glassView = glassViewClass.init()
-        glassView.translatesAutoresizingMaskIntoConstraints = false
-        glassView.cornerRadius = Constants.SidebarAnimation.glassCornerRadius
-        glassView.setValue(20.0, forKey: "concentricMinimumCornerRadius")
-
-        let sidebarView = SidebarOverlayContent()
-            .refraxEnvironment(environment)
-
-        let hostingView = NSHostingView(rootView: sidebarView)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-
-        glassView.contentView = hostingView
-        container.addSubview(glassView)
-
-        // Glass inset from left by padding (for rounded corner visibility),
-        // fills to trailing edge. Vertical padding keeps glass below toolbar.
-        NSLayoutConstraint.activate([
-            glassView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padding),
-            glassView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            glassView.topAnchor.constraint(equalTo: container.topAnchor, constant: padding),
-            glassView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -padding),
-        ])
-
-        contentView.addSubview(container)
-
-        let widthConstraint = container.widthAnchor.constraint(equalToConstant: containerWidth)
-        NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            container.topAnchor.constraint(equalTo: contentView.topAnchor),
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            widthConstraint,
-        ])
-
-        container.isHidden = true
-        if let layer = container.layer {
-            layer.transform = CATransform3DMakeTranslation(-containerWidth, 0, 0)
-        }
-
-        sidebarOverlayContainer = container
-        sidebarOverlayGlassView = glassView
-        sidebarOverlayWidthConstraint = widthConstraint
-        updateSidebarOverlayTint()
-    }
-
-    /// Fallback setup using regular NSGlassEffectView when private class unavailable.
-    /// See `setupSidebarOverlayContainer` for layout documentation.
-    private func setupSidebarOverlayContainerFallback(contentView: NSView) {
-        let padding = Constants.SidebarAnimation.glassEffectPadding
-        let sidebarWidth = windowState.sidebarThickness
-        let containerWidth = sidebarWidth + padding
-
-        let container = SidebarOverlayContainerView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        // Track cursor presence to conditionally block WebKit mouse events
-        container.onCursorPresenceChanged = { [weak self] isInside in
-            guard let self else { return }
-            isCursorInSidebarOverlay = isInside
-            updateOverlayEventBlocking()
-        }
-
-        let glassView = NSGlassEffectView()
-        glassView.translatesAutoresizingMaskIntoConstraints = false
-        glassView.cornerRadius = Constants.SidebarAnimation.glassCornerRadius
-
-        let sidebarView = SidebarOverlayContent()
-            .refraxEnvironment(environment)
-
-        let hostingView = NSHostingView(rootView: sidebarView)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-
-        glassView.contentView = hostingView
-        container.addSubview(glassView)
-
-        // Glass inset from left by padding (for rounded corner visibility),
-        // fills to trailing edge. Vertical padding keeps glass below toolbar.
-        NSLayoutConstraint.activate([
-            glassView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padding),
-            glassView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            glassView.topAnchor.constraint(equalTo: container.topAnchor, constant: padding),
-            glassView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -padding),
-        ])
-
-        contentView.addSubview(container)
-
-        let widthConstraint = container.widthAnchor.constraint(equalToConstant: containerWidth)
-        NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            container.topAnchor.constraint(equalTo: contentView.topAnchor),
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            widthConstraint,
-        ])
-
-        container.isHidden = true
-        if let layer = container.layer {
-            layer.transform = CATransform3DMakeTranslation(-containerWidth, 0, 0)
-        }
-
-        sidebarOverlayContainer = container
-        sidebarOverlayGlassView = glassView
-        sidebarOverlayWidthConstraint = widthConstraint
-        updateSidebarOverlayTint()
-    }
-
-    /// Sets up the edge extension background view for compact sidebar mode.
-    ///
-    /// The edge extension background is positioned behind the sidebar overlay and displays
-    /// sampled colors from the webview's left edge as a blurred gradient. This creates an
-    /// ambient background effect that makes the compact sidebar feel like a natural extension
-    /// of the web content.
-    ///
-    /// ## Layout
-    ///
-    /// - Positioned at leading edge of window
-    /// - Width: 56px (compact sidebar width + glass padding)
-    /// - Height: Full window height
-    /// - Z-order: Below sidebar overlay, above content
-    private func setupEdgeExtensionBackground(contentView: NSView) {
-        let backgroundView = EdgeExtensionBackgroundView()
-        backgroundView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Insert below sidebar overlay (so overlay glass sits on top)
-        if let overlayContainer = sidebarOverlayContainer {
-            contentView.addSubview(backgroundView, positioned: .below, relativeTo: overlayContainer)
-        } else {
-            contentView.addSubview(backgroundView)
-        }
-
-        let width = Constants.SidebarAnimation.compactWidth + Constants.SidebarAnimation.glassEffectPadding
-
-        NSLayoutConstraint.activate([
-            backgroundView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            backgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            backgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            backgroundView.widthAnchor.constraint(equalToConstant: width),
-        ])
-
-        // Start hidden - will be shown when entering compact mode
-        backgroundView.isHidden = true
-        backgroundView.alphaValue = 0
-
-        edgeExtensionBackgroundView = backgroundView
-    }
-
-    private func setupSidebarTrackingRegion(contentView: NSView) {
-        let trackingView = SidebarHoverTrackingView()
-        trackingView.translatesAutoresizingMaskIntoConstraints = false
-
-        trackingView.onMouseMoved = { [weak self] locationInWindow in
-            guard let self else { return }
-            handleMouseMoved(at: locationInWindow)
-        }
-
-        trackingView.onMouseExited = { [weak self] in
-            guard let self else { return }
-            handleMouseExited()
-        }
-
-        trackingView.onOverlayTriggeredChanged = { [weak self] _ in
-            guard let self else { return }
-            updateOverlayEventBlocking()
-        }
-
-        contentView.addSubview(trackingView)
-        sidebarTrackingView = trackingView
-
-        let widthConstraint = trackingView.widthAnchor.constraint(equalToConstant: 0)
-        trackingViewWidthConstraint = widthConstraint
-
-        NSLayoutConstraint.activate([
-            trackingView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            trackingView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            trackingView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            widthConstraint,
-        ])
-    }
-
-    private func setupToolbar(window: NSWindow) {
-        let toolbar = NSToolbar(identifier: NSToolbar.mainIdentifier)
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-
-        window.toolbar = toolbar
     }
 
     /// Sets up observation of window screen sharing state to enable audio tap.
@@ -866,123 +412,29 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         windowState.editAddress()
     }
 
-    /// Toggles the sidebar visibility.
-    @objc
-    func toggleSidebar(_: Any?) {
-        guard !isAnimatingSidebarTransition else { return }
-
-        let sidebarItem = splitViewController.splitViewItems[0]
-
-        if !sidebarItem.isCollapsed {
-            useFloatingTabs()
-            return
-        }
-        windowState.usesFloatingTabs = false
-        window?.toolbar?.isVisible = true
-        cancelTutorialPeek()
-
-        if isSidebarOverlayVisible {
-            expandSidebarFromOverlay()
-            return
-        }
-
-        isAnimatingSidebarTransition = true
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.allowsImplicitAnimation = true
-            sidebarItem.animator().isCollapsed = false
-        } completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                self?.isAnimatingSidebarTransition = false
-            }
-        }
-    }
-
-    /// Expands the real sidebar while keeping the overlay visible.
-    private func expandSidebarFromOverlay() {
-        let sidebarItem = splitViewController.splitViewItems[0]
-        let sidebarView = sidebarItem.viewController.view
-
-        isAnimatingSidebarTransition = true
-        overlayAnimationGeneration &+= 1
-
-        hideTask?.cancel()
-        hideTask = nil
-        sidebarExpansionTask?.cancel()
-
-        let activationWidth = Constants.SidebarAnimation.activationWidth
-        trackingViewWidthConstraint?.constant = activationWidth
-        updateTrackingAreaImmediately()
-        isAnimatingToVisible = false
-        isOverlayTriggered = false
-        sidebarTrackingView?.isOverlayTriggered = false
-
-        isTransitioningFromOverlay = true
-
-        for subview in sidebarView.subviews {
-            subview.isHidden = true
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.allowsImplicitAnimation = true
-
-            sidebarItem.animator().isCollapsed = false
-        } completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-
-                self.isTransitioningFromOverlay = false
-                self.isAnimatingSidebarTransition = false
-
-                for subview in sidebarView.subviews {
-                    subview.isHidden = false
-                }
-
-                self.hideSidebarOverlayInstantly()
-
-                self.clearToolbarItemTransforms()
-
-                // Exit compact traffic light mode if active
-                self.exitCompactTrafficLightMode(animated: false)
-
-                self.restoreSplitViewSidebarTracking()
-                self.updateTrafficLightsForExpandedSidebar(animated: false)
-
-                // Move detail tray to expanded sidebar position (16px gap)
-                self.updateDetailTrayPosition(animated: true)
-
-                // Hide edge extension background when sidebar expands
-                self.hideEdgeExtensionBackground(animated: false)
-            }
-        }
-    }
-
-    /// Reloads the active page.
     /// Stops loading the active page.
     func stopLoading() {
         windowState.activeWebPage?.stopLoading()
     }
 
+    /// Reloads the focused page.
     func reloadPage() {
         _ = windowState.focusedWebPage?.reload()
     }
 
-    /// Reloads the active page without using cache.
+    /// Reloads the focused page without using cache.
     func reloadPageFromOrigin() {
         _ = windowState.focusedWebPage?.reload(fromOrigin: true)
     }
 
-    /// Navigates to the next tab in the list
+    /// Opens the next tab back in recency, the Recent list's order (⌘⇧]).
     func selectNextTab() {
-        tabManager.selectNextTab()
+        tabSwitcherManager.stepThroughRecent(by: 1)
     }
 
-    /// Navigates to the previous tab in the list
+    /// Opens the previous, more recent tab in the Recent list's order (⌘⇧[).
     func selectPreviousTab() {
-        tabManager.selectPreviousTab()
+        tabSwitcherManager.stepThroughRecent(by: -1)
     }
 
     /// Opens a file panel to load local files in the browser.
@@ -1025,7 +477,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     func windowWillClose(_: Notification) {
         NotificationCenter.default.removeObserver(self)
-        cancellables.removeAll()
         removeUndoRedoMonitor()
         cancelAllObservationTasks()
     }
@@ -1039,15 +490,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             task.cancel()
         }
         observationTasks.removeAll()
-
-        hideTask?.cancel()
-        hideTask = nil
-
-        tutorialPeekTask?.cancel()
-        tutorialPeekTask = nil
-
-        sidebarExpansionTask?.cancel()
-        sidebarExpansionTask = nil
     }
 
     func window(_: NSWindow, willEncodeRestorableState state: NSCoder) {
@@ -1146,236 +588,3 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         }
     }
 }
-
-// MARK: - Mouse Event Handling
-
-extension RefraxWindowController {
-    override func mouseEntered(with event: NSEvent) {
-        // Check if this is the compact traffic light tracking area
-        if let userInfo = event.trackingArea?.userInfo as? [String: Any],
-           userInfo["compactTrafficLights"] as? Bool == true {
-            handleCompactTrafficLightMouseEntered()
-            return
-        }
-
-        super.mouseEntered(with: event)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        // Check if this is the compact traffic light tracking area
-        if let userInfo = event.trackingArea?.userInfo as? [String: Any],
-           userInfo["compactTrafficLights"] as? Bool == true {
-            handleCompactTrafficLightMouseExited()
-            return
-        }
-
-        super.mouseExited(with: event)
-    }
-}
-
-// MARK: - Debug Utilities
-
-#if DEBUG
-    extension RefraxWindowController {
-        func debugPrintWindowHierarchy() {
-            guard let window else {
-                print("🔴 DEBUG: No window")
-                return
-            }
-
-            print("═══════════════════════════════════════════════════════════════")
-            print("🔍 WINDOW HIERARCHY DEBUG")
-            print("═══════════════════════════════════════════════════════════════")
-
-            print("\n📦 WINDOW: \(type(of: window)) - \(window)")
-            print("   Frame: \(window.frame)")
-            print("   StyleMask: \(window.styleMask)")
-
-            if let themeFrame = window.contentView?.superview {
-                print("\n📦 THEME FRAME: \(type(of: themeFrame))")
-                printViewHierarchy(themeFrame, indent: 3, maxDepth: 6)
-            }
-
-            print("\n🚦 TRAFFIC LIGHTS:")
-            for buttonType in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                if let button = window.standardWindowButton(buttonType) {
-                    print("   \(buttonType): \(type(of: button))")
-                    print("      Frame: \(button.frame)")
-                    print("      Superview: \(type(of: button.superview as Any)) - \(button.superview?.frame ?? .zero)")
-                    if let grandparent = button.superview?.superview {
-                        print("      Grandparent: \(type(of: grandparent)) - \(grandparent.frame)")
-                    }
-                }
-            }
-
-            if let toolbar = window.toolbar {
-                print("\n🔧 TOOLBAR: \(type(of: toolbar))")
-                print("   Identifier: \(toolbar.identifier)")
-                print("   Items: \(toolbar.items.count)")
-
-                if let toolbarView = toolbar.value(forKey: "_toolbarView") as? NSView {
-                    print("\n   TOOLBAR VIEW: \(type(of: toolbarView))")
-                    print("      Frame: \(toolbarView.frame)")
-                    printViewHierarchy(toolbarView, indent: 6, maxDepth: 4)
-                }
-
-                for item in toolbar.items {
-                    print("\n   📍 ITEM: \(item.itemIdentifier.rawValue)")
-                    print("      Class: \(type(of: item))")
-                    print("      isBordered: \(item.isBordered)")
-
-                    if let itemViewer = item.value(forKey: "_itemViewer") as? NSView {
-                        print("      _itemViewer: \(type(of: itemViewer))")
-                        print("         Frame: \(itemViewer.frame)")
-                        printViewProperties(itemViewer, indent: 9)
-                    }
-
-                    if let view = item.view {
-                        print("      view: \(type(of: view))")
-                        print("         Frame: \(view.frame)")
-                    }
-                }
-            }
-
-            print("\n═══════════════════════════════════════════════════════════════")
-        }
-
-        private func printViewHierarchy(_ view: NSView, indent: Int, maxDepth: Int) {
-            guard maxDepth > 0 else { return }
-
-            let prefix = String(repeating: " ", count: indent)
-            print("\(prefix)├─ \(type(of: view)) - \(view.frame.size)")
-
-            if view.responds(to: NSSelectorFromString("inGlassSidebar")) {
-                if let value = view.value(forKey: "inGlassSidebar") as? Bool {
-                    print("\(prefix)│  inGlassSidebar: \(value)")
-                }
-            }
-            if view.responds(to: NSSelectorFromString("transparentBackground")) {
-                if let value = view.value(forKey: "transparentBackground") as? Bool {
-                    print("\(prefix)│  transparentBackground: \(value)")
-                }
-            }
-            if view.responds(to: NSSelectorFromString("glassBehavior")) {
-                if let value = view.value(forKey: "glassBehavior") as? Int {
-                    print("\(prefix)│  glassBehavior: \(value)")
-                }
-            }
-
-            for subview in view.subviews {
-                printViewHierarchy(subview, indent: indent + 3, maxDepth: maxDepth - 1)
-            }
-        }
-
-        private func printViewProperties(_ view: NSView, indent: Int) {
-            let prefix = String(repeating: " ", count: indent)
-
-            let properties = [
-                "inGlassSidebar", "transparentBackground", "glassBehavior",
-                "firstItemInGlassGroup", "lastItemInGlassGroup", "associatedPlatter",
-            ]
-
-            for prop in properties {
-                if view.responds(to: NSSelectorFromString(prop)) {
-                    if let value = view.value(forKey: prop) {
-                        print("\(prefix)\(prop): \(value)")
-                    }
-                }
-            }
-        }
-
-        func debugPrintClassInfo(_ object: AnyObject, label: String) {
-            print("\n🔬 CLASS INFO: \(label)")
-            print("   Type: \(type(of: object))")
-
-            var currentClass: AnyClass? = type(of: object)
-            var classChain: [String] = []
-            while let cls = currentClass {
-                classChain.append(NSStringFromClass(cls))
-                currentClass = class_getSuperclass(cls)
-            }
-            print("   Hierarchy: \(classChain.joined(separator: " → "))")
-        }
-
-        func debugLogToolbarPositions(context: String) {
-            guard let toolbar = window?.toolbar, let toolbarView else { return }
-
-            let sidebarItem = splitViewController.splitViewItems[0]
-            let sidebarFrame = sidebarItem.viewController.view.frame
-            let adapterPosition = splitViewSidebarTrackingAdapter?.sidebarDividerPosition ?? -1
-            let overridePosition = splitViewSidebarTrackingAdapter?.overrideDividerPosition ?? -1
-
-            print("═══════════════════════════════════════════════════════════════")
-            print("🔍 \(context)")
-            print("───────────────────────────────────────────────────────────────")
-            print("   Sidebar collapsed: \(sidebarItem.isCollapsed)")
-            print("   Sidebar frame.width: \(sidebarFrame.width)")
-            print("   Adapter sidebarDividerPosition: \(adapterPosition)")
-            print("   Adapter overrideDividerPosition: \(overridePosition)")
-            print("   ToolbarView.sidebarDividerPosition: \(toolbarView.sidebarDividerPosition)")
-            print("───────────────────────────────────────────────────────────────")
-
-            for item in toolbar.items where sidebarToolbarItemIdentifiers.contains(item.itemIdentifier) {
-                let viewer = item._itemViewer
-                let viewerFrame = viewer.frame
-                let windowFrame = viewer.convert(viewer.bounds, to: nil)
-
-                print("   📍 \(item.itemIdentifier.rawValue)")
-                print("      viewer.frame: \(viewerFrame)")
-                print("      viewer in window: \(windowFrame)")
-                print("      inGlassSidebar: \(viewer.inGlassSidebar)")
-                if let transform = viewer.layer?.transform, !CATransform3DIsIdentity(transform) {
-                    print("      layer.transform.tx: \(transform.m41)")
-                }
-            }
-            print("═══════════════════════════════════════════════════════════════\n")
-        }
-
-        func debugPrintSidebarPosition() {
-            guard let window, let themeFrame else {
-                print("🔴 No window or themeFrame")
-                return
-            }
-
-            let sidebarItem = splitViewController.splitViewItems[0]
-            let sidebarVC = sidebarItem.viewController
-            let sidebarView = sidebarVC.view
-
-            print("═══════════════════════════════════════════════════════════════")
-            print("📐 SIDEBAR POSITION DEBUG")
-            print("───────────────────────────────────────────────────────────────")
-            print("   Window frame: \(window.frame)")
-            print("   ContentView frame: \(window.contentView?.frame ?? .zero)")
-            print("   SplitView frame: \(splitViewController.splitView.frame)")
-            print("───────────────────────────────────────────────────────────────")
-            print("   Sidebar VC view frame: \(sidebarView.frame)")
-            print("   Sidebar VC view in window: \(sidebarView.convert(sidebarView.bounds, to: nil))")
-            print("   Sidebar safeAreaInsets: \(sidebarView.safeAreaInsets)")
-            print("   Sidebar safeAreaRect: \(sidebarView.safeAreaRect)")
-            print("───────────────────────────────────────────────────────────────")
-            print("   ThemeFrame titlebarRect: \(themeFrame.titlebarRect())")
-            print("   ThemeFrame titlebarRectIncludingToolbar: \(themeFrame.titlebarRectIncludingToolbar())")
-            print("   ThemeFrame contentRect: \(themeFrame.contentRect())")
-            print("   ThemeFrame _titlebarHeight: \(themeFrame._titlebarHeight())")
-            print("───────────────────────────────────────────────────────────────")
-
-            if let firstSubview = sidebarView.subviews.first {
-                print("   First subview frame: \(firstSubview.frame)")
-                print("   First subview in window: \(firstSubview.convert(firstSubview.bounds, to: nil))")
-            }
-
-            print("───────────────────────────────────────────────────────────────")
-            print("   Superview chain from sidebar:")
-            var currentView: NSView? = sidebarView
-            var depth = 0
-            while let view = currentView, depth < 10 {
-                let className = String(describing: type(of: view))
-                print("     \(depth): \(className) - frame: \(view.frame)")
-                currentView = view.superview
-                depth += 1
-            }
-
-            print("═══════════════════════════════════════════════════════════════\n")
-        }
-    }
-#endif

@@ -4,7 +4,6 @@ import SwiftUI
 
 extension UnifiedContentView {
     /// Empty slots layer shown below webpages in layout mode
-    @ViewBuilder
     var emptySlots: some View {
         ZStack(alignment: .topLeading) {
             ForEach(emptyGridPositions, id: \.self) { position in
@@ -23,13 +22,6 @@ extension UnifiedContentView {
                         return false
                     }
 
-                    // Try Refrax tab ID first (from hybrid drag system)
-                    let tabIDs = DragPasteboardWriter.extractTabIDs(from: pasteboard)
-                    if !tabIDs.isEmpty {
-                        return handleDrop(at: targetPosition, items: tabIDs.map(\.uuidString))
-                    }
-
-                    // Fall back to plain string (legacy .draggable)
                     guard let string = pasteboard.string(forType: .string) else {
                         return false
                     }
@@ -41,7 +33,6 @@ extension UnifiedContentView {
     }
 
     /// Control buttons and highlights layer shown above webpages in layout mode
-    @ViewBuilder
     var layoutModeControls: some View {
         ZStack(alignment: .topLeading) {
             if let highlightPosition = highlightedDropTarget {
@@ -95,17 +86,8 @@ extension UnifiedContentView {
             return .noTarget
         }
 
-        // Try Refrax tab ID first (from hybrid drag system)
-        var tabID: UUID?
-        let tabIDs = DragPasteboardWriter.extractTabIDs(from: pasteboard)
-        if let firstID = tabIDs.first {
-            tabID = firstID
-        } else if let string = pasteboard.string(forType: .string) {
-            // Fall back to plain string (legacy .draggable)
-            tabID = UUID(uuidString: string)
-        }
-
-        guard let tabID, let draggedTab = tabManager.state.tab(for: tabID) else {
+        guard let tabID = pasteboard.string(forType: .string).flatMap(UUID.init(uuidString:)),
+              let draggedTab = tabManager.state.tab(for: tabID) else {
             clearDragState()
             return .noTarget
         }
@@ -227,7 +209,6 @@ extension UnifiedContentView {
 // MARK: - Control Buttons
 
 extension UnifiedContentView {
-    @ViewBuilder
     func controlButtons(for _: TabPage, at position: PanePosition, frame: CGRect) -> some View {
         ZStack {
             if layoutGrid.filledPositions.count > 1 {
@@ -247,7 +228,6 @@ extension UnifiedContentView {
                     Spacer()
                 }
             }
-
 
             expansionButtons(for: position)
         }

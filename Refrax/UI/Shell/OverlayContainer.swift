@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Overlay Container
 
-/// Main overlay container for window-level overlays including sidebar and lenses.
+/// Main overlay container for window-level overlays: lenses, toasts, the tour, and the space lock.
 ///
 /// Each overlay component handles its own observation scope to minimize re-renders.
 /// The parent container orchestrates layout and coordinates animations.
@@ -23,12 +23,11 @@ import SwiftUI
 /// - `ScreenshotPreviewOverlay` - Observes `screenshotCoordinator.currentPreview`
 /// - `RecordingPreviewOverlay` - Observes `recordingCoordinator.currentPreview`
 /// - `FloatingTourOverlay` - Observes the tour's current step and the frames it points at
-/// - `ToastOverlay` - Observes `toastMessage`, `sidebarThickness`
+/// - `ToastOverlay` - Observes `toastMessage`
 /// - `SearchEngineDetectedOverlay` - Observes `pendingSearchEngineDetection`
 struct OverlayContainer: View {
     @Environment(WindowState.self) private var windowState: WindowState
     @Environment(TabSwitcherManager.self) private var tabSwitcherManager: TabSwitcherManager
-    @Environment(GuidedTourManager.self) private var guidedTourManager: GuidedTourManager
     @Environment(FloatingTourManager.self) private var floatingTourManager: FloatingTourManager
 
     /// The active space if it requires authentication, otherwise nil.
@@ -46,8 +45,6 @@ struct OverlayContainer: View {
             || windowState.pendingSearchEngineDetection != nil
             || tabSwitcherManager.isActive
             || lockedSpace != nil
-            || (windowState.showsCompactAddressBar && !windowState.usesFloatingTabs)
-            || guidedTourManager.isActive
             || floatingTourManager.isActive
     }
 
@@ -59,14 +56,8 @@ struct OverlayContainer: View {
         let _ = windowState.spaceLockVersion
 
         ZStack(alignment: .topLeading) {
-            // Tab preview overlay (rendered first so it appears behind lenses)
-            TabPreviewOverlay()
-
             // Tab switcher overlay (Control+Tab)
             TabSwitcherOverlay()
-            
-            // Compact sidebar address bar overlay
-            CompactAddressBarOverlay()
 
             // Beams from the rail to what it opened, under the lens they point at
             BrowserBeamsOverlay()
@@ -74,9 +65,6 @@ struct OverlayContainer: View {
             // Command Lens, centered (⌘T) or beside the page card (⌘L)
             CommandLensOverlay()
             AnchoredLensOverlay()
-
-            // Guided tour instruction bubble
-            GuidedTourOverlay()
 
             // Floating tour: scrim, spotlights, instruction card, progress
             FloatingTourOverlay()
@@ -92,9 +80,6 @@ struct OverlayContainer: View {
 
             // Recording preview (bottom-right corner)
             RecordingPreviewOverlay()
-
-            // Compact sidebar tab title tooltip
-            CompactTabTitleOverlay()
 
             // Space lock overlay (highest z-order - covers entire window)
             if let space = lockedSpace {

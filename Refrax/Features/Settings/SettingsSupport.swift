@@ -71,7 +71,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .general:
             "Gestures, media, email links, downloads, and widgets."
         case .appearance:
-            "Theme, colors, sidebar, and page appearance."
+            "Theme, colors, and page appearance."
         case .tabs:
             "Previews, archive, snapshots, and time tracking."
         case .favorites:
@@ -121,8 +121,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .general:
             [
                 SearchableSettingItem(id: "general.mailHandler", title: "Email link handler", keywords: ["mail", "mailto", "email", "handler", "app"]),
-                SearchableSettingItem(id: "general.calendarLookAhead", title: "Calendar look-ahead", keywords: ["calendar", "look", "ahead", "hours", "events"]),
-                SearchableSettingItem(id: "general.calendarAutoExpand", title: "Calendar auto-expand", keywords: ["calendar", "auto", "expand", "imminent", "events"]),
                 SearchableSettingItem(id: "general.downloadDirectory", title: "Download location", keywords: ["download", "downloads", "folder", "directory", "save", "location"]),
                 SearchableSettingItem(id: "external.enable", title: "External URL handling", keywords: ["external", "url", "handling", "links", "default browser"]),
                 SearchableSettingItem(id: "external.defaultBehavior", title: "External URL default behavior", keywords: ["external", "url", "default", "behavior", "window", "glimpse", "space"]),
@@ -134,7 +132,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(id: "appearance.theme", title: "Appearance theme", keywords: ["theme", "appearance", "light", "dark", "mode"]),
                 SearchableSettingItem(id: "appearance.accentColor", title: "Accent color", keywords: ["accent", "color", "tint", "theme"]),
                 SearchableSettingItem(id: "appearance.lightThickness", title: "Light thickness", keywords: ["light", "beam", "ray", "thickness", "width"]),
-                SearchableSettingItem(id: "appearance.sidebarMode", title: "Default sidebar mode", keywords: ["sidebar", "mode", "compact", "overlay"]),
                 SearchableSettingItem(id: "appearance.windowBackground", title: "Window background color", keywords: ["window", "background", "color"]),
                 SearchableSettingItem(id: "appearance.mixAmount", title: "Color blend strength", keywords: ["mix", "amount", "strength", "intensity", "blend"]),
                 SearchableSettingItem(id: "appearance.mixMode", title: "Color blend mode", keywords: ["blend", "mode", "mixing", "overlay", "soft light"]),

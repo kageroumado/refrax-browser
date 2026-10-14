@@ -135,7 +135,7 @@ private final class ContextMenuWindowMonitor {
         for ref in interceptors.reversed() {
             guard let view = ref.value else { continue }
 
-            // Skip views that aren't actually visible (e.g., sidebar collapsed)
+            // Skip views that aren't actually visible (e.g., a hidden card)
             guard view.isEffectivelyVisible else { continue }
 
             let locationInView = view.convert(locationInWindow, from: nil)
@@ -168,7 +168,7 @@ final class ContextMenuInterceptorNSView: NSView {
     /// Whether the view is actually visible on screen.
     ///
     /// Returns false if the view or any ancestor is hidden, has zero size,
-    /// or has been removed from the visible hierarchy (e.g., sidebar collapsed).
+    /// or has been removed from the visible hierarchy (e.g., a hidden card).
     var isEffectivelyVisible: Bool {
         guard !isHidden, !isHiddenOrHasHiddenAncestor else { return false }
         guard bounds.width > 0, bounds.height > 0 else { return false }

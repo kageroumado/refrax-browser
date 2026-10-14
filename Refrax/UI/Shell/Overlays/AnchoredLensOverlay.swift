@@ -26,32 +26,18 @@ struct AnchoredLensOverlay: View {
     @State private var anchor: CGRect = .zero
 
     private enum Constants {
-        static let expandedWidthMultiplier: CGFloat = 2.5
-        static let expandedCornerRadius: CGFloat = 16 // Match CommandLensView.Layout.cornerRadiusSmall
         static let expandDuration: CGFloat = 0.28
         static let collapseDuration: CGFloat = 0.2
         /// The field's width once it has unfolded from the card.
         static let fieldWidth: CGFloat = 640
     }
 
-    private var anchorCornerRadius: CGFloat {
-        Refrax.Constants.AddressBar.height / 2
-    }
-
     private var isExpanded: Bool {
         phase == .expanded
     }
 
-    private var currentWidth: CGFloat {
-        isExpanded ? anchor.width * Constants.expandedWidthMultiplier : anchor.width
-    }
-
     private var currentHeight: CGFloat {
         anchor.height
-    }
-
-    private var currentCornerRadius: CGFloat {
-        isExpanded ? Constants.expandedCornerRadius : anchorCornerRadius
     }
 
     var body: some View {
@@ -71,7 +57,7 @@ struct AnchoredLensOverlay: View {
                         .allowsHitTesting(true)
                 }
             }
-            .ignoresSafeArea(edges: windowState.usesFloatingTabs ? .all : [])
+            .ignoresSafeArea()
         }
 
         Color.clear
@@ -85,14 +71,12 @@ struct AnchoredLensOverlay: View {
     }
 
     private func lensWidth(in size: CGSize) -> CGFloat {
-        guard windowState.usesFloatingTabs else { return currentWidth }
         let preferred = isExpanded ? max(Constants.fieldWidth, anchor.width) : anchor.width
         return min(preferred, max(1, size.width - ControlIslandPlacement.margin * 2))
     }
 
     /// The field keeps the card's edge nearest the rail and grows away from it.
     private func lensOrigin(in size: CGSize) -> CGSize {
-        guard windowState.usesFloatingTabs else { return CGSize(width: anchor.minX, height: 0) }
         let width = lensWidth(in: size)
         let margin = ControlIslandPlacement.margin
         let growsLeft = anchor.midX > size.width / 2
@@ -103,9 +87,8 @@ struct AnchoredLensOverlay: View {
         )
     }
 
-    private var fieldStyle: CommandLensFieldStyle? {
-        guard windowState.usesFloatingTabs else { return nil }
-        return CommandLensFieldStyle(
+    private var fieldStyle: CommandLensFieldStyle {
+        CommandLensFieldStyle(
             height: ControlIslandPlacement.pageBranchHeight,
             cornerRadius: ControlIslandPlacement.pageBranchHeight / 2,
             leadingInset: ControlIslandPageBranch.Layout.leadingInset,
@@ -126,7 +109,7 @@ struct AnchoredLensOverlay: View {
     }
 
     private func openLens() {
-        anchor = windowState.commandLensEntrance?.anchor ?? windowState.addressBarFrame
+        anchor = windowState.commandLensEntrance?.anchor ?? windowState.pageCardFrame
         phase = .matchingAnchor
 
         let animation: Animation? = reduceMotion

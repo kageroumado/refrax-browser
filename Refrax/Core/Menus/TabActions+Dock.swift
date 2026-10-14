@@ -10,7 +10,6 @@ extension TabActions {
 
     /// Dock Left and Dock Right for each side the tab is not on, and Undock while it is docked.
     func dockActions(canvas: TabCanvasManager) -> [MenuAction] {
-        guard windowState.usesFloatingTabs else { return [] }
         let dock = canvas.storedFloatingPlacement(for: tab)?.dock
         let isCurrentPage = tab.id == windowState.activeTabID
         var actions = FloatingDockEdge.allCases.filter { $0 != dock }.map { edge in

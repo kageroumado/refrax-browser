@@ -51,7 +51,7 @@ struct PageActionsMenu: NSViewRepresentable {
         canvas: TabCanvasManager,
         sharing: SharingCoordinator,
     ) -> MenuTree {
-        let page = PageActions(tab: tab, surface: surface, windowState: windowState, tabs: tabs, sharing: sharing)
+        let page = PageActions(tab: tab, windowState: windowState, tabs: tabs, sharing: sharing)
         // A card on screen edits its own title; a row in Recent has none to edit.
         let editsInPlace = canvas.visibleFloatingTabs.contains { $0.id == tab.id }
         let object = TabActions(
