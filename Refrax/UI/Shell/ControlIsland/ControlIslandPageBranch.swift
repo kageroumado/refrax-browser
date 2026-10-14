@@ -101,7 +101,7 @@ struct ControlIslandPageBranch: View {
 
     private func identity(_ tab: Tab) -> some View {
         Button {
-            tabInfo.show()
+            tabInfo.showBriefly()
             windowState.pageCardFrame = frame
             windowState.openCommandLens(prefill: url?.absoluteString ?? "", anchor: frame)
         } label: {

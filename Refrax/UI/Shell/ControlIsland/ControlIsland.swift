@@ -417,6 +417,12 @@ struct ControlIsland: View {
         }
         .task(id: avoidanceRevision) { await yieldToPageControl() }
         .task(id: keepsHoverOpen ? .inside : pointerPhase) { await settleHover() }
+        .task(id: briefCardIsUnattended) {
+            guard briefCardIsUnattended else { return }
+            try? await Task.sleep(for: ControlIslandTabInfoState.briefShowHold)
+            guard !Task.isCancelled else { return }
+            state.tabInfo.foldBriefShow()
+        }
         .task(id: showsShortcut) {
             guard showsShortcut else { return }
             try? await Task.sleep(for: .seconds(4))
@@ -932,6 +938,12 @@ struct ControlIsland: View {
         if phase == .inside {
             state.isHovered = true
         }
+    }
+
+    /// A briefly shown page card with the pointer elsewhere and nothing open from it.
+    private var briefCardIsUnattended: Bool {
+        state.tabInfo.isShownBriefly && pointerPhase != .inside && !state.tabInfo.isHovered
+            && !state.tabInfo.isMenuPresented && !windowState.showsAnchoredLens
     }
 
     private var keepsHoverOpen: Bool {
