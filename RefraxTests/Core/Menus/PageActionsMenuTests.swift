@@ -55,13 +55,14 @@ struct PageActionsMenuTests {
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
             "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Keep Visible", "Dock Left",
-            "Dock Right", "——", "Select for Group", "——", "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Read",
-            "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Dock Right", "——", "Select for Group", "Group With ▸ (1)", "  example.com/active", "——", "Favorite", "Tab ▸ (3)",
+            "  Rename…", "  Mark as Read", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
+            "Close Tab",
         ])
         #expect(tree.ids == [
             "page.copyAddress", "page.copyMarkdownLink", "page.share", "tab.look", "tab.keepVisible", "tab.dock.leading",
-            "tab.dock.trailing", "tab.select", "tab.favorite", "group.tab", "tab.moveToNewWindow", "tab.reflectedWindow",
-            "tab.close",
+            "tab.dock.trailing", "tab.select", "tab.groupWith", "tab.favorite", "group.tab", "tab.moveToNewWindow",
+            "tab.reflectedWindow", "tab.close",
         ])
     }
 
@@ -72,9 +73,9 @@ struct PageActionsMenuTests {
         let tree = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(tree.outline == [
             "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Preview ▸ (4)",
-            "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Select for Group", "——", "Favorite", "Tab ▸ (3)",
-            "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
-            "Close Tab",
+            "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Select for Group", "Group With ▸ (1)",
+            "  example.com/other", "——", "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——",
+            "Move to New Window", "Open Reflected Window", "——", "Close Tab",
         ])
         #expect(!tree.ids.contains("tab.look"))
         #expect(tree.outline.contains("  Show Live Page"))
@@ -100,8 +101,9 @@ struct PageActionsMenuTests {
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
             "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Dock Left",
-            "Dock Right", "——", "Deselect for Group", "Group Selected Tabs", "——", "Favorite", "Tab ▸ (3)", "  Rename…",
-            "  Mark as Read", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Dock Right", "——", "Deselect for Group", "Group Selected Tabs", "Group With ▸ (1)", "  example.com/active", "——",
+            "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Read", "  Duplicate Tab", "——", "Move to New Window",
+            "Open Reflected Window", "——", "Close Tab",
         ])
     }
 
@@ -115,8 +117,8 @@ struct PageActionsMenuTests {
         let floating = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(topLevel(floating) == [
             "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Preview ▸ (4)",
-            "——", "Select for Group", "——", "Favorite", "Tab ▸ (3)", "——", "Move to New Window", "Open Reflected Window", "——",
-            "Close Tab",
+            "——", "Select for Group", "Group With ▸ (1)", "——", "Favorite", "Tab ▸ (3)", "——", "Move to New Window",
+            "Open Reflected Window", "——", "Close Tab",
         ])
 
         try fixture.keepRegion(on: fixture.active)
@@ -157,9 +159,9 @@ struct PageActionsMenuTests {
             bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas,
         )
         #expect(rows.outline == [
-            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Select for Group", "——",
-            "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window",
-            "Open Reflected Window", "——", "Close Tab",
+            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——",
+            "Select for Group", "Group With ▸ (1)", "  example.com/other", "——", "Favorite", "Tab ▸ (3)", "  Rename…",
+            "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
         ])
         let card = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(Array(card.outline.suffix(rows.outline.count)) == rows.outline)

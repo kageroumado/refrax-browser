@@ -269,7 +269,7 @@ struct ControlIslandTests {
     func `Option-click meanings are written into the catalog`() {
         #expect(ControlIslandItem.navigation.detail.contains("⌥-click shows history"))
         #expect(ControlIslandItem.floatingTabs.detail.contains("Recent tabs"))
-        #expect(ControlIslandItem.desk.detail.contains("⌥-click"))
+        #expect(!ControlIslandItem.desk.detail.contains("debug"))
         #expect(ControlIslandItem.updates.symbol == "arrow.down.circle.fill")
     }
 

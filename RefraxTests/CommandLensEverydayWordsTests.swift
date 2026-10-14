@@ -92,6 +92,8 @@ struct CommandLensBareDomainTests {
         manager.commitSelection()
 
         #expect(space.tabs.contains { $0.activePage.url.host == "bbc.com" })
+        // The query the edit started must finish before the environment goes away.
+        try await settle(manager)
     }
 }
 

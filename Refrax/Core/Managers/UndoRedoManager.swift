@@ -496,9 +496,15 @@ extension UndoRedoManager {
     private func returnTabs(to origins: [TabSpaceOrigin], actionName: String) {
         let tabs = origins.compactMap { tabManager.state.tab(for: $0.tabID) }
         let current = tabs.compactMap(TabSpaceOrigin.init)
+        let lock = tabManager.state.spaceLockManager
         for origin in origins {
             guard let tab = tabManager.state.tab(for: origin.tabID),
                   let space = spaceManager.spaces.first(where: { $0.id == origin.spaceID }) else { continue }
+            // Undo never crosses a lock: a locked source or destination keeps its tabs until it
+            // is unlocked, the same gate Move to Space goes through.
+            if lock.requiresAuth(for: space) || tab.space.map(lock.requiresAuth(for:)) == true {
+                continue
+            }
             tabManager.moveTabs([tab], to: space)
             if let groupID = origin.groupID, let group = space.groups.first(where: { $0.id == groupID }) {
                 tabGroupManager.moveTabToGroup(tab, group: group, in: space)
