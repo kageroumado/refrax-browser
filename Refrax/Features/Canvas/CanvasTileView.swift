@@ -24,6 +24,10 @@ final class CanvasTileView: NSView {
         didSet { applyColors() }
     }
 
+    var isCurrent = false {
+        didSet { applyColors() }
+    }
+
     var isTargeted = false {
         didSet { applyColors() }
     }
@@ -199,7 +203,8 @@ final class CanvasTileView: NSView {
     }
 
     private func updateAccessibilityState() {
-        setAccessibilityValue(isSelected ? "Selected" : "")
+        let states = [isCurrent ? "Current tab" : nil, isSelected ? "Selected" : nil].compactMap { $0 }
+        setAccessibilityValue(states.joined(separator: ", "))
     }
 
     override func updateLayer() {
@@ -232,10 +237,10 @@ final class CanvasTileView: NSView {
         edgeLayer.borderColor = NSColor.separatorColor.cgColor
         imageLayer.borderWidth = isSelected ? Constants.selectedBorderWidth : 1
         imageLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
-        targetLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.keyboardFocusIndicatorColor.cgColor
+        targetLayer.borderColor = isTargeted ? NSColor.keyboardFocusIndicatorColor.cgColor : NSColor.controlAccentColor.cgColor
         targetLayer.cornerRadius = glass.cornerRadius + Constants.targetInset
-        targetLayer.isHidden = !isTargeted && !(isSelected && placement.shape != .live)
-        titleLabel.textColor = isTargeted || placement.shape != .live ? .labelColor : .secondaryLabelColor
+        targetLayer.isHidden = !isTargeted && !isCurrent && !(isSelected && placement.shape != .live)
+        titleLabel.textColor = isTargeted || isCurrent || placement.shape != .live ? .labelColor : .secondaryLabelColor
         updateAccessibilityState()
     }
 

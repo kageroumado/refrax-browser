@@ -206,6 +206,7 @@ final class TabCanvasBoardView: NSView {
             tile.placement = content.placements[tab.id] ?? .initial(index: 0, shape: tab.boardIsCompact ? .tab : .live)
             tile.snapshot = content.snapshots[tab.id]
             tile.isSelected = content.selectedTabIDs.contains(tab.id)
+            tile.isCurrent = content.focusedTabID == tab.id
             // While the simulation moves a tile, it owns the position.
             if !tile.isDragging, !physics.isActive(tab.id) {
                 tile.frame = frame
