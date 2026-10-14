@@ -142,6 +142,7 @@ final class TabCanvasManager {
     private(set) var focusedFloatingTabID: Tab.ID?
     private(set) var floatingCamera = TabSpatialCamera()
     private(set) var openingCameraFrame: CGRect?
+    private(set) var openingFitRect: CGRect?
     var pendingCameraZoom: (factor: CGFloat, point: CGPoint)?
     var regionSelectionError: String?
     var regionSelection: FloatingRegionSelection?
@@ -182,8 +183,8 @@ final class TabCanvasManager {
     private(set) var rayRequest: FloatingRayRequest?
     @ObservationIgnored private var rayRevision = 0
 
-    /// Places the outgoing page and an incoming page beside it, then points toward
-    /// the outgoing page when its place is new.
+    /// Places the outgoing page, positions a linked incoming page beside it, and
+    /// points toward the outgoing page when its place is new.
     func tabDisplaced(_ tab: Tab) {
         guard showsFloatingControls, !tab.isFavorite, !tab.isArchived,
               tab.space?.id == windowState.activeSpaceID, tab.id != windowState.activeTabID,
@@ -201,7 +202,11 @@ final class TabCanvasManager {
         guard let incoming = windowState.activeTab, incoming.space?.id == tab.space?.id,
               !incoming.isFavorite, storedFloatingPlacement(for: incoming) == nil else { return }
         let occupied = floatingTabs.filter { $0.id != incoming.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
-        if let placement = startingPlacement(for: incoming, avoiding: occupied, beside: tab) {
+        let ordered = windowState.activeSpaceTabs
+        let parentIndex = ordered.firstIndex { $0.id == tab.id }
+        let incomingIndex = ordered.firstIndex { $0.id == incoming.id }
+        let parent = parentIndex != nil && incomingIndex == parentIndex.map { $0 + 1 } ? tab : nil
+        if let placement = startingPlacement(for: incoming, avoiding: occupied, beside: parent) {
             updateFloatingPlacement(placement, for: incoming)
         }
     }
@@ -229,11 +234,20 @@ final class TabCanvasManager {
         }
         let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
         let pageCard = showsFloatingControls ? windowState.pageCardFrame : .zero
-        guard let origin = FloatingArrangement.freeCell(
+        let arrangeArea = FloatingArrangement.arrangeArea(in: bounds, rail: rail)
+        let fromTrailing = FloatingArrangement.fillsFromTrailing(bounds: bounds, rail: rail)
+        let taken = occupied.map { $0.frame(in: bounds) }
+        let separated = FloatingArrangement.freeCell(
             for: placement.frame(in: bounds).size,
-            avoiding: occupied.map { $0.frame(in: bounds) } + [pageCard],
-            in: FloatingArrangement.arrangeArea(in: bounds, rail: rail),
-            fromTrailing: FloatingArrangement.fillsFromTrailing(bounds: bounds, rail: rail),
+            avoiding: taken.map { $0.insetBy(dx: -Layout.independentPlacementClearance, dy: -Layout.independentPlacementClearance) } + [pageCard],
+            in: arrangeArea,
+            fromTrailing: fromTrailing,
+        )
+        guard let origin = separated ?? FloatingArrangement.freeCell(
+            for: placement.frame(in: bounds).size,
+            avoiding: taken + [pageCard],
+            in: arrangeArea,
+            fromTrailing: fromTrailing,
         ) else { return nil }
         placement.move(to: origin, in: bounds)
         return placement
@@ -244,7 +258,7 @@ final class TabCanvasManager {
         let ordered = windowState.activeSpaceTabs
         guard let index = ordered.firstIndex(where: { $0.id == tab.id }) else { return nil }
         let before = ordered[..<index].reversed()
-        let after = ordered[(index + 1)...]
+        let after = tab.group == nil ? [] : Array(ordered[(index + 1)...])
         let neighbors = [preferredNeighbor].compactMap { $0 } + Array(before) + Array(after)
         let taken = occupied.map { $0.frame(in: floatingArea) }
         let controls = showsFloatingControls ? [windowState.controlIsland.railFrame, windowState.pageCardFrame] : []
@@ -693,6 +707,7 @@ final class TabCanvasManager {
     static let symbolName = "rectangle.3.group"
 
     enum Layout {
+        static let independentPlacementClearance: CGFloat = 80
         /// The smallest desk; a space with more tabs gets a proportionally larger one.
         static let minimumDeskSize = CGSize(width: 1_280, height: 820)
         /// Free slots in the desk's starting grid per tab, so a space opens with room to
@@ -897,10 +912,11 @@ final class TabCanvasManager {
 
     // MARK: - Showing
 
-    /// Opens the canvas for the active space.
-    func show() {
+    /// Opens the canvas for the active space, optionally flying from the current page to every tab.
+    func show(fittingEverything: Bool = false) {
         guard !isActive else { return }
         openingCameraFrame = floatingCamera.unproject(floatingArea)
+        openingFitRect = nil
         dismissFloatingTabs()
 
         focusedTabID = windowState.activeTab?.id
@@ -908,6 +924,9 @@ final class TabCanvasManager {
         tileSize = contentAspectTileSize()
         selectedTabIDs = []
         reloadTabs()
+        if fittingEverything {
+            openingFitRect = everythingRect
+        }
         isActive = true
         offerHint(.leavingCanvas)
 
@@ -926,6 +945,7 @@ final class TabCanvasManager {
             tabManager.setActiveTab(tab, in: windowState)
         }
         floatingCamera.zoom(to: 1, at: CGPoint(x: floatingArea.midX, y: floatingArea.midY))
+        openingFitRect = nil
         pendingCameraZoom = nil
         snapshotTask?.cancel()
         snapshotTask = nil
@@ -1118,8 +1138,12 @@ final class TabCanvasManager {
 
     /// Fits every tile and zone in view; the desk itself when it holds none.
     func zoomToEverything() {
+        requestZoom(to: everythingRect)
+    }
+
+    private var everythingRect: CGRect {
         let content = (Array(tileFrames.values) + zones.map(\.frame)).reduce(CGRect.null) { $0.union($1) }
-        requestZoom(to: content.isNull ? deskBounds : content.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset))
+        return content.isNull ? deskBounds : content.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset)
     }
 
     private func requestZoom(to rect: CGRect) {

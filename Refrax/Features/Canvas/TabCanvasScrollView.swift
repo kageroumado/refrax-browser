@@ -185,13 +185,16 @@ final class TabCanvasScrollView: NSScrollView {
     // MARK: - Panning from a Page
 
     /// Reveals the table immediately at its shared camera position.
-    func showTable(at visible: CGRect, trackingTarget: Bool = false) {
+    func showTable(at visible: CGRect, trackingTarget: Bool = false, fitting rect: CGRect? = nil) {
         isPeeking = trackingTarget
         whenLaidOut { [weak self] in
             guard let self else { return }
             openingPath = nil
             setVisibleRect(visible)
             alphaValue = 1
+            if let rect {
+                fly(toFit: rect)
+            }
         }
     }
 

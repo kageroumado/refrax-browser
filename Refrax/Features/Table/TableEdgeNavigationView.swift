@@ -3,6 +3,7 @@ import SwiftUI
 /// Shows the exact page each direction will reach while Control owns scrolling.
 struct TableEdgeNavigationView: View {
     @Environment(TableController.self) private var table
+    @Environment(TabCanvasManager.self) private var canvas
 
     private enum Layout {
         static let edgeInset: CGFloat = 20
@@ -24,11 +25,40 @@ struct TableEdgeNavigationView: View {
                     Spacer(minLength: 0)
                     edge(.right)
                 }
+                if hasOtherTabs && !hasAdjacentDestination {
+                    VStack {
+                        Spacer(minLength: 0)
+                        Button {
+                            canvas.show(fittingEverything: true)
+                        } label: {
+                            Label("View all tabs", systemImage: TabCanvasManager.symbolName)
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .fixedSize()
+                        }
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .accessibilityIdentifier("table-view-all-tabs")
+                        .help("Open the table to reach other tab groups")
+                        Spacer().frame(height: Layout.edgeInset + 8)
+                    }
+                }
             }
         }
         .padding(.vertical, Layout.edgeInset)
         .padding(.trailing, Layout.edgeInset)
         .padding(.leading, Layout.railClearance)
+    }
+
+    private var hasOtherTabs: Bool {
+        guard let current = table.currentTab else { return false }
+        return canvas.floatingTabs.contains { $0.id != current.id }
+    }
+
+    private var hasAdjacentDestination: Bool {
+        TableDirection.allCases.contains { table.destination(toward: $0) != nil }
     }
 
     @ViewBuilder

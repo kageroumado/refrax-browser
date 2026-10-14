@@ -102,11 +102,31 @@ struct FloatingWorkspaceTests {
             placement.tableOrigin = origin
             canvas.storeTablePlacement(placement, for: tab)
         }
-        let child = try env.tabManager.createTab(url: #require(URL(string: "about:blank#child")), in: space, makeActive: true)
+        let child = try env.tabManager.createTab(
+            url: #require(URL(string: "about:blank#child")), in: space, makeActive: true, insertionStrategy: .afterActive,
+        )
         let ids = Set([unrelated.id, parent.id, child.id])
         #expect(canvas.spatialNeighbor(from: parent.id, toward: .right, among: ids) == child.id)
         #expect(canvas.spatialNeighbor(from: child.id, toward: .left, among: ids) == parent.id)
         #expect(canvas.tablePlacement(for: unrelated).tableOrigin == CGPoint(x: 900, y: 900))
+    }
+
+    @Test
+    func `a fresh foreground tab starts outside the current wheel row`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let current = try env.createActiveTab(url: #require(URL(string: "about:blank#current")), in: space, for: window)
+        var placement = FloatingTabPlacement.initial(index: 0)
+        placement.tableOrigin = CGPoint(x: 100, y: 100)
+        canvas.storeTablePlacement(placement, for: current)
+
+        let fresh = try env.tabManager.createTab(url: #require(URL(string: "about:blank#fresh")), in: space, makeActive: true)
+
+        let ids = Set([current.id, fresh.id])
+        #expect(canvas.tablePlacement(for: fresh).tableOrigin != nil)
+        #expect(TableDirection.allCases.allSatisfy { canvas.spatialNeighbor(from: current.id, toward: $0, among: ids) == nil })
     }
 
     @Test

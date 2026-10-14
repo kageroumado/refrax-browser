@@ -206,7 +206,11 @@ private struct TabCanvasBoard: NSViewRepresentable {
             view.beginOpening(focusedTile: manager.focusedTileFrame, desk: manager.deskBounds, from: manager.openingCameraFrame)
             view.setOpeningScale(manager.openingScale)
         } else {
-            view.showTable(at: manager.openingCameraFrame ?? manager.floatingArea, trackingTarget: manager.isPanningFromPage)
+            view.showTable(
+                at: manager.openingCameraFrame ?? manager.floatingArea,
+                trackingTarget: manager.isPanningFromPage,
+                fitting: manager.openingFitRect,
+            )
             view.pan(by: manager.pendingPan)
             if let zoom = manager.pendingCameraZoom {
                 manager.pendingCameraZoom = nil
