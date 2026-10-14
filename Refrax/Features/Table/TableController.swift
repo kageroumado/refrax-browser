@@ -320,7 +320,7 @@ final class TableController {
 
     /// Makes the neighbor in `direction` current and reveals it.
     func step(_ direction: TableDirection) {
-        Logger.info("table step \(direction.rawValue): current \(currentTab?.displayTitle ?? "none"), destination \(destination(toward: direction)?.displayTitle ?? "none")", category: Logger.table)
+        Logger.info("table step \(direction.rawValue): current \(currentTab?.id.uuidString.prefix(8) ?? "none"), destination \(destination(toward: direction)?.id.uuidString.prefix(8) ?? "none")", category: Logger.table)
         guard let tab = destination(toward: direction) else {
             scrollView?.nudge(direction)
             return
