@@ -604,6 +604,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task(priority: .utility) {
             await Aria2Daemon().cleanupStaleDaemon()
         }
+        // The Command Lens reads the suffix list to tell a typed domain from a search
+        Task(name: "Load public suffix list") {
+            await PublicSuffixList.shared.loadIfNeeded()
+        }
 
         #if DEBUG
             // Debug builds skip onboarding so fresh launches (--in-memory

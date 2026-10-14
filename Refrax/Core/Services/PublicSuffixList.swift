@@ -34,8 +34,30 @@ final class PublicSuffixList {
     private(set) var suffixes: Set<String> = []
     private var hasLoaded = false
     
-    /// Common multi-part TLDs used as fallback when network is unavailable
-    private let fallbackSuffixes: Set<String> = [
+    /// Suffixes known before the full list loads: the common generic TLDs, every
+    /// country-code TLD, and the common multi-part suffixes. A typed `bbc.com` or
+    /// `news.ycombinator.com` reads as a domain on the first launch, before any fetch.
+    private let fallbackSuffixes: Set<String> = PublicSuffixList.genericTopLevelDomains
+        .union(PublicSuffixList.countryCodeTopLevelDomains)
+        .union(PublicSuffixList.multiPartSuffixes)
+
+    private nonisolated static let genericTopLevelDomains: Set<String> = [
+        "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name", "pro",
+        "io", "ai", "app", "dev", "page", "blog", "news", "wiki", "xyz", "online", "site",
+        "tech", "cloud", "shop", "store", "art", "design", "media", "studio", "social",
+        "zone", "world", "today", "space", "website", "link", "live", "life", "fun",
+        "game", "games", "mobi", "museum", "travel", "jobs", "aero", "coop",
+    ]
+
+    /// Every ISO 3166 two-letter region, which is the set of country-code TLDs, plus
+    /// the ccTLDs that differ from a region code.
+    private nonisolated static let countryCodeTopLevelDomains: Set<String> = Set(
+        Locale.Region.isoRegions
+            .map { $0.identifier.lowercased() }
+            .filter { $0.count == 2 && $0.allSatisfy(\.isLetter) },
+    ).union(["uk", "eu", "su", "ac"])
+
+    private nonisolated static let multiPartSuffixes: Set<String> = [
         "co.uk", "org.uk", "me.uk", "ac.uk", "gov.uk",
         "co.nz", "co.jp", "co.kr", "co.in", "co.za",
         "com.au", "net.au", "org.au", "edu.au",
