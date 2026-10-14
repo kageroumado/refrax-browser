@@ -33,7 +33,7 @@ struct SettingsView: View {
             )
         }
         .navigationSplitViewStyle(.balanced)
-        // The sidebar's selection and the controls follow Refrax's accent, not the system's.
+        // Controls follow Refrax's accent; the sidebar draws its own selection in it.
         .tint(Color.appAccentColor)
         .frame(minWidth: 750, minHeight: 500)
         .onChange(of: navigation.requestedCategory, initial: true) { _, category in
