@@ -31,10 +31,10 @@ final class Space {
     /// Display name of the space.
     var name: String
 
-    /// SF Symbol name or emoji character for the space icon.
+    /// SF Symbol name or emoji character for the space icon, or empty while none was chosen.
     ///
     /// If the string is a single character that's an emoji, it's displayed as-is.
-    /// Otherwise it's interpreted as an SF Symbol name.
+    /// Otherwise it's interpreted as an SF Symbol name; ``symbolName`` resolves an empty one.
     var iconName: String
 
     /// Optional description for the space.
@@ -342,6 +342,30 @@ final class Space {
     }
 
     // MARK: - Icon Type
+
+    /// The SF Symbol the space shows: its chosen icon, or ``placeholderSymbol(name:position:)``
+    /// while it has none.
+    var symbolName: String {
+        iconName.isEmpty ? Self.placeholderSymbol(name: name, position: position) : iconName
+    }
+
+    /// The icon of a space with none chosen: a rounded square holding its number for a space
+    /// named by number ("Space 2"), else its initial, else its place in the list.
+    nonisolated static func placeholderSymbol(name: String, position: Int?) -> String {
+        let numbered = 0 ... 50
+        let words = name.split(separator: " ")
+        if words.count == 2, let number = Int(words[1]), numbered.contains(number) {
+            return "\(number).square"
+        }
+        if let initial = name.trimmingCharacters(in: .whitespaces).first.map({ String($0).lowercased() }),
+           initial.count == 1, let scalar = initial.unicodeScalars.first, ("a" ... "z").contains(scalar) {
+            return "\(initial).square"
+        }
+        if let position, numbered.contains(position + 1) {
+            return "\(position + 1).square"
+        }
+        return "square"
+    }
 
     /// Whether the icon is an emoji (single character) vs SF Symbol.
     var isEmoji: Bool {

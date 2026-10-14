@@ -145,7 +145,7 @@ struct ControlIslandSpaces: View {
                             .overlay { Rectangle().fill(iconColor(selected: selected)).mask(Text(space.iconName)) }
                     }
                 } else {
-                    Image(systemName: space.iconName)
+                    Image(systemName: space.symbolName)
                         .symbolRenderingMode(.monochrome)
                 }
             }

@@ -394,7 +394,7 @@ final class WidgetDataManager {
             SpaceSummary(
                 id: space.id,
                 name: space.name,
-                iconName: space.iconName,
+                iconName: space.symbolName,
                 tabCount: space.tabs.count,
                 colorHex: space.colorHex,
             )

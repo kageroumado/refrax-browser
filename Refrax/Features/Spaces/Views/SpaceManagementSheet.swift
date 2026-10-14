@@ -112,7 +112,7 @@ struct SpaceManagementSheet: View {
             Text(space.iconName)
                 .font(.title3)
         } else {
-            Image(systemName: space.iconName)
+            Image(systemName: space.symbolName)
                 .font(.title3)
                 .foregroundStyle(space.color)
         }

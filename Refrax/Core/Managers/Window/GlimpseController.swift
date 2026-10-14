@@ -558,7 +558,7 @@ private struct SpaceIcon: View {
         if space.iconName.count == 1, space.iconName.unicodeScalars.first?.properties.isEmoji == true {
             Text(space.iconName)
         } else {
-            Image(systemName: space.iconName)
+            Image(systemName: space.symbolName)
         }
     }
 }

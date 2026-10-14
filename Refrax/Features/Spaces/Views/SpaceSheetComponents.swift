@@ -136,7 +136,7 @@ struct SpaceIdentitySection: View {
     var body: some View {
         SpaceSectionBox {
             HStack(spacing: 16) {
-                SpacePreviewIcon(icon: icon, color: color)
+                SpacePreviewIcon(icon: icon.isEmpty ? Space.placeholderSymbol(name: name, position: nil) : icon, color: color)
 
                 VStack(alignment: .leading) {
                     Text("Space Name")
