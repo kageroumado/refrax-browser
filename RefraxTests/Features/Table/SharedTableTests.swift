@@ -94,7 +94,7 @@ struct SharedTableTests {
     }
 
     @Test
-    func `smooth mouse movement responds early and keeps fractional progress through a row`() throws {
+    func `one continuous gesture reaches one announced neighbor`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
@@ -114,13 +114,17 @@ struct SharedTableTests {
         #expect(window.activeTabID == tabs[0].id)
         table.pan(CGSize(width: 0, height: -8), source: smooth)
         #expect(window.activeTabID == tabs[1].id)
+        #expect(table.approachDirection == nil)
         table.pan(CGSize(width: 0, height: -40), source: smooth)
-        #expect(window.activeTabID == tabs[1].id)
         table.pan(CGSize(width: 0, height: -12), source: smooth)
-        #expect(window.activeTabID == tabs[2].id)
         table.pan(CGSize(width: 0, height: 8), source: smooth)
         table.pan(CGSize(width: 0, height: 8), source: smooth)
         #expect(window.activeTabID == tabs[1].id)
+        table.endPan()
+
+        table.beginPan(CGSize(width: 0, height: 8), source: smooth)
+        table.pan(CGSize(width: 0, height: 8), source: smooth)
+        #expect(window.activeTabID == tabs[0].id)
         table.endPan()
 
         env.tabManager.setActiveTab(tabs[0], in: window)
@@ -128,6 +132,10 @@ struct SharedTableTests {
         table.pan(CGSize(width: 0, height: -40))
         #expect(window.activeTabID == tabs[1].id)
         table.pan(CGSize(width: 0, height: -16))
+        #expect(window.activeTabID == tabs[1].id)
+        table.endPan()
+
+        table.beginPan(CGSize(width: 0, height: -48))
         #expect(window.activeTabID == tabs[2].id)
         table.endPan()
     }

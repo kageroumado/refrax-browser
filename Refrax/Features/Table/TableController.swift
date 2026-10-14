@@ -71,21 +71,23 @@ final class TableController {
         pan(delta, shift: shift, source: source)
     }
 
+    /// A continuous gesture reaches one announced neighbor and settles there.
     func pan(_ delta: CGSize, shift: Bool = false, source: TableScrollSource = .trackpad) {
-        guard isMoving,
+        guard isMoving, !gestureHasStepped,
               let direction = TableDirection.wheelStep(deltaX: delta.width, deltaY: delta.height, shift: shift) else { return }
         if direction != gestureDirection {
             gestureDistance = 0
             gestureDirection = direction
-            gestureHasStepped = false
         }
         gestureDistance += abs(abs(delta.width) > abs(delta.height) ? delta.width : delta.height)
-        let threshold = source == .smoothWheel && !gestureHasStepped
+        let threshold = source == .smoothWheel
             ? Layout.smoothWheelFirstStepDistance : Layout.gestureStepDistance
         if gestureDistance >= threshold {
-            gestureDistance = gestureDistance.truncatingRemainder(dividingBy: threshold)
             gestureHasStepped = true
+            approachDirection = nil
+            approachFraction = 0
             step(direction)
+            return
         }
         approachDirection = direction
         approachFraction = min(1, gestureDistance / threshold)
