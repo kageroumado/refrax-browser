@@ -116,7 +116,8 @@ struct SidebarDragDropZoneTests {
         )
 
         let originalFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
-        let baseThreshold = try #require(support.dragCoordinator.computedItemFrame(for: #require(items.first?.id))?.minY) + Sidebar.DragCoordinator.DragConstants.dropZoneThresholdOffset
+        let firstID = try #require(items.first?.id)
+        let baseThreshold = try #require(support.dragCoordinator.computedItemFrame(for: firstID)?.minY) + Sidebar.DragCoordinator.DragConstants.dropZoneThresholdOffset
         let transition = Sidebar.DragCoordinator.DragConstants.dropZoneTransitionDistance
 
         // At threshold, drop zones should not be visible

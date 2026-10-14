@@ -292,7 +292,8 @@ struct SidebarDragSectionTransitionTests {
 
         // Drag to the lower portion of the last pinned item (inside frame, below midpoint)
         // This targets the position AFTER the last item (targetIndex = count)
-        let lastPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: #require(support.layoutManager.pinnedItems.last?.id)))
+        let lastPinnedID = try #require(support.layoutManager.pinnedItems.last?.id)
+        let lastPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: lastPinnedID))
         let targetY = lastPinnedFrame.maxY - 5 // Inside the frame, near the bottom
         support.dragCoordinator.updateDrag(
             offset: targetY - 180,

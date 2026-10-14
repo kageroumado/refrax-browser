@@ -121,7 +121,7 @@ extension TabCanvasManager {
     /// Whether a header drag on `tab` can tear it off into a window of its own: one card, a tab
     /// of a space, not a favorite.
     func canTearOff(_ tab: Tab) -> Bool {
-        !tab.isLiveFavorite && !tab.isArchived && tab.space != nil && cardsMoved(with: tab).count == 1
+        !tab.isFavorite && !tab.isArchived && tab.space != nil && cardsMoved(with: tab).count == 1
     }
 
     /// Ends a header drag released outside the window: the card goes back to where the drag
