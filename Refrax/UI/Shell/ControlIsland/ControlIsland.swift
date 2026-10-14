@@ -35,13 +35,16 @@ struct ControlIsland: View {
     /// Option is down: controls with a second meaning show it in place.
     @State private var optionIsDown = false
     @State private var flagsMonitor: Any?
+    @State private var escapeMonitor: Any?
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
+    @State private var arrangeHintSize = CGSize.zero
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
     #if DEBUG
         @State private var showsDeskLab = false
     #endif
     private typealias Layout = ControlIslandPlacement
+    private static let escapeKeyCode: UInt16 = 53
 
     private var state: ControlIslandState {
         windowState.controlIsland
@@ -98,8 +101,34 @@ struct ControlIsland: View {
     private var frame: CGRect {
         effectivePlacement.railFrame(in: area, height: height)
     }
+    /// The saved placement, or the nearby one that yields to a page control. A rail that hides
+    /// at its edge keeps the saved one, so the edge it hides past stays put.
     private var effectivePlacement: ControlIslandPlacement {
-        avoidancePlacement ?? state.placement
+        state.hiddenEdge == nil ? avoidancePlacement ?? state.placement : state.placement
+    }
+    private var isHiddenAtEdge: Bool {
+        state.isHiddenAtEdge
+    }
+    /// Where the rail draws: its frame, or past the window edge while hidden there. Under Reduce
+    /// Motion it stays in place and fades instead.
+    private var railDisplayFrame: CGRect {
+        guard isHiddenAtEdge, !reduceMotion, let edge = state.hiddenEdge else { return frame }
+        return Layout.hiddenFrame(for: frame, at: edge, in: area)
+    }
+    /// The strip along the window edge that brings the hidden rail back.
+    private var revealStrip: CGRect {
+        guard let edge = state.hiddenEdge else { return .zero }
+        return Layout.revealStrip(for: frame, at: edge, in: area)
+    }
+    /// VoiceOver keeps a hidden rail reachable and says where it went.
+    private var accessibilityTitle: String {
+        guard isHiddenAtEdge, let edge = state.hiddenEdge else { return "Browser controls" }
+        return "Controls, hidden at the \(edge.name) edge"
+    }
+    /// Something beyond the rail needs it on screen: the tour, the anchored lens, the recent
+    /// list, or a page dragged from it.
+    private var railIsNeeded: Bool {
+        tour.isActive || tourLightsRail || windowState.showsAnchoredLens || canvas.recentIsOpen || canvas.draggedRecentTabID != nil
     }
     private var opensLeft: Bool {
         effectivePlacement.opensLeft(in: area)
@@ -115,7 +144,7 @@ struct ControlIsland: View {
     /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,
     /// the revealed tab layer, or a visit that can return. A pointer crossing the rail leaves it closed.
     private var showsPageBranch: Bool {
-        windowState.activePage != nil && !state.isDragging
+        windowState.activePage != nil && !state.isDragging && !isHiddenAtEdge
             && (state.tabInfo.isVisible || state.showsAddress || hoverHasSettled || windowState.pageVisit.destination != nil
                 || canvas.floatingVisibility.isRevealed)
     }
@@ -171,7 +200,8 @@ struct ControlIsland: View {
                             railHighlight
                         }
                     }
-                    .offset(x: frame.minX, y: frame.minY)
+                    .opacity(isHiddenAtEdge && reduceMotion ? 0 : 1)
+                    .offset(x: railDisplayFrame.minX, y: railDisplayFrame.minY)
                 if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                         .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
@@ -183,7 +213,7 @@ struct ControlIsland: View {
                         // and the field is what remains; it returns with a fade as the field folds.
                         .transition(windowState.showsAnchoredLens ? .identity : .opacity)
                 }
-                if canvas.recentIsOpen {
+                if canvas.recentIsOpen, !isHiddenAtEdge {
                     FloatingRecentTabs(area: area)
                         .frame(width: recentFrame.width, height: recentFrame.height)
                         .background(spaceTint, in: .rect(cornerRadius: 20))
@@ -192,7 +222,7 @@ struct ControlIsland: View {
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
                         .transition(.opacity)
                 }
-                if showsShortcut {
+                if showsShortcut, !isHiddenAtEdge {
                     Button { canvas.toggleFloatingTabs() } label: {
                         Text("hold \(revealKey.glyph)").font(.system(size: 12, weight: .medium))
                             .padding(.horizontal, 8)
@@ -206,6 +236,16 @@ struct ControlIsland: View {
                     .transition(.opacity)
                     .help("Hold \(revealKey.title) to reveal tabs; release to hide")
                     .accessibilityLabel("Tabs shortcut: hold \(revealKey.title)")
+                }
+                if showsArrangeHint {
+                    arrangeHint
+                        .fixedSize()
+                        .background(spaceTint.opacity(isResting ? 0 : 1), in: Capsule())
+                        .glassEffect(glass, in: Capsule())
+                        .glassEffectID("arrange", in: glassNamespace)
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { arrangeHintSize = $0 }
+                        .offset(x: arrangeHintFrame.minX, y: arrangeHintFrame.minY)
+                        .transition(.opacity)
                 }
                 if state.isDragging {
                     let snap = state.placement.snapped(in: area, height: height)
@@ -226,7 +266,19 @@ struct ControlIsland: View {
         .controlIslandSpaceSheets()
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
-        .onChange(of: frame, initial: true) { _, frame in state.railFrame = frame }
+        .onChange(of: isHiddenAtEdge ? .zero : frame, initial: true) { _, frame in state.railFrame = frame }
+        .onChange(of: revealStrip, initial: true) { _, strip in state.revealStrip = strip }
+        .onChange(of: railIsNeeded, initial: true) { _, needed in state.setNeededOnScreen(needed) }
+        .onChange(of: windowState.showsCommandLens) { _, shown in
+            if shown {
+                state.revealAtEdge(.request)
+            }
+        }
+        .onChange(of: state.hasKeyboardFocus) { _, focused in
+            if focused {
+                state.revealAtEdge(.request)
+            }
+        }
         .onChange(of: state.placement) { avoidancePlacement = nil }
         .onChange(of: windowState.activeTabID) { state.showsAddress = false }
         .onChange(of: windowState.activeSpaceID) {
@@ -296,14 +348,17 @@ struct ControlIsland: View {
             dragOrigin = nil
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Browser controls")
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityAction(named: "Show controls") { state.revealAtEdge(.request) }
         .accessibilityIdentifier("browser-control-island")
         .animation(restAnimation, value: isResting)
         .animation(restAnimation, value: windowState.activeSpaceID)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsPageBranch)
+        .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: isHiddenAtEdge)
         .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: windowState.showsAnchoredLens)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsArrangeHint)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
         .onAppear {
@@ -312,12 +367,20 @@ struct ControlIsland: View {
                 optionIsDown = event.modifierFlags.contains(.option)
                 return event
             }
+            // Escape still reaches the page; a rail the pointer brought back also hides.
+            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak windowState = windowState] event in
+                if event.keyCode == Self.escapeKeyCode, let windowState, event.window === windowState.window {
+                    windowState.controlIsland.hideAfterPointerReveal()
+                }
+                return event
+            }
         }
         .onDisappear {
-            if let flagsMonitor {
-                NSEvent.removeMonitor(flagsMonitor)
+            for monitor in [flagsMonitor, escapeMonitor].compactMap(\.self) {
+                NSEvent.removeMonitor(monitor)
             }
             flagsMonitor = nil
+            escapeMonitor = nil
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: optionIsDown)
         .task(id: state.isHovered) {
@@ -436,7 +499,7 @@ struct ControlIsland: View {
                 FloatingArrangeMenu()
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
-            .help(showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold ⌥ for recent tabs · hold \(revealKey.glyph) to peek")
+            .help(showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold \(revealKey.glyph) to peek · ⌥ for recent tabs · right-click to arrange")
         case .desk:
             deskControl(item)
         case .spaces:
@@ -745,6 +808,60 @@ struct ControlIsland: View {
         .accessibilityValue(windowState.activeWebPage?.isLoading == true ? "Loading" : (windowState.activePage?.url.safeDisplayDomain ?? "Ready"))
     }
 
+    // MARK: Arranging and Grouping
+
+    /// While the tab layer is revealed with two or more cards, how to arrange and group them,
+    /// beside the tab control.
+    private var showsArrangeHint: Bool {
+        canvas.floatingVisibility.isRevealed && !canvas.recentIsOpen
+            && canvas.visibleFloatingTabs.count(where: { $0.id != windowState.activeTabID }) >= 2
+    }
+
+    /// Beside the tab control on the side the island opens to, past the shortcut capsule while
+    /// it shows; at the top center of the window while the rail is hidden or has no tab control.
+    private var arrangeHintFrame: CGRect {
+        let size = arrangeHintSize
+        let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
+        guard !isHiddenAtEdge, let row = state.itemFrames[.floatingTabs], !row.isEmpty else {
+            return CGRect(x: bounds.midX - size.width / 2, y: bounds.minY, width: size.width, height: size.height)
+        }
+        let beside = showsShortcut ? frame.union(shortcutFrame) : frame
+        let x = opensLeft ? beside.minX - Layout.adjacentGap - size.width : beside.maxX + Layout.adjacentGap
+        return CGRect(
+            x: min(max(bounds.minX, x), max(bounds.minX, bounds.maxX - size.width)),
+            y: min(max(bounds.minY, row.midY - size.height / 2), max(bounds.minY, bounds.maxY - size.height)),
+            width: size.width,
+            height: size.height,
+        )
+    }
+
+    private var arrangeHint: some View {
+        HStack(spacing: ArrangeHint.spacing) {
+            FloatingArrangeMenu()
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .labelStyle(.titleAndIcon)
+                .fixedSize()
+                .help("Arrange the tabs on this space")
+            Divider()
+                .frame(height: ArrangeHint.dividerHeight)
+            Text("⇧-drag to select · drag onto a card to group")
+                .foregroundStyle(.secondary)
+        }
+        .font(.callout)
+        .padding(.horizontal, ArrangeHint.horizontalPadding)
+        .frame(height: ArrangeHint.height)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Arrange tabs")
+    }
+
+    private enum ArrangeHint {
+        static let height: CGFloat = 32
+        static let horizontalPadding: CGFloat = 12
+        static let spacing: CGFloat = 10
+        static let dividerHeight: CGFloat = 16
+    }
+
     private func dismissTransientOverlays() {
         windowState.closeCommandLens()
         tabSwitcher.cancel()
@@ -807,7 +924,9 @@ struct ControlIsland: View {
     }
 
     private var interactionRegions: [CGRect] {
-        var regions = [frame]
+        let hint = showsArrangeHint ? [arrangeHintFrame] : []
+        guard !isHiddenAtEdge else { return hint }
+        var regions = [frame] + hint
         if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
             regions.append(pageBranchFrame)
         }
