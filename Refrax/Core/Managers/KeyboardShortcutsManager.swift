@@ -130,13 +130,13 @@ final class KeyboardShortcutsManager: Sendable {
             return nil
         }
 
-        // Cmd+Shift+[: Select previous tab
+        // Cmd+Shift+[: Previous tab in recency
         if modifiers == [.command, .shift], event.charactersIgnoringModifiers == "[" {
             controller.selectPreviousTab()
             return nil
         }
 
-        // Cmd+Shift+]: Select next tab
+        // Cmd+Shift+]: Next tab in recency
         if modifiers == [.command, .shift], event.charactersIgnoringModifiers == "]" {
             controller.selectNextTab()
             return nil

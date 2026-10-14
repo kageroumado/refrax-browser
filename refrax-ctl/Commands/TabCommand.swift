@@ -400,7 +400,7 @@ struct TabCommand: AsyncParsableCommand {
             commandName: "next",
             abstract: "Switch to the next tab",
             discussion: """
-            Activates the next tab in the tab list.
+            Opens the next tab back in recency, the Recent list's order (⌘⇧]).
             
             Examples:
               refrax-ctl tab next
@@ -417,7 +417,7 @@ struct TabCommand: AsyncParsableCommand {
             commandName: "previous",
             abstract: "Switch to the previous tab",
             discussion: """
-            Activates the previous tab in the tab list.
+            Opens the previous, more recent tab in the Recent list's order (⌘⇧[).
             
             Examples:
               refrax-ctl tab previous
