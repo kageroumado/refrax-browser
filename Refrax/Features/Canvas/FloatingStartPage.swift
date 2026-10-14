@@ -45,6 +45,13 @@ struct FloatingStartPage: View {
         static let noteSpacing: CGFloat = 4
         static let bottomInset: CGFloat = 24
         static let placeholderTitles = ["A page you keep", "Another, beside it", "One you kept visible"]
+        /// The recent pages offered under the lens, as cards the light lands on.
+        static let recentCount = 4
+        static let recentCardSize = CGSize(width: 176, height: 116)
+        static let recentSpacing: CGFloat = 16
+        /// From the lens's bottom edge to the row of recent pages, past the way-back links.
+        static let recentTop: CGFloat = 96
+        static let recentFaviconSize: CGFloat = 32
     }
 
     /// A page's place on the empty page: its outline and the title beneath it.
@@ -53,6 +60,7 @@ struct FloatingStartPage: View {
         let title: String
         let frame: CGRect
         let isPlaceholder: Bool
+        var tab: Tab?
     }
 
     var body: some View {
@@ -81,7 +89,7 @@ struct FloatingStartPage: View {
             column
             if !hintsDismissed {
                 railNote(beside: railLensFrame.isEmpty ? island.railFrame : railLensFrame, in: bounds)
-                if let last = places.last {
+                if let last = places.last, last.isPlaceholder {
                     placesNote(below: last)
                 }
                 gotIt
@@ -133,10 +141,22 @@ struct FloatingStartPage: View {
     }
 
     /// The pages of this space at their places, or three placeholders when there are none.
+    /// A fresh space shows three dotted places that teach where pages go. A space with pages
+    /// offers its most recent ones as cards in a row under the lens, so the light lands on
+    /// something to click.
     private func outlines(in bounds: CGRect, railFrame: CGRect) -> [Outline] {
         let pages = canvas.floatingTabs
+            .sorted { ($0.lastAccessed ?? $0.createdAt) > ($1.lastAccessed ?? $1.createdAt) }
+            .prefix(Layout.recentCount)
         guard pages.isEmpty else {
-            return pages.map { Outline(id: $0.id, title: $0.displayTitle, frame: canvas.floatingFrame(for: $0, in: bounds), isPlaceholder: false) }
+            let size = Layout.recentCardSize
+            let count = CGFloat(pages.count)
+            let rowWidth = count * size.width + (count - 1) * Layout.recentSpacing
+            let origin = CGPoint(x: lensCapsule.midX - rowWidth / 2, y: lensCapsule.maxY + Layout.recentTop)
+            return pages.enumerated().map { index, tab in
+                let x = origin.x + CGFloat(index) * (size.width + Layout.recentSpacing)
+                return Outline(id: tab.id, title: tab.displayTitle, frame: CGRect(origin: CGPoint(x: x, y: origin.y), size: size), isPlaceholder: false, tab: tab)
+            }
         }
         return zip(PrismLayout.placeholderFrames(in: bounds, railFrame: railFrame), Layout.placeholderTitles).enumerated().map { index, place in
             Outline(id: "placeholder-\(index)", title: place.1, frame: place.0, isPlaceholder: true)
@@ -187,7 +207,53 @@ struct FloatingStartPage: View {
 
     // MARK: - Outlines
 
+    @ViewBuilder
     private func outline(_ outline: Outline) -> some View {
+        if let tab = outline.tab {
+            recentCard(tab, frame: local(outline.frame))
+        } else {
+            placeholder(outline)
+        }
+    }
+
+    /// A recent page as a card: its last snapshot, or its favicon, over its title. Clicking it
+    /// opens the page.
+    private func recentCard(_ tab: Tab, frame: CGRect) -> some View {
+        Button {
+            tabs.setActiveTab(tab, in: windowState)
+        } label: {
+            VStack(alignment: .leading, spacing: Layout.outlineTitleGap) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: Layout.outlineCornerRadius)
+                        .fill(.regularMaterial)
+                    if let image = canvas.snapshots[tab.id] {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: frame.width, height: frame.height, alignment: .top)
+                            .clipShape(.rect(cornerRadius: Layout.outlineCornerRadius))
+                    } else {
+                        FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.recentFaviconSize)
+                    }
+                    RoundedRectangle(cornerRadius: Layout.outlineCornerRadius)
+                        .strokeBorder(.secondary.opacity(Layout.outlineOpacity), lineWidth: 1)
+                }
+                .frame(width: frame.width, height: frame.height)
+                Text(tab.displayTitle)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .lineLimit(1)
+                    .frame(width: frame.width, height: Layout.outlineTitleHeight, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open \(tab.displayTitle)")
+        .offset(x: frame.minX, y: frame.minY)
+        .accessibilityLabel("Open \(tab.displayTitle)")
+    }
+
+    private func placeholder(_ outline: Outline) -> some View {
         let frame = local(outline.frame)
         return VStack(alignment: .leading, spacing: Layout.outlineTitleGap) {
             RoundedRectangle(cornerRadius: Layout.outlineCornerRadius)
