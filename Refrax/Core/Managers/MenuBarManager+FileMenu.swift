@@ -220,8 +220,14 @@ extension MenuBarManager {
         }
     }
 
+    /// Closes the focused tab, or the key window itself when it belongs to no browser window
+    /// (Settings, History, Bookmarks, Downloads).
     @objc
     func closeTab(_: Any?) {
+        if let window = focusedWindowOutsideBrowser {
+            window.performClose(nil)
+            return
+        }
         guard let controller = activeWindowController,
               let tab = controller.windowState.focusedPage?.tab ?? controller.windowState.activeTab else { return }
         windowManager.tabManager.closeTab(tab)
