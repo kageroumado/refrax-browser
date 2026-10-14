@@ -15,6 +15,7 @@ final class TableController {
     private(set) var viewport: CGSize = .zero
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
     private(set) var isMoving = false
+    private(set) var blockedDirection: TableDirection?
     @ObservationIgnored private var gestureDistance: CGFloat = 0
     @ObservationIgnored private var gestureDirection: TableDirection?
     @ObservationIgnored private var gestureHasStepped = false
@@ -101,12 +102,21 @@ final class TableController {
     /// Every wheel step follows the destination displayed at the page edge.
     func step(_ direction: TableDirection) {
         if canvas.isActive {
+            blockedDirection = nil
             canvas.step(direction)
             return
         }
-        guard let tab = destination(toward: direction) else { return }
+        guard let tab = destination(toward: direction) else {
+            blockedDirection = direction
+            return
+        }
+        blockedDirection = nil
         canvas.revealSpatialDestination(tab.id)
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
+    }
+
+    func clearBlockedDirection() {
+        blockedDirection = nil
     }
 
     func zoom(by factor: CGFloat, at point: CGPoint) {

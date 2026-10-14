@@ -25,7 +25,7 @@ struct TableEdgeNavigationView: View {
                     Spacer(minLength: 0)
                     edge(.right)
                 }
-                if hasOtherTabs && !hasAdjacentDestination {
+                if hasOtherTabs && !hasAdjacentDestination && table.blockedDirection == nil {
                     VStack {
                         Spacer(minLength: 0)
                         Button {
@@ -50,6 +50,8 @@ struct TableEdgeNavigationView: View {
         .padding(.vertical, Layout.edgeInset)
         .padding(.trailing, Layout.edgeInset)
         .padding(.leading, Layout.railClearance)
+        .onChange(of: table.navigationTabID) { table.clearBlockedDirection() }
+        .onDisappear { table.clearBlockedDirection() }
     }
 
     private var hasOtherTabs: Bool {
@@ -92,6 +94,25 @@ struct TableEdgeNavigationView: View {
             .accessibilityIdentifier("table-edge-\(direction.rawValue)")
             .accessibilityLabel("Go \(direction.rawValue) to \(tab.displayTitle)")
             .help("Go \(direction.rawValue) to \(tab.displayTitle)")
+        } else if hasOtherTabs && table.blockedDirection == direction {
+            Button {
+                canvas.show(fittingEverything: true)
+            } label: {
+                HStack(spacing: 8) {
+                    Text("End of group")
+                        .foregroundStyle(.secondary)
+                    Label("Desk", systemImage: TabCanvasManager.symbolName)
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .fixedSize()
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .accessibilityIdentifier("table-edge-boundary-\(direction.rawValue)")
+            .accessibilityLabel("End of group \(direction.rawValue). Open Desk")
+            .help("Open Desk to reach another tab group")
         }
     }
 
