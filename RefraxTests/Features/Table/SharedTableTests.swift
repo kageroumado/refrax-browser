@@ -212,6 +212,35 @@ struct SharedTableTests {
     }
 
     @Test
+    func `holding Control frames the current page without moving its place on the table`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank")), in: space, makeActive: false)
+        var placement = FloatingTabPlacement.initial(index: 0)
+        placement.tableOrigin = CGPoint(x: 800, y: 500)
+        canvas.storeTablePlacement(placement, for: tab)
+        env.tabManager.setActiveTab(tab, in: window)
+        let viewport = CGRect(x: 180, y: 20, width: 900, height: 700)
+        canvas.focusPage(tab, in: viewport)
+
+        canvas.revealFloatingTabs()
+        canvas.focusPage(tab, in: viewport)
+        let framed = canvas.pageFrame(for: tab, in: viewport)
+        #expect(abs(framed.minX - 72) < 0.001)
+        #expect(abs(framed.minY - 56) < 0.001)
+        #expect(abs(framed.width - 756) < 0.001)
+        #expect(abs(framed.height - 588) < 0.001)
+        #expect(canvas.tablePlacement(for: tab) == placement)
+
+        canvas.releaseFloatingTabs()
+        canvas.focusPage(tab, in: viewport)
+        #expect(canvas.pageFrame(for: tab, in: viewport) == CGRect(origin: .zero, size: viewport.size))
+        #expect(canvas.tablePlacement(for: tab) == placement)
+    }
+
+    @Test
     func `pan has equal screen displacement at every zoom level`() {
         let frame = CGRect(x: 400, y: 300, width: 250, height: 34)
         let delta = CGPoint(x: -80, y: 25)

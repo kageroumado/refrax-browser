@@ -6,6 +6,11 @@ struct TableView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
 
+    private enum Layout {
+        static let inspectionCornerRadius: CGFloat = 16
+        static let inspectionShadowRadius: CGFloat = 18
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color(nsColor: .windowBackgroundColor)
@@ -13,6 +18,21 @@ struct TableView: View {
                 let frame = canvas.pageFrame(for: tab, in: table.viewportFrame)
                 UnifiedContentView(tab: tab)
                     .frame(width: table.viewport.width, height: table.viewport.height)
+                    .clipShape(RoundedRectangle(cornerRadius: canvas.isMomentaryNavigation ? Layout.inspectionCornerRadius : 0, style: .continuous))
+                    .background {
+                        if canvas.isMomentaryNavigation {
+                            RoundedRectangle(cornerRadius: Layout.inspectionCornerRadius, style: .continuous)
+                                .fill(Color(nsColor: .windowBackgroundColor))
+                                .shadow(color: .black.opacity(0.16), radius: Layout.inspectionShadowRadius, y: 6)
+                        }
+                    }
+                    .overlay {
+                        if canvas.isMomentaryNavigation {
+                            RoundedRectangle(cornerRadius: Layout.inspectionCornerRadius, style: .continuous)
+                                .strokeBorder(.primary.opacity(0.16), lineWidth: 1)
+                                .allowsHitTesting(false)
+                        }
+                    }
                     .scaleEffect(canvas.floatingCamera.scale, anchor: .topLeading)
                     .offset(x: frame.minX, y: frame.minY)
                     .task(id: tab.activePage.url) { await table.captureSnapshot(of: tab) }
@@ -30,6 +50,7 @@ struct TableView: View {
             focusPage()
         }
         .onChange(of: windowState.activeTabID) { focusPage() }
+        .onChange(of: canvas.isMomentaryNavigation) { focusPage() }
         .onChange(of: canvas.isActive) { _, active in
             if !active {
                 focusPage()

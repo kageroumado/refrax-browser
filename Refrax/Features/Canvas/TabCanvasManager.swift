@@ -493,11 +493,20 @@ final class TabCanvasManager {
             placeFloatingTabs()
         }
         let anchor = tablePlacement(for: tab).frame(in: floatingArea).origin
-        let target = TabSpatialCamera(origin: CGPoint(x: anchor.x - viewport.minX, y: anchor.y - viewport.minY))
+        let scale: CGFloat = isMomentaryNavigation ? Layout.inspectionScale : 1
+        let margin = CGSize(width: viewport.width * (1 - scale) / 2, height: viewport.height * (1 - scale) / 2)
+        let target = TabSpatialCamera(
+            origin: CGPoint(
+                x: anchor.x - (viewport.minX + margin.width) / scale,
+                y: anchor.y - (viewport.minY + margin.height) / scale,
+            ),
+            scale: scale,
+        )
         focusedFloatingTabID = tab.id
         guard floatingCamera != target else { return }
-        let animate = floatingVisibility.isRevealed && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(animate ? .snappy(duration: 0.18) : nil) { floatingCamera = target }
+        let animate = (floatingVisibility.isRevealed || floatingCamera.scale != 1)
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(animate ? .easeOut(duration: 0.12) : nil) { floatingCamera = target }
     }
 
     /// The active page and its card share one table anchor and camera projection.
@@ -757,6 +766,8 @@ final class TabCanvasManager {
     static let symbolName = "rectangle.3.group"
 
     enum Layout {
+        /// Leaves enough table around the reading page to see its adjacent pages.
+        static let inspectionScale: CGFloat = 0.84
         static let independentPlacementClearance: CGFloat = 80
         /// The smallest desk; a space with more tabs gets a proportionally larger one.
         static let minimumDeskSize = CGSize(width: 1_280, height: 820)
