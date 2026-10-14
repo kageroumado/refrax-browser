@@ -16,9 +16,9 @@ extension TabCanvasManager {
     /// group, that is not one of `tabs`, while at least one of `tabs` can join a group.
     func floatingCardDropTarget(at point: CGPoint, dragging tabs: [Tab], in area: CGRect) -> Tab.ID? {
         let moving = Set(tabs.map(\.id))
-        guard tabs.contains(where: { !$0.isLiveFavorite }) else { return nil }
+        guard tabs.contains(where: { !$0.isFavorite }) else { return nil }
         let cards = visibleFloatingTabs.filter {
-            !moving.contains($0.id) && $0.group == nil && !$0.isLiveFavorite
+            !moving.contains($0.id) && $0.group == nil && !$0.isFavorite
                 && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID
         }
         return FloatingGroupLayout.cardDropTarget(at: point, among: cards.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) })
@@ -27,7 +27,7 @@ extension TabCanvasManager {
     /// Forms a new group of `card` and `tabs`, sets the dropped cards beside `card`, and opens
     /// the group's name for editing.
     func groupFloatingCard(_ card: Tab, with tabs: [Tab]) {
-        let joining = tabs.filter { $0.id != card.id && !$0.isLiveFavorite && $0.space?.id == card.space?.id }
+        let joining = tabs.filter { $0.id != card.id && !$0.isFavorite && $0.space?.id == card.space?.id }
         guard !joining.isEmpty,
               let group = try? groupManager.createGroup(in: card.space, name: "Group", color: Self.nextGroupColor()) else { return }
         for tab in [card] + joining {

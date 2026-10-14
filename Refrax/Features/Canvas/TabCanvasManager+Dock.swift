@@ -22,9 +22,10 @@ extension TabCanvasManager {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .snappy(duration: 0.28)
     }
 
-    /// The rail, while the island shows it; a column on its side starts past it.
+    /// The rail, while the island shows it and stays; a column on its side starts past it. A
+    /// rail that hides at the edge reserves nothing, so revealing it never moves the column.
     var dockRail: CGRect? {
-        guard showsFloatingControls else { return nil }
+        guard showsFloatingControls, windowState.controlIsland.hiddenEdge == nil else { return nil }
         let rail = windowState.controlIsland.railFrame
         return rail.isEmpty ? nil : rail
     }
