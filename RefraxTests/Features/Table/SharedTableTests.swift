@@ -6,6 +6,45 @@ import Testing
 @MainActor
 struct SharedTableTests {
     @Test
+    func `edge previews retain their neighbors' row and column positions`() {
+        let viewport = CGSize(width: 1_600, height: 1_000)
+        let preview = CGSize(width: 240, height: 234)
+        let current = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let right = CGRect(x: 420, y: 220, width: 300, height: 200)
+        let leftCenter = TableEdgePreviewLayout.center(
+            for: .left, current: right, destination: current,
+            viewport: viewport, preview: preview, scale: 0.84
+        )
+        let rightCenter = TableEdgePreviewLayout.center(
+            for: .right, current: current, destination: right,
+            viewport: viewport, preview: preview, scale: 0.84
+        )
+        #expect(rightCenter == CGPoint(x: 1_464, y: 512.8))
+        #expect(leftCenter == CGPoint(x: 136, y: 311.2))
+
+        let below = CGRect(x: 300, y: 450, width: 300, height: 200)
+        let downCenter = TableEdgePreviewLayout.center(
+            for: .down, current: current, destination: below,
+            viewport: viewport, preview: preview, scale: 0.84
+        )
+        #expect(downCenter == CGPoint(x: 968, y: 867))
+    }
+
+    @Test
+    func `edge previews stop short of other directions' previews`() {
+        let viewport = CGSize(width: 1_600, height: 1_000)
+        let preview = CGSize(width: 240, height: 234)
+        let current = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let farDown = CGRect(x: 420, y: 2_000, width: 300, height: 200)
+        let center = TableEdgePreviewLayout.center(
+            for: .right, current: current, destination: farDown,
+            viewport: viewport, preview: preview, scale: 0.84,
+            reserves: .init(top: 160, bottom: 220)
+        )
+        #expect(center.y == 647)
+    }
+
+    @Test
     func `wheel navigation follows fixed positions and reverses immediately`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
