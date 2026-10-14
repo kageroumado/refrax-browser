@@ -46,6 +46,15 @@ final class FloatingTourManager {
         var completedSteps: Int {
             rawValue
         }
+
+        /// Whether the step can be done on the page itself, such as clicking a search result,
+        /// so a shown page stays undimmed and takes its own clicks.
+        var happensOnPage: Bool {
+            switch self {
+            case .openPage, .openSecondPage: true
+            default: false
+            }
+        }
     }
 
     /// How a tour ended. An automatic start never repeats a tour the person already answered.
@@ -127,8 +136,25 @@ final class FloatingTourManager {
 
     /// The page is dimmed while no lens is anchored to the page card; the anchored lens has its
     /// own place there. The centered Command Lens stands in a spotlight of its own under the scrim.
+    /// A step done on the page leaves a shown page clear.
     var dimsPage: Bool {
-        !windowState.showsAnchoredLens
+        !windowState.showsAnchoredLens && !opensPage
+    }
+
+    /// The current step happens on the page and a page is shown with no lens over it: the page
+    /// takes every click outside the tour's own card and progress bar.
+    var opensPage: Bool {
+        guard let step = currentStep, step.happensOnPage else { return false }
+        return windowState.activeTab != nil && !lensIsOpen
+    }
+
+    /// The tour's card and progress bar, in window content coordinates, as the overlay lays them out.
+    @ObservationIgnored var controlFrames: [CGRect] = []
+
+    /// The only areas the overlay takes clicks in while the page takes the rest, or `nil`
+    /// while the overlay takes every click outside ``passThroughRegions(in:)``.
+    var capturedRegions: [CGRect]? {
+        isActive && opensPage ? controlFrames : nil
     }
 
     /// A lens over the page takes its own clicks and its own Escape.
@@ -162,8 +188,13 @@ final class FloatingTourManager {
     }
 
     /// Ends the tour early and remembers that it was declined.
-    func skip() {
+    func endTour() {
         end(.skipped)
+    }
+
+    /// Moves on to the next step without doing this one.
+    func skipStep() {
+        advance()
     }
 
     /// Ends the tour from its closing card. The empty page's hints have done their job and go away.
@@ -413,7 +444,7 @@ final class FloatingTourManager {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.keyCode == Self.escapeKeyCode, event.window === windowState.window,
                   isActive, escapeEndsTour else { return event }
-            skip()
+            endTour()
             return nil
         }
     }

@@ -13,6 +13,7 @@ struct FloatingTourOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
     @State private var cardSize = CGSize.zero
+    @State private var progressFrame = CGRect.zero
     /// A click on the dimmed page draws the eye back to the target.
     @State private var pulse = 0
     /// The beam revision whose travel has ended, so the engine draws nothing until the next.
@@ -34,14 +35,21 @@ struct FloatingTourOverlay: View {
                 ZStack(alignment: .topLeading) {
                     if tour.dimsPage {
                         scrim(spotlights: spotlights)
+                    }
+                    if tour.dimsPage || tour.opensPage {
                         rings(spotlights)
                     }
                     beams(in: bounds)
                     progressBar(step: step)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Layout.coordinateSpace)) } action: { progressFrame = $0 }
                         .frame(width: bounds.width, alignment: .top)
                         .padding(.top, Layout.progressTop)
                     card(step)
                         .offset(x: origin.x, y: origin.y)
+                }
+                .coordinateSpace(.named(Layout.coordinateSpace))
+                .onChange(of: [progressFrame, CGRect(origin: origin, size: cardSize)], initial: true) { _, frames in
+                    tour.controlFrames = frames
                 }
                 .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: spotlights)
                 .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: origin)
@@ -176,12 +184,17 @@ struct FloatingTourOverlay: View {
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.roundedRectangle(radius: Layout.cardInnerCornerRadius))
                 }
-                Spacer()
                 if step != .done {
-                    Button("Skip") { tour.skip() }
+                    Button("End Tour") { tour.endTour() }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                         .help("End the tour · Esc")
+                }
+                Spacer()
+                if step != .done {
+                    Button("Skip") { tour.skipStep() }
+                        .buttonBorderShape(.roundedRectangle(radius: Layout.cardInnerCornerRadius))
+                        .help("Skip this step")
                 }
             }
         }

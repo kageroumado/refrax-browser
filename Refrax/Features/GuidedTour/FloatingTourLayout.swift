@@ -52,6 +52,8 @@ nonisolated enum FloatingTourLayout {
     static let progressPaddingH: CGFloat = 14
     static let progressPaddingV: CGFloat = 8
     static let pulseScale: CGFloat = 1.05
+    /// The overlay's own coordinate space, the window content's, where the card and progress bar report their frames.
+    static let coordinateSpace = "floatingTour"
 
     /// The lit area around a target, with breathing room on every side.
     static func spotlight(around target: CGRect) -> CGRect {

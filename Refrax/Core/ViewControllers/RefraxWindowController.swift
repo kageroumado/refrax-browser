@@ -361,6 +361,10 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             guard let overlay else { return [] }
             return environment.floatingTourManager.passThroughRegions(in: overlay.bounds)
         }
+        // A tour step done on the page leaves the page every click outside the tour's card.
+        overlay.capturedRegions = { [unowned self] in
+            environment.floatingTourManager.capturedRegions
+        }
         overlayView = overlay
 
         contentView.addSubview(overlayView)

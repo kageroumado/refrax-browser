@@ -8,10 +8,12 @@ import SwiftUI
 /// captures hits and forces the cursor to arrow, preventing WebKit from
 /// changing the cursor to link/text selection cursors. Points inside
 /// `passThroughRegions()` (top-left window content coordinates) pass through
-/// regardless, so an overlay can leave openings for the content it points at.
+/// regardless, so an overlay can leave openings for the content it points at. While
+/// `capturedRegions()` returns regions, only points inside them reach the overlay.
 final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     let shouldPassThrough: () -> Bool
     var passThroughRegions: () -> [CGRect] = { [] }
+    var capturedRegions: () -> [CGRect]? = { nil }
     private var trackingArea: NSTrackingArea?
 
     init(rootView: Content, shouldPassThrough: @escaping () -> Bool) {
@@ -38,10 +40,11 @@ final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     }
 
     private func isInPassThroughRegion(_ local: NSPoint) -> Bool {
-        let regions = passThroughRegions()
-        guard !regions.isEmpty else { return false }
         let topLeading = CGPoint(x: local.x, y: isFlipped ? local.y : bounds.height - local.y)
-        return regions.contains { $0.contains(topLeading) }
+        if let captured = capturedRegions(), !captured.contains(where: { $0.contains(topLeading) }) {
+            return true
+        }
+        return passThroughRegions().contains { $0.contains(topLeading) }
     }
 
     // MARK: - Cursor Blocking
