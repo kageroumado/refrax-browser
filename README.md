@@ -2,7 +2,7 @@
 
 Refrax lets each tab use WebKit or Chromium while keeping the same spaces, history and site settings. Its `refrax-ctl` CLI gives scripts and agents control of both engines; spaces can be locked with Touch ID.
 
-[Download](https://kagerou.glass/get/refrax?from=readme)
+<a href="https://kagerou.glass/get/refrax?from=readme"><img src=".github/download.svg" alt="Download Refrax for Mac" width="360" height="80"></a>
 
 ![Refrax](.github/screenshot.avif)
 
