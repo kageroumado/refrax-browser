@@ -644,9 +644,10 @@ struct ClosedTabInfo: Identifiable, Equatable {
     let groupID: UUID?
     let position: Int
     let spaceID: UUID
+    let floatingPlacement: FloatingTabPlacement?
     let closedAt: Date
 
-    init(tab: Tab) {
+    init(tab: Tab, floatingPlacement: FloatingTabPlacement? = nil) {
         self.id = UUID()
         self.url = tab.activePage.url
         self.title = tab.activePage.title
@@ -655,6 +656,7 @@ struct ClosedTabInfo: Identifiable, Equatable {
         self.groupID = tab.groupID
         self.position = tab.position
         self.spaceID = tab.space?.id ?? UUID()
+        self.floatingPlacement = floatingPlacement ?? tab.floatingPlacement
         self.closedAt = Date()
     }
 }

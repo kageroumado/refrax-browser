@@ -226,7 +226,7 @@ extension TabManager {
         // Get index in mainTabs for proper adjacency fallback
         let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
 
-        let closedInfo = ClosedTabInfo(tab: tab)
+        let closedInfo = closedTabInfo(for: tab)
 
         // Capture page IDs before closing, defer orphan cleanup
         let closingPageIDs = Set(tab.pages.map(\.id))
@@ -360,6 +360,13 @@ extension TabManager {
         )
         tab.customName = info.customName
         tab.activePage.faviconData = info.faviconData
+        if let placement = info.floatingPlacement {
+            if space.dataStoreMode == .private {
+                windowSync.findWindowState(for: space)?.floatingPlacements[tab.id] = placement
+            } else {
+                tab.floatingPlacement = placement
+            }
+        }
 
         let insertIndex = min(info.position, space.tabs.count)
         space.tabs.insert(tab, at: insertIndex)
@@ -381,6 +388,12 @@ extension TabManager {
         }
 
         Logger.info("Tab restored: \(info.title)", category: Logger.tabs)
+    }
+
+    /// Captures the card's saved place, including a private space's window-local place.
+    func closedTabInfo(for tab: Tab) -> ClosedTabInfo {
+        let placement = tab.space.flatMap { windowSync.findWindowState(for: $0) }?.floatingPlacements[tab.id]
+        return ClosedTabInfo(tab: tab, floatingPlacement: placement)
     }
 
     /// Reopens the last closed tab.

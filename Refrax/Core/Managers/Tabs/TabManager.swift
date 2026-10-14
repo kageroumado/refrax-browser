@@ -430,7 +430,7 @@ extension TabManager {
                     continue
                 }
 
-                let closedInfo = ClosedTabInfo(tab: tab)
+                let closedInfo = closedTabInfo(for: tab)
                 closedInfos.append(closedInfo)
 
                 pagePool.removePages(for: tab)

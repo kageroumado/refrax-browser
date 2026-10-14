@@ -240,6 +240,28 @@ struct SharedTableTests {
         #expect(canvas.tablePlacement(for: tab) == placement)
     }
 
+    @Test(arguments: [false, true])
+    func `reopening a page restores its table position`(isPrivate: Bool) throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        if isPrivate {
+            space.dataStoreMode = .private
+        }
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank#restore")), in: space, makeActive: false)
+        var placement = FloatingTabPlacement.initial(index: 0, shape: .live)
+        placement.tableOrigin = CGPoint(x: 820, y: 460)
+        canvas.storeTablePlacement(placement, for: tab)
+
+        env.tabManager.closeTab(tab)
+        env.undoRedoManager.reopenLastClosedTab()
+
+        let restored = try #require(window.activeTab)
+        #expect(restored.id != tab.id)
+        #expect(canvas.tablePlacement(for: restored) == placement)
+    }
+
     @Test
     func `pan has equal screen displacement at every zoom level`() {
         let frame = CGRect(x: 400, y: 300, width: 250, height: 34)
