@@ -6,7 +6,7 @@ import AppKit
 /// anything moves: dragged tiles push the others, flung ones slide and collide, and
 /// released tiles remain within the desk boundary.
 ///
-/// Planes stack bottom to top: desk surface, zones, tiles, magnets, then an overlay
+/// Planes stack bottom to top: zones, tiles, magnets, then an overlay
 /// for the lasso and the selection outline. A tile is always grabbed before the zone
 /// under it, and the empty part of a zone drags the zone. Dragging the bare desk moves the
 /// camera, the way a map does, and ⇧-dragging draws a lasso; a plain click on it leaves
@@ -33,8 +33,6 @@ final class TabCanvasBoardView: NSView {
     }
 
     private var deskSize: CGSize
-    private let deskEdgeLayer = CAGradientLayer()
-    private let deskLayer = CAGradientLayer()
     private let zonePlane = CanvasPlaneView()
     private let tilePlane = CanvasPlaneView()
     private let tileGlassContainer = CanvasGlassPlaneView()
@@ -63,8 +61,6 @@ final class TabCanvasBoardView: NSView {
     private var lastDragTimes: [Tab.ID: CFTimeInterval] = [:]
     private var scriptedDrag: ScriptedDrag?
     private enum Constants {
-        static let deskCornerRadius: CGFloat = 40
-        static let deskThickness: CGFloat = 10
         static let lassoDash = LassoSelection.dash.map { NSNumber(value: Double($0)) }
         static let selectionInset: CGFloat = 12
         static let selectionCornerRadius: CGFloat = 18
@@ -85,18 +81,6 @@ final class TabCanvasBoardView: NSView {
         wantsLayer = true
         clipsToBounds = false
         layer?.masksToBounds = false
-
-        deskEdgeLayer.cornerRadius = Constants.deskCornerRadius
-        deskEdgeLayer.shadowColor = NSColor.black.cgColor
-        deskEdgeLayer.shadowOpacity = 0.24
-        deskEdgeLayer.shadowRadius = 28
-        deskEdgeLayer.shadowOffset = CGSize(width: 0, height: 14)
-        layer?.addSublayer(deskEdgeLayer)
-        deskLayer.cornerRadius = Constants.deskCornerRadius
-        deskLayer.borderWidth = 1
-        deskLayer.startPoint = CGPoint(x: 0, y: 0)
-        deskLayer.endPoint = CGPoint(x: 1, y: 1)
-        layer?.addSublayer(deskLayer)
 
         tileGlassContainer.contentView = tilePlane
         tileGlassContainer.spacing = 0
@@ -129,16 +113,6 @@ final class TabCanvasBoardView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func layout() {
-        super.layout()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        deskEdgeLayer.frame = bounds.offsetBy(dx: 0, dy: Constants.deskThickness)
-        deskEdgeLayer.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Constants.deskCornerRadius, cornerHeight: Constants.deskCornerRadius, transform: nil)
-        deskLayer.frame = bounds
-        CATransaction.commit()
-    }
-
     override func updateLayer() {
         applyColors()
     }
@@ -157,16 +131,6 @@ final class TabCanvasBoardView: NSView {
     }
 
     private func updateColors() {
-        let base = NSColor.windowBackgroundColor
-        deskLayer.colors = [
-            (base.blended(withFraction: 0.08, of: .controlAccentColor) ?? base).cgColor,
-            (base.blended(withFraction: 0.04, of: .labelColor) ?? base).cgColor,
-        ]
-        deskEdgeLayer.colors = [
-            (base.blended(withFraction: 0.18, of: .labelColor) ?? base).cgColor,
-            (base.blended(withFraction: 0.28, of: .labelColor) ?? base).cgColor,
-        ]
-        deskLayer.borderColor = NSColor.separatorColor.cgColor
         lassoLayer.strokeColor = NSColor.controlAccentColor.cgColor
         selectionLayer.strokeColor = NSColor.controlAccentColor.cgColor
     }

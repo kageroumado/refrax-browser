@@ -56,13 +56,14 @@ struct TableEdgeNavigationView: View {
     @Environment(TabCanvasManager.self) private var canvas
 
     private enum Layout {
-        static let faviconSize: CGFloat = 16
+        static let faviconSize: CGFloat = 20
+        static let fallbackFaviconSize: CGFloat = 48
         static let sideWidthRange: ClosedRange<CGFloat> = 190 ... 300
         static let sideHeightRange: ClosedRange<CGFloat> = 150 ... 260
         static let verticalWidthRange: ClosedRange<CGFloat> = 220 ... 360
         static let verticalHeightRange: ClosedRange<CGFloat> = 130 ... 220
         static let cornerRadius: CGFloat = 16
-        static let captionHeight: CGFloat = 34
+        static let captionHeight: CGFloat = 40
         static let approachDistance: CGFloat = 26
     }
 
@@ -156,9 +157,9 @@ struct TableEdgeNavigationView: View {
                 canvas.show(fittingEverything: true)
             } label: {
                 HStack(spacing: 8) {
-                    Text("End of group")
+                    Text("No tab this way")
                         .foregroundStyle(.secondary)
-                    Label("Desk", systemImage: TabCanvasManager.symbolName)
+                    Label("Show all", systemImage: TabCanvasManager.symbolName)
                 }
                 .font(.subheadline)
                 .padding(.horizontal, 12)
@@ -168,8 +169,8 @@ struct TableEdgeNavigationView: View {
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: Capsule())
             .accessibilityIdentifier("table-edge-boundary-\(direction.rawValue)")
-            .accessibilityLabel("End of group \(direction.rawValue). Open Desk")
-            .help("Open Desk to reach another tab group")
+            .accessibilityLabel("No tab \(direction.rawValue). Show all tabs")
+            .help("Show all tabs")
             .offset(placementOffset(for: direction, center: center, in: viewport))
         }
     }
@@ -185,24 +186,35 @@ struct TableEdgeNavigationView: View {
                         .frame(width: size.width, height: size.height)
                         .clipped()
                 } else {
-                    favicon(for: tab)
-                        .font(.largeTitle)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 12) {
+                        favicon(for: tab, size: Layout.fallbackFaviconSize)
+                        Text(tab.displayTitle)
+                            .font(.headline)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background {
+                        if let group = tab.group {
+                            Color.resolveStoredColor(group.colorString).opacity(0.08)
+                        }
+                    }
                 }
             }
             .frame(width: size.width, height: size.height)
 
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 favicon(for: tab)
                 Text(tab.displayTitle)
-                    .font(.caption)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: symbol(for: direction))
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.tint)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .frame(height: Layout.captionHeight)
         }
         .frame(width: size.width)
@@ -252,15 +264,16 @@ struct TableEdgeNavigationView: View {
     }
 
     @ViewBuilder
-    private func favicon(for tab: Tab) -> some View {
+    private func favicon(for tab: Tab, size: CGFloat = Layout.faviconSize) -> some View {
         if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
+                .frame(width: size, height: size)
         } else {
             Image(systemName: "globe")
-                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
+                .font(.system(size: size * 0.75))
+                .frame(width: size, height: size)
         }
     }
 
