@@ -93,6 +93,7 @@ private struct PageCardTranslateControl: View {
         .focusEffectDisabled()
         .popover(isPresented: $showsPopover, arrowEdge: .bottom) {
             TranslationPopoverContent(translation: translation)
+                .readablePopoverBackground()
         }
         .onChange(of: showsPopover) { _, presented in
             windowState.controlIsland.tabInfo.isMenuPresented = presented

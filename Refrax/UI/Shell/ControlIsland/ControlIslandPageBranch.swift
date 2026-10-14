@@ -228,11 +228,13 @@ struct ControlIslandPageBranch: View {
                     onWebpageSettings: { showsWebpageSettings = true },
                     onShowCookies: { showsSiteCookies = true },
                 )
+                .readablePopoverBackground()
             }
         }
         .if(showsWebpageSettings) { view in
             view.popover(isPresented: $showsWebpageSettings, arrowEdge: .bottom) {
                 WebpageSettingsPopover(domain: domain, origin: url.flatMap(WebOrigin.init(url:)))
+                    .readablePopoverBackground()
             }
         }
         .sheet(isPresented: $showsSiteCookies) {
