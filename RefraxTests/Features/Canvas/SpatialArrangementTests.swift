@@ -22,6 +22,7 @@ struct SpatialArrangementTests {
         defer { canvas.dismiss(activating: nil) }
 
         let fit = try #require(canvas.openingFitRect)
+        #expect(fit.contains(canvas.deskBounds))
         #expect(canvas.tileFrames.values.allSatisfy(fit.contains))
     }
 
