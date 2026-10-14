@@ -1,6 +1,6 @@
 import Foundation
 
-/// Two local pages for learning placement, Look, and live previews with real input.
+/// Two local pages for learning placement and adjacent navigation with real input.
 enum FloatingTabsTutorial {
     /// A tutorial page: its name, the symbol that stands for it in the lens, and its address.
     nonisolated enum Page: CaseIterable, Hashable, Sendable {
@@ -29,7 +29,7 @@ enum FloatingTabsTutorial {
         private var content: String {
             switch self {
             case .tripDraft:
-                "<label for='draft'>Write a message, then Look at Arrival details.</label><textarea id='draft' placeholder='Our trip…'>I found a place near the station. </textarea>"
+                "<label for='draft'>Write a message, then visit Arrival details with Control and the wheel.</label><textarea id='draft' placeholder='Our trip…'>I found a place near the station. </textarea>"
             case .arrivalDetails:
                 "<p>Check-in begins at 15:00. The entrance is on the garden side.</p><p>The station is a ten-minute walk away. Breakfast is served from 07:00 to 10:00.</p><button onclick=\"this.textContent='Copied to your plans'\">Try a live button</button>"
             }
@@ -45,7 +45,7 @@ enum FloatingTabsTutorial {
             textarea{box-sizing:border-box;width:100%;min-height:200px;margin-top:16px;padding:16px;background:var(--panel);color:var(--ink);font:inherit;border:1px solid var(--secondary);border-radius:12px}
             button{font:inherit;padding:10px 18px;background:var(--accent);color:var(--on-accent);border:0;border-radius:24px}
             </style><main><small>Refrax · Try with two pages</small><h1>\(title)</h1>\(content)
-            <p><small>Hold Control to reveal pages. Drag their titles together, then scroll between highlighted neighbors. The tabs button shows the full table.</small></p></main></html>
+            <p><small>Hold Control to reveal pages. Scroll between highlighted neighbors. Desk shows the full table, where you can arrange and group pages.</small></p></main></html>
             """
         }
     }

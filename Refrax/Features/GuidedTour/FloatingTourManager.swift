@@ -15,6 +15,7 @@ final class FloatingTourManager {
         case openPage
         case openSecondPage
         case revealPages
+        case visitNeighbor
         case placePage
         case keepVisible
         case pageCard
@@ -28,7 +29,7 @@ final class FloatingTourManager {
         var requiredPageCount: Int {
             switch self {
             case .openPage, .openSecondPage, .done: 0
-            case .revealPages, .placePage, .keepVisible: 2
+            case .revealPages, .visitNeighbor, .placePage, .keepVisible: 2
             case .pageCard, .movePanel: 1
             }
         }
@@ -51,7 +52,7 @@ final class FloatingTourManager {
         /// so a shown page stays undimmed and takes its own clicks.
         var happensOnPage: Bool {
             switch self {
-            case .openPage, .openSecondPage: true
+            case .openPage, .openSecondPage, .visitNeighbor: true
             default: false
             }
         }
@@ -87,6 +88,8 @@ final class FloatingTourManager {
     @ObservationIgnored private var entry = Baseline()
     /// The current step's condition has been false since the step began, so a true reading is the person's doing.
     @ObservationIgnored private var armed = false
+    @ObservationIgnored private var visitedNeighbor = false
+    @ObservationIgnored private var preparedTutorialIDs: Set<Tab.ID> = []
     /// The beams on screen at the last review; a kind joining them bumps the revision.
     @ObservationIgnored private var litBeams: Set<TourBeam.Kind> = []
     @ObservationIgnored private var observation: Task<Void, Never>?
@@ -212,6 +215,7 @@ final class FloatingTourManager {
         observation = nil
         removeKeyMonitor()
         armed = false
+        visitedNeighbor = false
         litBeams = []
         currentStep = nil
         unpinTourPages()
@@ -235,8 +239,13 @@ final class FloatingTourManager {
     func review() {
         guard let step = currentStep, step != .done else { return }
         ensurePages(for: step)
+        if step == .revealPages { prepareTutorialPair() }
         adoptNewPlacements()
         reviewBeams()
+        if step == .visitNeighbor, let origin = entry.activeTabID, let active = windowState.activeTabID,
+           active != origin, isAdjacent(active, to: origin) {
+            visitedNeighbor = true
+        }
         if conditionHolds(for: step) {
             if armed {
                 advance()
@@ -259,11 +268,17 @@ final class FloatingTourManager {
     private func enter(_ step: Step) {
         currentStep = step
         ensurePages(for: step)
+        if step == .revealPages { prepareTutorialPair() }
+        if step == .placePage,
+           let card = canvas.visibleFloatingTabs.first(where: { $0.id != windowState.activeTabID }) {
+            canvas.revealSpatialDestination(card.id)
+        }
         entry = Baseline(
             activeTabID: windowState.activeTabID,
             placements: windowState.floatingPlacements,
             islandPlacement: windowState.controlIsland.placement,
         )
+        visitedNeighbor = false
         armed = !conditionHolds(for: step)
         reviewBeams()
     }
@@ -276,6 +291,8 @@ final class FloatingTourManager {
             pageCount >= 2 && windowState.activeTabID != entry.activeTabID
         case .revealPages:
             canvas.floatingVisibility.isHeld || canvas.floatingVisibility.isLatched
+        case .visitNeighbor:
+            windowState.activeTabID == entry.activeTabID && visitedNeighbor
         case .placePage:
             windowState.floatingPlacements.contains { id, placement in
                 guard let before = entry.placements[id] else { return false }
@@ -306,6 +323,39 @@ final class FloatingTourManager {
         return windowState.activeSpaceTabs.filter { !$0.isArchived }.count
     }
 
+    private func isAdjacent(_ candidate: Tab.ID, to origin: Tab.ID) -> Bool {
+        let ids = Set(canvas.floatingTabs.filter { !canvas.tablePlacement(for: $0).isDocked }.map(\.id))
+        return TableDirection.allCases.contains {
+            canvas.spatialNeighbor(from: origin, toward: $0, among: ids) == candidate
+        }
+    }
+
+    /// Gives the two practice pages a shared, visible path for the first wheel exercise.
+    private func prepareTutorialPair() {
+        let tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
+        guard tabs.count == 2,
+              let draft = tabs.first(where: { $0.activePage.url == FloatingTabsTutorial.Page.tripDraft.url }),
+              let arrival = tabs.first(where: { $0.activePage.url == FloatingTabsTutorial.Page.arrivalDetails.url }),
+              draft.group?.id == arrival.group?.id else { return }
+        let ids: Set<Tab.ID> = [draft.id, arrival.id]
+        guard ids != preparedTutorialIDs else { return }
+        preparedTutorialIDs = ids
+
+        let area = canvas.floatingArea
+        var first = canvas.floatingPlacement(for: draft)
+        var second = canvas.floatingPlacement(for: arrival)
+        first.shape = .tab
+        second.shape = .tab
+        let gap = FloatingArrangement.gap
+        let width = first.size.width + gap + second.size.width
+        let x = max(area.minX + 24, min(area.minX + area.width * 0.24, area.maxX - width - 24))
+        let y = area.minY + area.height * 0.4
+        first.tableOrigin = CGPoint(x: x, y: y)
+        second.tableOrigin = CGPoint(x: x + first.size.width + gap, y: y)
+        canvas.updateFloatingPlacement(first, for: draft)
+        canvas.updateFloatingPlacement(second, for: arrival)
+    }
+
     /// Opens the two tutorial pages when a step needs pages to show and the space has too few.
     private func ensurePages(for step: Step) {
         let required = step.requiredPageCount
@@ -328,7 +378,7 @@ final class FloatingTourManager {
         switch currentStep {
         case .openPage: windowState.activeTab == nil ? nil : .commandLens
         case .openSecondPage: .commandLens
-        case .revealPages: .floatingTabs
+        case .revealPages, .visitNeighbor: .floatingTabs
         case .placePage, .keepVisible: canvas.visibleFloatingTabs.isEmpty ? .floatingTabs : nil
         case .pageCard: .page
         case .movePanel, .done, nil: nil
@@ -376,10 +426,11 @@ final class FloatingTourManager {
             return row(.commandLens)
         case .openSecondPage:
             return row(.commandLens)
-        case .revealPages:
+        case .revealPages, .visitNeighbor:
             return row(.floatingTabs)
         case .placePage, .keepVisible:
-            let cards = canvas.visibleFloatingTabs.map { FloatingTourLayout.spotlight(around: canvas.floatingFrame(for: $0, in: bounds), of: .floatingCard) }
+            let cards = canvas.visibleFloatingTabs.filter { $0.id != windowState.activeTabID }
+                .map { FloatingTourLayout.spotlight(around: canvas.floatingFrame(for: $0, in: bounds), of: .floatingCard) }
             return cards.isEmpty ? row(.floatingTabs) : cards
         case .pageCard:
             return row(.page) + (pageCardSpotlight.map { [$0] } ?? [])
@@ -499,7 +550,8 @@ extension FloatingTourManager.Step {
         case .openPage: "Open a page"
         case .openSecondPage: "Open a second page"
         case .revealPages: "See both pages"
-        case .placePage: "Put a page somewhere"
+        case .visitNeighbor: "Visit and return"
+        case .placePage: "Place a page"
         case .keepVisible: "Keep a page in view"
         case .pageCard: "The current page"
         case .movePanel: "Move the panel"
@@ -512,6 +564,7 @@ extension FloatingTourManager.Step {
         case .openPage: "sparkle.magnifyingglass"
         case .openSecondPage: "plus.square.on.square"
         case .revealPages: "square.on.square"
+        case .visitNeighbor: "arrow.left.arrow.right"
         case .placePage: "hand.draw"
         case .keepVisible: "pin"
         case .pageCard: "globe"
@@ -532,11 +585,13 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph) to reveal pages. Scroll between highlighted neighbors; hold Shift to change rows. The tabs button shows the full table."
+            return "Hold \(context.revealKey.glyph) to reveal nearby pages. The Desk button shows every page on the table."
+        case .visitNeighbor:
+            return "Hold \(context.revealKey.glyph). Scroll toward the highlighted page at the edge, then reverse to return."
         case .placePage:
             return context.layerRevealed
-                ? "Drag a page's title beside another page. Each card keeps the place you choose."
-                : "\(hold), then drag a page's title beside another page. Each card keeps its place."
+                ? "Drag a page's title to a spot you'll remember. It stays there."
+                : "\(hold), then drag a page's title to a spot you'll remember. It stays there."
         case .keepVisible:
             return context.layerRevealed
                 ? "Click a page's pin, or choose Keep Visible from its actions menu. It stays after you release."

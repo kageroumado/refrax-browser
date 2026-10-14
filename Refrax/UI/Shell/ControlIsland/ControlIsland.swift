@@ -249,7 +249,7 @@ struct ControlIsland: View {
                         .offset(x: recentFrame.minX, y: recentFrame.minY)
                         .transition(.opacity)
                 }
-                if showsShortcut, !isHiddenAtEdge {
+                if showsShortcut, !tour.isActive, !isHiddenAtEdge {
                     Button { canvas.toggleFloatingTabs() } label: {
                         Text("hold \(revealKey.glyph)").font(.system(size: 12, weight: .medium))
                             .padding(.horizontal, 8)
