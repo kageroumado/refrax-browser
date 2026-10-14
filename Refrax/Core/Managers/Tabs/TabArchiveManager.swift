@@ -13,8 +13,7 @@ import SwiftData
 /// Archived tabs:
 /// - Are moved to a special Archive group (one per space)
 /// - Have their WebPage unloaded from memory
-/// - Display with a trash icon indicator
-/// - Are non-activatable (clicking shows restore prompt)
+/// - Are listed in the History window's Archived section and in Command Lens ("archived")
 /// - Expire only after the user has activated the app post-archive
 ///
 /// ## Expiration Logic
@@ -29,7 +28,7 @@ import SwiftData
 ///
 /// - ``ScheduledTasksManager`` calls ``clearExpiredTabs()`` hourly
 /// - Tab close operations route through ``archive(_:)`` when archive is enabled
-/// - UI shows restore popup via ``restoreTab(_:)``
+/// - History › Archived and Command Lens restore through ``restoreTab(_:)``
 @Observable
 final class TabArchiveManager {
     // MARK: - Dependencies
@@ -162,16 +161,6 @@ final class TabArchiveManager {
             "Restored tab: \(tab.activePage.title)",
             category: Logger.tabs,
         )
-    }
-
-    /// Restores all tabs dragged out of the archive group.
-    ///
-    /// Called when tabs are dragged from archive to another location.
-    /// - Parameter tabs: The tabs being dragged out.
-    func restoreTabs(_ tabs: [Tab]) {
-        for tab in tabs where tab.isArchived {
-            try? restoreTab(tab)
-        }
     }
 
     /// Permanently deletes an archived tab.
@@ -319,22 +308,6 @@ final class TabArchiveManager {
     /// - Returns: Number of archived tabs.
     func archivedTabCount(in space: Space) -> Int {
         space.tabs.count(where: \.isArchived)
-    }
-
-    // MARK: - Drag Operations
-
-    /// Archives tabs dropped into the archive group via drag.
-    ///
-    /// - Parameter tabs: Tabs dragged into archive.
-    func archiveDroppedTabs(_ tabs: [Tab]) {
-        archiveBatch(tabs)
-    }
-
-    /// Restores tabs dropped out of the archive group via drag.
-    ///
-    /// - Parameter tabs: Tabs dragged out of archive.
-    func restoreDroppedTabs(_ tabs: [Tab]) {
-        restoreTabs(tabs)
     }
 }
 

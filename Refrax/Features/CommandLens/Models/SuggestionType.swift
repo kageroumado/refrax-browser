@@ -18,6 +18,10 @@ enum SuggestionType: Hashable, Sendable {
     /// - Parameter tabID: The unique identifier of the open tab.
     case openTab(tabID: UUID)
 
+    /// An archived tab to restore to its space and open.
+    ///
+    /// - Parameter tabID: The unique identifier of the archived tab.
+    case archivedTab(tabID: UUID)
 
     /// A search engine to switch to before searching.
     ///

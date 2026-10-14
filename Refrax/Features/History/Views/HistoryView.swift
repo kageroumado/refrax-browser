@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Main history view with sidebar navigation, table/graph content, and inspector panel.
 ///
+/// The sidebar's Archived row swaps the content for ``ArchivedTabsView``.
+///
 /// Follows SF Symbols app design: full-height sidebar, toolbar controls, inspector for details.
 ///
 /// ## Visual Layout
@@ -16,12 +18,13 @@ import SwiftUI
 /// │   This Week  │ │  Table content              │  │ Visited: ...     │
 /// │   Nov 2025   │ │                            │  │ Duration: ...    │
 /// │   Oct 2025   │ └────────────────────────────┘  │ Parent: ...      │
+/// │   Archived   │                                │                  │
 /// └──────────────┴────────────────────────────────┴──────────────────┘
 /// ```
 ///
 /// ## Features
 ///
-/// - **Sidebar**: Date categories with multi-select (Cmd+click)
+/// - **Sidebar**: Date categories with multi-select (Cmd+click), and the archived tabs
 /// - **View Modes**: List and Graph toggle in toolbar
 /// - **Search**: Full-text search across entries
 /// - **Inspector**: Detailed entry information, persisted visibility
@@ -38,7 +41,7 @@ struct HistoryView: View {
 
     // MARK: - State
 
-    @State private var selectedCategories: Set<HistoryDateCategory> = [.today]
+    @State private var sidebarSelection: Set<HistorySidebarItem> = [.visits(.today)]
     @State private var selectedEntry: HistoryEntry?
     @State private var viewMode: ViewMode = .list
     @State private var searchText = ""
@@ -49,7 +52,7 @@ struct HistoryView: View {
 
     @AppStorage("historyInspectorVisible") private var showInspector = true
 
-    // Cached filtered entries — updated via .onChange instead of recomputing every body evaluation
+    /// Cached filtered entries — updated via .onChange instead of recomputing every body evaluation
     @State private var cachedFilteredEntries: [HistoryEntry] = []
 
     // Async-loaded domain time
@@ -65,17 +68,21 @@ struct HistoryView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            HistorySidebarView(selectedCategories: $selectedCategories)
+            HistorySidebarView(selection: $sidebarSelection)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
         } detail: {
             contentArea
         }
-        .inspector(isPresented: $showInspector) {
+        .inspector(isPresented: inspectorPresented) {
             inspectorContent
                 .inspectorColumnWidth(min: 250, ideal: 280, max: 350)
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search history")
-        .toolbar { toolbarContent }
+        .toolbar {
+            if !showsArchive {
+                toolbarContent
+            }
+        }
         .alert("Clear All History", isPresented: $showDeleteAllAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Delete All", role: .destructive) {
@@ -110,7 +117,7 @@ struct HistoryView: View {
         .onChange(of: allEntries) { _, _ in
             recomputeFilteredEntries()
         }
-        .onChange(of: selectedCategories) { _, _ in
+        .onChange(of: sidebarSelection) { _, _ in
             recomputeFilteredEntries()
         }
         .onChange(of: searchText) { _, _ in
@@ -123,13 +130,41 @@ struct HistoryView: View {
 
     // MARK: - Content Area
 
+    /// The date ranges selected in the sidebar.
+    private var selectedCategories: Set<HistoryDateCategory> {
+        Set(sidebarSelection.compactMap { item in
+            if case let .visits(category) = item {
+                category
+            } else {
+                nil
+            }
+        })
+    }
+
+    /// Whether the sidebar's Archived row is selected.
+    private var showsArchive: Bool {
+        sidebarSelection.contains(.archived)
+    }
+
+    /// The inspector shows for visits only; the archive has none.
+    private var inspectorPresented: Binding<Bool> {
+        Binding(
+            get: { showInspector && !showsArchive },
+            set: { showInspector = $0 },
+        )
+    }
+
     private var contentArea: some View {
         Group {
-            switch viewMode {
-            case .list:
-                listContent
-            case .graph:
-                HistoryGraphView()
+            if showsArchive {
+                ArchivedTabsView(searchText: searchText)
+            } else {
+                switch viewMode {
+                case .list:
+                    listContent
+                case .graph:
+                    HistoryGraphView()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -335,7 +370,9 @@ struct HistoryView: View {
 
     // MARK: - Filtered Entries
 
-    private var filteredEntries: [HistoryEntry] { cachedFilteredEntries }
+    private var filteredEntries: [HistoryEntry] {
+        cachedFilteredEntries
+    }
 
     private func recomputeFilteredEntries() {
         var result = allEntries
@@ -401,24 +438,23 @@ struct HistoryView: View {
 
     // MARK: - Helpers
 
+    @ViewBuilder
     private func faviconView(for entry: HistoryEntry) -> some View {
-        Group {
-            if entry.failedToLoad {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-            } else if let faviconURL = entry.faviconURL {
-                AsyncImage(url: faviconURL) { image in
-                    image
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .clipToSquircle()
-                } placeholder: {
-                    LetterFallbackView(url: entry.url)
-                }
-            } else {
+        if entry.failedToLoad {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+        } else if let faviconURL = entry.faviconURL {
+            AsyncImage(url: faviconURL) { image in
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .clipToSquircle()
+            } placeholder: {
                 LetterFallbackView(url: entry.url)
             }
+        } else {
+            LetterFallbackView(url: entry.url)
         }
     }
 

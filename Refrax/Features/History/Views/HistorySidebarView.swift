@@ -1,7 +1,13 @@
 import SwiftData
 import SwiftUI
 
-/// Sidebar for the History window showing date categories.
+/// A row of the History window's sidebar: a date range of visits, or the archived tabs.
+enum HistorySidebarItem: Hashable {
+    case visits(HistoryDateCategory)
+    case archived
+}
+
+/// Sidebar for the History window: date categories, then the archived tabs.
 ///
 /// Supports multi-select via Cmd+click to combine date ranges.
 ///
@@ -18,10 +24,13 @@ import SwiftUI
 /// ├─────────────────────┤
 /// │   November 2025(20) │
 /// │   October 2025 (15) │
+/// ├─────────────────────┤
+/// │   Archived      (4) │
 /// └─────────────────────┘
 /// ```
 struct HistorySidebarView: View {
-    @Binding var selectedCategories: Set<HistoryDateCategory>
+    @Binding var selection: Set<HistorySidebarItem>
+    @Environment(TabManager.self) private var tabManager
     @Query(sort: \HistoryEntry.visitedAt, order: .reverse)
     private var allEntries: [HistoryEntry]
 
@@ -29,11 +38,11 @@ struct HistorySidebarView: View {
     @State private var categoryCounts: [HistoryDateCategory: Int] = [:]
 
     var body: some View {
-        List(selection: $selectedCategories) {
+        List(selection: $selection) {
             Section {
                 ForEach(HistoryDateCategory.predefined, id: \.id) { category in
                     categoryRow(category)
-                        .tag(category)
+                        .tag(HistorySidebarItem.visits(category))
                 }
             }
 
@@ -41,9 +50,14 @@ struct HistorySidebarView: View {
                 Section("Earlier") {
                     ForEach(monthCategories, id: \.id) { category in
                         categoryRow(category)
-                            .tag(category)
+                            .tag(HistorySidebarItem.visits(category))
                     }
                 }
+            }
+
+            Section("Tabs") {
+                row(title: "Archived", icon: "archivebox", count: archivedTabCount)
+                    .tag(HistorySidebarItem.archived)
             }
         }
         .listStyle(.sidebar)
@@ -58,12 +72,19 @@ struct HistorySidebarView: View {
 
     // MARK: - Category Row
 
-    @ViewBuilder
-    private func categoryRow(_ category: HistoryDateCategory) -> some View {
-        let count = categoryCounts[category, default: 0]
+    /// Archived tabs in every space.
+    private var archivedTabCount: Int {
+        _ = tabManager.state.tabListVersion
+        return tabManager.state.spaces.reduce(0) { $0 + $1.tabs.count(where: \.isArchived) }
+    }
 
+    private func categoryRow(_ category: HistoryDateCategory) -> some View {
+        row(title: category.title, icon: category.icon, count: categoryCounts[category, default: 0])
+    }
+
+    private func row(title: String, icon: String, count: Int) -> some View {
         HStack {
-            Label(category.title, systemImage: category.icon)
+            Label(title, systemImage: icon)
 
             Spacer()
 
@@ -105,8 +126,8 @@ struct HistorySidebarView: View {
 // MARK: - Preview
 
 #Preview(traits: .modifier(RefraxPreviewModifier())) {
-    @Previewable @State var selection: Set<HistoryDateCategory> = [.today]
+    @Previewable @State var selection: Set<HistorySidebarItem> = [.visits(.today)]
 
-    HistorySidebarView(selectedCategories: $selection)
+    HistorySidebarView(selection: $selection)
         .frame(width: 220, height: 400)
 }
