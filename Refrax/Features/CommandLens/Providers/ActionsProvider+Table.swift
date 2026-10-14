@@ -1,9 +1,9 @@
 import Foundation
 
 extension ActionsProvider {
-    /// The tab layout's moves and widths for the current page, and "Go to Row …".
+    /// The tab layout's moves and widths for the current page.
     func tableSuggestions(
-        for query: String,
+        for _: String,
         matching matches: ([String]) -> Bool,
         suggestion: (AppAction, String, String, String) -> CommandLensSuggestion,
     ) -> [CommandLensSuggestion] {
@@ -12,8 +12,8 @@ extension ActionsProvider {
         let moves: [([String], TableCommand, String, String, String)] = [
             (["focus tab left", "tab left", "previous tab", "slab left", "table left"], .focus(.left), "Focus Tab Left", "Tab layout  ⌃⌘←", "arrow.left"),
             (["focus tab right", "tab right", "next tab", "slab right", "table right"], .focus(.right), "Focus Tab Right", "Tab layout  ⌃⌘→", "arrow.right"),
-            (["tab above", "focus tab above", "row up", "previous row"], .focus(.up), "Tab Above", "Tab layout  ⌃⌘↑", "arrow.up"),
-            (["tab below", "focus tab below", "row down", "next row"], .focus(.down), "Tab Below", "Tab layout  ⌃⌘↓", "arrow.down"),
+            (["tab above", "focus tab above"], .focus(.up), "Tab Above", "Tab layout  ⌃⌘↑", "arrow.up"),
+            (["tab below", "focus tab below"], .focus(.down), "Tab Below", "Tab layout  ⌃⌘↓", "arrow.down"),
             (["move tab left", "move slab left"], .moveSlab(.left), "Move Tab Left", "Tab layout  ⌃⌘⇧←", "arrow.left.square"),
             (["move tab right", "move slab right"], .moveSlab(.right), "Move Tab Right", "Tab layout  ⌃⌘⇧→", "arrow.right.square"),
             (["move tab up", "move slab up"], .moveSlab(.up), "Move Tab Up", "Tab layout  ⌃⌘⇧↑", "arrow.up.square"),
@@ -32,12 +32,6 @@ extension ActionsProvider {
         ]
         for width in TableWidth.allCases where width != table.width(of: tab) && matches(widthTerms[width] ?? []) {
             results.append(suggestion(.table(.setWidth(width)), "Tab Width \(width.title)", "Current tab", "arrow.left.and.right"))
-        }
-        if table.canMoveToNewRow(tab), matches(["start a row below", "new row", "own row", "move to new row"]) {
-            results.append(suggestion(.table(.moveToNewRow), "Start a Row Below", "Current tab", "rectangle.split.1x2"))
-        }
-        if let number = TableCommand.rowNumber(in: query), number >= 1, number <= table.rowCount {
-            results.append(suggestion(.table(.goToRow(number - 1)), "Go to Row \(number)", "Tab layout", "arrow.down.to.line"))
         }
         return results
     }

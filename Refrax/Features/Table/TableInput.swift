@@ -23,16 +23,11 @@ final class TableInput {
 
     init(table: TableController) {
         self.table = table
-        table.onForcedRest = { [weak self] in self?.forcedRest() }
     }
 
     isolated deinit {
         momentumWindow?.cancel()
         smoothWheelQuiet?.cancel()
-    }
-
-    var navigationTabID: UUID? {
-        table.layout.focusedTabID
     }
 
     /// Whether a slide owns the scroll events now, wherever the pointer is.
@@ -43,6 +38,14 @@ final class TableInput {
     /// Routes a scroll event. `canStart` is `false` while a control or a manipulation
     /// owns the pointer. Returns `true` when the table took the event.
     func route(_ event: NSEvent, canStart: @autoclosure () -> Bool) -> Bool {
+        if event.modifierFlags.contains([.control, .option]),
+           !event.modifierFlags.contains(.command), canStart(), table.canSlide(atWindowPoint: event.locationInWindow),
+           case let .zoom(factor) = CanvasWheelInput.action(for: event) {
+            interrupt()
+            didNavigate = true
+            table.zoom(by: factor, at: event.locationInWindow)
+            return true
+        }
         let sample = TableScrollRouter.Sample(
             source: TableScrollSource.classify(
                 hasPreciseDeltas: event.hasPreciseScrollingDeltas, phase: event.phase, momentumPhase: event.momentumPhase,
@@ -68,13 +71,6 @@ final class TableInput {
         _ = perform(router.interrupt(), sample: TableScrollRouter.Sample(source: .trackpad, delta: .zero))
     }
 
-    /// The table settled on its own; what is left of the gesture is swallowed.
-    private func forcedRest() {
-        momentumWindow?.cancel()
-        smoothWheelQuiet?.cancel()
-        _ = router.interrupt()
-    }
-
     private func perform(_ decision: TableScrollRouter.Decision, sample: TableScrollRouter.Sample) -> Bool {
         switch decision {
         case .pass:
@@ -86,7 +82,7 @@ final class TableInput {
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
-            table.beginPan(delta, fingersDown: !sample.phase.isEmpty)
+            table.beginPan(delta)
             if sample.source == .smoothWheel {
                 armSmoothWheelQuiet()
             }

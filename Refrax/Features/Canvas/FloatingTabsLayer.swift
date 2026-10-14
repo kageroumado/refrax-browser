@@ -95,11 +95,6 @@ struct FloatingTabsLayer: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "floatingTabs")
-            // A card never rests against the rail, wherever it was put or the rail has moved since.
-            .onChange(of: RailClearanceKey(isRevealed: canvas.floatingVisibility.isRevealed, rail: windowState.controlIsland.railFrame), initial: true) { _, key in
-                guard key.isRevealed, canvas.floatingCamera.origin == .zero else { return }
-                canvas.keepClearOfRail(canvas.visibleFloatingTabs, in: bounds)
-            }
             .dropDestination(for: FloatingTabDrag.self) { items, point in
                 guard let item = items.first, let tab = canvas.floatingTabs.first(where: { $0.id == item.id }) else { return false }
                 var placement = canvas.floatingPlacement(for: tab)
@@ -121,12 +116,6 @@ struct FloatingTabsLayer: View {
             }
         }
     }
-}
-
-/// What decides whether cards must be pushed clear of the rail: the layer showing, and the rail's frame.
-private struct RailClearanceKey: Equatable {
-    let isRevealed: Bool
-    let rail: CGRect
 }
 
 private struct FloatingTabCard: View {
@@ -152,7 +141,6 @@ private struct FloatingTabCard: View {
     private typealias ShapeLayout = FloatingCardShape.Layout
 
     private enum Layout {
-        static let mainPageRowHeight: CGFloat = 24
         /// The card's opacity while a copy of it follows the pointer outside the window.
         static let leavingOpacity: Double = 0.4
         static let moveStep: CGFloat = 24
@@ -205,11 +193,7 @@ private struct FloatingTabCard: View {
                 VStack(spacing: 0) {
                     header
                         .frame(height: Header.height)
-                    if isMainPage {
-                        Text("Open full-size")
-                            .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, Header.leadingPadding).frame(height: Layout.mainPageRowHeight)
-                    } else if shape == .live {
+                    if shape == .live {
                         FloatingTabPreview(tab: tab, viewportSize: area.size, isLive: showsLivePage)
                             .frame(height: max(0, placement.frame(in: area).height - Header.height - FloatingTabPlacement.previewInset))
                             .clipShape(.rect(cornerRadius: FloatingCardChrome.previewCornerRadius(isKept: isKept), style: .continuous))

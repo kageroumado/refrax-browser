@@ -50,7 +50,6 @@ final class CanvasTileView: NSView {
     private let faviconView = NSImageView()
     private let placeholderLabel = NSTextField(labelWithString: "")
     private var faviconData: Data?
-    private var transitionPreview: CGFloat = 0
     private var dragOrigin: CGPoint = .zero
     private var frameAtDragStart: CGRect = .zero
     private var samples: [(time: CFTimeInterval, point: CGPoint)] = []
@@ -133,7 +132,7 @@ final class CanvasTileView: NSView {
         edgeMask.path = edgePath
         glassContent.frame = CGRect(origin: .zero, size: glassFrame.size)
         imageLayer.frame = CGRect(x: Constants.glassInset, y: Constants.glassInset, width: max(0, glassFrame.width - Constants.glassInset * 2), height: max(0, glassFrame.height - FloatingTabPlacement.headerHeight - Constants.glassInset * 2))
-        imageLayer.isHidden = placement.shape != .live && transitionPreview == 0
+        imageLayer.isHidden = placement.shape != .live
         imageLayer.opacity = Float(previewVisibility)
         targetLayer.frame = glassFrame.insetBy(dx: -Constants.targetInset, dy: -Constants.targetInset)
         layer?.shadowPath = CGPath(roundedRect: edgeLayer.frame, cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius, transform: nil)
@@ -142,7 +141,7 @@ final class CanvasTileView: NSView {
         let compactTitleY = (glassFrame.height - Constants.titleHeight) / 2
         let previewTitleY = glassFrame.height - FloatingTabPlacement.headerHeight + (FloatingTabPlacement.headerHeight - Constants.titleHeight) / 2
         let titleY = compactTitleY + (previewTitleY - compactTitleY) * previewVisibility
-        titleLabel.frame = CGRect(x: Constants.glassInset + 28, y: titleY, width: max(0, visualBounds.width - 36), height: Constants.titleHeight)
+        titleLabel.frame = CGRect(x: Constants.glassInset + 28, y: titleY, width: max(0, bounds.width - 36), height: Constants.titleHeight)
         faviconView.frame = CGRect(x: Constants.glassInset + 5, y: titleY + 2, width: 16, height: 16)
         placeholderLabel.frame = imageLayer.frame.insetBy(dx: 12, dy: 0)
         placeholderLabel.isHidden = snapshot != nil || placement.shape != .live
@@ -153,7 +152,7 @@ final class CanvasTileView: NSView {
     }
 
     private var glassFrame: CGRect {
-        visualBounds
+        bounds
     }
 
     /// The page rectangle used when entering this card, centered at its table position.
@@ -170,25 +169,7 @@ final class CanvasTileView: NSView {
     }
 
     private var previewVisibility: CGFloat {
-        placement.shape != .live ? transitionPreview : 1
-    }
-
-    private var visualBounds: CGRect {
-        guard placement.shape != .live, transitionPreview > 0 else { return bounds }
-        let preview = previewFrame
-        let size = CGSize(
-            width: bounds.width + (preview.width - bounds.width) * transitionPreview,
-            height: bounds.height + (preview.height - bounds.height) * transitionPreview,
-        )
-        return CanvasTileLayout.centeredFrame(size: size, on: bounds)
-    }
-
-    /// Unfolds a compact slab into its page preview along a camera transition.
-    func revealPreview(_ progress: CGFloat) {
-        guard placement.shape != .live else { return }
-        transitionPreview = min(1, max(0, progress))
-        needsLayout = true
-        layoutSubtreeIfNeeded()
+        placement.shape == .live ? 1 : 0
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

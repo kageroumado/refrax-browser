@@ -289,12 +289,7 @@ final class TabCanvasBoardView: NSView {
     }
 
     func previewFrame(for id: Tab.ID) -> CGRect? {
-        guard let tile = tiles[id] else { return nil }
-        return tile.previewFrame
-    }
-
-    func revealPreview(of id: Tab.ID, progress: CGFloat) {
-        tiles[id]?.revealPreview(progress)
+        tiles[id]?.previewFrame
     }
 
     private var navigationTiles: [CanvasNavigation.Tile] {

@@ -2,9 +2,9 @@ import Foundation
 
 /// A table command the Command Lens offers, run on the window's ``TableController``.
 nonisolated enum TableCommand: Hashable, Sendable {
-    /// Focus the next slab or row (⌃⌘ arrows).
+    /// Focus the neighboring tab (⌃⌘ arrows).
     case focus(TableDirection)
-    /// Move the current slab along its row or into the next row (⌃⌘⇧ arrows).
+    /// Move the current slab on the table (⌃⌘⇧ arrows).
     case moveSlab(TableDirection)
     /// Cycle the current slab's width (⌃⌘R).
     case cycleWidth
@@ -12,16 +12,6 @@ nonisolated enum TableCommand: Hashable, Sendable {
     case toggleFill
     /// Give the current slab a preset width.
     case setWidth(TableWidth)
-    /// Move the current slab into a row of its own.
-    case moveToNewRow
-    /// Go to a row, counted from 0.
-    case goToRow(Int)
-
-    /// The row number in `query` after the word "row", counted from 1 as people say it.
-    static func rowNumber(in query: String) -> Int? {
-        guard let range = query.range(of: #"row\s*(\d+)"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
-        return Int(query[range].filter(\.isNumber))
-    }
 }
 
 extension TableController {
@@ -40,12 +30,6 @@ extension TableController {
             if let tab = currentTab {
                 setWidth(width, of: tab)
             }
-        case .moveToNewRow:
-            if let tab = currentTab {
-                moveToNewRow(tab)
-            }
-        case let .goToRow(index):
-            goToRow(index)
         }
     }
 }

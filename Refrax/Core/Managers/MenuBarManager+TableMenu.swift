@@ -38,7 +38,6 @@ extension MenuBarManager {
             [
                 TableItem(title: "Cycle Tab Width", symbol: "arrow.left.and.right", action: #selector(tableCycleWidth(_:)), key: "r", modifiers: focus),
                 TableItem(title: "Fill Width", symbol: "arrow.up.left.and.arrow.down.right", action: #selector(tableToggleFill(_:)), key: "f", modifiers: move),
-                TableItem(title: "Start a Row Below", symbol: "rectangle.split.1x2", action: #selector(tableMoveToNewRow(_:)), key: "", modifiers: []),
             ],
         ]
         for (index, group) in groups.enumerated() {
@@ -111,11 +110,5 @@ extension MenuBarManager {
     @objc
     func tableToggleFill(_: Any?) {
         activeTable?.toggleFill()
-    }
-
-    @objc
-    func tableMoveToNewRow(_: Any?) {
-        guard let controller = activeWindowController, let tab = controller.windowState.activeTab else { return }
-        controller.tableController.moveToNewRow(tab)
     }
 }

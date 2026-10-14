@@ -130,9 +130,6 @@ final class CanvasPageGestures {
                !canvas.floatingVisibility.isHeld, floatingEligible() {
                 canvas.revealFloatingTabs()
             }
-            if tableInput.didNavigate, !event.hasPreciseScrollingDeltas, let id = tableInput.navigationTabID {
-                canvas.revealSpatialDestination(id)
-            }
             return nil
         }
         if [

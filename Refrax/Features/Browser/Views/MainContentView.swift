@@ -45,7 +45,7 @@ struct MainContentView: View {
         .tabCloseConfirmation(tabManager: tabManager, windowState: windowState)
     }
 
-    /// The space's tabs are slabs on the table; a favorite shows on its own.
+    /// Displays the active page at its shared table anchor.
     @ViewBuilder
     private var contentRouter: some View {
         if let activeTab = windowState.activeTab {

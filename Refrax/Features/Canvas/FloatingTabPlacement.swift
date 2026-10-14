@@ -14,6 +14,8 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     /// The live page's size, kept while the card wears another shape.
     var previewWidth: Double?
     var previewHeight: Double?
+    /// The preview width restored when Fill Width is toggled off.
+    var previewWidthBeforeFill: Double?
     var region: FloatingPageRegion?
     /// The window side the tab fills at full height. A docked tab is always visible, and its
     /// floating frame stays where it was so undocking returns it there.

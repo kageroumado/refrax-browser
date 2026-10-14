@@ -23,6 +23,13 @@ nonisolated struct TabSpatialCamera: Equatable, Sendable {
         )
     }
 
+    /// Panning follows the input in screen points at every scale.
+    mutating func pan(by delta: CGPoint) {
+        guard delta.x.isFinite, delta.y.isFinite else { return }
+        origin.x -= delta.x / scale
+        origin.y -= delta.y / scale
+    }
+
     /// Keeps the table point beneath the pointer fixed as the camera changes scale.
     mutating func zoom(to scale: CGFloat, at point: CGPoint) {
         guard scale.isFinite, scale > 0 else { return }

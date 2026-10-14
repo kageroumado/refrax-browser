@@ -37,8 +37,6 @@ protocol CanvasBoardDriver: AnyObject {
     func setOpeningProgress(_ progress: CGFloat)
     /// Follows a pinch at `scale` (1 at its start, smaller as the fingers close).
     func setOpeningScale(_ scale: CGFloat)
-    /// Shows the desk at page size with the focused tile on the page.
-    func beginPanning(focusedTile: CGRect?)
     /// Slides the desk by `delta` screen points.
     func pan(by delta: CGPoint)
     /// Settles into a tile, and the page takes over.
@@ -49,6 +47,8 @@ protocol CanvasBoardDriver: AnyObject {
     func scroll(by delta: CGPoint)
     /// Moves the destination one visible neighbor at the current scale.
     func step(_ direction: TableDirection)
+    /// Reveals a tab at the current camera scale.
+    func reveal(_ id: Tab.ID)
     /// Zooms around the center of the viewport.
     func zoom(by factor: CGFloat)
     /// Completes the opening, or takes it back to the page and closes the canvas.
@@ -98,9 +98,8 @@ struct CanvasZoomRequest: Equatable {
 /// tile placed at a position of its own, zoomed out from and back into the live page.
 ///
 /// The desk is finite. Tiles keep the position they were given (persisted on
-/// ``Tab/floatingPlacement``), a click zooms into a tile until it fills the window and
-/// the live page takes over, and dismissing zooms back out. The desk keeps every
-/// released tile reachable.
+/// ``Tab/floatingPlacement``). A click opens that tab's page; the camera keeps its
+/// position on the table for the next visit.
 ///
 /// Tab groups appear on the desk in one of two shapes. A **zone**
 /// (``TabGroup/boardFrame``) is a region that is at least the claimed rectangle
@@ -143,6 +142,7 @@ final class TabCanvasManager {
     private(set) var focusedFloatingTabID: Tab.ID?
     private(set) var floatingCamera = TabSpatialCamera()
     private(set) var openingCameraFrame: CGRect?
+    var pendingCameraZoom: (factor: CGFloat, point: CGPoint)?
     var regionSelectionError: String?
     var regionSelection: FloatingRegionSelection?
     @ObservationIgnored var regionSelectionTask: Task<Void, Never>?
@@ -284,10 +284,6 @@ final class TabCanvasManager {
                !floatingFrame(for: tab, in: floatingArea).intersects(liveBand) {
                 return false
             }
-            // The rail's page card is the current tab's place; a second card for it would float elsewhere.
-            if showsFloatingControls, tab.id == windowState.activeTabID {
-                return false
-            }
             if isFolded(tab), tab.id != retainedInputTabID {
                 return false
             }
@@ -328,8 +324,11 @@ final class TabCanvasManager {
         storeTablePlacement(world, for: tab)
     }
 
-    private func storeTablePlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
+    func storeTablePlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
         windowState.floatingPlacements[tab.id] = placement
+        if isActive {
+            tileFrames[tab.id] = placement.frame(in: floatingArea)
+        }
         windowState.window?.invalidateRestorableState()
         if tab.space?.dataStoreMode != .private {
             tab.floatingPlacement = placement
@@ -397,6 +396,9 @@ final class TabCanvasManager {
         spaceToReveal = nil
         dismissFloatingTabs()
         floatingCamera = TabSpatialCamera()
+        if let tab = windowState.activeTab, let viewport = windowState.tableController?.viewportFrame {
+            focusPage(tab, in: viewport)
+        }
         if shouldReveal {
             toggleFloatingTabs()
         }
@@ -431,10 +433,58 @@ final class TabCanvasManager {
         return CanvasNavigation.neighbor(from: id, toward: direction.canvasDirection, in: tiles)
     }
 
+    /// Aligns the selected page's table anchor with its available viewport.
+    func focusPage(_ tab: Tab, in viewport: CGRect) {
+        guard !isActive, !viewport.isEmpty else { return }
+        if storedFloatingPlacement(for: tab)?.tableOrigin == nil {
+            placeFloatingTabs()
+        }
+        let anchor = tablePlacement(for: tab).frame(in: floatingArea).origin
+        let target = TabSpatialCamera(origin: CGPoint(x: anchor.x - viewport.minX, y: anchor.y - viewport.minY))
+        focusedFloatingTabID = tab.id
+        guard floatingCamera != target else { return }
+        let animate = floatingVisibility.isRevealed && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(animate ? .snappy(duration: 0.18) : nil) { floatingCamera = target }
+    }
+
+    /// The active page and its card share one table anchor and camera projection.
+    func pageFrame(for tab: Tab, in viewport: CGRect) -> CGRect {
+        let anchor = tablePlacement(for: tab).frame(in: floatingArea).origin
+        return floatingCamera.project(CGRect(origin: anchor, size: viewport.size))
+            .offsetBy(dx: -viewport.minX, dy: -viewport.minY)
+    }
+
+    /// Moves the viewport in screen points while every stored tab keeps its position.
+    func panFloatingCamera(by delta: CGPoint) {
+        guard delta.x.isFinite, delta.y.isFinite else { return }
+        if floatingTabs.contains(where: { storedFloatingPlacement(for: $0)?.tableOrigin == nil }) {
+            placeFloatingTabs()
+        }
+        floatingCamera.pan(by: delta)
+    }
+
+    /// The overview reports its projection into the shared camera.
+    func updateTableCamera(_ camera: TabSpatialCamera) {
+        floatingCamera = camera
+    }
+
+    func zoomFromPage(by factor: CGFloat, aboutWindowPoint point: CGPoint) {
+        if isActive {
+            board?.zoom(by: factor, aboutWindowPoint: point)
+        } else {
+            pendingCameraZoom = (factor, point)
+            show()
+        }
+    }
+
     /// Moves only the camera to reveal a destination; the saved cards stay on the table.
     func revealSpatialDestination(_ id: Tab.ID) {
         guard let tab = floatingTabs.first(where: { $0.id == id }) else { return }
         focusedFloatingTabID = id
+        if isActive {
+            board?.reveal(id)
+            return
+        }
         let frame = tablePlacement(for: tab).frame(in: floatingArea)
         withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .snappy(duration: 0.18)) {
             floatingCamera.reveal(frame, in: floatingArea.insetBy(dx: 32, dy: 32))
@@ -466,6 +516,9 @@ final class TabCanvasManager {
     func openFloatingTab(_ tab: Tab) {
         floatingVisibility.dismiss()
         tabManager.setActiveTab(tab, in: windowState)
+        if let viewport = windowState.tableController?.viewportFrame {
+            focusPage(tab, in: viewport)
+        }
     }
 
     func showFloatingPlace(of tab: Tab) {
@@ -803,7 +856,7 @@ final class TabCanvasManager {
     /// the page revealed as the canvas fades is that tab's.
     func prepareToEnter(_ tab: Tab) {
         focusedTabID = tab.id
-        revealSpatialDestination(tab.id)
+        focusedFloatingTabID = tab.id
         if windowState.activeTab?.id != tab.id {
             tabManager.setActiveTab(tab, in: windowState)
         }
@@ -814,7 +867,7 @@ final class TabCanvasManager {
     /// Opens the canvas for the active space.
     func show() {
         guard !isActive else { return }
-        openingCameraFrame = floatingVisibility.isRevealed ? floatingCamera.unproject(floatingArea) : nil
+        openingCameraFrame = floatingCamera.unproject(floatingArea)
         dismissFloatingTabs()
 
         focusedTabID = windowState.activeTab?.id
@@ -839,6 +892,8 @@ final class TabCanvasManager {
         if let tab {
             tabManager.setActiveTab(tab, in: windowState)
         }
+        floatingCamera.zoom(to: 1, at: CGPoint(x: floatingArea.midX, y: floatingArea.midY))
+        pendingCameraZoom = nil
         snapshotTask?.cancel()
         snapshotTask = nil
         selectedTabIDs = []

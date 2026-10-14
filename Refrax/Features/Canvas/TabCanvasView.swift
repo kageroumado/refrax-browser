@@ -196,19 +196,21 @@ private struct TabCanvasBoard: NSViewRepresentable {
         view.onLasso = { [weak manager] tabIDs in manager?.select(tabIDs) }
         view.onClearSelection = { [weak manager] in manager?.clearSelection() }
         view.onTogglePreview = { [weak manager] id, frame in manager?.togglePreview(id, at: frame) }
+        view.onCameraChanged = { [weak manager] camera in manager?.updateTableCamera(camera) }
         manager.board = view
         reload(view)
         context.coordinator.lastZoomSerial = zoomRequest?.serial
         context.coordinator.lastCloseRequest = closeRequest
         view.livePageFrameInWindow = manager.livePageFrame
-        if manager.isPanningFromPage {
-            view.beginPanning(focusedTile: manager.focusedTileFrame)
-            view.pan(by: manager.pendingPan)
-        } else {
+        if manager.isOpeningInteractively {
             view.beginOpening(focusedTile: manager.focusedTileFrame, desk: manager.deskBounds, from: manager.openingCameraFrame)
             view.setOpeningScale(manager.openingScale)
-            if !manager.isOpeningInteractively {
-                view.finishOpening(commit: true)
+        } else {
+            view.showTable(at: manager.openingCameraFrame ?? manager.floatingArea, trackingTarget: manager.isPanningFromPage)
+            view.pan(by: manager.pendingPan)
+            if let zoom = manager.pendingCameraZoom {
+                manager.pendingCameraZoom = nil
+                view.zoom(by: zoom.factor, aboutWindowPoint: zoom.point)
             }
         }
         return view

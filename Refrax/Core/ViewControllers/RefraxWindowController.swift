@@ -212,7 +212,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupWindowSharingObserver()
         hideStandardWindowButtons()
         commandLensManager.setup()
-        tableController.start()
     }
 
     @available(*, unavailable)
@@ -503,7 +502,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         NotificationCenter.default.removeObserver(self)
         removeUndoRedoMonitor()
         cancelAllObservationTasks()
-        tableController.stop()
     }
 
     /// Cancels all observation tasks when the window closes.
