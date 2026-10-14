@@ -111,6 +111,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.floatingTourManager)
             .environment(environment.engineRegistry)
             .environment(environment.tableController)
+            .environment(\.refraxEnvironment, environment)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)
     }
@@ -121,4 +122,9 @@ extension View {
     func refraxEnvironment(_ environment: RefraxEnvironment) -> some View {
         modifier(RefraxEnvironmentModifier(environment: environment))
     }
+}
+
+extension EnvironmentValues {
+    /// The whole environment, for views that host SwiftUI inside AppKit and must apply it again.
+    @Entry var refraxEnvironment: RefraxEnvironment?
 }

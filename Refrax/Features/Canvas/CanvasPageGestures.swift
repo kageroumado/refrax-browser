@@ -13,8 +13,8 @@ import AppKit
 ///   pinch turns out to be its own.
 /// - **⌃** held alone shows adjacent pages immediately; clicks keep those destinations
 ///   available while the key is down. Releasing it leaves pinned previews visible.
-/// - **⌃ + scroll** moves the table beneath the pointer. Releasing ⌃ opens the tile
-///   reached by the camera.
+/// - **The scroll key + scroll** slides the table under the window: the events go to the
+///   table's scroll view instead of the page, for the whole gesture and its momentum.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and Option-wheel zooms about the pointer. One more tap of
@@ -62,8 +62,10 @@ final class CanvasPageGestures {
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
-    /// Directional keys select the adjacent tab announced by the edge previews.
+    /// Directional keys step to the adjacent slab.
     var table: TableController?
+    /// Scroll events with the scroll key down slide the table.
+    var tableInput: TableInput?
     /// When ⌃ last went down with no other input since, for telling taps from holds.
     private var controlDownAt: Date?
     /// When the last tap of ⌃ ended, for telling a double tap.
@@ -112,16 +114,13 @@ final class CanvasPageGestures {
         if event.type == .scrollWheel, canvas.isPanningFromPage {
             return handleScroll(event)
         }
-        if event.type == .scrollWheel, !canvas.isPanningFromPage,
-           FloatingRevealKey.current.matchesHold(event.modifierFlags),
-           floatingEligible(), isEligible(event.locationInWindow), !canvas.isActive,
-           !canvas.floatingVisibility.isManipulating,
-           event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0,
-           !floatingControlsContain(event.locationInWindow) {
+        if event.type == .scrollWheel, let tableInput, !canvas.isActive,
+           tableInput.route(event, canStart: floatingEligible() && isEligible(event.locationInWindow)
+               && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow)) {
             controlDownAt = nil
             lastControlTap = nil
-            canvas.beginPan()
-            return handleScroll(event)
+            canvas.releaseFloatingTabs()
+            return nil
         }
         if [
             .leftMouseDown,
@@ -314,6 +313,7 @@ final class CanvasPageGestures {
 
     /// Other input while ⌃ is down makes it part of a shortcut or ⌃-click.
     private func interruptControl() {
+        tableInput?.interrupt()
         canvas.releaseFloatingTabs()
         controlDownAt = nil
         lastControlTap = nil
@@ -338,10 +338,10 @@ final class CanvasPageGestures {
         case .ended, .cancelled:
             defer { pinch = .idle }
             switch pinch {
-            case let .opening(scale, trend):
+            case .opening:
                 // The release event's own step is the fingers lifting, often a jolt
-                // outward; the decision uses the pinch as it stood before.
-                canvas.endInteractiveOpen(commit: scale <= Constants.commitScale || trend <= Constants.flickTrend)
+                // outward; the table decides from where the pinch stood before.
+                table?.endPinch()
                 return nil
             case let .undecided(began):
                 window?.sendEvent(began)
@@ -364,8 +364,7 @@ final class CanvasPageGestures {
             if event.magnification < 0 {
                 let scale = max(Constants.minimumScale, 1 + event.magnification)
                 pinch = .opening(scale: scale, trend: event.magnification)
-                canvas.beginInteractiveOpen()
-                canvas.updateInteractiveOpen(scale: scale)
+                table?.pinch(to: scale, aboutWindowPoint: pointer(for: event))
                 return nil
             }
             if event.magnification > 0 {
@@ -380,7 +379,7 @@ final class CanvasPageGestures {
             let next = max(Constants.minimumScale, scale * (1 + event.magnification))
             let nextTrend = trend + (event.magnification - trend) * Constants.trendWeight
             pinch = .opening(scale: next, trend: nextTrend)
-            canvas.updateInteractiveOpen(scale: next)
+            table?.pinch(to: next, aboutWindowPoint: pointer(for: event))
             return nil
 
         case .idle, .passing:

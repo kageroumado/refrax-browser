@@ -120,6 +120,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         self.tableController = TableController(
             windowState: windowState,
             tabManager: appDelegate.tabManager,
+            groupManager: appDelegate.groupManager,
             canvas: tabCanvasManager,
             pagePool: appDelegate.pagePool,
         )
@@ -191,6 +192,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             tableController: tableController,
         )
         windowState.tableController = tableController
+        tableController.start()
 
         setupRootView(window: window)
 
@@ -351,6 +353,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             return pageFrame.contains(point)
         }
         canvasPageGestures?.table = tableController
+        canvasPageGestures?.tableInput = TableInput(table: tableController)
     }
 
     private func setupOverlayView(contentView: NSView) {
