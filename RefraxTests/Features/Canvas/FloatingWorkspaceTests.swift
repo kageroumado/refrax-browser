@@ -130,6 +130,33 @@ struct FloatingWorkspaceTests {
     }
 
     @Test
+    func `coincident saved cards separate without moving the active card or other neighbors`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let active = try env.createActiveTab(url: #require(URL(string: "about:blank#active")), in: space, for: window)
+        let hidden = try env.tabManager.createTab(url: #require(URL(string: "about:blank#hidden")), in: space, makeActive: false)
+        let neighbor = try env.tabManager.createTab(url: #require(URL(string: "about:blank#neighbor")), in: space, makeActive: false)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        var shared = FloatingTabPlacement.initial(index: 0)
+        shared.tableOrigin = CGPoint(x: 100, y: 100)
+        canvas.storeTablePlacement(shared, for: active)
+        canvas.storeTablePlacement(shared, for: hidden)
+        var separate = FloatingTabPlacement.initial(index: 0)
+        separate.tableOrigin = CGPoint(x: 500, y: 500)
+        canvas.storeTablePlacement(separate, for: neighbor)
+
+        canvas.revealFloatingTabs()
+        let moved = canvas.tablePlacement(for: hidden)
+        #expect(canvas.tablePlacement(for: active).tableOrigin == shared.tableOrigin)
+        #expect(canvas.tablePlacement(for: neighbor).tableOrigin == separate.tableOrigin)
+        #expect(moved.tableOrigin != shared.tableOrigin)
+        canvas.releaseFloatingTabs()
+        canvas.revealFloatingTabs()
+        #expect(canvas.tablePlacement(for: hidden) == moved)
+    }
+
+    @Test
     func `each revealed window retains its own placement`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

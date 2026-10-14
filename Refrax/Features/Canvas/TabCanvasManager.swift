@@ -603,11 +603,55 @@ final class TabCanvasManager {
             storeTablePlacement(placement, for: tab)
             bottom = placement.frame(in: floatingArea).maxY
         }
+        separateCoincidentTabs()
         for tab in floatingTabs where tab.group == nil && storedFloatingPlacement(for: tab) != nil {
             fileIntoSiteStack(tab)
         }
         dissolveLoneSiteStacks()
         tabManager.state.scheduleSave()
+    }
+
+    /// Gives cards with the same saved rectangle separate places while keeping their other neighbors fixed.
+    private func separateCoincidentTabs() {
+        let area = floatingArea
+        let tabs = floatingTabs
+        let active = tabs.first { $0.id == windowState.activeTabID }
+        let ordered = [active].compactMap { $0 } + tabs.filter { $0.id != active?.id }
+        var frames = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab in
+            storedFloatingPlacement(for: tab).flatMap { $0.isDocked ? nil : (tab.id, $0.frame(in: area)) }
+        })
+        var visited: [CGRect] = []
+        for tab in ordered {
+            guard var placement = storedFloatingPlacement(for: tab), !placement.isDocked else { continue }
+            let frame = placement.frame(in: area)
+            if visited.contains(frame) {
+                let occupied = frames.compactMap { $0.key == tab.id ? nil : $0.value }
+                let gap = FloatingArrangement.gap
+                let candidates = [
+                    CGPoint(x: frame.maxX + gap, y: frame.minY),
+                    CGPoint(x: frame.minX, y: frame.maxY + gap),
+                    CGPoint(x: frame.minX - frame.width - gap, y: frame.minY),
+                    CGPoint(x: frame.minX, y: frame.minY - frame.height - gap),
+                ]
+                let clearance = gap - 0.5
+                let clear = candidates.first { origin in
+                    let candidate = CGRect(origin: origin, size: frame.size)
+                    return !occupied.contains { $0.insetBy(dx: -clearance, dy: -clearance).intersects(candidate) }
+                }
+                let fallback = FloatingArrangement.freeCell(
+                    for: frame.size,
+                    avoiding: occupied,
+                    in: FloatingArrangement.arrangeArea(in: area, rail: .zero),
+                    fromTrailing: false,
+                )
+                if let origin = clear ?? fallback {
+                    placement.tableOrigin = origin
+                    storeTablePlacement(placement, for: tab)
+                    frames[tab.id] = placement.frame(in: area)
+                }
+            }
+            visited.append(placement.frame(in: area))
+        }
     }
 
     private func refreshFloatingSnapshots() {
