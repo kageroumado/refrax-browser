@@ -175,7 +175,7 @@ struct ControlIslandSpaces: View {
         .contextMenu {
             spaceMenu(for: space)
         }
-        .help("Switch to \(space.name)")
+        .railHelp("Switch to \(space.name)")
         .accessibilityLabel("Space: \(space.name)")
         .accessibilityValue(selected ? "Current space" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])

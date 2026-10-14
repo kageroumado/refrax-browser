@@ -39,6 +39,8 @@ struct ControlIsland: View {
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
     @State private var arrangeHintSize = CGSize.zero
+    @State private var railHelp = ControlIslandRailHelp()
+    @State private var railHelpSize = CGSize.zero
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
     #if DEBUG
         @State private var showsDeskLab = false
@@ -186,6 +188,21 @@ struct ControlIsland: View {
     private var recentFrame: CGRect {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
+    /// The help of the control under the pointer, beside the rail on the side it opens to,
+    /// level with the control and inside the window.
+    @ViewBuilder
+    private var railHelpLabel: some View {
+        if let shown = railHelp.shown, !isHiddenAtEdge, !state.isDragging {
+            let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
+            let x = opensLeft ? frame.minX - Layout.adjacentGap - railHelpSize.width : frame.maxX + Layout.adjacentGap
+            let y = min(max(bounds.minY, shown.anchor.midY - railHelpSize.height / 2), max(bounds.minY, bounds.maxY - railHelpSize.height))
+            ControlIslandRailHelpLabel(text: shown.text)
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { railHelpSize = $0 }
+                .offset(x: x, y: y)
+                .transition(.opacity)
+        }
+    }
+
     private var shortcutFrame: CGRect {
         let width: CGFloat = 64
         let x = opensLeft ? frame.minX - Layout.adjacentGap - width : frame.maxX + Layout.adjacentGap
@@ -268,6 +285,8 @@ struct ControlIsland: View {
                 }
             }
         }
+        .overlay(alignment: .topLeading) { railHelpLabel }
+        .environment(railHelp)
         .font(.system(size: 13, weight: Layout.symbolWeight))
         .buttonStyle(ControlIslandButtonStyle())
         .pageCardOpensForPasswordSave()
@@ -302,6 +321,7 @@ struct ControlIsland: View {
         }
         .onChange(of: isDraggingWindow || isDraggingPanel || state.isReorderingFavorites) { _, dragging in
             state.isDragging = dragging
+            railHelp.dismiss()
             if !dragging {
                 finishPanelDrag()
             }
@@ -460,14 +480,13 @@ struct ControlIsland: View {
         case .page:
             pageRow
         case .copyLink:
-            control(item.title, symbol: item.symbol, enabled: windowState.activeTab != nil) {
+            control(item.title, symbol: item.symbol, enabled: windowState.activeTab != nil, help: item.detail) {
                 guard let tab = windowState.activeTab else { return }
                 ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).copyLink()
                 windowState.showToast("Address copied")
             }
-            .help(item.detail)
         case .commandLens:
-            control(item.title, symbol: item.symbol) {
+            control(item.title, symbol: item.symbol, help: "Command Lens · ⌘T") {
                 tabSwitcher.cancel()
                 if windowState.showsCommandLens {
                     windowState.closeCommandLens()
@@ -475,13 +494,13 @@ struct ControlIsland: View {
                     windowState.openCommandLens(source: state.itemFrames[.commandLens])
                 }
             }
-            .help("Command Lens · ⌘T")
         case .floatingTabs:
             let showsRecent = optionIsDown
             control(
                 showsRecent ? "Recent tabs" : item.title,
                 symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
                 enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
+                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold \(revealKey.glyph) to peek · ⌥ for recent tabs · right-click to arrange",
             ) {
                 if optionIsHeld {
                     showRecentTabs()
@@ -502,7 +521,6 @@ struct ControlIsland: View {
                 FloatingArrangeMenu()
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
-            .help(showsRecent ? "Recent tabs · ⌃Tab" : "Show tabs · hold \(revealKey.glyph) to peek · ⌥ for recent tabs · right-click to arrange")
         case .desk:
             deskControl(item)
         case .spaces:
@@ -556,14 +574,13 @@ struct ControlIsland: View {
 
     /// Desk opens the canvas; in a debug build, Option-click also offers the lab's preset boards.
     private func deskControl(_ item: ControlIslandItem) -> some View {
-        let desk = control(item.title, symbol: TabCanvasManager.symbolName) {
+        let desk = control(item.title, symbol: TabCanvasManager.symbolName, help: item.detail) {
             dismissTransientOverlays()
             canvas.show()
             #if DEBUG
                 showsDeskLab = optionIsHeld
             #endif
         }
-        .help(item.detail)
         #if DEBUG
             return desk.popover(isPresented: $showsDeskLab, arrowEdge: opensLeft ? .leading : .trailing) { deskLab }
         #else
@@ -607,7 +624,7 @@ struct ControlIsland: View {
         .focused($focusedControl, equals: item.title)
         .focusEffectDisabled()
         .accessibilityLabel(item.title)
-        .help("Update ready · Restart to install")
+        .railHelp("Update ready · Restart to install")
     }
 
     /// Now Playing: a speaker while any tab plays sound; it opens the per-tab media controls.
@@ -629,7 +646,7 @@ struct ControlIsland: View {
             ControlIslandNowPlaying(isPresented: $showsNowPlaying)
         }
         .accessibilityLabel(item.title)
-        .help("Now Playing · ⌃M mutes this tab")
+        .railHelp("Now Playing · ⌃M mutes this tab")
     }
 
     /// The row the tour points at: a capsule inset in the cell, above the glass, with a glow around it.
@@ -707,7 +724,7 @@ struct ControlIsland: View {
         .contentShape(Rectangle())
         .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
         .gesture(moveGesture)
-        .help("Move controls")
+        .railHelp("Move controls")
         .accessibilityElement()
         .accessibilityLabel("Move controls")
         .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
@@ -752,7 +769,7 @@ struct ControlIsland: View {
             .focusable()
             .focused($focusedControl, equals: "Back")
             .focusEffectDisabled()
-            .help("Back · ⌥ for history")
+            .railHelp("Back · ⌥ for history")
             .accessibilityLabel("Back")
             if canGoForward {
                 PageForwardButton(
@@ -763,7 +780,7 @@ struct ControlIsland: View {
                 .focusable()
                 .focused($focusedControl, equals: "Forward")
                 .focusEffectDisabled()
-                .help("Forward · ⌥ for history")
+                .railHelp("Forward · ⌥ for history")
                 .accessibilityLabel("Forward")
             }
         }
@@ -808,7 +825,7 @@ struct ControlIsland: View {
                 state.showsAddress = true
             }
         }
-        .help("Current page · Hover for its card · ⌘L edits the address")
+        .railHelp("Current page · Hover for its card · ⌘L edits the address")
         .accessibilityLabel("Current page")
         .accessibilityValue(windowState.activeWebPage?.isLoading == true ? "Loading" : (windowState.activePage?.url.safeDisplayDomain ?? "Ready"))
     }
@@ -893,7 +910,7 @@ struct ControlIsland: View {
         }
     }
 
-    private func control(_ title: String, symbol: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+    private func control(_ title: String, symbol: String, enabled: Bool = true, help: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             ControlIslandRow { Image(systemName: symbol) }
         }
@@ -902,7 +919,7 @@ struct ControlIsland: View {
         .focused($focusedControl, equals: title)
         .focusEffectDisabled()
         .accessibilityLabel(title)
-        .help(title)
+        .railHelp(help ?? title)
     }
 
     private func hoverChanged(_ phase: ControlIslandHoverPath.Phase) {

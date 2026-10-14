@@ -88,7 +88,7 @@ struct ControlIslandFavoriteTabs: View {
         .focusable()
         .focused(focusedControl, equals: "All Favorites")
         .focusEffectDisabled()
-        .help("All Favorites")
+        .railHelp("All Favorites")
         .accessibilityLabel("All Favorites")
     }
 
@@ -176,7 +176,7 @@ struct ControlIslandFavoriteTabs: View {
         .contextMenu { favoriteMenu(favorite) }
         .accessibilityAction(named: "Move up") { moveFavorite(favorite.id, by: -1) }
         .accessibilityAction(named: "Move down") { moveFavorite(favorite.id, by: 1) }
-        .help("\(favorite.displayName) · Drag to reorder")
+        .railHelp("\(favorite.displayName) · Drag to reorder")
         .accessibilityLabel(favorite.displayName)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .focusable()
