@@ -275,11 +275,14 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 }
             }
         }
-        floatingView.onSecondaryPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState] point, event in
-            guard let floatingView, let tabCanvasManager, let windowState,
+        floatingView.onSecondaryPointerDown = { [weak self, weak floatingView] point, event in
+            guard let self, let floatingView,
                   !(windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) })
             else { return false }
-            return tabCanvasManager.showFloatingLayerMenu(at: point, for: event, in: floatingView)
+            return tabCanvasManager.showFloatingCardMenu(
+                at: point, for: event, in: floatingView,
+                bookmarks: bookmarksManager, sharing: environment.sharingCoordinator,
+            ) || tabCanvasManager.showFloatingLayerMenu(at: point, for: event, in: floatingView)
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager] in
             guard let floatingView, let tabCanvasManager else { return [] }

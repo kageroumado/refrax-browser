@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// A desktop page scaled into a movable tab window: live while `isLive`, otherwise its
-/// full-resolution snapshot. A page just taken live keeps the snapshot on top until it paints.
+/// A desktop page scaled into a movable tab window: live and interactive while `isLive`,
+/// otherwise its full-resolution snapshot. A page just taken live keeps the snapshot on top
+/// until it paints.
 struct FloatingTabPreview: View {
     let tab: Tab
     let viewportSize: CGSize
@@ -58,21 +59,8 @@ struct FloatingTabPreview: View {
                     guard !Task.isCancelled else { return }
                     hasPainted = true
                 }
-            } else if !isLive, !isMainContent {
-                snapshotFace
-            } else if let image = table.snapshot(for: tab.id) {
-                Image(nsImage: image).resizable().scaledToFit()
-                    .overlay(alignment: .bottom) {
-                        Text("Preview · Open tab to interact")
-                            .font(.caption)
-                            .padding(8)
-                            .background(.regularMaterial, in: Capsule())
-                            .padding(8)
-                    }
             } else {
-                Label("Open tab to view", systemImage: "arrow.up.right")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                snapshotFace
             }
         }
         .task(id: tab.activePage.id) { activate() }
@@ -89,6 +77,12 @@ struct FloatingTabPreview: View {
         }
         .onChange(of: isMainContent) { activate() }
         .onChange(of: isLive) { activate() }
+        // A page another surface held when this one went live is taken as soon as it is free.
+        .onChange(of: pagePool.existingPage(for: tab.activePage)?.ownerWindowID) {
+            if isLive, !isMainContent, livePage?.ownerWindowID != session.id {
+                activate()
+            }
+        }
         .onChange(of: livePage?.isLoading) { _, loading in
             if loading == true {
                 canvas.verifiedRegionPages.removeValue(forKey: tab.activePage.id)

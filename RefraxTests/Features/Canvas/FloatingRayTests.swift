@@ -96,7 +96,7 @@ struct FloatingRayTriggerTests {
     private let lensFrame = CGRect(x: 280, y: 180, width: 640, height: 48)
 
     @Test
-    func `a page replaced from the lens takes the nearest corner and gets a ray from the lens`() throws {
+    func `a page replaced from the lens takes the first free cell and gets a ray from the lens`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)

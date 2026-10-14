@@ -19,8 +19,6 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let pageIconSize: CGFloat = 18
     static let pageBranchWidth: CGFloat = 416
     static let pageBranchHeight: CGFloat = 44
-    /// Keeps the unplaced-tab numeral inside the tab control's cell.
-    static let badgeInset: CGFloat = 2
     static let adjacentGap: CGFloat = 8
     static let magnetDistance: CGFloat = 24
     /// A pointer must rest on the rail this long before the page card unfolds.

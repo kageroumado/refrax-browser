@@ -189,10 +189,11 @@ struct ControlIsland: View {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
     /// The help of the control under the pointer, beside the rail on the side it opens to,
-    /// level with the control and inside the window.
+    /// level with the control and inside the window. The rail is drawn above the tour, so its
+    /// help stays away while the tour's card is up.
     @ViewBuilder
     private var railHelpLabel: some View {
-        if let shown = railHelp.shown, !isHiddenAtEdge, !state.isDragging {
+        if let shown = railHelp.shown, !isHiddenAtEdge, !state.isDragging, !tour.isActive {
             let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
             let x = opensLeft ? frame.minX - Layout.adjacentGap - railHelpSize.width : frame.maxX + Layout.adjacentGap
             let y = min(max(bounds.minY, shown.anchor.midY - railHelpSize.height / 2), max(bounds.minY, bounds.maxY - railHelpSize.height))
@@ -520,11 +521,6 @@ struct ControlIsland: View {
                 }
             }
             .contentTransition(.symbolEffect(.replace))
-            .overlay(alignment: .bottomTrailing) {
-                if !showsRecent {
-                    unplacedBadge
-                }
-            }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
                 FloatingArrangeMenu()
@@ -902,22 +898,6 @@ struct ControlIsland: View {
     /// Pages other than the current one that wait without a place of their own.
     private var unplacedCount: Int {
         canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
-    }
-
-    /// How many pages wait without a place of their own, in the corner of the tab control.
-    @ViewBuilder
-    private var unplacedBadge: some View {
-        let count = unplacedCount
-        if count > 0 {
-            Text(count, format: .number)
-                .font(.caption2.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(isResting || !appearsActive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .padding(.trailing, Layout.badgeInset)
-                .padding(.bottom, Layout.badgeInset)
-                .allowsHitTesting(false)
-                .accessibilityLabel("\(count) unplaced tabs")
-        }
     }
 
     private func control(_ title: String, symbol: String, enabled: Bool = true, help: String? = nil, action: @escaping () -> Void) -> some View {
