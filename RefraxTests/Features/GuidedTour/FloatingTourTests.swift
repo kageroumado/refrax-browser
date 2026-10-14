@@ -292,13 +292,11 @@ struct FloatingTourTests {
         tour.review()
         #expect(tour.currentStep == .revealPages)
 
-        // The button latches the layer; only the held key completes the step.
+        // The tabs button completes the step as the held key does.
         stage.canvas.toggleFloatingTabs()
         tour.review()
-        #expect(tour.currentStep == .revealPages)
-        stage.canvas.revealFloatingTabs()
-        tour.review()
         #expect(tour.currentStep == .placePage)
+        stage.canvas.revealFloatingTabs()
 
         // Pinning belongs to a later step; it does not count as placing.
         var pinned = stage.canvas.floatingPlacement(for: first)
@@ -342,6 +340,9 @@ struct FloatingTourTests {
 
         tour.finish()
         #expect(!tour.isActive)
+        // The page kept visible for the Keep Visible step lets go; a pin from before it stays.
+        #expect(stage.canvas.floatingPlacement(for: second).isPinned == false)
+        #expect(stage.canvas.floatingPlacement(for: first).isPinned)
         #expect(stage.defaults.bool(forKey: FloatingTourManager.hintsDismissedKey))
         #expect(stage.defaults.string(forKey: FloatingTourManager.outcomeKey) == FloatingTourManager.Outcome.completed.rawValue)
     }

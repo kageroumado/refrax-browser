@@ -189,10 +189,11 @@ struct ControlIsland: View {
         effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
     /// The help of the control under the pointer, beside the rail on the side it opens to,
-    /// level with the control and inside the window.
+    /// level with the control and inside the window. The rail is drawn above the tour, so its
+    /// help stays away while the tour's card is up.
     @ViewBuilder
     private var railHelpLabel: some View {
-        if let shown = railHelp.shown, !isHiddenAtEdge, !state.isDragging {
+        if let shown = railHelp.shown, !isHiddenAtEdge, !state.isDragging, !tour.isActive {
             let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
             let x = opensLeft ? frame.minX - Layout.adjacentGap - railHelpSize.width : frame.maxX + Layout.adjacentGap
             let y = min(max(bounds.minY, shown.anchor.midY - railHelpSize.height / 2), max(bounds.minY, bounds.maxY - railHelpSize.height))

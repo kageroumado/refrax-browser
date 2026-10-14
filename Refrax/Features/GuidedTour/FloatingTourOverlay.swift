@@ -193,6 +193,9 @@ struct FloatingTourOverlay: View {
                 Spacer()
                 if step != .done {
                     Button("Skip") { tour.skipStep() }
+                        .buttonStyle(.bordered)
+                        .tint(.primary)
+                        .foregroundStyle(.primary)
                         .buttonBorderShape(.roundedRectangle(radius: Layout.cardInnerCornerRadius))
                         .help("Skip this step")
                 }

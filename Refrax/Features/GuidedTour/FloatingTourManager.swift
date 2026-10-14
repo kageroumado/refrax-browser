@@ -90,6 +90,8 @@ final class FloatingTourManager {
     /// The beams on screen at the last review; a kind joining them bumps the revision.
     @ObservationIgnored private var litBeams: Set<TourBeam.Kind> = []
     @ObservationIgnored private var observation: Task<Void, Never>?
+    /// Pages kept visible during the Keep Visible step: the tour let go of them when it ends.
+    @ObservationIgnored private var tourPinnedTabIDs: Set<Tab.ID> = []
     @ObservationIgnored private var keyMonitor: Any?
 
     /// What the window looked like when the current step began.
@@ -212,6 +214,19 @@ final class FloatingTourManager {
         armed = false
         litBeams = []
         currentStep = nil
+        unpinTourPages()
+    }
+
+    /// Lets go of the pages kept visible only to complete the Keep Visible step.
+    private func unpinTourPages() {
+        let ids = tourPinnedTabIDs
+        tourPinnedTabIDs = []
+        for tab in canvas.floatingTabs where ids.contains(tab.id) {
+            var placement = canvas.floatingPlacement(for: tab)
+            guard placement.isPinned else { continue }
+            placement.isPinned = false
+            canvas.updateFloatingPlacement(placement, for: tab)
+        }
     }
 
     // MARK: - Steps
@@ -233,6 +248,11 @@ final class FloatingTourManager {
 
     private func advance() {
         guard let step = currentStep, let next = Step(rawValue: step.rawValue + 1) else { return }
+        if step == .keepVisible {
+            tourPinnedTabIDs.formUnion(windowState.floatingPlacements.compactMap { id, placement in
+                placement.isPinned && entry.placements[id]?.isPinned != true ? id : nil
+            })
+        }
         enter(next)
     }
 
@@ -255,7 +275,7 @@ final class FloatingTourManager {
         case .openSecondPage:
             pageCount >= 2 && windowState.activeTabID != entry.activeTabID
         case .revealPages:
-            canvas.floatingVisibility.isHeld
+            canvas.floatingVisibility.isHeld || canvas.floatingVisibility.isLatched
         case .placePage:
             windowState.floatingPlacements.contains { id, placement in
                 guard let before = entry.placements[id] else { return false }
@@ -483,7 +503,7 @@ extension FloatingTourManager.Step {
         case .keepVisible: "Keep a page in view"
         case .pageCard: "The current page"
         case .movePanel: "Move the panel"
-        case .done: "You know the whole browser"
+        case .done: "That's the essentials"
         }
     }
 
@@ -501,7 +521,7 @@ extension FloatingTourManager.Step {
     }
 
     func instruction(in context: Context) -> String {
-        let hold = "Hold \(context.revealKey.title) (\(context.revealKey.glyph))"
+        let hold = "Hold \(context.revealKey.glyph) or click the tabs button on the panel"
         /// "Press Return" once the lens is up; "Press ⌘T, then Return" while it has to be opened first.
         func open(_ page: FloatingTabsTutorial.Page, lensShown: Bool) -> String {
             lensShown ? "Press Return to open \(page.title)" : "Press ⌘T, then Return to open \(page.title)"
@@ -512,7 +532,7 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "\(hold) to see every open page where it was left. Release to hide them."
+            return "Hold \(context.revealKey.glyph), or click the tabs button on the panel, to see every open page where it was left."
         case .placePage:
             return context.layerRevealed
                 ? "Drag a page's title to where you want it. It stays there."
@@ -526,7 +546,7 @@ extension FloatingTourManager.Step {
         case .movePanel:
             return "Drag the panel's grip, under the spaces, somewhere else. It rests while you work and wakes as you approach."
         case .done:
-            return "Pages open from the lens, keep their places behind \(context.revealKey.glyph), and the panel stays out of your way."
+            return "The rest is in Command Lens. Type what you want."
         }
     }
 }
