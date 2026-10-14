@@ -21,7 +21,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
 
     func suggestions(for context: SuggestionContext) async -> [CommandLensSuggestion] {
         let query = context.input.lowercased()
-        var results: [CommandLensSuggestion] = []
+        var results = everydaySuggestions(for: query)
 
         let favorite: (String, String, String, AppAction) = if windowState?.activeTab?.isFavorite == true {
             ("remove from favorites unfavorite unstar", "Remove from Favorites", "star.slash", .favoriteCurrentPage)

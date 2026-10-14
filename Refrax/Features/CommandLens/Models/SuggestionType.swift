@@ -123,6 +123,20 @@ nonisolated enum AppAction: Hashable, Sendable {
     case newSpace
     /// Move around the table or reshape the current slab.
     case table(TableCommand)
+    /// Copy the current page's address, or its Markdown link.
+    case copyCurrentAddress(asMarkdown: Bool)
+    /// Download the PDF or image the current page shows.
+    case downloadCurrentPage
+    /// Save the current page to a file in a chosen format.
+    case saveCurrentPageAs
+    /// Open Settings at Appearance: accent color, theme.
+    case openAppearanceSettings
+    /// List this space's open tabs in the lens.
+    case showOpenTabs
+    /// Add the current page to the tabs selected for a group, or take it out.
+    case toggleCurrentTabGroupSelection
+    /// Put the selected tabs in a new group.
+    case groupSelectedTabs
 }
 
 /// Scope of a setting (global or per-site).

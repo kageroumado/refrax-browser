@@ -52,10 +52,24 @@ extension TabManager {
     }
 
     /// Moves `tabs` to `space` after unlocking the spaces they leave and the one they enter;
-    /// a lock left closed moves nothing.
-    func moveTabsUnlocking(_ tabs: [Tab], to space: Space) async {
+    /// a lock left closed moves nothing. See ``moveTabs(_:to:confirmingIn:)``.
+    func moveTabsUnlocking(_ tabs: [Tab], to space: Space, confirmingIn windowState: WindowState) async {
         guard await unlock([space] + tabs.compactMap(\.space)) else { return }
+        moveTabs(tabs, to: space, confirmingIn: windowState)
+    }
+
+    /// Moves `tabs` to `space` as an undoable action, and confirms it with a toast in
+    /// `windowState` whose Undo button puts them back.
+    func moveTabs(_ tabs: [Tab], to space: Space, confirmingIn windowState: WindowState) {
+        let origins = tabs.compactMap(UndoRedoManager.TabSpaceOrigin.init)
+        guard !origins.isEmpty else { return }
         moveTabs(tabs, to: space)
+        let actionName = "Move to \(space.name)"
+        undoRedoManager.registerMoveToSpace(origins, actionName: actionName)
+        let undo = undoRedoManager
+        windowState.showToast("Moved to \(space.name)", action: ToastAction(title: "Undo") {
+            _ = undo?.undoMoveToSpace(named: actionName)
+        })
     }
 }
 

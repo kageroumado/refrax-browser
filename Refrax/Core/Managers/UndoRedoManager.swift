@@ -451,3 +451,59 @@ struct ConvertedTabInfo: Equatable {
     let position: Int
     let groupID: UUID?
 }
+
+// MARK: - Move to Space
+
+extension UndoRedoManager {
+    /// Where a tab was before it moved to another space: the space and the group it left.
+    struct TabSpaceOrigin {
+        let tabID: UUID
+        let spaceID: UUID
+        let groupID: UUID?
+
+        init?(_ tab: Tab) {
+            guard let space = tab.space else { return nil }
+            self.tabID = tab.id
+            self.spaceID = space.id
+            self.groupID = tab.groupID
+        }
+    }
+
+    /// Registers moving tabs to another space; undo returns each tab to the space and group
+    /// it left, and redo moves them again.
+    ///
+    /// - Parameters:
+    ///   - origins: Where the tabs were before the move.
+    ///   - actionName: Name shown in the Edit menu, such as `Move to Work`.
+    func registerMoveToSpace(_ origins: [TabSpaceOrigin], actionName: String) {
+        guard !origins.isEmpty else { return }
+        undoManager.registerUndo(withTarget: self) { [weak self] _ in
+            self?.returnTabs(to: origins, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    /// Undoes the move named `actionName` when it is the latest undoable action.
+    ///
+    /// - Returns: Whether the move was undone.
+    @discardableResult
+    func undoMoveToSpace(named actionName: String) -> Bool {
+        guard undoManager.canUndo, undoManager.undoActionName == actionName else { return false }
+        undoManager.undo()
+        return true
+    }
+
+    private func returnTabs(to origins: [TabSpaceOrigin], actionName: String) {
+        let tabs = origins.compactMap { tabManager.state.tab(for: $0.tabID) }
+        let current = tabs.compactMap(TabSpaceOrigin.init)
+        for origin in origins {
+            guard let tab = tabManager.state.tab(for: origin.tabID),
+                  let space = spaceManager.spaces.first(where: { $0.id == origin.spaceID }) else { continue }
+            tabManager.moveTabs([tab], to: space)
+            if let groupID = origin.groupID, let group = space.groups.first(where: { $0.id == groupID }) {
+                tabGroupManager.moveTabToGroup(tab, group: group, in: space)
+            }
+        }
+        registerMoveToSpace(current, actionName: actionName)
+    }
+}

@@ -21,19 +21,23 @@ struct OpenTabsEmptyStateAction: CommandLensEmptyStateAction {
             return .none
         }
 
-        let suggestions: [CommandLensSuggestion] = tabs.map { tab in
+        return .showSuggestions(Self.suggestions(for: tabs))
+    }
+
+    /// One row per tab, under a header that counts them: "3 Open Tabs".
+    static func suggestions(for tabs: [Tab]) -> [CommandLensSuggestion] {
+        let header = "\(tabs.count) Open \(tabs.count == 1 ? "Tab" : "Tabs")"
+        return tabs.map { tab in
             CommandLensSuggestion(
                 type: .openTab(tabID: tab.id),
                 text: tab.customName ?? tab.pages.map(\.title).joined(separator: " | "),
                 description: tab.displayURL,
                 iconName: "rectangle.on.rectangle",
-                groupHeader: "Open Tabs",
+                groupHeader: header,
                 isRemovable: false,
                 keywordAction: nil,
                 url: nil,
             )
         }
-
-        return .showSuggestions(suggestions)
     }
 }
