@@ -112,7 +112,7 @@ private struct TableSideLivePage: View {
     @Environment(TableController.self) private var table
     @Environment(WindowState.self) private var windowState
     @Environment(WebPagePool.self) private var pagePool
-    @State private var session = FloatingPreviewSession()
+    @State private var session = FloatingPreviewSession(yields: true)
     @State private var livePage: WebPage?
 
     var body: some View {
