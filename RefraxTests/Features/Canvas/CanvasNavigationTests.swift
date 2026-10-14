@@ -12,37 +12,59 @@ struct CanvasNavigationTests {
     func `Arrows follow the spatial grid in all four directions`(_ direction: CanvasNavigation.Direction) {
         let center = tile(500, 500)
         let neighbors: [CanvasNavigation.Direction: CanvasNavigation.Tile] = [
-            .left: tile(100, 500), .right: tile(900, 500),
-            .up: tile(500, 200), .down: tile(500, 800),
+            .left: tile(120, 500), .right: tile(880, 500),
+            .up: tile(500, 240), .down: tile(500, 760),
         ]
         let tiles = [center] + neighbors.values
         #expect(CanvasNavigation.neighbor(from: center.id, toward: direction, in: tiles) == neighbors[direction]?.id)
     }
 
     @Test
-    func `An arrow prefers its row over a closer diagonal tile`() {
+    func `An arrow follows an aligned neighbor`() {
         let origin = tile(500, 500)
-        let diagonal = tile(550, 750)
-        let sameRow = tile(1_200, 550)
+        let diagonal = tile(850, 750)
+        let sameRow = tile(850, 550)
         #expect(CanvasNavigation.neighbor(from: origin.id, toward: .right, in: [origin, diagonal, sameRow]) == sameRow.id)
     }
 
     @Test
-    func `A sparse desk still supports diagonal neighbors`() {
+    func `A sparse desk has no unannounced diagonal destination`() {
         let origin = tile(500, 500)
         let behind = tile(0, 500)
         let next = tile(900, 900)
-        #expect(CanvasNavigation.neighbor(from: origin.id, toward: .right, in: [origin, behind, next]) == next.id)
+        #expect(CanvasNavigation.neighbor(from: origin.id, toward: .right, in: [origin, behind, next]) == nil)
         #expect(CanvasNavigation.neighbor(from: origin.id, toward: .up, in: [origin, behind, next]) == nil)
     }
 
     @Test
-    func `Equal distances use stable tab order`() {
+    func `Equal edge distances favor the closer row center`() {
         let origin = tile(500, 500)
-        let first = tile(900, 250)
-        let second = tile(900, 750)
+        let first = tile(850, 480)
+        let second = tile(850, 530)
         #expect(CanvasNavigation.neighbor(from: origin.id, toward: .right, in: [origin, first, second]) == first.id)
         #expect(CanvasNavigation.nearest(to: CGPoint(x: 1_060, y: 600), in: [first, second]) == first.id)
+    }
+
+    @Test
+    func `Groups form boundaries even when their cards touch`() {
+        let travel = UUID()
+        let news = UUID()
+        let hotel = CanvasNavigation.Tile(id: UUID(), frame: CGRect(x: 0, y: 0, width: 250, height: 34), groupID: travel)
+        let map = CanvasNavigation.Tile(id: UUID(), frame: CGRect(x: 262, y: 0, width: 250, height: 34), groupID: travel)
+        let headlines = CanvasNavigation.Tile(id: UUID(), frame: CGRect(x: 524, y: 0, width: 250, height: 34), groupID: news)
+        let tiles = [hotel, map, headlines]
+        #expect(CanvasNavigation.neighbor(from: hotel.id, toward: .right, in: tiles) == map.id)
+        #expect(CanvasNavigation.neighbor(from: map.id, toward: .left, in: tiles) == hotel.id)
+        #expect(CanvasNavigation.neighbor(from: map.id, toward: .right, in: tiles) == nil)
+    }
+
+    @Test
+    func `An asymmetric arrangement has no one way edge`() {
+        let a = tile(0, 0, width: 100, height: 40)
+        let b = tile(112, 0, width: 100, height: 40)
+        let c = tile(112, 25, width: 100, height: 40)
+        #expect(CanvasNavigation.neighbor(from: a.id, toward: .right, in: [a, b, c]) == b.id)
+        #expect(CanvasNavigation.neighbor(from: c.id, toward: .left, in: [a, b, c]) == nil)
     }
 
     @Test

@@ -2,10 +2,10 @@ import AppKit
 
 /// What kind of device a scroll event comes from, which decides how it moves the table.
 nonisolated enum TableScrollSource: Equatable, Sendable {
-    /// A trackpad or Magic Mouse: phased gestures with momentum, panned 1:1.
+    /// A trackpad or Magic Mouse: phased gestures with momentum.
     case trackpad
-    /// A mouse with smooth scrolling: fine deltas with no gesture phases, panned 1:1 and
-    /// settled once the events stop.
+    /// A mouse with smooth scrolling: fine deltas with no gesture phases, grouped until
+    /// the events stop.
     case smoothWheel
     /// A notched mouse wheel: each event is one step.
     case wheel
@@ -19,7 +19,7 @@ nonisolated enum TableScrollSource: Equatable, Sendable {
     }
 }
 
-/// Decides which scroll events slide the table instead of scrolling the page.
+/// Decides which scroll events navigate the table instead of scrolling the page.
 ///
 /// A gesture is claimed at its start: a trackpad gesture that begins with ⌃ down over the
 /// page belongs to the table until its momentum ends, even if ⌃ is let go or the pointer
@@ -43,13 +43,13 @@ nonisolated struct TableScrollRouter: Equatable, Sendable {
         case pass
         /// The table swallows the event and does nothing with it.
         case consume
-        /// A slide starts with this pan.
+        /// A claimed gesture begins with this delta.
         case begin(CGSize)
-        /// The slide follows this pan.
+        /// A claimed gesture continues with this delta.
         case pan(CGSize)
-        /// The fingers lifted; momentum may follow. Settle if it has not begun shortly.
+        /// The fingers lifted; momentum may follow. Finish if it has not begun shortly.
         case liftOff
-        /// The slide is over: the table springs to rest.
+        /// The gesture has ended.
         case settle
         /// Finish table motion and deliver the new gesture’s first event to the page.
         case settleAndPass

@@ -182,22 +182,28 @@ final class TabCanvasManager {
     private(set) var rayRequest: FloatingRayRequest?
     @ObservationIgnored private var rayRevision = 0
 
-    /// Gives a page that stopped filling the window a starting place and asks the
-    /// layer to point at it. Pages that already have a place, favorites, pages from
-    /// other spaces, and Look visits keep the layer quiet.
+    /// Places the outgoing page and an incoming page beside it, then points toward
+    /// the outgoing page when its place is new.
     func tabDisplaced(_ tab: Tab) {
         guard showsFloatingControls, !tab.isFavorite, !tab.isArchived,
               tab.space?.id == windowState.activeSpaceID, tab.id != windowState.activeTabID,
               !tabManager.isShownInAnotherWindow(tab, besides: windowState),
-              windowState.pageVisit.destination == nil,
-              storedFloatingPlacement(for: tab) == nil else { return }
-        let source = raySource
-        let occupied = floatingTabs.filter { $0.id != tab.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
-        guard let placement = startingPlacement(for: tab, avoiding: occupied) else { return }
-        updateFloatingPlacement(placement, for: tab)
-        fileIntoSiteStack(tab)
-        rayRevision += 1
-        rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
+              windowState.pageVisit.destination == nil else { return }
+        if storedFloatingPlacement(for: tab) == nil {
+            let source = raySource
+            let occupied = floatingTabs.filter { $0.id != tab.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
+            guard let placement = startingPlacement(for: tab, avoiding: occupied) else { return }
+            updateFloatingPlacement(placement, for: tab)
+            fileIntoSiteStack(tab)
+            rayRevision += 1
+            rayRequest = FloatingRayRequest(source: source, tabID: tab.id, revision: rayRevision)
+        }
+        guard let incoming = windowState.activeTab, incoming.space?.id == tab.space?.id,
+              !incoming.isFavorite, storedFloatingPlacement(for: incoming) == nil else { return }
+        let occupied = floatingTabs.filter { $0.id != incoming.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
+        if let placement = startingPlacement(for: incoming, avoiding: occupied, beside: tab) {
+            updateFloatingPlacement(placement, for: incoming)
+        }
     }
 
     /// Clears the ray once the layer has finished drawing that revision.
@@ -206,10 +212,8 @@ final class TabCanvasManager {
         rayRequest = nil
     }
 
-    /// A new card's place: the first free cell of the arrange grid, in the column beside the
-    /// rail and below the page card, then the next column out, so new cards line up in one
-    /// tidy column instead of the window's corners.
-    func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement]) -> FloatingTabPlacement? {
+    /// Places a new card beside a neighbor in its group, or in the first free arrange cell.
+    func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement], beside preferredNeighbor: Tab? = nil) -> FloatingTabPlacement? {
         let bounds = floatingArea
         if let saved = tab.boardFrame {
             var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
@@ -218,9 +222,13 @@ final class TabCanvasManager {
             placement.tableOrigin = floatingCamera.project(saved).origin
             return placement
         }
+        var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
+        if let origin = adjacentStartingOrigin(for: tab, size: placement.size, avoiding: occupied, beside: preferredNeighbor) {
+            placement.tableOrigin = origin
+            return placement
+        }
         let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
         let pageCard = showsFloatingControls ? windowState.pageCardFrame : .zero
-        var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
         guard let origin = FloatingArrangement.freeCell(
             for: placement.frame(in: bounds).size,
             avoiding: occupied.map { $0.frame(in: bounds) } + [pageCard],
@@ -229,6 +237,37 @@ final class TabCanvasManager {
         ) else { return nil }
         placement.move(to: origin, in: bounds)
         return placement
+    }
+
+    /// Places a new card beside a nearby tab in the same group, keeping every saved card still.
+    private func adjacentStartingOrigin(for tab: Tab, size: CGSize, avoiding occupied: [FloatingTabPlacement], beside preferredNeighbor: Tab?) -> CGPoint? {
+        let ordered = windowState.activeSpaceTabs
+        guard let index = ordered.firstIndex(where: { $0.id == tab.id }) else { return nil }
+        let before = ordered[..<index].reversed()
+        let after = ordered[(index + 1)...]
+        let neighbors = [preferredNeighbor].compactMap { $0 } + Array(before) + Array(after)
+        let taken = occupied.map { $0.frame(in: floatingArea) }
+        let controls = showsFloatingControls ? [windowState.controlIsland.railFrame, windowState.pageCardFrame] : []
+        for neighbor in neighbors where neighbor.group?.id == tab.group?.id {
+            guard storedFloatingPlacement(for: neighbor) != nil else { continue }
+            let anchor = floatingFrame(for: neighbor, in: floatingArea)
+            let gap = FloatingArrangement.gap
+            let origins = [
+                CGPoint(x: anchor.maxX + gap, y: anchor.minY),
+                CGPoint(x: anchor.minX - size.width - gap, y: anchor.minY),
+                CGPoint(x: anchor.minX, y: anchor.maxY + gap),
+                CGPoint(x: anchor.minX, y: anchor.minY - size.height - gap),
+            ]
+            if let origin = origins.first(where: { origin in
+                let candidate = CGRect(origin: origin, size: size)
+                let clearance = gap - 0.5
+                return !taken.contains { $0.insetBy(dx: -clearance, dy: -clearance).intersects(candidate) }
+                    && !controls.contains { !$0.isEmpty && $0.intersects(candidate) }
+            }) {
+                return origin
+            }
+        }
+        return nil
     }
 
     /// The control the ray leaves from: the lens while it is up, else the page card, else the rail.
@@ -417,7 +456,9 @@ final class TabCanvasManager {
     }
 
     func navigateFloatingTabs(toward direction: CanvasNavigation.Direction, in bounds: CGRect) {
-        let tiles = floatingTabs.filter { storedFloatingPlacement(for: $0)?.isDocked != true }.map { CanvasNavigation.Tile(id: $0.id, frame: floatingPlacement(for: $0).frame(in: bounds)) }
+        let tiles = floatingTabs.filter { storedFloatingPlacement(for: $0)?.isDocked != true && !isFolded($0) }.map {
+            CanvasNavigation.Tile(id: $0.id, frame: tablePlacement(for: $0).frame(in: floatingArea), groupID: $0.group?.id)
+        }
         guard let current = focusedFloatingTabID ?? tiles.first?.id else { return }
         revealSpatialDestination(CanvasNavigation.neighbor(from: current, toward: direction, in: tiles) ?? current)
     }
@@ -427,8 +468,8 @@ final class TabCanvasManager {
         if floatingTabs.contains(where: { ids.contains($0.id) && storedFloatingPlacement(for: $0) == nil }) {
             placeFloatingTabs()
         }
-        let tiles = floatingTabs.filter { ids.contains($0.id) }.map {
-            CanvasNavigation.Tile(id: $0.id, frame: tablePlacement(for: $0).frame(in: floatingArea))
+        let tiles = floatingTabs.filter { ids.contains($0.id) && !isFolded($0) }.map {
+            CanvasNavigation.Tile(id: $0.id, frame: tablePlacement(for: $0).frame(in: floatingArea), groupID: $0.group?.id)
         }
         return CanvasNavigation.neighbor(from: id, toward: direction.canvasDirection, in: tiles)
     }

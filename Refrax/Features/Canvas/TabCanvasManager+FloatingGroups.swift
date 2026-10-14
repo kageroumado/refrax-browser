@@ -364,6 +364,8 @@ extension TabCanvasManager {
 
     /// Everywhere the floating layer takes the pointer: its controls, its cards, and the docked columns.
     func floatingHitRegions(in bounds: CGRect) -> [CGRect] {
-        floatingControlRegions(in: bounds) + visibleFloatingTabs.map { floatingHitFrame(for: $0, in: bounds) } + dockHitRegions(in: bounds)
+        floatingControlRegions(in: bounds)
+            + visibleFloatingTabs.filter { $0.id != windowState.activeTabID }.map { floatingHitFrame(for: $0, in: bounds) }
+            + dockHitRegions(in: bounds)
     }
 }

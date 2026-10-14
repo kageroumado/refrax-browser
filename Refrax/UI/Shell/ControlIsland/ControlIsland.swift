@@ -38,7 +38,7 @@ struct ControlIsland: View {
     @State private var escapeMonitor: Any?
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
-    @State private var arrangeHintSize = CGSize.zero
+    @State private var arrangeControlSize = CGSize.zero
     @State private var railHelp = ControlIslandRailHelp()
     @State private var railHelpSize = CGSize.zero
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
@@ -264,15 +264,14 @@ struct ControlIsland: View {
                     .help("Hold \(revealKey.title) to reveal tabs; release to hide")
                     .accessibilityLabel("Tabs shortcut: hold \(revealKey.title)")
                 }
-                if showsArrangeHint {
-                    arrangeHint
+                if showsArrangeControl {
+                    arrangeControl
                         .fixedSize()
-                        // Text on it is read over pages, so it stays frosted like the page card.
                         .background(spaceTint, in: Capsule())
                         .glassEffect(.regular, in: Capsule())
                         .glassEffectID("arrange", in: glassNamespace)
-                        .onGeometryChange(for: CGSize.self) { $0.size } action: { arrangeHintSize = $0 }
-                        .offset(x: arrangeHintFrame.minX, y: arrangeHintFrame.minY)
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { arrangeControlSize = $0 }
+                        .offset(x: arrangeControlFrame.minX, y: arrangeControlFrame.minY)
                         .transition(.opacity)
                 }
                 if state.isDragging {
@@ -384,7 +383,7 @@ struct ControlIsland: View {
         .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: windowState.showsAnchoredLens)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsArrangeHint)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsArrangeControl)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
         .onAppear {
@@ -838,17 +837,16 @@ struct ControlIsland: View {
 
     // MARK: Arranging and Grouping
 
-    /// While the tab layer is revealed with two or more cards, how to arrange and group them,
-    /// beside the tab control.
-    private var showsArrangeHint: Bool {
+    /// Shows the arrangement control beside the tab rail when several cards are visible.
+    private var showsArrangeControl: Bool {
         canvas.floatingVisibility.isRevealed && !canvas.recentIsOpen
             && canvas.visibleFloatingTabs.count(where: { $0.id != windowState.activeTabID }) >= 2
     }
 
     /// Beside the tab control on the side the island opens to, past the shortcut capsule while
     /// it shows; at the top center of the window while the rail is hidden or has no tab control.
-    private var arrangeHintFrame: CGRect {
-        let size = arrangeHintSize
+    private var arrangeControlFrame: CGRect {
+        let size = arrangeControlSize
         let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
         guard !isHiddenAtEdge, let row = state.itemFrames[.floatingTabs], !row.isEmpty else {
             return CGRect(x: bounds.midX - size.width / 2, y: bounds.minY, width: size.width, height: size.height)
@@ -863,31 +861,21 @@ struct ControlIsland: View {
         )
     }
 
-    private var arrangeHint: some View {
-        HStack(spacing: ArrangeHint.spacing) {
-            FloatingArrangeButton(arrowEdge: arrangeHintFrame.midY > area.midY ? .top : .bottom)
-                .buttonStyle(.plain)
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.primary)
-                .fixedSize()
-                .help("Arrange the tabs on this space")
-            Divider()
-                .frame(height: ArrangeHint.dividerHeight)
-            Text("⇧-drag to select · drag onto a card to group")
-                .foregroundStyle(.secondary)
-        }
+    private var arrangeControl: some View {
+        FloatingArrangeButton(arrowEdge: arrangeControlFrame.midY > area.midY ? .top : .bottom)
+        .buttonStyle(.plain)
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(.primary)
+        .fixedSize()
+        .help("Arrange tabs. Shift-drag to select; drag one card onto another to group.")
         .font(.callout)
-        .padding(.horizontal, ArrangeHint.horizontalPadding)
-        .frame(height: ArrangeHint.height)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Arrange tabs")
+        .padding(.horizontal, ArrangeControl.horizontalPadding)
+        .frame(height: ArrangeControl.height)
     }
 
-    private enum ArrangeHint {
+    private enum ArrangeControl {
         static let height: CGFloat = 32
         static let horizontalPadding: CGFloat = 12
-        static let spacing: CGFloat = 10
-        static let dividerHeight: CGFloat = 16
     }
 
     private func dismissTransientOverlays() {
@@ -942,7 +930,7 @@ struct ControlIsland: View {
     }
 
     private var interactionRegions: [CGRect] {
-        let hint = showsArrangeHint ? [arrangeHintFrame] : []
+        let hint = showsArrangeControl ? [arrangeControlFrame] : []
         guard !isHiddenAtEdge else { return hint }
         var regions = [frame] + hint
         if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {

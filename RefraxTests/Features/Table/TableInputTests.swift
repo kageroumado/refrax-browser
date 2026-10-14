@@ -173,11 +173,12 @@ struct TableScrollRouterTests {
     }
 
     @Test
-    func `Each wheel notch with ⌃ is one step; ⇧ turns the wheel along the row`() {
+    func `Each wheel notch follows the row; ⇧ moves between rows`() {
         var router = TableScrollRouter()
-        #expect(router.route(wheel(0, -1), controlDown: true, canStart: true) == .step(.down))
-        #expect(router.route(wheel(0, 1), controlDown: true, canStart: true) == .step(.up))
-        #expect(router.route(wheel(0, -1, shift: true), controlDown: true, canStart: true) == .step(.right))
+        #expect(router.route(wheel(0, -1), controlDown: true, canStart: true) == .step(.right))
+        #expect(router.route(wheel(0, 1), controlDown: true, canStart: true) == .step(.left))
+        #expect(router.route(wheel(0, -1, shift: true), controlDown: true, canStart: true) == .step(.down))
+        #expect(router.route(wheel(-1, 0, shift: true), controlDown: true, canStart: true) == .step(.down))
         #expect(router.route(wheel(1, 0), controlDown: true, canStart: true) == .step(.left))
     }
 
@@ -262,7 +263,7 @@ struct TableScrollRouterTests {
         var router = TableScrollRouter()
         _ = router.route(gesture(.began, 0, -4), controlDown: true, canStart: true)
         _ = router.interrupt()
-        #expect(router.route(wheel(0, -1), controlDown: true, canStart: true) == .step(.down))
+        #expect(router.route(wheel(0, -1), controlDown: true, canStart: true) == .step(.right))
         #expect(router.state == .idle)
     }
 }

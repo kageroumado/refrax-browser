@@ -73,7 +73,7 @@ struct FloatingTabsLayer: View {
                         FloatingTabGroup(item: item, area: bounds)
                     }
                 }
-                ForEach(canvas.visibleFloatingTabs) { tab in
+                ForEach(canvas.visibleFloatingTabs.filter { $0.id != windowState.activeTabID }) { tab in
                     let placement = canvas.floatingPlacement(for: tab)
                     let frame = canvas.floatingFrame(for: tab, in: bounds)
                     let fold = canvas.foldOrigin(for: tab, in: bounds)

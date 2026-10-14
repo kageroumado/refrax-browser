@@ -8,11 +8,14 @@ final class TableController {
     private enum Layout {
         static let snapshotLimit = 12
         static let moveStep: CGFloat = 24
+        static let gestureStepDistance: CGFloat = 48
     }
 
     private(set) var viewport: CGSize = .zero
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
     private(set) var isMoving = false
+    private var gestureDistance: CGFloat = 0
+    private var gestureDirection: TableDirection?
     private var captures: [UUID: NSImage] = [:]
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
@@ -32,11 +35,7 @@ final class TableController {
         windowState.activeTab
     }
     var navigationTabID: UUID? {
-        if canvas.floatingVisibility.isRevealed, let id = canvas.focusedFloatingTabID,
-           canvas.floatingTabs.contains(where: { $0.id == id }) {
-            return id
-        }
-        return windowState.activeTabID
+        windowState.activeTabID
     }
 
     func holds(_ tab: Tab) -> Bool {
@@ -57,32 +56,48 @@ final class TableController {
         viewport = frame.size
     }
 
-    func beginPan(_ delta: CGSize) {
+    func beginPan(_ delta: CGSize, shift: Bool = false) {
         isMoving = true
-        pan(delta)
+        gestureDistance = 0
+        gestureDirection = nil
+        pan(delta, shift: shift)
     }
 
-    func pan(_ delta: CGSize) {
-        guard isMoving else { return }
-        canvas.panFloatingCamera(by: CGPoint(x: delta.width, y: delta.height))
+    func pan(_ delta: CGSize, shift: Bool = false) {
+        guard isMoving,
+              let direction = TableDirection.wheelStep(deltaX: delta.width, deltaY: delta.height, shift: shift) else { return }
+        if direction != gestureDirection {
+            gestureDistance = 0
+            gestureDirection = direction
+        }
+        gestureDistance += abs(abs(delta.width) > abs(delta.height) ? delta.width : delta.height)
+        if gestureDistance >= Layout.gestureStepDistance {
+            gestureDistance = 0
+            step(direction)
+        }
     }
 
-    /// Leaves the camera exactly where the gesture ended.
     func endPan() {
         isMoving = false
+        gestureDistance = 0
+        gestureDirection = nil
     }
 
-    /// Each notch selects the spatial neighbor immediately and reveals its fixed position.
+    func destination(toward direction: TableDirection) -> Tab? {
+        guard let current = navigationTabID else { return nil }
+        let ids = Set(canvas.floatingTabs.filter { canvas.tablePlacement(for: $0).isDocked == false }.map(\.id))
+        guard let target = canvas.spatialNeighbor(from: current, toward: direction, among: ids) else { return nil }
+        return canvas.floatingTabs.first { $0.id == target }
+    }
+
+    /// Every wheel step follows the destination displayed at the page edge.
     func step(_ direction: TableDirection) {
         if canvas.isActive {
             canvas.step(direction)
             return
         }
-        guard let current = navigationTabID else { return }
-        let ids = Set(canvas.floatingTabs.filter { canvas.tablePlacement(for: $0).isDocked == false }.map(\.id))
-        guard let target = canvas.spatialNeighbor(from: current, toward: direction, among: ids),
-              let tab = canvas.floatingTabs.first(where: { $0.id == target }) else { return }
-        canvas.revealSpatialDestination(target)
+        guard let tab = destination(toward: direction) else { return }
+        canvas.revealSpatialDestination(tab.id)
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
     }
 

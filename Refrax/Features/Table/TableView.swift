@@ -20,6 +20,11 @@ struct TableView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
+        .overlay {
+            if canvas.floatingVisibility.isRevealed && !canvas.isActive {
+                TableEdgeNavigationView()
+            }
+        }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
             table.updateViewport(frame)
             focusPage()

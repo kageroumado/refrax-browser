@@ -4,19 +4,36 @@ import Foundation
 /// Spatial targeting in desk coordinates, where y increases down the screen.
 nonisolated enum CanvasNavigation {
     private enum Constants {
-        static let perpendicularWeight: CGFloat = 2
-        static let stackTolerance: CGFloat = 0.5
+        static let maximumNeighborGap: CGFloat = 64
+        static let minimumBeamOverlap: CGFloat = 8
+        static let overlapTolerance: CGFloat = 2
     }
     enum Direction: UInt16, CaseIterable {
         case left = 123
         case right = 124
         case down = 125
         case up = 126
+
+        var opposite: Self {
+            switch self {
+            case .left: .right
+            case .right: .left
+            case .up: .down
+            case .down: .up
+            }
+        }
     }
 
     struct Tile {
         let id: UUID
         let frame: CGRect
+        let groupID: UUID?
+
+        init(id: UUID, frame: CGRect, groupID: UUID? = nil) {
+            self.id = id
+            self.frame = frame
+            self.groupID = groupID
+        }
     }
 
     /// Chooses the nearest tile, retaining the current target within a small boundary band.
@@ -37,33 +54,45 @@ nonisolated enum CanvasNavigation {
         return nearest.tile.id
     }
 
-    /// Advances toward the arrow, preferring tiles in the same row or column.
+    /// Follows a nearby, visible connection that also leads back in the reverse direction.
     static func neighbor(from id: UUID, toward direction: Direction, in tiles: [Tile]) -> UUID? {
-        guard let origin = tiles.first(where: { $0.id == id })?.frame else { return nil }
+        guard let origin = tiles.first(where: { $0.id == id }),
+              let next = nearestAdjacent(to: origin, toward: direction, in: tiles),
+              nearestAdjacent(to: next, toward: direction.opposite, in: tiles)?.id == id else { return nil }
+        return next.id
+    }
+
+    private static func nearestAdjacent(to origin: Tile, toward direction: Direction, in tiles: [Tile]) -> Tile? {
         let horizontal = direction == .left || direction == .right
-        let sign: CGFloat = direction == .left || direction == .up ? -1 : 1
-        let stack = tiles.filter { hypot($0.frame.midX - origin.midX, $0.frame.midY - origin.midY) <= Constants.stackTolerance }
-        if let index = stack.firstIndex(where: { $0.id == id }) {
-            let next = index + (sign > 0 ? 1 : -1)
-            if stack.indices.contains(next) {
-                return stack[next].id
+        let candidates = tiles.compactMap { tile -> (tile: Tile, gap: CGFloat, offset: CGFloat)? in
+            guard tile.id != origin.id, tile.groupID == origin.groupID else { return nil }
+            let gap: CGFloat
+            let overlap: CGFloat
+            let offset: CGFloat
+            switch direction {
+            case .left:
+                gap = origin.frame.minX - tile.frame.maxX
+            case .right:
+                gap = tile.frame.minX - origin.frame.maxX
+            case .up:
+                gap = origin.frame.minY - tile.frame.maxY
+            case .down:
+                gap = tile.frame.minY - origin.frame.maxY
             }
-        }
-        let candidates = tiles.compactMap { tile -> (id: UUID, inBeam: Bool, score: CGFloat)? in
-            guard tile.id != id else { return nil }
-            let dx = tile.frame.midX - origin.midX
-            let dy = tile.frame.midY - origin.midY
-            let forward = (horizontal ? dx : dy) * sign
-            guard forward > 0 else { return nil }
-            let gap = horizontal
-                ? max(tile.frame.minY - origin.maxY, origin.minY - tile.frame.maxY, 0)
-                : max(tile.frame.minX - origin.maxX, origin.minX - tile.frame.maxX, 0)
-            let perpendicular = abs(horizontal ? dy : dx)
-            return (tile.id, gap == 0, forward + perpendicular * Constants.perpendicularWeight)
+            if horizontal {
+                overlap = min(origin.frame.maxY, tile.frame.maxY) - max(origin.frame.minY, tile.frame.minY)
+                offset = abs(origin.frame.midY - tile.frame.midY)
+            } else {
+                overlap = min(origin.frame.maxX, tile.frame.maxX) - max(origin.frame.minX, tile.frame.minX)
+                offset = abs(origin.frame.midX - tile.frame.midX)
+            }
+            guard gap >= -Constants.overlapTolerance, gap <= Constants.maximumNeighborGap,
+                  overlap >= Constants.minimumBeamOverlap else { return nil }
+            return (tile, max(0, gap), offset)
         }
         return candidates.min {
-            $0.inBeam != $1.inBeam ? $0.inBeam : $0.score < $1.score
-        }?.id
+            $0.gap == $1.gap ? $0.offset < $1.offset : $0.gap < $1.gap
+        }?.tile
     }
 }
 

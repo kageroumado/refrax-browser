@@ -1,15 +1,15 @@
 import AppKit
 
-/// Turns ⌃ + scroll on the page into table motion, ahead of the page.
+/// Turns ⌃ + scroll on the page into adjacent tab movement, ahead of the page.
 ///
 /// ``CanvasPageGestures`` hands every scroll event in the window here first; what this
 /// returns `true` for never reaches the page. A click, a key, ⌃ let go, or the window losing
-/// key ends a slide in a rest.
+/// key ends the claimed gesture.
 @MainActor
 final class TableInput {
     private unowned let table: TableController
     private var router = TableScrollRouter()
-    /// Whether the last routed event requested camera movement.
+    /// Whether the last routed event requested table navigation.
     private(set) var didNavigate = false
     private var momentumWindow: DispatchWorkItem?
     private var smoothWheelQuiet: DispatchWorkItem?
@@ -30,13 +30,13 @@ final class TableInput {
         smoothWheelQuiet?.cancel()
     }
 
-    /// Whether a slide owns the scroll events now, wherever the pointer is.
+    /// Whether a gesture owns the scroll events, wherever the pointer is.
     var isSliding: Bool {
         router.isSliding
     }
 
     /// Routes a scroll event. `canStart` is `false` while a control or a manipulation
-    /// owns the pointer. Returns `true` when the table took the event.
+    /// owns the pointer. Returns `true` when table navigation took the event.
     func route(_ event: NSEvent, canStart: @autoclosure () -> Bool) -> Bool {
         if event.modifierFlags.contains([.control, .option]),
            !event.modifierFlags.contains(.command), canStart(), table.canSlide(atWindowPoint: event.locationInWindow),
@@ -65,7 +65,7 @@ final class TableInput {
         return perform(decision, sample: sample)
     }
 
-    /// Ends a slide in progress: the view settles and the rest of the gesture is swallowed.
+    /// Ends a gesture in progress and swallows its remaining momentum.
     func interrupt() {
         guard router.isSliding else { return }
         _ = perform(router.interrupt(), sample: TableScrollRouter.Sample(source: .trackpad, delta: .zero))
@@ -82,14 +82,16 @@ final class TableInput {
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
-            table.beginPan(delta)
+            table.beginPan(delta, shift: sample.shift)
             if sample.source == .smoothWheel {
                 armSmoothWheelQuiet()
             }
             return true
         case let .pan(delta):
             momentumWindow?.cancel()
-            table.pan(delta)
+            if sample.momentumPhase.isEmpty {
+                table.pan(delta, shift: sample.shift)
+            }
             if sample.source == .smoothWheel {
                 armSmoothWheelQuiet()
             }

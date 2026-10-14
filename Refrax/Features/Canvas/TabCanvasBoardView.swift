@@ -294,7 +294,7 @@ final class TabCanvasBoardView: NSView {
 
     private var navigationTiles: [CanvasNavigation.Tile] {
         orderedTabIDs.compactMap { id in
-            tiles[id].map { CanvasNavigation.Tile(id: id, frame: $0.frame) }
+            tiles[id].map { CanvasNavigation.Tile(id: id, frame: $0.frame, groupID: $0.tab.group?.id) }
         }
     }
 

@@ -70,6 +70,46 @@ struct FloatingWorkspaceTests {
     }
 
     @Test
+    func `a related new page appears beside its parent and can be reached in both directions`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let parent = try env.createActiveTab(url: #require(URL(string: "about:blank#parent")), in: space, for: window)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        canvas.revealFloatingTabs()
+        let original = canvas.tablePlacement(for: parent)
+        let child = try env.tabManager.createTab(
+            url: #require(URL(string: "about:blank#child")), in: space, makeActive: false, insertionStrategy: .afterActive,
+        )
+        canvas.releaseFloatingTabs()
+        canvas.revealFloatingTabs()
+        let ids = Set([parent.id, child.id])
+        #expect(canvas.tablePlacement(for: parent) == original)
+        #expect(canvas.spatialNeighbor(from: parent.id, toward: .right, among: ids) == child.id)
+        #expect(canvas.spatialNeighbor(from: child.id, toward: .left, among: ids) == parent.id)
+    }
+
+    @Test
+    func `a foreground page starts beside the page it replaced`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let unrelated = try env.tabManager.createTab(url: #require(URL(string: "about:blank#unrelated")), in: space, makeActive: false)
+        let parent = try env.createActiveTab(url: #require(URL(string: "about:blank#parent")), in: space, for: window)
+        for (tab, origin) in [(unrelated, CGPoint(x: 900, y: 900)), (parent, CGPoint(x: 100, y: 100))] {
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = origin
+            canvas.storeTablePlacement(placement, for: tab)
+        }
+        let child = try env.tabManager.createTab(url: #require(URL(string: "about:blank#child")), in: space, makeActive: true)
+        let ids = Set([unrelated.id, parent.id, child.id])
+        #expect(canvas.spatialNeighbor(from: parent.id, toward: .right, among: ids) == child.id)
+        #expect(canvas.spatialNeighbor(from: child.id, toward: .left, among: ids) == parent.id)
+        #expect(canvas.tablePlacement(for: unrelated).tableOrigin == CGPoint(x: 900, y: 900))
+    }
+
+    @Test
     func `each revealed window retains its own placement`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

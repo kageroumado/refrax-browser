@@ -13,7 +13,7 @@ struct SharedTableTests {
         let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
         let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
         var tabs: [Tab] = []
-        for x in [400.0, 800, 0] {
+        for x in [300.0, 600, 0] {
             let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank#\(x)")), in: space, makeActive: false)
             var placement = FloatingTabPlacement.initial(index: 0)
             placement.tableOrigin = CGPoint(x: x, y: 100)
@@ -36,7 +36,7 @@ struct SharedTableTests {
     }
 
     @Test
-    func `page input and overview pan by the same screen distance without moving tabs`() throws {
+    func `a partial page gesture stays on its page`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
@@ -46,25 +46,64 @@ struct SharedTableTests {
         var placement = FloatingTabPlacement.initial(index: 0)
         placement.tableOrigin = CGPoint(x: 100, y: 200)
         canvas.storeTablePlacement(placement, for: tab)
-        let delta = CGPoint(x: -70, y: 40)
+        let delta = CGPoint(x: -20, y: 10)
         table.beginPan(CGSize(width: delta.x, height: delta.y))
         table.endPan()
         let stopped = canvas.floatingCamera
         table.pan(CGSize(width: 200, height: 200))
         #expect(canvas.floatingCamera == stopped)
         #expect(canvas.tablePlacement(for: tab) == placement)
-        let view = TabCanvasScrollView(deskSize: CGSize(width: 4_000, height: 3_000))
-        view.frame = CGRect(x: 0, y: 0, width: 1_000, height: 700)
-        view.layoutSubtreeIfNeeded()
-        var reported = TabSpatialCamera()
-        view.onCameraChanged = { reported = $0 }
-        view.showTable(at: CGRect(x: 0, y: 0, width: 1_000, height: 700))
-        view.scroll(by: delta)
-        #expect(reported == stopped)
         canvas.show()
         #expect(canvas.openingCameraFrame == stopped.unproject(canvas.floatingArea))
         canvas.dismiss(activating: nil)
         #expect(canvas.floatingCamera == stopped)
+    }
+
+    @Test
+    func `a precise gesture follows the same announced neighbor as a wheel notch`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
+        let hotel = try env.tabManager.createTab(url: #require(URL(string: "about:blank#hotel")), in: space, makeActive: false)
+        let map = try env.tabManager.createTab(url: #require(URL(string: "about:blank#map")), in: space, makeActive: false)
+        for (tab, x) in [(hotel, 0.0), (map, 300.0)] {
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = CGPoint(x: x, y: 100)
+            canvas.storeTablePlacement(placement, for: tab)
+        }
+        env.tabManager.setActiveTab(hotel, in: window)
+        #expect(table.destination(toward: .right)?.id == map.id)
+        table.beginPan(CGSize(width: 0, height: -24))
+        #expect(window.activeTabID == hotel.id)
+        table.pan(CGSize(width: 0, height: -24))
+        #expect(window.activeTabID == map.id)
+        table.endPan()
+        #expect(table.destination(toward: .left)?.id == hotel.id)
+    }
+
+    @Test
+    func `reading navigation uses the visible page when a different card is focused`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
+        let hotel = try env.tabManager.createTab(url: #require(URL(string: "about:blank#hotel")), in: space, makeActive: false)
+        let map = try env.tabManager.createTab(url: #require(URL(string: "about:blank#map")), in: space, makeActive: false)
+        for (tab, x) in [(hotel, 0.0), (map, 300.0)] {
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = CGPoint(x: x, y: 100)
+            canvas.storeTablePlacement(placement, for: tab)
+        }
+        env.tabManager.setActiveTab(hotel, in: window)
+        canvas.revealFloatingTabs()
+        canvas.revealSpatialDestination(map.id)
+        #expect(table.navigationTabID == hotel.id)
+        #expect(table.destination(toward: .right)?.id == map.id)
+        table.step(.right)
+        #expect(window.activeTabID == map.id)
     }
 
     @Test

@@ -128,7 +128,7 @@ struct SpatialArrangementTests {
         view.layoutSubtreeIfNeeded()
         view.reload(CanvasBoardContent(
             tabs: [left, right],
-            frames: [left.id: CGRect(x: 100, y: 100, width: 250, height: 34), right.id: CGRect(x: 450, y: 100, width: 250, height: 34)],
+            frames: [left.id: CGRect(x: 100, y: 100, width: 250, height: 34), right.id: CGRect(x: 400, y: 100, width: 250, height: 34)],
             snapshots: [:], zones: [], magnets: [], selectedTabIDs: [], focusedTabID: left.id,
             tileSize: CGSize(width: 250, height: 34), deskSize: CGSize(width: 1_280, height: 820),
         ))
@@ -147,12 +147,12 @@ struct SpatialArrangementTests {
     }
 
     @Test
-    func `wheel navigation can traverse deliberately stacked tabs in both directions`() {
+    func `a pile offers no invisible wheel destinations`() {
         let ids = [UUID(), UUID(), UUID()]
         let frames = ids.map { CanvasNavigation.Tile(id: $0, frame: CGRect(x: 100, y: 100, width: 250, height: 34)) }
-        #expect(CanvasNavigation.neighbor(from: ids[0], toward: .down, in: frames) == ids[1])
-        #expect(CanvasNavigation.neighbor(from: ids[1], toward: .down, in: frames) == ids[2])
-        #expect(CanvasNavigation.neighbor(from: ids[2], toward: .up, in: frames) == ids[1])
+        #expect(CanvasNavigation.neighbor(from: ids[0], toward: .down, in: frames) == nil)
+        #expect(CanvasNavigation.neighbor(from: ids[1], toward: .down, in: frames) == nil)
+        #expect(CanvasNavigation.neighbor(from: ids[2], toward: .up, in: frames) == nil)
         #expect(CanvasNavigation.neighbor(from: ids[0], toward: .up, in: frames) == nil)
     }
 
