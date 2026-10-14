@@ -1,12 +1,10 @@
 # Refrax Protocol
 
-The shared control protocol for [Refrax](https://refrax.website), a WebKit-based browser for macOS.
-
-RefraxProtocol defines the request/response types used for communication between the Refrax browser and external clients over a Unix domain socket. It enables CLI tools, AI agents, and MCP servers to automate and control Refrax programmatically.
+RefraxProtocol defines the Swift requests and responses shared by Refrax and its automation clients. It carries flat JSON messages over a Unix socket to control tabs, page content, and browser state.
 
 ## Overview
 
-The protocol is a simple JSON-over-socket RPC layer. Each request is a flat JSON object with a `type` discriminator, and the server responds with a corresponding JSON object:
+Each message has a `type` discriminator:
 
 ```json
 {"type": "ping"}
@@ -34,18 +32,17 @@ The protocol is a simple JSON-over-socket RPC layer. Each request is a flat JSON
 | **History** | List, search, clear, frequent destinations |
 | **Site Settings** | Get/set per-domain settings |
 | **Dev Tools** | Inspector, console logs, network log, cookies, storage |
-
 | **Compound** | Navigate-and-read, click-and-read, fill-form, scroll-and-read |
 | **Programs** | Execute multi-step automation programs with security policies |
 
 ## Usage
 
-Add RefraxProtocol as a dependency in your `Package.swift`:
+Point `Package.swift` at this package in a local Refrax checkout:
 
 ```swift
 let package = Package(
     dependencies: [
-        .package(url: "https://github.com/<owner>/refrax-protocol", from: "1.0.0"),
+        .package(path: "path/to/refrax/Packages/refrax-protocol"),
     ],
     targets: [
         .target(name: "MyTool", dependencies: [

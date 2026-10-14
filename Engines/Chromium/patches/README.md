@@ -1,13 +1,8 @@
 # Refrax's patches to Chromium
 
-Refrax's own Chromium code lives in `Engines/Chromium/refrax`, which forge links into the
-Chromium source tree as `src/refrax`; GN names it `//refrax` (`//` is the root of the tree), so
-its targets are `//refrax/host`, `//refrax/client` and so on. These patches are the edits that
-have to be made to upstream files instead.
+These patches let Chromium run inside Refrax’s AppKit event loop, route page controls through Refrax, and use its Keychain credentials. Code that can live outside upstream files belongs in `Engines/Chromium/refrax`, linked as `//refrax`.
 
-They are applied by `forge prepare` after ungoogled-chromium's, in file-name order, each with
-`patch -p1`. Every patch is listed here with the reason it can't live in `//refrax`. Diffs are
-taken against the tree *after* ungoogled's patches.
+`forge prepare` applies these diffs after ungoogled-chromium’s patches, in filename order with `patch -p1`.
 
 ## `base-mac-attach-pump.patch`
 
