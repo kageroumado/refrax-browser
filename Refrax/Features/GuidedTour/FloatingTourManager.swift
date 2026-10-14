@@ -532,11 +532,11 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph), or click the tabs button on the panel, to see every open page where it was left."
+            return "Hold \(context.revealKey.glyph) to reveal pages. Scroll between highlighted neighbors; hold Shift to change rows. The tabs button shows the full table."
         case .placePage:
             return context.layerRevealed
-                ? "Drag a page's title to where you want it. It stays there."
-                : "\(hold), then drag a page's title to where you want it. It stays there."
+                ? "Drag a page's title beside another page. Each card keeps the place you choose."
+                : "\(hold), then drag a page's title beside another page. Each card keeps its place."
         case .keepVisible:
             return context.layerRevealed
                 ? "Click a page's pin, or choose Keep Visible from its actions menu. It stays after you release."

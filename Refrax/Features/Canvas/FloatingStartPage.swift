@@ -87,7 +87,7 @@ struct FloatingStartPage: View {
             }
             .opacity(canvas.floatingVisibility.isRevealed ? 0 : 1)
             column
-            if !hintsDismissed {
+            if showHints {
                 railNote(beside: railLensFrame.isEmpty ? island.railFrame : railLensFrame, in: bounds)
                 if let last = places.last, last.isPlaceholder {
                     placesNote(below: last)
@@ -102,6 +102,10 @@ struct FloatingStartPage: View {
     }
 
     // MARK: - Measures
+
+    private var showHints: Bool {
+        !hintsDismissed && !tour.isActive
+    }
 
     /// The window's content area in window coordinates, the space the rail and the pages are placed in.
     private var windowBounds: CGRect {
@@ -287,7 +291,7 @@ struct FloatingStartPage: View {
                     lensFrame = $0
                     tour.startPageLensFrame = $0
                 }
-            if !hintsDismissed {
+            if showHints {
                 lensNote
             }
             recovery
@@ -392,7 +396,7 @@ struct FloatingStartPage: View {
         let frame = local(outline.frame)
         return VStack(alignment: .leading, spacing: Layout.noteSpacing) {
             leader.frame(width: 1, height: Layout.leaderLength)
-            noteText("Pages keep their places. Hold \(revealKey.glyph) to see each where you put it.")
+            noteText("Pages keep their places. Hold \(revealKey.glyph) to reveal them; scroll to visit the highlighted neighbor.")
             Button("Take the tour") { tour.start() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
