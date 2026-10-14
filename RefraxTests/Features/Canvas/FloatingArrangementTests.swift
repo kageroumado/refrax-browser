@@ -53,6 +53,35 @@ struct FloatingArrangementTests {
     }
 
     @Test
+    func `Arranged cells never overlap, whatever their sizes`() {
+        let area = CGRect(x: 72, y: 16, width: 1_192, height: 768)
+        let header = CGSize(width: 160, height: 28)
+        let live = CGSize(width: 340, height: 250)
+        let sizes = [header, compact, live, header, header, compact, live, live, compact, header, compact, live]
+        for fromTrailing in [false, true] {
+            let origins = FloatingArrangement.gridOrigins(for: sizes, in: area, fromTrailing: fromTrailing)
+            let cells = zip(origins, sizes).map { CGRect(origin: $0, size: $1) }
+            for (index, cell) in cells.enumerated() {
+                for other in cells[(index + 1)...] {
+                    #expect(!cell.intersects(other), "\(cell) overlaps \(other)")
+                }
+            }
+        }
+    }
+
+    @Test
+    func `A folded stack starts a new column when its pile would pass the bottom edge`() {
+        let area = CGRect(x: 0, y: 0, width: 1_000, height: 300)
+        let header = CGSize(width: 160, height: 28)
+        let pile = CGSize(width: 340, height: 260)
+        let origins = FloatingArrangement.gridOrigins(
+            for: [compact, compact, header], reaching: [compact, compact, pile], in: area, fromTrailing: false,
+        )
+        #expect(origins[2] == CGPoint(x: compact.width + FloatingArrangement.gap, y: area.minY))
+        #expect(origins[2].y + pile.height <= area.maxY)
+    }
+
+    @Test
     func `Site stacks keep sites with two or more cards, in first-seen order`() {
         let stacks = FloatingArrangement.siteStacks([
             (id: 1, site: "github.com"),
@@ -63,8 +92,8 @@ struct FloatingArrangementTests {
             (id: 6, site: "apple.com"),
             (id: 7, site: ""),
         ])
-        #expect(stacks.map { $0.site } == ["github.com", "apple.com"])
-        #expect(stacks.map { $0.ids } == [[1, 3], [2, 6]])
+        #expect(stacks.map(\.site) == ["github.com", "apple.com"])
+        #expect(stacks.map(\.ids) == [[1, 3], [2, 6]])
     }
 
     @Test

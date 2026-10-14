@@ -61,14 +61,18 @@ nonisolated enum FloatingArrangement: String, CaseIterable, Hashable, Sendable {
 
     /// Origins for cells of `sizes`, in order, on a grid of columns as wide as the widest
     /// cell: each column fills top to bottom, and columns advance away from the island's side.
-    /// Columns past the area's far edge keep going; placement clamps them into the window.
-    static func gridOrigins(for sizes: [CGSize], in area: CGRect, fromTrailing: Bool) -> [CGPoint] {
+    /// A cell whose cards reach further down than the cell itself (a folded stack's header over
+    /// its pile) starts a new column unless its `reaches` fit, so placement never clamps the
+    /// pile and moves the header. Columns past the area's far edge keep going; placement
+    /// clamps them into the window.
+    static func gridOrigins(for sizes: [CGSize], reaching reaches: [CGSize]? = nil, in area: CGRect, fromTrailing: Bool) -> [CGPoint] {
         guard let columnWidth = sizes.map(\.width).max() else { return [] }
         var origins: [CGPoint] = []
         var column = 0
         var y = area.minY
-        for size in sizes {
-            if y > area.minY, y + size.height > area.maxY {
+        for (index, size) in sizes.enumerated() {
+            let reach = max(size.height, reaches.flatMap { $0.indices.contains(index) ? $0[index].height : nil } ?? 0)
+            if y > area.minY, y + reach > area.maxY {
                 column += 1
                 y = area.minY
             }

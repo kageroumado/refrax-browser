@@ -6,6 +6,11 @@ private struct ArrangedUnit {
     let tabs: [Tab]
     /// The frame Arrange aligns to the grid: the card, the folded header, or the outline.
     let frame: CGRect
+    /// How far right and down from the frame's origin the unit's cards reach once placed.
+    let reach: CGSize
+    /// For a folded group, where its cards pile relative to the header's origin; `nil` moves
+    /// the cards with the frame, keeping their places relative to it.
+    let pileOffset: CGSize?
     let lastUsed: Date
 }
 
@@ -68,13 +73,17 @@ extension TabCanvasManager {
             area = CGRect(x: start.x, y: start.y, width: max(1, area.maxX - start.x), height: max(1, area.maxY - start.y))
             fromTrailing = false
         }
-        let origins = FloatingArrangement.gridOrigins(for: units.map(\.frame.size), in: area, fromTrailing: fromTrailing)
+        let origins = FloatingArrangement.gridOrigins(
+            for: units.map(\.frame.size), reaching: units.map(\.reach), in: area, fromTrailing: fromTrailing,
+        )
         for (unit, origin) in zip(units, origins) {
             let dx = origin.x - unit.frame.minX, dy = origin.y - unit.frame.minY
             for tab in unit.tabs {
                 var placement = floatingPlacement(for: tab)
                 let frame = placement.frame(in: bounds)
-                placement.move(to: CGPoint(x: frame.minX + dx, y: frame.minY + dy), in: bounds)
+                let target = unit.pileOffset.map { CGPoint(x: origin.x + $0.width, y: origin.y + $0.height) }
+                    ?? CGPoint(x: frame.minX + dx, y: frame.minY + dy)
+                placement.move(to: target, in: bounds)
                 updateFloatingPlacement(placement, for: tab)
             }
         }
@@ -92,14 +101,46 @@ extension TabCanvasManager {
             let members = item.allMembers
             grouped.formUnion(members.map(\.id))
             guard chosen.map({ chosen in members.contains { chosen.contains($0.id) } }) ?? true else { continue }
-            units.append(ArrangedUnit(tabs: members, frame: item.isFolded ? headerFrame(for: item) : item.outline, lastUsed: lastUsed(members)))
+            if item.isFolded {
+                units.append(foldedUnit(item, in: bounds, lastUsed: lastUsed(members)))
+            } else if let outline = unclippedOutline(of: item, frame: { floatingFrame(for: $0, in: bounds) }) {
+                units.append(ArrangedUnit(tabs: members, frame: outline, reach: outline.size, pileOffset: nil, lastUsed: lastUsed(members)))
+            }
         }
+        // The current page shows as the page card and a docked page in its column, so neither takes a cell.
         let loose = floatingTabs.filter {
-            $0.space?.id == windowState.activeSpaceID && !grouped.contains($0.id) && storedFloatingPlacement(for: $0) != nil
-                && (chosen?.contains($0.id) ?? true)
+            $0.space?.id == windowState.activeSpaceID && !grouped.contains($0.id) && storedFloatingPlacement(for: $0).map { !$0.isDocked } == true
+                && !(showsFloatingControls && $0.id == windowState.activeTabID) && (chosen?.contains($0.id) ?? true)
         }
-        units += loose.map { ArrangedUnit(tabs: [$0], frame: floatingFrame(for: $0, in: bounds), lastUsed: lastUsed([$0])) }
+        units += loose.map {
+            let frame = floatingFrame(for: $0, in: bounds)
+            return ArrangedUnit(tabs: [$0], frame: frame, reach: frame.size, pileOffset: nil, lastUsed: lastUsed([$0]))
+        }
         return units
+    }
+
+    /// A folded group placed by its header, its cards piled under the header so the header
+    /// lands exactly on its cell whatever their sizes.
+    private func foldedUnit(_ item: FloatingGroupItem, in bounds: CGRect, lastUsed: Date) -> ArrangedUnit {
+        let size = { (tab: Tab) in self.floatingFrame(for: tab, in: bounds).size }
+        let piled = unclippedOutline(of: item) { CGRect(origin: .zero, size: size($0)) } ?? .zero
+        let width = floatingHeaderWidths[item.id] ?? FloatingGroupLayout.nominalHeaderWidth
+        let header = FloatingGroupLayout.foldedHeaderFrame(in: piled, width: width)
+        let cards = item.allMembers.map(size).reduce(CGSize.zero) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) }
+        return ArrangedUnit(
+            tabs: item.allMembers,
+            frame: header,
+            reach: CGSize(width: cards.width - header.minX, height: cards.height - header.minY),
+            pileOffset: CGSize(width: -header.minX, height: -header.minY),
+            lastUsed: lastUsed,
+        )
+    }
+
+    /// The outline around `item`'s cards at the frames `frame` gives, and around its nested
+    /// groups', past the window's edges where they reach.
+    private func unclippedOutline(of item: FloatingGroupItem, frame: (Tab) -> CGRect) -> CGRect? {
+        let frames = item.members.map(frame) + item.children.compactMap { unclippedOutline(of: $0, frame: frame) }
+        return FloatingGroupLayout.outlineFrame(around: frames, in: .infinite)
     }
 
     // MARK: Stacks by Site

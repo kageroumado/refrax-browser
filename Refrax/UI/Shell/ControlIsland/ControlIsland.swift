@@ -842,11 +842,9 @@ struct ControlIsland: View {
 
     private var arrangeHint: some View {
         HStack(spacing: ArrangeHint.spacing) {
-            FloatingArrangeMenu()
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
+            FloatingArrangeButton(arrowEdge: arrangeHintFrame.midY > area.midY ? .top : .bottom)
+                .buttonStyle(.plain)
                 .labelStyle(.titleAndIcon)
-                .tint(.primary)
                 .foregroundStyle(.primary)
                 .fixedSize()
                 .help("Arrange the tabs on this space")

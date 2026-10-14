@@ -945,8 +945,10 @@ final class TabCanvasManager {
         requestZoom(to: bounds.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset))
     }
 
+    /// Fits every tile and zone in view; the desk itself when it holds none.
     func zoomToEverything() {
-        requestZoom(to: deskBounds)
+        let content = (Array(tileFrames.values) + zones.map(\.frame)).reduce(CGRect.null) { $0.union($1) }
+        requestZoom(to: content.isNull ? deskBounds : content.insetBy(dx: -Layout.fitInset, dy: -Layout.fitInset))
     }
 
     private func requestZoom(to rect: CGRect) {
