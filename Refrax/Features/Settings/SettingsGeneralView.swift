@@ -27,6 +27,7 @@ struct GeneralSettingsView: View {
                     Button("Import…") {
                         showImportSheet = true
                     }
+                    .buttonStyle(.borderedProminent)
                 }
                 .highlightable(id: "general.importBrowserData", highlightedItemId: highlightedItemId)
             } header: {

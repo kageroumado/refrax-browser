@@ -196,7 +196,7 @@ struct FloatingStartPage: View {
                 .frame(width: frame.width, height: frame.height)
             Text(outline.title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                 .lineLimit(1)
                 .frame(width: frame.width, height: Layout.outlineTitleHeight, alignment: .leading)
         }
@@ -261,7 +261,7 @@ struct FloatingStartPage: View {
             }
             .buttonStyle(.plain)
             .font(.callout)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
     }
 
@@ -275,8 +275,8 @@ struct FloatingStartPage: View {
 
     private func noteText(_ text: String) -> some View {
         Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.callout)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -340,7 +340,7 @@ struct FloatingStartPage: View {
         Button("Got it") { hintsDismissed = true }
             .buttonStyle(.plain)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .padding(.bottom, Layout.bottomInset)
     }

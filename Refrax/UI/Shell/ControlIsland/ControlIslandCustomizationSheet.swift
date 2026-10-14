@@ -105,12 +105,14 @@ struct ControlIslandCustomizationSheet: View {
                 label: "Accent and light",
                 selectedColor: $settings.customAccentColor,
                 systemColor: .accentColor,
+                defaultColor: Color.Components(encoded: BrowserSettings.Defaults.accentColorHex),
             )
             LightThicknessSlider(thickness: $settings.lightThickness)
             SettingsColorPicker(
                 label: "Window background",
                 selectedColor: $settings.customWindowBackgroundColor,
                 systemColor: Color(.windowBackgroundColor),
+                defaultColor: Color.Components(encoded: BrowserSettings.Defaults.windowBackgroundColorHex),
             )
             Toggle("Tint the window with the space color", isOn: $settings.enableSpaceWindowColoring)
             Toggle("Tint the window with the website color", isOn: $settings.enableWebsiteWindowColoring)

@@ -32,6 +32,8 @@ struct SettingsView: View {
             )
         }
         .navigationSplitViewStyle(.balanced)
+        // The sidebar's selection and the controls follow Refrax's accent, not the system's.
+        .tint(Color.appAccentColor)
         .frame(minWidth: 750, minHeight: 500)
     }
 }

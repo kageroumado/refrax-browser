@@ -24,6 +24,7 @@ struct AppearanceSettingsView: View {
                     label: "Accent color",
                     selectedColor: $settings.customAccentColor,
                     systemColor: .accentColor,
+                    defaultColor: Color.Components(encoded: BrowserSettings.Defaults.accentColorHex),
                 )
                 .highlightable(id: "appearance.accentColor", highlightedItemId: highlightedItemId)
 
@@ -34,6 +35,7 @@ struct AppearanceSettingsView: View {
                     label: "Window background",
                     selectedColor: $settings.customWindowBackgroundColor,
                     systemColor: Color(.windowBackgroundColor),
+                    defaultColor: Color.Components(encoded: BrowserSettings.Defaults.windowBackgroundColorHex),
                 )
                 .highlightable(id: "appearance.windowBackground", highlightedItemId: highlightedItemId)
             } header: {
@@ -164,11 +166,13 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Settings Color Picker
 
-/// A labeled color picker with preset swatches and custom color option.
+/// A labeled color picker with preset swatches and custom color option. Refrax's own default
+/// color, when given, has a swatch of its own beside System.
 struct SettingsColorPicker: View {
     let label: String
     @Binding var selectedColor: Color.Components?
     let systemColor: Color
+    var defaultColor: Color.Components?
 
     @State private var hoveredLabel: String?
 
@@ -185,13 +189,18 @@ struct SettingsColorPicker: View {
             HStack(spacing: Layout.swatchSpacing) {
                 systemSwatch
 
+                if let defaultColor {
+                    swatch(defaultColor.color, label: "Default", accessibilityLabel: "Refrax default")
+                }
+
                 ForEach(GroupColor.allCases, id: \.self) { groupColor in
-                    colorSwatch(for: groupColor)
+                    swatch(groupColor.color, label: groupColor.rawValue, accessibilityLabel: groupColor.rawValue)
                 }
 
                 CustomColorSwatch(
                     selectedColor: $selectedColor,
                     hoveredLabel: $hoveredLabel,
+                    presets: GroupColor.allCases.map(\.color) + (defaultColor.map { [$0.color] } ?? []),
                 )
             }
         }
@@ -239,16 +248,15 @@ struct SettingsColorPicker: View {
 
     // MARK: - Color Swatch
 
-    private func colorSwatch(for groupColor: GroupColor) -> some View {
-        let isSelected = selectedColor?.color.approximatelyEquals(groupColor.color) ?? false
-        let swatchLabel = groupColor.rawValue
+    private func swatch(_ color: Color, label swatchLabel: String, accessibilityLabel: String) -> some View {
+        let isSelected = selectedColor?.color.approximatelyEquals(color) ?? false
 
         return Button {
-            selectedColor = groupColor.color.components
+            selectedColor = color.components
         } label: {
             ZStack {
                 Circle()
-                    .fill(groupColor.color)
+                    .fill(color)
                     .strokeBorder(Color.primary.opacity(0.1), lineWidth: 2)
                     .frame(width: Layout.swatchSize, height: Layout.swatchSize)
 
@@ -269,7 +277,7 @@ struct SettingsColorPicker: View {
         .onHover { hovering in
             hoveredLabel = hovering ? swatchLabel : nil
         }
-        .accessibilityLabel(swatchLabel)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -290,12 +298,14 @@ struct SettingsColorPicker: View {
 private struct CustomColorSwatch: View {
     @Binding var selectedColor: Color.Components?
     @Binding var hoveredLabel: String?
+    /// The colors with swatches of their own, which never count as custom.
+    let presets: [Color]
 
     @State private var showPopover = false
 
     private var isCustom: Bool {
         guard let selectedColor else { return false }
-        return !GroupColor.allCases.contains(where: { selectedColor.color.approximatelyEquals($0.color) })
+        return !presets.contains(where: { selectedColor.color.approximatelyEquals($0) })
     }
 
     private enum Layout {
