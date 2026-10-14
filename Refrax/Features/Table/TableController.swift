@@ -124,12 +124,13 @@ final class TableController {
     /// Starts following the window's space, tabs, and activation.
     func start() {
         let windowState = windowState
+        let canvas = canvas
         let syncChanges = Observations {
             let space = windowState.activeSpace
             return SyncKey(
                 spaceID: space?.id,
                 activeTabID: windowState.activeTabID,
-                tabIDs: space.map(TableController.tableTabIDs(of:)) ?? [],
+                tabIDs: space.map { TableController.tableTabIDs(of: $0, canvas: canvas) } ?? [],
             )
         }
         tasks.append(Task { [weak self] in
@@ -155,9 +156,10 @@ final class TableController {
     // MARK: - Reading
 
     /// The tabs a space's table holds, in the space's order: every non-archived tab that
-    /// is not a favorite.
-    static func tableTabIDs(of space: Space) -> [UUID] {
-        space.mainTabs.filter { !$0.isFavorite }.map(\.id)
+    /// is not a favorite, and not docked to a side of the window, where its column shows it.
+    /// A docked page that becomes current leaves its column and joins the table.
+    static func tableTabIDs(of space: Space, canvas: TabCanvasManager) -> [UUID] {
+        space.mainTabs.filter { !$0.isFavorite && canvas.storedFloatingPlacement(for: $0)?.isDocked != true }.map(\.id)
     }
 
     var camera: TableCamera {
