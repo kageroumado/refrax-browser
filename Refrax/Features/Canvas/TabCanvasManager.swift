@@ -203,7 +203,7 @@ final class TabCanvasManager {
     /// A new card's place: the first free cell of the arrange grid, in the column beside the
     /// rail and below the page card, then the next column out, so new cards line up in one
     /// tidy column instead of the window's corners.
-    private func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement]) -> FloatingTabPlacement? {
+    func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement]) -> FloatingTabPlacement? {
         let bounds = floatingArea
         let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
         let pageCard = showsFloatingControls ? windowState.pageCardFrame : .zero

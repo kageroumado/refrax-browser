@@ -35,10 +35,13 @@ extension TabCanvasManager {
     }
 
     /// The active space's groups that hold placed cards, roots first, each with its nested groups.
+    /// A group outlines only cards the layer draws: the current page shows as the page card and
+    /// a docked page in its column, so a group of only those draws nothing.
     func floatingGroupItems(in area: CGRect) -> [FloatingGroupItem] {
         guard let space = windowState.activeSpace else { return [] }
         let placed = floatingTabs.filter {
             $0.space?.id == space.id && $0.group != nil && storedFloatingPlacement(for: $0).map { !$0.isDocked } == true
+                && !(showsFloatingControls && $0.id == windowState.activeTabID)
         }
         let byGroup = Dictionary(grouping: placed) { $0.group!.id }
         let groups = space.groups.filter { !$0.isArchive && displaysAsGroup($0) }
