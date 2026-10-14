@@ -2576,7 +2576,7 @@ final class RefraxControlServer {
                 height: frame.height,
                 groupID: tab.group?.id.uuidString,
                 isSelected: canvas.selectedTabIDs.contains(tab.id),
-                isCompact: tab.boardIsCompact,
+                isCompact: canvas.tablePlacement(for: tab).shape != .live,
             )
         }
         let zones = canvas.zones.map { zone in

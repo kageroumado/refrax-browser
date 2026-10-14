@@ -117,6 +117,10 @@ private struct CanvasToolbar: View {
                 Divider().frame(height: Layout.dividerHeight)
             }
 
+            toolbarButton("Zoom Out", systemImage: "minus.magnifyingglass") { manager.zoom(by: 1 / 1.2) }
+                .help("Zoom out · Option-scroll")
+            toolbarButton("Zoom In", systemImage: "plus.magnifyingglass") { manager.zoom(by: 1.2) }
+                .help("Zoom in · Option-scroll")
             toolbarButton("Fit", systemImage: "square.grid.2x2") { manager.zoomToEverything() }
                 .help("Fit every tab in view")
             FloatingArrangeButton(arrowEdge: .top)
@@ -201,7 +205,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
             view.beginPanning(focusedTile: manager.focusedTileFrame)
             view.pan(by: manager.pendingPan)
         } else {
-            view.beginOpening(focusedTile: manager.focusedTileFrame, desk: manager.deskBounds)
+            view.beginOpening(focusedTile: manager.focusedTileFrame, desk: manager.deskBounds, from: manager.openingCameraFrame)
             view.setOpeningScale(manager.openingScale)
             if !manager.isOpeningInteractively {
                 view.finishOpening(commit: true)
@@ -228,6 +232,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
         view.reload(CanvasBoardContent(
             tabs: tabs,
             frames: tileFrames,
+            placements: Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, manager.tablePlacement(for: $0)) }),
             snapshots: snapshots,
             zones: zones,
             magnets: magnets,
@@ -252,6 +257,7 @@ private struct TabCanvasBoard: NSViewRepresentable {
 struct CanvasBoardContent {
     let tabs: [Tab]
     let frames: [Tab.ID: CGRect]
+    var placements: [Tab.ID: FloatingTabPlacement] = [:]
     let snapshots: [Tab.ID: NSImage]
     let zones: [CanvasZone]
     let magnets: [CanvasMagnet]

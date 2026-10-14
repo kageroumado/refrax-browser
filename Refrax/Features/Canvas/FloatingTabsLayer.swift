@@ -80,6 +80,7 @@ struct FloatingTabsLayer: View {
                     FloatingTabCard(tab: tab, placement: placement, area: bounds)
                         .frame(width: frame.width, height: frame.height)
                         .offset(x: frame.minX, y: frame.minY)
+                        .zIndex(tab.id == canvas.focusedFloatingTabID ? 1 : 0)
                         .transition(.fold(toward: fold.map { CGSize(width: $0.x - frame.minX, height: $0.y - frame.minY) }))
                 }
                 FloatingCardGroupTarget(area: bounds)
@@ -96,7 +97,7 @@ struct FloatingTabsLayer: View {
             .coordinateSpace(name: "floatingTabs")
             // A card never rests against the rail, wherever it was put or the rail has moved since.
             .onChange(of: RailClearanceKey(isRevealed: canvas.floatingVisibility.isRevealed, rail: windowState.controlIsland.railFrame), initial: true) { _, key in
-                guard key.isRevealed else { return }
+                guard key.isRevealed, canvas.floatingCamera.origin == .zero else { return }
                 canvas.keepClearOfRail(canvas.visibleFloatingTabs, in: bounds)
             }
             .dropDestination(for: FloatingTabDrag.self) { items, point in

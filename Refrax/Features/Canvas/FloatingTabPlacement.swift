@@ -1,12 +1,14 @@
 import CoreGraphics
 import Foundation
 
-/// A tab's position within the available window area, independent of desk geometry.
+/// A tab's presentation and position on the shared table, in points with a top-left origin.
 nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     var x: Double
     var y: Double
     var shape: FloatingCardShape
     var isPinned: Bool
+    /// A placed card keeps this table position across window sizes and overview zoom levels.
+    var tableOrigin: CGPoint?
     /// The tab shape's width, kept while the card wears another shape.
     var tabWidth: Double?
     /// The live page's size, kept while the card wears another shape.
@@ -89,6 +91,9 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     }
 
     func frame(in bounds: CGRect) -> CGRect {
+        if let tableOrigin {
+            return CGRect(origin: tableOrigin, size: size)
+        }
         let area = Self.availableArea(in: bounds)
         let size = CGSize(width: min(size.width, area.width), height: min(size.height, area.height))
         return CGRect(
@@ -102,6 +107,12 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     mutating func move(to origin: CGPoint, in bounds: CGRect) {
         let area = Self.availableArea(in: bounds)
         let frame = frame(in: bounds)
+        if tableOrigin != nil {
+            tableOrigin = CGPoint(
+                x: min(max(origin.x, area.minX), max(area.minX, area.maxX - frame.width)),
+                y: min(max(origin.y, area.minY), max(area.minY, area.maxY - frame.height)),
+            )
+        }
         x = Self.unit((origin.x - area.minX) / max(1, area.width - frame.width))
         y = Self.unit((origin.y - area.minY) / max(1, area.height - frame.height))
     }

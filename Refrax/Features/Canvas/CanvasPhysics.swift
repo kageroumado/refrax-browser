@@ -148,18 +148,20 @@ struct CanvasPhysics {
 
     // MARK: - Bodies
 
-    /// Puts a tile at `frame`, adding it when new. A new or moved tile is woken so
-    /// anything it now overlaps is pushed apart.
-    mutating func place(_ id: Tab.ID, frame: CGRect) {
+    /// Places a tile at `frame`. Interactive edits wake collisions; loading a saved
+    /// arrangement uses `awake: false` to preserve deliberate overlaps.
+    mutating func place(_ id: Tab.ID, frame: CGRect, awake: Bool = true) {
         if var body = bodies[id] {
             guard !body.isHeld, body.frame != frame else { return }
             body.frame = frame
             body.velocity = .zero
-            body.isAwake = true
+            body.isAwake = awake
             body.unattendedTime = 0
             bodies[id] = body
         } else {
-            bodies[id] = Body(frame: frame, material: Material(id: id))
+            var body = Body(frame: frame, material: Material(id: id))
+            body.isAwake = awake
+            bodies[id] = body
         }
     }
 

@@ -47,6 +47,10 @@ protocol CanvasBoardDriver: AnyObject {
     func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint)
     /// Moves the desk for a trackpad scroll of `delta` points.
     func scroll(by delta: CGPoint)
+    /// Moves the destination one visible neighbor at the current scale.
+    func step(_ direction: TableDirection)
+    /// Zooms around the center of the viewport.
+    func zoom(by factor: CGFloat)
     /// Completes the opening, or takes it back to the page and closes the canvas.
     func finishOpening(commit: Bool)
     /// Drags a tile along an eased path until its top-left corner reaches `origin`,
@@ -75,7 +79,7 @@ enum CanvasHint: String {
     var text: String {
         switch self {
         case .enteringCanvas: "Pinch in to see all your tabs"
-        case .leavingCanvas: "Double-click or pinch out to open a tab · Esc to go back"
+        case .leavingCanvas: "Scroll to move · Option-scroll to zoom · Click a tab to open · Esc to go back"
         }
     }
 
@@ -94,7 +98,7 @@ struct CanvasZoomRequest: Equatable {
 /// tile placed at a position of its own, zoomed out from and back into the live page.
 ///
 /// The desk is finite. Tiles keep the position they were given (persisted on
-/// ``Tab/boardFrame``), a click zooms into a tile until it fills the window and
+/// ``Tab/floatingPlacement``), a click zooms into a tile until it fills the window and
 /// the live page takes over, and dismissing zooms back out. The desk keeps every
 /// released tile reachable.
 ///
@@ -137,6 +141,8 @@ final class TabCanvasManager {
     /// The floating layer appears while Control is held or its toolbar button is on.
     private(set) var floatingVisibility = FloatingTabVisibility()
     private(set) var focusedFloatingTabID: Tab.ID?
+    private(set) var floatingCamera = TabSpatialCamera()
+    private(set) var openingCameraFrame: CGRect?
     var regionSelectionError: String?
     var regionSelection: FloatingRegionSelection?
     @ObservationIgnored var regionSelectionTask: Task<Void, Never>?
@@ -186,7 +192,7 @@ final class TabCanvasManager {
               windowState.pageVisit.destination == nil,
               storedFloatingPlacement(for: tab) == nil else { return }
         let source = raySource
-        let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
+        let occupied = floatingTabs.filter { $0.id != tab.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
         guard let placement = startingPlacement(for: tab, avoiding: occupied) else { return }
         updateFloatingPlacement(placement, for: tab)
         fileIntoSiteStack(tab)
@@ -205,6 +211,13 @@ final class TabCanvasManager {
     /// tidy column instead of the window's corners.
     func startingPlacement(for tab: Tab, avoiding occupied: [FloatingTabPlacement]) -> FloatingTabPlacement? {
         let bounds = floatingArea
+        if let saved = tab.boardFrame {
+            var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
+            placement.previewWidth = saved.width
+            placement.previewHeight = saved.height
+            placement.tableOrigin = floatingCamera.project(saved).origin
+            return placement
+        }
         let rail = showsFloatingControls ? windowState.controlIsland.railFrame : .zero
         let pageCard = showsFloatingControls ? windowState.pageCardFrame : .zero
         var placement = FloatingTabPlacement.initial(index: 0, shape: startingFloatingShape(for: tab))
@@ -253,11 +266,7 @@ final class TabCanvasManager {
 
     func floatingFrame(for tab: Tab, in area: CGRect) -> CGRect {
         let placement = floatingPlacement(for: tab)
-        var frame = placement.frame(in: area)
-        if tab.id == windowState.activeTabID, placement.shape != .icon {
-            frame.size.height = 58
-        }
-        return frame
+        return placement.frame(in: area)
     }
 
     /// The card's frame and the outer half of its resize zones: where the pointer reaches it.
@@ -269,7 +278,12 @@ final class TabCanvasManager {
     var visibleFloatingTabs: [Tab] {
         guard !isActive, regionSelection == nil, !windowState.isSpaceLocked,
               !windowState.showsCommandLens else { return [] }
+        let liveBand = floatingArea.insetBy(dx: -floatingArea.width, dy: -floatingArea.height)
         return floatingTabs.filter { tab in
+            if tab.id != retainedInputTabID, tab.id != renamingTabID, tab.id != menuTabID,
+               !floatingFrame(for: tab, in: floatingArea).intersects(liveBand) {
+                return false
+            }
             // The rail's page card is the current tab's place; a second card for it would float elsewhere.
             if showsFloatingControls, tab.id == windowState.activeTabID {
                 return false
@@ -294,7 +308,7 @@ final class TabCanvasManager {
         tab.boardFrame == nil || tab.boardIsCompact ? .tab : .live
     }
 
-    func floatingPlacement(for tab: Tab) -> FloatingTabPlacement {
+    func tablePlacement(for tab: Tab) -> FloatingTabPlacement {
         storedFloatingPlacement(for: tab) ?? .initial(
             index: floatingTabs.firstIndex(where: { $0.id == tab.id }) ?? 0,
             count: floatingTabs.count,
@@ -302,7 +316,19 @@ final class TabCanvasManager {
         )
     }
 
+    func floatingPlacement(for tab: Tab) -> FloatingTabPlacement {
+        var placement = tablePlacement(for: tab)
+        placement.tableOrigin = floatingCamera.project(placement.frame(in: floatingArea)).origin
+        return placement
+    }
+
     func updateFloatingPlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
+        var world = placement
+        world.tableOrigin = floatingCamera.unproject(placement.frame(in: floatingArea)).origin
+        storeTablePlacement(world, for: tab)
+    }
+
+    private func storeTablePlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
         windowState.floatingPlacements[tab.id] = placement
         windowState.window?.invalidateRestorableState()
         if tab.space?.dataStoreMode != .private {
@@ -370,6 +396,7 @@ final class TabCanvasManager {
         let shouldReveal = spaceToReveal == windowState.activeSpaceID
         spaceToReveal = nil
         dismissFloatingTabs()
+        floatingCamera = TabSpatialCamera()
         if shouldReveal {
             toggleFloatingTabs()
         }
@@ -388,9 +415,30 @@ final class TabCanvasManager {
     }
 
     func navigateFloatingTabs(toward direction: CanvasNavigation.Direction, in bounds: CGRect) {
-        let tiles = visibleFloatingTabs.map { CanvasNavigation.Tile(id: $0.id, frame: floatingPlacement(for: $0).frame(in: bounds)) }
+        let tiles = floatingTabs.filter { storedFloatingPlacement(for: $0)?.isDocked != true }.map { CanvasNavigation.Tile(id: $0.id, frame: floatingPlacement(for: $0).frame(in: bounds)) }
         guard let current = focusedFloatingTabID ?? tiles.first?.id else { return }
-        focusedFloatingTabID = CanvasNavigation.neighbor(from: current, toward: direction, in: tiles) ?? current
+        revealSpatialDestination(CanvasNavigation.neighbor(from: current, toward: direction, in: tiles) ?? current)
+    }
+
+    /// All navigation surfaces resolve directional neighbors from the same card rectangles.
+    func spatialNeighbor(from id: Tab.ID, toward direction: TableDirection, among ids: Set<Tab.ID>) -> Tab.ID? {
+        if floatingTabs.contains(where: { ids.contains($0.id) && storedFloatingPlacement(for: $0) == nil }) {
+            placeFloatingTabs()
+        }
+        let tiles = floatingTabs.filter { ids.contains($0.id) }.map {
+            CanvasNavigation.Tile(id: $0.id, frame: tablePlacement(for: $0).frame(in: floatingArea))
+        }
+        return CanvasNavigation.neighbor(from: id, toward: direction.canvasDirection, in: tiles)
+    }
+
+    /// Moves only the camera to reveal a destination; the saved cards stay on the table.
+    func revealSpatialDestination(_ id: Tab.ID) {
+        guard let tab = floatingTabs.first(where: { $0.id == id }) else { return }
+        focusedFloatingTabID = id
+        let frame = tablePlacement(for: tab).frame(in: floatingArea)
+        withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .snappy(duration: 0.18)) {
+            floatingCamera.reveal(frame, in: floatingArea.insetBy(dx: 32, dy: 32))
+        }
     }
 
     func openFocusedFloatingTab() {
@@ -424,7 +472,7 @@ final class TabCanvasManager {
         if !floatingVisibility.isRevealed {
             toggleFloatingTabs()
         }
-        focusedFloatingTabID = tab.id
+        revealSpatialDestination(tab.id)
         if tab.floatingPlacement == nil {
             recentIsOpen = true
         }
@@ -436,11 +484,24 @@ final class TabCanvasManager {
                 windowState.floatingPlacements[tab.id] = placement
             }
         }
-        var occupied = floatingTabs.compactMap { storedFloatingPlacement(for: $0) }
+        var occupied = floatingTabs.filter { storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
         for tab in unplacedFloatingTabs {
             guard let placement = startingPlacement(for: tab, avoiding: occupied) else { break }
             updateFloatingPlacement(placement, for: tab)
             occupied.append(floatingPlacement(for: tab))
+        }
+        for tab in floatingTabs {
+            if var placement = storedFloatingPlacement(for: tab), placement.tableOrigin == nil {
+                placement.tableOrigin = placement.frame(in: floatingArea).origin
+                storeTablePlacement(placement, for: tab)
+            }
+        }
+        var bottom = max(floatingArea.maxY, floatingTabs.compactMap { storedFloatingPlacement(for: $0)?.frame(in: floatingArea).maxY }.max() ?? 0)
+        for tab in unplacedFloatingTabs {
+            var placement = tablePlacement(for: tab)
+            placement.tableOrigin = CGPoint(x: Layout.deskInset, y: bottom + Layout.gap)
+            storeTablePlacement(placement, for: tab)
+            bottom = placement.frame(in: floatingArea).maxY
         }
         for tab in floatingTabs where tab.group == nil && storedFloatingPlacement(for: tab) != nil {
             fileIntoSiteStack(tab)
@@ -471,7 +532,7 @@ final class TabCanvasManager {
     /// Tabs on the desk, in the space's tab order.
     private(set) var tabs: [Tab] = []
 
-    /// Visible slab rectangles, derived from each tab's saved preview rectangle and presentation.
+    /// Card rectangles in shared table coordinates, also used by the floating layer.
     private(set) var tileFrames: [Tab.ID: CGRect] = [:]
 
     /// Zones derived from the space's groups and the current tile positions.
@@ -684,10 +745,18 @@ final class TabCanvasManager {
         board?.scroll(by: delta)
     }
 
-    /// A mouse wheel zooms the desk brought up from a page, about the pointer.
+    /// Zooms the arrangement around the pointer.
     func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint) {
-        guard isPanningFromPage else { return }
+        guard isActive else { return }
         board?.zoom(by: factor, aboutWindowPoint: point)
+    }
+
+    func step(_ direction: TableDirection) {
+        board?.step(direction)
+    }
+
+    func zoom(by factor: CGFloat) {
+        board?.zoom(by: factor)
     }
 
     /// The desk brought up from a page settles into a tile and the page takes over.
@@ -734,6 +803,7 @@ final class TabCanvasManager {
     /// the page revealed as the canvas fades is that tab's.
     func prepareToEnter(_ tab: Tab) {
         focusedTabID = tab.id
+        revealSpatialDestination(tab.id)
         if windowState.activeTab?.id != tab.id {
             tabManager.setActiveTab(tab, in: windowState)
         }
@@ -744,6 +814,7 @@ final class TabCanvasManager {
     /// Opens the canvas for the active space.
     func show() {
         guard !isActive else { return }
+        openingCameraFrame = floatingVisibility.isRevealed ? floatingCamera.unproject(floatingArea) : nil
         dismissFloatingTabs()
 
         focusedTabID = windowState.activeTab?.id
@@ -754,7 +825,8 @@ final class TabCanvasManager {
         isActive = true
         offerHint(.leavingCanvas)
 
-        snapshotTask = Task(name: "Canvas snapshots") {
+        snapshotTask = Task(name: "Canvas snapshots") { [weak self] in
+            guard !Task.isCancelled, let self else { return }
             await loadStoredSnapshots()
             await refreshSnapshots()
             await keepMediaTilesFresh()
@@ -778,7 +850,8 @@ final class TabCanvasManager {
 
     /// Re-reads the space's tabs, places new ones, and rebuilds zones and magnets.
     private func reloadTabs() {
-        tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
+        placeFloatingTabs()
+        tabs = floatingTabs.filter { storedFloatingPlacement(for: $0)?.isDocked != true }
         loadTileFrames()
         // The desk is sized when the canvas opens and only grows while it is open, so
         // no tile is ever left beyond its edge.
@@ -786,7 +859,6 @@ final class TabCanvasManager {
         deskSize = isActive
             ? CGSize(width: max(deskSize.width, fitted.width), height: max(deskSize.height, fitted.height))
             : fitted
-        placeUnplacedTabs()
         rebuildGroups()
     }
 
@@ -828,35 +900,37 @@ final class TabCanvasManager {
     }
 
     private func moveTile(_ tabID: Tab.ID, to frame: CGRect) {
-        tileFrames[tabID] = frame
-        if let tab = tab(for: tabID) {
-            tab.boardFrame = tab.boardIsCompact
-                ? CanvasTileLayout.previewFrame(for: frame, previewSize: tab.boardFrame?.size ?? tileSize)
-                : frame
-        }
-        tabManager.state.scheduleSave()
+        guard let tab = tab(for: tabID) else { return }
+        var placement = tablePlacement(for: tab)
+        placement.tableOrigin = frame.origin
+        storeTablePlacement(placement, for: tab)
+        tileFrames[tabID] = placement.frame(in: floatingArea)
+        deskSize.width = max(deskSize.width, frame.maxX + Layout.deskInset)
+        deskSize.height = max(deskSize.height, frame.maxY + Layout.deskInset)
     }
 
-    /// Changes one slab's presentation around its remembered center.
+    /// Changes presentation in the shared arrangement while keeping the leading corner fixed.
     func togglePreview(_ tabID: Tab.ID, at frame: CGRect) {
         guard let tab = tab(for: tabID) else { return }
-        moveTile(tabID, to: frame)
-        tab.boardIsCompact.toggle()
+        var placement = tablePlacement(for: tab)
+        placement.tableOrigin = frame.origin
+        placement.shape = placement.shape == .live ? .tab : .live
+        storeTablePlacement(placement, for: tab)
         reloadTabs()
-        tabManager.state.scheduleSave()
     }
 
     var selectionIsCompact: Bool {
-        !selectedTabs.isEmpty && selectedTabs.allSatisfy(\.boardIsCompact)
+        !selectedTabs.isEmpty && selectedTabs.allSatisfy { floatingPlacement(for: $0).shape != .live }
     }
 
     func toggleSelectedPreviews() {
-        let makeCompact = !selectionIsCompact
+        let shape: FloatingCardShape = selectionIsCompact ? .live : .tab
         for tab in selectedTabs {
-            tab.boardIsCompact = makeCompact
+            var placement = tablePlacement(for: tab)
+            placement.shape = shape
+            storeTablePlacement(placement, for: tab)
         }
         reloadTabs()
-        tabManager.state.scheduleSave()
     }
 
     /// Settles a dropped tile: it joins the zone it landed in, or leaves the one it left.
@@ -1121,37 +1195,9 @@ final class TabCanvasManager {
     // MARK: - Placement
 
     private func loadTileFrames() {
-        var frames: [Tab.ID: CGRect] = [:]
-        for tab in tabs {
-            if let frame = tab.boardFrame {
-                frames[tab.id] = CanvasTileLayout.displayedFrame(for: frame, isCompact: tab.boardIsCompact)
-            }
-        }
-        tileFrames = frames
-    }
-
-    /// Places tabs that have no tile yet in reading order across the desk's grid, after
-    /// the last placed one. ``fittedDeskSize()`` sizes the desk so the grid has room.
-    private func placeUnplacedTabs() {
-        let unplaced = tabs.filter { tileFrames[$0.id] == nil }
-        guard !unplaced.isEmpty else { return }
-
-        let (columns, rows, step) = gridSlots(on: deskSize)
-        var index = tabs.count - unplaced.count
-        for tab in unplaced {
-            let column = index % columns
-            let row = min(index / columns, rows - 1)
-            let frame = CGRect(
-                x: Layout.deskInset + CGFloat(column) * step.width,
-                y: Layout.deskInset + CGFloat(row) * step.height,
-                width: tileSize.width,
-                height: tileSize.height,
-            )
-            tileFrames[tab.id] = frame
-            tab.boardFrame = frame
-            index += 1
-        }
-        tabManager.state.scheduleSave()
+        tileFrames = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab in
+            storedFloatingPlacement(for: tab).map { (tab.id, $0.frame(in: floatingArea)) }
+        })
     }
 
     private func contentAspectTileSize() -> CGSize {
@@ -1267,10 +1313,12 @@ final class TabCanvasManager {
 
     /// Fills tiles from disk for tabs without an in-memory snapshot.
     private func loadStoredSnapshots() async {
-        for tab in tabs where tab.space?.dataStoreMode != .private && snapshots[tab.id] == nil {
+        for tab in tabs {
             guard !Task.isCancelled else { return }
-            if let data = await CanvasSnapshotStore.load(for: tab.id), let image = NSImage(data: data) {
-                snapshots[tab.id] = image
+            guard tab.space?.dataStoreMode != .private, snapshots[tab.id] == nil else { continue }
+            let id = tab.id
+            if let data = await CanvasSnapshotStore.load(for: id), !Task.isCancelled, let image = NSImage(data: data) {
+                snapshots[id] = image
             }
         }
     }
@@ -1288,9 +1336,12 @@ final class TabCanvasManager {
     private func keepMediaTilesFresh() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: Layout.mediaRefreshInterval)
-            for tab in tabs where pagePool.existingPage(for: tab.activePage)?.isPlayingAudio == true {
+            guard !Task.isCancelled else { return }
+            for tab in tabs {
                 guard !Task.isCancelled else { return }
-                await refreshSnapshot(for: tab)
+                if pagePool.existingPage(for: tab.activePage)?.isPlayingAudio == true {
+                    await refreshSnapshot(for: tab)
+                }
             }
         }
     }
@@ -1299,7 +1350,7 @@ final class TabCanvasManager {
         guard let page = pagePool.existingPage(for: tab.activePage) else { return }
         let bounds = page.contentView.bounds
         guard bounds.width > 0, bounds.height > 0,
-              let captured = try? await page.snapshot(),
+              let captured = try? await page.snapshot(), !Task.isCancelled,
               let image = captured.scaled(toWidth: CGFloat(Layout.snapshotWidth)) else { return }
         snapshots[tab.id] = image
         if tab.space?.dataStoreMode != .private, let tiff = image.tiffRepresentation {

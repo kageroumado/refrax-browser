@@ -203,12 +203,13 @@ final class TabCanvasBoardView: NSView {
             let frame = content.frames[tab.id] ?? CGRect(origin: .zero, size: content.tileSize)
             let tile = tiles[tab.id] ?? makeTile(for: tab)
             tile.tab = tab
+            tile.placement = content.placements[tab.id] ?? .initial(index: 0, shape: tab.boardIsCompact ? .tab : .live)
             tile.snapshot = content.snapshots[tab.id]
             tile.isSelected = content.selectedTabIDs.contains(tab.id)
             // While the simulation moves a tile, it owns the position.
             if !tile.isDragging, !physics.isActive(tab.id) {
                 tile.frame = frame
-                physics.place(tab.id, frame: frame)
+                physics.place(tab.id, frame: frame, awake: false)
             }
         }
         startSimulationIfNeeded()
@@ -289,7 +290,7 @@ final class TabCanvasBoardView: NSView {
 
     func previewFrame(for id: Tab.ID) -> CGRect? {
         guard let tile = tiles[id] else { return nil }
-        return CanvasTileLayout.previewFrame(for: tile.frame, previewSize: tile.tab.boardFrame?.size ?? tile.frame.size)
+        return tile.previewFrame
     }
 
     func revealPreview(of id: Tab.ID, progress: CGFloat) {
@@ -298,7 +299,7 @@ final class TabCanvasBoardView: NSView {
 
     private var navigationTiles: [CanvasNavigation.Tile] {
         orderedTabIDs.compactMap { id in
-            tiles[id].map { CanvasNavigation.Tile(id: id, frame: CanvasPhysics.collisionBox($0.frame)) }
+            tiles[id].map { CanvasNavigation.Tile(id: id, frame: $0.frame) }
         }
     }
 
@@ -316,10 +317,13 @@ final class TabCanvasBoardView: NSView {
         }
         if let id, let tile = tiles[id], tile.isTargeted != showingIndicator {
             tile.isTargeted = showingIndicator
+            if showingIndicator {
+                tilePlane.addSubview(tile)
+            }
         }
     }
 
-    private func moveFocus(_ direction: CanvasNavigation.Direction) {
+    func moveFocus(_ direction: CanvasNavigation.Direction) {
         guard let current = navigationTabID ?? originTabID ?? orderedTabIDs.first else { return }
         let next = CanvasNavigation.neighbor(from: current, toward: direction, in: navigationTiles) ?? current
         target(next)

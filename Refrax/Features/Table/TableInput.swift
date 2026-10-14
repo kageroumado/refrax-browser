@@ -31,6 +31,10 @@ final class TableInput {
         smoothWheelQuiet?.cancel()
     }
 
+    var navigationTabID: UUID? {
+        table.layout.focusedTabID
+    }
+
     /// Whether a slide owns the scroll events now, wherever the pointer is.
     var isSliding: Bool {
         router.isSliding

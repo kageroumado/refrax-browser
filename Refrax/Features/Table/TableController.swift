@@ -255,7 +255,10 @@ final class TableController {
     /// its position and velocity so rapid input stays under the person's control.
     func step(_ direction: TableDirection) {
         guard !isPanning, viewport.width > 0, isShowingTable else { return }
-        let next = layout.movingFocus(direction)
+        guard let current = layout.focusedTabID,
+              let target = canvas.spatialNeighbor(from: current, toward: direction, among: Set(layout.tabIDs)) else { return }
+        canvas.revealSpatialDestination(target)
+        let next = layout.focusing(target)
         guard next.focus != layout.focus else { return }
         if direction == .left || direction == .right {
             arrivalSide = direction.opposite

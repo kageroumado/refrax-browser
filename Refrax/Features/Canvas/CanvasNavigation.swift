@@ -5,6 +5,7 @@ import Foundation
 nonisolated enum CanvasNavigation {
     private enum Constants {
         static let perpendicularWeight: CGFloat = 2
+        static let stackTolerance: CGFloat = 0.5
     }
     enum Direction: UInt16, CaseIterable {
         case left = 123
@@ -41,6 +42,13 @@ nonisolated enum CanvasNavigation {
         guard let origin = tiles.first(where: { $0.id == id })?.frame else { return nil }
         let horizontal = direction == .left || direction == .right
         let sign: CGFloat = direction == .left || direction == .up ? -1 : 1
+        let stack = tiles.filter { hypot($0.frame.midX - origin.midX, $0.frame.midY - origin.midY) <= Constants.stackTolerance }
+        if let index = stack.firstIndex(where: { $0.id == id }) {
+            let next = index + (sign > 0 ? 1 : -1)
+            if stack.indices.contains(next) {
+                return stack[next].id
+            }
+        }
         let candidates = tiles.compactMap { tile -> (id: UUID, inBeam: Bool, score: CGFloat)? in
             guard tile.id != id else { return nil }
             let dx = tile.frame.midX - origin.midX

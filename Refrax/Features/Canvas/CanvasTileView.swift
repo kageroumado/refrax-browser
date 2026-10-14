@@ -9,10 +9,14 @@ final class CanvasTileView: NSView {
         }
     }
 
+    var placement = FloatingTabPlacement.initial(index: 0) {
+        didSet { needsLayout = true }
+    }
+
     var snapshot: NSImage? {
         didSet {
             imageLayer.contents = snapshot
-            placeholderLabel.isHidden = snapshot != nil || tab.boardIsCompact
+            placeholderLabel.isHidden = snapshot != nil || placement.shape != .live
         }
     }
 
@@ -54,7 +58,6 @@ final class CanvasTileView: NSView {
     private enum Constants {
         static let cornerRadius = CanvasTileLayout.slabCornerRadius - CanvasTileLayout.glassInset
         static let glassInset = CanvasTileLayout.glassInset
-        static let headerHeight = CanvasTileLayout.headerHeight
         static let titleHeight: CGFloat = 20
         static let dragThreshold: CGFloat = 3
         /// Only samples this recent count toward the release velocity.
@@ -129,28 +132,36 @@ final class CanvasTileView: NSView {
         edgePath.addRoundedRect(in: edgeLayer.bounds.offsetBy(dx: 0, dy: Constants.thickness), cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius)
         edgeMask.path = edgePath
         glassContent.frame = CGRect(origin: .zero, size: glassFrame.size)
-        imageLayer.frame = CGRect(origin: CGPoint(x: Constants.glassInset, y: Constants.glassInset), size: visualBounds.size)
-        imageLayer.isHidden = tab.boardIsCompact && transitionPreview == 0
+        imageLayer.frame = CGRect(x: Constants.glassInset, y: Constants.glassInset, width: max(0, glassFrame.width - Constants.glassInset * 2), height: max(0, glassFrame.height - FloatingTabPlacement.headerHeight - Constants.glassInset * 2))
+        imageLayer.isHidden = placement.shape != .live && transitionPreview == 0
         imageLayer.opacity = Float(previewVisibility)
         targetLayer.frame = glassFrame.insetBy(dx: -Constants.targetInset, dy: -Constants.targetInset)
         layer?.shadowPath = CGPath(roundedRect: edgeLayer.frame, cornerWidth: glass.cornerRadius, cornerHeight: glass.cornerRadius, transform: nil)
         CATransaction.commit()
         // Above the tile: the superview is flipped, this view is not.
         let compactTitleY = (glassFrame.height - Constants.titleHeight) / 2
-        let previewTitleY = visualBounds.height + Constants.glassInset + (Constants.headerHeight + Constants.glassInset - Constants.titleHeight) / 2
+        let previewTitleY = glassFrame.height - FloatingTabPlacement.headerHeight + (FloatingTabPlacement.headerHeight - Constants.titleHeight) / 2
         let titleY = compactTitleY + (previewTitleY - compactTitleY) * previewVisibility
-        titleLabel.frame = CGRect(x: Constants.glassInset + 28, y: titleY, width: visualBounds.width - 36, height: Constants.titleHeight)
+        titleLabel.frame = CGRect(x: Constants.glassInset + 28, y: titleY, width: max(0, visualBounds.width - 36), height: Constants.titleHeight)
         faviconView.frame = CGRect(x: Constants.glassInset + 5, y: titleY + 2, width: 16, height: 16)
         placeholderLabel.frame = imageLayer.frame.insetBy(dx: 12, dy: 0)
+        placeholderLabel.isHidden = snapshot != nil || placement.shape != .live
+        titleLabel.isHidden = placement.shape == .icon
+        if placement.shape == .icon {
+            faviconView.frame = CGRect(x: (glassFrame.width - 20) / 2, y: (glassFrame.height - 20) / 2, width: 20, height: 20)
+        }
     }
 
     private var glassFrame: CGRect {
-        CGRect(
-            x: visualBounds.minX - Constants.glassInset,
-            y: visualBounds.minY - Constants.glassInset,
-            width: visualBounds.width + Constants.glassInset * 2,
-            height: visualBounds.height + Constants.glassInset * 2 + Constants.headerHeight,
+        visualBounds
+    }
+
+    /// The page rectangle used when entering this card, centered at its table position.
+    var previewFrame: CGRect {
+        let size = placement.shape == .live ? frame.size : FloatingCardShape.live.fitted(
+            CGSize(width: placement.previewWidth ?? .nan, height: placement.previewHeight ?? .nan),
         )
+        return CanvasTileLayout.centeredFrame(size: size, on: frame)
     }
 
     /// The raised glass outline in the containing plane, used to position nearby cues.
@@ -159,11 +170,12 @@ final class CanvasTileView: NSView {
     }
 
     private var previewVisibility: CGFloat {
-        tab.boardIsCompact ? transitionPreview : 1
+        placement.shape != .live ? transitionPreview : 1
     }
 
     private var visualBounds: CGRect {
-        guard tab.boardIsCompact, transitionPreview > 0, let preview = tab.boardFrame else { return bounds }
+        guard placement.shape != .live, transitionPreview > 0 else { return bounds }
+        let preview = previewFrame
         let size = CGSize(
             width: bounds.width + (preview.width - bounds.width) * transitionPreview,
             height: bounds.height + (preview.height - bounds.height) * transitionPreview,
@@ -173,7 +185,7 @@ final class CanvasTileView: NSView {
 
     /// Unfolds a compact slab into its page preview along a camera transition.
     func revealPreview(_ progress: CGFloat) {
-        guard tab.boardIsCompact else { return }
+        guard placement.shape != .live else { return }
         transitionPreview = min(1, max(0, progress))
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -241,8 +253,8 @@ final class CanvasTileView: NSView {
         imageLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
         targetLayer.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.keyboardFocusIndicatorColor.cgColor
         targetLayer.cornerRadius = glass.cornerRadius + Constants.targetInset
-        targetLayer.isHidden = !isTargeted && !(isSelected && tab.boardIsCompact)
-        titleLabel.textColor = isTargeted || tab.boardIsCompact ? .labelColor : .secondaryLabelColor
+        targetLayer.isHidden = !isTargeted && !(isSelected && placement.shape != .live)
+        titleLabel.textColor = isTargeted || placement.shape != .live ? .labelColor : .secondaryLabelColor
         updateAccessibilityState()
     }
 
@@ -261,7 +273,7 @@ final class CanvasTileView: NSView {
 
     override func menu(for _: NSEvent) -> NSMenu? {
         let menu = NSMenu()
-        let item = NSMenuItem(title: tab.boardIsCompact ? "Show Preview" : "Make Compact", action: #selector(togglePreview), keyEquivalent: "")
+        let item = NSMenuItem(title: placement.shape != .live ? "Show Preview" : "Make Compact", action: #selector(togglePreview), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

@@ -44,6 +44,15 @@ nonisolated enum TableDirection: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    var canvasDirection: CanvasNavigation.Direction {
+        switch self {
+        case .left: .left
+        case .right: .right
+        case .up: .up
+        case .down: .down
+        }
+    }
+
     /// The step one discrete wheel notch takes, or `nil` for an event with no movement.
     ///
     /// Deltas follow `NSEvent.scrollingDeltaX/Y`: a positive vertical delta moves to the

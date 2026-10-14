@@ -90,7 +90,7 @@ extension TabCanvasManager {
             if let previous = dockedTab(on: edge), previous.id != tab.id {
                 undock(previous)
             }
-            var placement = storedFloatingPlacement(for: tab) ?? startingPlacement(for: tab, in: bounds)
+            var placement = storedFloatingPlacement(for: tab).map { _ in floatingPlacement(for: tab) } ?? startingPlacement(for: tab, in: bounds)
             placement.dock = edge
             updateFloatingPlacement(placement, for: tab)
             selectedFloatingTabIDs.remove(tab.id)
@@ -105,10 +105,10 @@ extension TabCanvasManager {
 
     /// Returns `tab` from its column to its last floating frame, with a beam to it.
     func undock(_ tab: Tab) {
-        guard let placement = storedFloatingPlacement(for: tab), let edge = placement.dock else { return }
+        guard let edge = storedFloatingPlacement(for: tab)?.dock else { return }
         let bounds = floatingArea
         let column = dockedTab(on: edge)?.id == tab.id ? dockColumns(in: bounds)[edge] : nil
-        var next = placement
+        var next = floatingPlacement(for: tab)
         next.dock = nil
         withAnimation(Self.dockAnimation) {
             updateFloatingPlacement(next, for: tab)
@@ -132,7 +132,8 @@ extension TabCanvasManager {
     /// A docked page that becomes the current page leaves its column to fill the window; a beam
     /// runs from the column to the page card.
     func releaseDockForCurrentPage() {
-        guard let tab = windowState.activeTab, var placement = storedFloatingPlacement(for: tab), let edge = placement.dock else { return }
+        guard let tab = windowState.activeTab, let edge = storedFloatingPlacement(for: tab)?.dock else { return }
+        var placement = floatingPlacement(for: tab)
         let bounds = floatingArea
         let opposite = dockedTab(on: edge.opposite).map { floatingPlacement(for: $0).dockWidthFraction }
         let column = edge == .leading
@@ -224,7 +225,7 @@ extension TabCanvasManager {
 
     /// A floating frame for a page that has none, so undocking has somewhere to return it.
     private func startingPlacement(for tab: Tab, in bounds: CGRect) -> FloatingTabPlacement {
-        let occupied = floatingTabs.filter { $0.id != tab.id }.compactMap { storedFloatingPlacement(for: $0) }
+        let occupied = floatingTabs.filter { $0.id != tab.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
         return FloatingTabPlacement.freeStartingSlot(nearest: nil, avoiding: occupied, in: bounds, shape: .live)
             ?? floatingPlacement(for: tab)
     }

@@ -57,8 +57,6 @@ final class TabCanvasScrollView: NSScrollView {
         /// How much faster than the fingers a trackpad scroll moves the desk; a desk is many
         /// screens wide, so following the fingers exactly crawls. Drags stay under the pointer.
         static let scrollGain: CGFloat = 2
-        /// Zoom per line of mouse wheel.
-        static let wheelZoomStep: CGFloat = 1.1
         /// A little room beyond the table at the widest camera position.
         static let maximumZoomOut: CGFloat = 1.1
         /// A pinch released with the tile under the fingers at least this fraction of its
@@ -157,7 +155,7 @@ final class TabCanvasScrollView: NSScrollView {
     /// the whole desk when there is no tile, with the canvas still transparent.
     ///
     /// The opening reveals all four edges of the table, preserving each tile's position.
-    func beginOpening(focusedTile tile: CGRect?, desk: CGRect) {
+    func beginOpening(focusedTile tile: CGRect?, desk: CGRect, from visible: CGRect? = nil) {
         alphaValue = 0
         whenLaidOut { [weak self] in
             guard let self else { return }
@@ -169,7 +167,7 @@ final class TabCanvasScrollView: NSScrollView {
             }
             let preview = board.originTabID.flatMap { board.previewFrame(for: $0) } ?? tile
             let aligned = alignedRect(for: preview)
-            openingPath = (from: aligned, to: fit)
+            openingPath = (from: visible ?? aligned, to: fit)
             if let scale = pendingOpeningScale {
                 pendingOpeningScale = nil
                 setOpeningScale(scale)
@@ -193,12 +191,9 @@ final class TabCanvasScrollView: NSScrollView {
 
     /// `rect` grown by `factor` about `point`, which stays where it is on screen.
     private static func scale(_ rect: CGRect, by factor: CGFloat, about point: CGPoint) -> CGRect {
-        CGRect(
-            x: point.x - (point.x - rect.minX) * factor,
-            y: point.y - (point.y - rect.minY) * factor,
-            width: rect.width * factor,
-            height: rect.height * factor,
-        )
+        var camera = TabSpatialCamera(origin: rect.origin)
+        camera.zoom(to: 1 / factor, at: CGPoint(x: point.x - rect.minX, y: point.y - rect.minY))
+        return camera.unproject(CGRect(origin: .zero, size: rect.size))
     }
 
     // MARK: - Panning from a Page
@@ -216,7 +211,7 @@ final class TabCanvasScrollView: NSScrollView {
             }
             let preview = board.originTabID.flatMap { board.previewFrame(for: $0) } ?? tile
             let from = alignedRect(for: preview)
-            let compactOrigin = board.originTabID.flatMap { board.tile(withID: $0)?.tab.boardIsCompact } ?? false
+            let compactOrigin = board.originTabID.flatMap { board.tile(withID: $0).map { $0.frame.height < FloatingCardShape.live.minimumSize.height } } ?? false
             let to = Self.scale(from, by: compactOrigin ? Constants.compactPeekZoomOut : Constants.peekZoomOut, about: CGPoint(x: tile.midX, y: tile.midY))
             setVisibleRect(from)
             let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -244,14 +239,12 @@ final class TabCanvasScrollView: NSScrollView {
         }
     }
 
-    /// Zooms by `factor` about a point in window coordinates, the way a mouse wheel does.
-    /// Zooming out stops a little past the view fitting the table; a tile under the
-    /// pointer grown to its page size is entered.
+    /// Zooms by `factor` around the pointer, keeping the arrangement open for navigation.
     func zoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint) {
-        applyZoom(by: factor, aboutWindowPoint: windowPoint, enteringAtPageSize: true)
+        applyZoom(by: factor, aboutWindowPoint: windowPoint)
     }
 
-    private func applyZoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint, enteringAtPageSize: Bool) {
+    private func applyZoom(by factor: CGFloat, aboutWindowPoint windowPoint: CGPoint) {
         whenLaidOut { [weak self] in
             guard let self, !isTransitioning, openingPath == nil, factor > 0, factor.isFinite else { return }
             if flight != nil {
@@ -261,15 +254,12 @@ final class TabCanvasScrollView: NSScrollView {
             let visible = contentView.bounds
             var width = visible.width / factor
             let fit = fittedRect(for: board.bounds, insets: Constants.fitInsets)
-            width = min(width, fit.width * Constants.maximumZoomOut)
+            let clipWidth = contentView.frame.width
+            let minimumWidth = clipWidth / maxMagnification
+            let maximumWidth = min(fit.width * Constants.maximumZoomOut, clipWidth / minMagnification)
+            width = min(max(width, minimumWidth), max(minimumWidth, maximumWidth))
             let zoomed = Self.scale(visible, by: width / visible.width, about: anchor)
             setVisibleRect(canvasClip.keepingCenterNearDesk(zoomed))
-
-            guard enteringAtPageSize, factor > 1, let page = pageRectInClip,
-                  let (tab, frame) = board.tile(near: anchor), CanvasPhysics.collisionBox(frame).contains(anchor), frame.width > 0,
-                  magnification >= page.width / (board.previewFrame(for: tab.id)?.width ?? frame.width)
-            else { return }
-            enter(frame, tab: tab)
         }
     }
 
@@ -572,14 +562,30 @@ final class TabCanvasScrollView: NSScrollView {
 
     // MARK: - Input
 
-    /// User input takes over from an in-flight camera move, except while leaving or opening.
-    /// A trackpad scrolls the desk; a mouse wheel, which has no precise deltas, zooms it.
+    /// The wheel traverses the same neighbors at every scale; Option-wheel zooms at the pointer.
     override func scrollWheel(with event: NSEvent) {
-        if !event.hasPreciseScrollingDeltas {
-            zoom(by: pow(Constants.wheelZoomStep, event.scrollingDeltaY), aboutWindowPoint: event.locationInWindow)
-            return
+        handleWheel(CanvasWheelInput.action(for: event), at: event.locationInWindow)
+    }
+
+    func handleWheel(_ action: CanvasWheelInput.Action, at point: CGPoint) {
+        switch action {
+        case let .step(direction): step(direction)
+        case let .pan(delta): scroll(by: delta)
+        case let .zoom(factor): zoom(by: factor, aboutWindowPoint: point)
+        case .none: break
         }
-        scroll(by: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY))
+    }
+
+    func step(_ direction: TableDirection) {
+        whenLaidOut { [weak self] in
+            guard let self, !isTransitioning, openingPath == nil else { return }
+            board.moveFocus(direction.canvasDirection)
+        }
+    }
+
+    func zoom(by factor: CGFloat) {
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        zoom(by: factor, aboutWindowPoint: convert(center, to: nil))
     }
 
     override func magnify(with event: NSEvent) {
@@ -595,7 +601,7 @@ final class TabCanvasScrollView: NSScrollView {
         }
         if event.phase != .ended, event.phase != .cancelled {
             pinchIntent?.update(by: event.magnification)
-            applyZoom(by: max(0.05, 1 + event.magnification), aboutWindowPoint: event.locationInWindow, enteringAtPageSize: false)
+            applyZoom(by: max(0.05, 1 + event.magnification), aboutWindowPoint: event.locationInWindow)
         }
         if event.phase == .ended {
             enterIfZoomedIn()

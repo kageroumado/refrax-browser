@@ -63,7 +63,7 @@ extension TabCanvasManager {
         if storedFloatingPlacement(for: first) != nil {
             start = floatingFrame(for: first, in: area).origin
         } else {
-            let occupied = floatingTabs.filter { $0.group?.id != group.id }.compactMap { storedFloatingPlacement(for: $0) }
+            let occupied = floatingTabs.filter { $0.group?.id != group.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
             guard let placement = startingPlacement(for: first, avoiding: occupied) else { return }
             start = placement.frame(in: area).origin
         }

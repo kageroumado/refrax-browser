@@ -49,7 +49,7 @@ struct FloatingWorkspaceTests {
     }
 
     @Test
-    func `new pages collect in Recent without moving existing placements`() throws {
+    func `new pages extend the table without moving existing placements`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let window = env.makeActiveWindowState(with: space)
@@ -59,13 +59,13 @@ struct FloatingWorkspaceTests {
             try pages.append(env.tabManager.createTab(url: #require(URL(string: "about:blank#\(index)")), in: space, makeActive: false))
         }
         canvas.toggleFloatingTabs()
-        #expect(canvas.unplacedFloatingTabs.count == 4)
+        #expect(canvas.unplacedFloatingTabs.isEmpty)
         let placed = try #require(pages.first(where: { $0.floatingPlacement != nil }))
         let before = canvas.floatingPlacement(for: placed)
         try env.tabManager.createTab(url: #require(URL(string: "about:blank#new")), in: space, makeActive: false)
         canvas.dismissFloatingTabs()
         canvas.toggleFloatingTabs()
-        #expect(canvas.unplacedFloatingTabs.count == 5)
+        #expect(canvas.unplacedFloatingTabs.isEmpty)
         #expect(canvas.floatingPlacement(for: placed) == before)
     }
 
