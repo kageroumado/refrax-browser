@@ -541,7 +541,7 @@ final class TabCanvasManager {
             board?.zoom(by: factor, aboutWindowPoint: point)
         } else {
             pendingCameraZoom = (factor, point)
-            show()
+            show(fittingEverything: false)
         }
     }
 
@@ -980,7 +980,7 @@ final class TabCanvasManager {
     // MARK: - Showing
 
     /// Opens the canvas for the active space, optionally flying from the current page to every tab.
-    func show(fittingEverything: Bool = false) {
+    func show(fittingEverything: Bool = true) {
         guard !isActive else { return }
         openingCameraFrame = floatingCamera.unproject(floatingArea)
         openingFitRect = nil

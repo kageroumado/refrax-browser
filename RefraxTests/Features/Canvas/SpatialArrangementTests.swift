@@ -6,6 +6,26 @@ import Testing
 @MainActor
 struct SpatialArrangementTests {
     @Test
+    func `opening the desk frames every placed tab`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        for (index, origin) in [CGPoint(x: 80, y: 100), CGPoint(x: 1_200, y: 900)].enumerated() {
+            let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank#\(index)")), in: space, makeActive: false)
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = origin
+            canvas.storeTablePlacement(placement, for: tab)
+        }
+
+        canvas.show()
+        defer { canvas.dismiss(activating: nil) }
+
+        let fit = try #require(canvas.openingFitRect)
+        #expect(canvas.tileFrames.values.allSatisfy(fit.contains))
+    }
+
+    @Test
     func `overview reuses floating frames and preserves overlapping placements on entry`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

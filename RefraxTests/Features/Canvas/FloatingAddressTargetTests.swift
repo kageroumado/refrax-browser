@@ -6,6 +6,35 @@ import Testing
 @MainActor
 struct FloatingAddressTargetTests {
     @Test
+    func `a page opened from the lens stays beside the current page`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let moon = try env.createActiveTab(url: #require(URL(string: "about:blank#moon")), in: space, for: window)
+        let canvas = TabCanvasManager(
+            tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager,
+        )
+        canvas.revealFloatingTabs()
+        let moonPlacement = canvas.tablePlacement(for: moon)
+        let manager = CommandLensManager(
+            tabManager: env.tabManager, historyManager: env.historyManager, windowState: window,
+            browserSettings: env.settings, siteSettingsManager: env.siteSettingsManager,
+            downloadManager: env.downloadManager, extensionManager: env.extensionManager,
+            customSearchEngineManager: env.customSearchEngineManager, localNetworkSource: EmptyLocalNetworkSource(),
+        )
+
+        manager.inputText = "about:blank#sun"
+        manager.commitSelection()
+
+        let sun = try #require(window.activeTab)
+        let ids = Set([moon.id, sun.id])
+        #expect(sun.id != moon.id)
+        #expect(canvas.tablePlacement(for: moon) == moonPlacement)
+        #expect(canvas.spatialNeighbor(from: sun.id, toward: .left, among: ids) == moon.id)
+        #expect(canvas.spatialNeighbor(from: moon.id, toward: .right, among: ids) == sun.id)
+    }
+
+    @Test
     func `editing a preview address navigates the identified page and preserves the main activity`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

@@ -1798,7 +1798,7 @@ final class CommandLensManager {
                 webPage.load(url)
             }
         } else {
-            tabManager.createTab(url: url, makeActive: makeActive, loadImmediately: true)
+            createNearbyTab(url: url, makeActive: makeActive)
         }
         closeCurrentLens()
     }
@@ -1809,11 +1809,18 @@ final class CommandLensManager {
                 webPage.load(firstURL)
             }
             for url in urls.dropFirst() {
-                tabManager.createTab(url: url, makeActive: false, loadImmediately: true)
+                createNearbyTab(url: url, makeActive: false)
             }
         } else {
-            for (index, url) in urls.enumerated() {
-                tabManager.createTab(url: url, makeActive: makeActive && index == 0, loadImmediately: true)
+            if let first = urls.first, makeActive {
+                createNearbyTab(url: first, makeActive: true)
+                for url in urls.dropFirst().reversed() {
+                    createNearbyTab(url: url, makeActive: false)
+                }
+            } else {
+                for url in urls.reversed() {
+                    createNearbyTab(url: url, makeActive: false)
+                }
             }
         }
         closeCurrentLens()
@@ -1840,9 +1847,19 @@ final class CommandLensManager {
                 webPage.load(url)
             }
         } else {
-            tabManager.createTab(url: url, makeActive: makeActive, loadImmediately: true)
+            createNearbyTab(url: url, makeActive: makeActive)
         }
         closeCurrentLens()
+    }
+
+    private func createNearbyTab(url: URL, makeActive: Bool) {
+        tabManager.createTab(
+            url: url,
+            groupID: windowState.activeTab?.groupID,
+            makeActive: makeActive,
+            loadImmediately: true,
+            insertionStrategy: .afterActive,
+        )
     }
 
     private func closeCurrentLens() {
