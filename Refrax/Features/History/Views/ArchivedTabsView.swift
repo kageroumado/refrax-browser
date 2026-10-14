@@ -17,8 +17,7 @@ struct ArchivedTabsView: View {
     /// Archived tabs, most recently archived first, narrowed by the search field.
     private var archivedTabs: [Tab] {
         _ = tabManager.state.tabListVersion
-        return tabManager.state.spaces
-            .flatMap { $0.tabs.filter(\.isArchived) }
+        return tabManager.browsableArchivedTabs
             .filter { searchText.isEmpty || matches($0) }
             .sorted { ($0.archivedAt ?? .distantPast) > ($1.archivedAt ?? .distantPast) }
     }
@@ -50,11 +49,11 @@ struct ArchivedTabsView: View {
         .alert("Empty Archive", isPresented: $showsEmptyArchiveAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Empty Archive", role: .destructive) {
-                archiveManager.clearAllArchives(context: tabManager.state.modelContext)
+                delete(tabManager.browsableArchivedTabs)
                 selection.removeAll()
             }
         } message: {
-            Text("Archived tabs in every space are deleted. This cannot be undone.")
+            Text("The archived tabs listed here are deleted. Locked and private spaces keep theirs. This cannot be undone.")
         }
     }
 

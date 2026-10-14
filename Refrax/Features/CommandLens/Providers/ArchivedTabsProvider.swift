@@ -2,7 +2,7 @@ import Foundation
 
 /// Provides archived tabs to restore, for input that starts with "archived".
 ///
-/// "archived" lists the most recently archived tabs in every space; "archived:" or "archived "
+/// "archived" lists the most recently archived tabs in every open, non-private space; "archived:" or "archived "
 /// followed by text narrows them to tabs whose title, name, or address contains it. Choosing
 /// one restores it to its space and opens it.
 struct ArchivedTabsProvider: CommandLensSuggestionProvider {
@@ -26,8 +26,7 @@ struct ArchivedTabsProvider: CommandLensSuggestionProvider {
 
     func suggestions(for context: SuggestionContext) async -> [CommandLensSuggestion] {
         guard let query = Self.query(in: context.input) else { return [] }
-        let archived = tabManager.state.spaces
-            .flatMap { $0.tabs.filter(\.isArchived) }
+        let archived = tabManager.browsableArchivedTabs
             .filter { query.isEmpty || matches($0, query: query) }
             .sorted { ($0.archivedAt ?? .distantPast) > ($1.archivedAt ?? .distantPast) }
 
@@ -59,5 +58,16 @@ struct ArchivedTabsProvider: CommandLensSuggestionProvider {
         tab.activePage.title.localizedCaseInsensitiveContains(query)
             || tab.displayURL.localizedCaseInsensitiveContains(query)
             || (tab.customName?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+}
+
+extension TabManager {
+    /// Archived tabs that may be listed outside their space: never a private space's, and never
+    /// a locked space's until it is unlocked.
+    var browsableArchivedTabs: [Tab] {
+        let lock = state.spaceLockManager
+        return state.spaces
+            .filter { $0.dataStoreMode != .private && !lock.requiresAuth(for: $0) }
+            .flatMap { $0.tabs.filter(\.isArchived) }
     }
 }
