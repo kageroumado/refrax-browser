@@ -13,7 +13,9 @@ extension TabManager {
     /// - Parameters:
     ///   - tab: Tab to activate.
     ///   - windowState: The window state to update.
-    func setActiveTab(_ tab: Tab, in windowState: WindowState, preservingVisit: Bool = false) {
+    ///   - displacingPrevious: Hands the page left behind to the floating layer. The table
+    ///     passes `false` when it moves between slabs, since the page stays beside the new one.
+    func setActiveTab(_ tab: Tab, in windowState: WindowState, preservingVisit: Bool = false, displacingPrevious: Bool = true) {
         // Archived tabs are non-activatable - they must be restored first
         guard !tab.isArchived else {
             Logger.warning("Attempted to activate archived tab: \(tab.id)", category: Logger.tabs)
@@ -52,7 +54,7 @@ extension TabManager {
 
         // A page the person was on, pushed out by another, is handed to the floating layer.
         // Look visits, returns, and a page changing identity leave the layer quiet.
-        if !preservingVisit, !windowState.pageVisit.isTransformingIdentity,
+        if displacingPrevious, !preservingVisit, !windowState.pageVisit.isTransformingIdentity,
            let previousTabID, previousTabID != tab.id, let previous = state.tab(for: previousTabID) {
             windowState.tabDisplacedHandler?(previous)
         }

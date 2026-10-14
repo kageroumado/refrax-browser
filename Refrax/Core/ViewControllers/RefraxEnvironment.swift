@@ -55,6 +55,7 @@ struct RefraxEnvironment {
     let appUpdateManager: AppUpdateManager
     let floatingTourManager: FloatingTourManager
     let engineRegistry: EngineRegistry
+    let tableController: TableController
 }
 
 /// A view modifier that injects all Refrax environment dependencies.
@@ -109,6 +110,7 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.appUpdateManager)
             .environment(environment.floatingTourManager)
             .environment(environment.engineRegistry)
+            .environment(environment.tableController)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)
     }

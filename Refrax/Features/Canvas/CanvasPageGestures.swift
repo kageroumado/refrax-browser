@@ -13,6 +13,8 @@ import AppKit
 ///   pinch turns out to be its own.
 /// - **⌃** held alone reveals floating tabs; releasing it leaves pinned previews visible.
 ///   Other input within the delay keeps Control available for clicks and shortcuts.
+/// - **⌃ + scroll** over the page slides the table (``TableInput``): the first scroll event
+///   cancels the peek, and the page never sees the gesture.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and a mouse wheel zooms about the pointer. One more tap of
@@ -64,6 +66,8 @@ final class CanvasPageGestures {
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
+    /// Slides the table with ⌃ + scroll; consulted before any other scroll handling.
+    var tableInput: TableInput?
     /// When ⌃ last went down with no other input since, for telling taps from holds.
     private var controlDownAt: Date?
     /// When the last tap of ⌃ ended, for telling a double tap.
@@ -108,6 +112,11 @@ final class CanvasPageGestures {
         guard event.window === window else { return event }
         if !canvas.isPanningFromPage {
             isMoveMode = false
+        }
+        if event.type == .scrollWheel, !canvas.isPanningFromPage, let tableInput,
+           tableInput.route(event, canStart: !canvas.isActive && !floatingContains(event.locationInWindow)) {
+            interruptControl()
+            return nil
         }
         if [
             .leftMouseDown,
@@ -245,6 +254,7 @@ final class CanvasPageGestures {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let revealKey = FloatingRevealKey.current
         let now = Date()
+        tableInput?.controlChanged(isDown: modifiers == .control)
         Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
 
         if canvas.floatingVisibility.isHeld, modifiers.contains(revealKey.flag), floatingHasKeyboardFocus() {

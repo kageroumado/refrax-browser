@@ -42,6 +42,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     let commandLensManager: CommandLensManager
     let tabSwitcherManager: TabSwitcherManager
     let tabCanvasManager: TabCanvasManager
+    /// The window's view onto its space's table of slabs.
+    let tableController: TableController
 
     private(set) var environment: RefraxEnvironment!
 
@@ -115,6 +117,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             pagePool: appDelegate.pagePool,
             groupManager: appDelegate.groupManager,
         )
+        self.tableController = TableController(
+            windowState: windowState,
+            tabManager: appDelegate.tabManager,
+            canvas: tabCanvasManager,
+            pagePool: appDelegate.pagePool,
+        )
         let floatingTourManager = FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: appDelegate.tabManager)
         self.commandLensManager = CommandLensManager(
             tabManager: appDelegate.tabManager,
@@ -180,7 +188,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             appUpdateManager: appDelegate.appUpdateManager,
             floatingTourManager: floatingTourManager,
             engineRegistry: appDelegate.engineRegistry,
+            tableController: tableController,
         )
+        windowState.tableController = tableController
 
         setupRootView(window: window)
 
@@ -202,6 +212,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupWindowSharingObserver()
         hideStandardWindowButtons()
         commandLensManager.setup()
+        tableController.start()
     }
 
     @available(*, unavailable)
@@ -332,6 +343,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             else { return false }
             return pageFrame.contains(point)
         }
+        canvasPageGestures?.tableInput = TableInput(table: tableController)
     }
 
     private func setupOverlayView(contentView: NSView) {
@@ -479,6 +491,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         NotificationCenter.default.removeObserver(self)
         removeUndoRedoMonitor()
         cancelAllObservationTasks()
+        tableController.stop()
     }
 
     /// Cancels all observation tasks when the window closes.

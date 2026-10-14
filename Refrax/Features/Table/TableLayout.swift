@@ -358,6 +358,37 @@ nonisolated struct TableLayout: Codable, Equatable, Sendable {
         updatingFocusedSlab { $0.fills.toggle() }
     }
 
+    /// Gives `tabID`'s slab the preset `width`, ending a fill. Its row keeps its remembered
+    /// slab whole; unchanged when the tab is not on the table.
+    func settingWidth(_ width: TableWidth, of tabID: UUID) -> TableLayout {
+        guard let position = position(of: tabID) else { return self }
+        var layout = self
+        layout.rows[position.row].slabs[position.slab].width = width
+        layout.rows[position.row].slabs[position.slab].fills = false
+        layout.rows[position.row] = layout.rows[position.row].normalized()
+        return layout
+    }
+
+    /// Moves `tabID`'s slab into a new row just below its own, where it becomes current.
+    /// Unchanged when the tab is alone in its row or not on the table.
+    func movingToNewRow(_ tabID: UUID) -> TableLayout {
+        guard let position = position(of: tabID), rows[position.row].slabs.count > 1 else { return self }
+        var layout = self
+        let slab = rows[position.row].slabs[position.slab]
+        layout.rows[position.row].removeSlab(at: position.slab)
+        layout.rows.insert(Row(slabs: [slab]), at: position.row + 1)
+        layout.focusedRow = position.row + 1
+        return layout
+    }
+
+    /// Makes row `index`'s remembered slab current; unchanged for a row not on the table.
+    func focusingRow(_ index: Int) -> TableLayout {
+        guard rows.indices.contains(index) else { return self }
+        var layout = self
+        layout.focusedRow = index
+        return layout
+    }
+
     /// Matches the table to the space's tabs, favorites excluded by the caller: tabs no
     /// longer present leave, and new ones append to the current row in the given order
     /// without taking focus.

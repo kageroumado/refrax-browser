@@ -6,6 +6,7 @@ struct MainContentView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabManager
+    @Environment(TableController.self) private var table
 
     @State private var showClipboardToast = false
     @State private var size: CGSize = .zero
@@ -44,10 +45,15 @@ struct MainContentView: View {
         .tabCloseConfirmation(tabManager: tabManager, windowState: windowState)
     }
 
+    /// The space's tabs are slabs on the table; a favorite shows on its own.
     @ViewBuilder
     private var contentRouter: some View {
         if let activeTab = windowState.activeTab {
-            UnifiedContentView(tab: activeTab)
+            if table.holds(activeTab) {
+                TableView()
+            } else {
+                UnifiedContentView(tab: activeTab)
+            }
         } else {
             FloatingStartPage()
         }
