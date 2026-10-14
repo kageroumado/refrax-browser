@@ -44,7 +44,7 @@ struct FloatingTabGroup: View {
         Color.resolveStoredColor(group.colorString)
     }
     private var isDropTarget: Bool {
-        canvas.floatingDropGroupID == item.id
+        canvas.floatingDropGroupID == item.id && canvas.floatingDropBridge == nil
     }
     private var isRenaming: Bool {
         canvas.floatingRenamingGroupID == item.id

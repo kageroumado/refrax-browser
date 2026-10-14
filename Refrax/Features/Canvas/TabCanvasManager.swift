@@ -171,6 +171,7 @@ final class TabCanvasManager {
     /// The visible seam between neighboring cards while a drag is ready to connect them.
     var floatingDropBridge: CGRect?
     var floatingDropMovingCardID: Tab.ID?
+    var floatingDropAttachedCardID: Tab.ID?
     /// A group whose header shows its name field, as it does right after Group.
     var floatingRenamingGroupID: UUID?
     /// Group header widths as the layer drew them, for hit-testing headers.
@@ -440,6 +441,7 @@ final class TabCanvasManager {
         floatingDropGroupID = nil
         floatingDropBridge = nil
         floatingDropMovingCardID = nil
+        floatingDropAttachedCardID = nil
         floatingRenamingGroupID = nil
         retainedInputTabID = nil
         floatingVisibility.dismiss()
@@ -1331,10 +1333,14 @@ final class TabCanvasManager {
     private static let groupColors: [GroupColor] = [.pelorus, .coral, .emerald, .violet, .flamingo, .turquoise, .orchid, .avocado]
     private static var nextColorIndex = 0
 
+    static var pendingGroupColor: String {
+        groupColors[nextColorIndex % groupColors.count].rawValue
+    }
+
     static func nextGroupColor() -> String {
-        let color = groupColors[nextColorIndex % groupColors.count]
+        let color = pendingGroupColor
         nextColorIndex += 1
-        return color.rawValue
+        return color
     }
 
     // MARK: - Lookup

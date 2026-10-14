@@ -185,6 +185,16 @@ extension TabCanvasManager {
         arrangeFloatingGroupMembers(group, around: anchor)
     }
 
+    /// Connects a card placed beside a group member, retaining every member's table position.
+    func attachToFloatingGroup(_ tabs: [Tab], group: TabGroup) {
+        let joining = tabs.filter { $0.group?.id != group.id && !$0.isFavorite && $0.space?.id == group.space?.id }
+        guard !joining.isEmpty else { return }
+        for tab in joining {
+            groupManager.moveTabToGroup(tab, group: group, in: group.space)
+        }
+        dissolveLoneSiteStacks()
+    }
+
     /// Every tab in `group` and its nested groups.
     func allTabs(in group: TabGroup) -> [Tab] {
         let nested = group.space?.groups.filter { $0.parentGroupID == group.id } ?? []
@@ -203,16 +213,20 @@ extension TabCanvasManager {
     /// Marks the group under `point` as the target for `tabs` being dragged.
     func updateFloatingDropTarget(at point: CGPoint, dragging tabs: [Tab], in area: CGRect) {
         let ownGroups = Set(tabs.compactMap(\.group?.id))
-        let target = FloatingGroupLayout.dropTarget(at: point, among: floatingDropTargets(in: area).filter { !ownGroups.contains($0.id) })
-        if floatingDropGroupID != target {
-            floatingDropGroupID = target
+        let directGroup = FloatingGroupLayout.dropTarget(at: point, among: floatingDropTargets(in: area).filter { !ownGroups.contains($0.id) })
+        let card = directGroup == nil ? floatingCardDropTarget(at: point, dragging: tabs, in: area) : nil
+        let attachment = directGroup == nil && card == nil ? floatingAdjacentCardDropTarget(dragging: tabs, in: area) : nil
+        let attachedCard = attachment.flatMap { candidate in floatingTabs.first { $0.id == candidate.id } }
+        let group = directGroup ?? attachedCard?.group?.id
+        if floatingDropGroupID != group {
+            floatingDropGroupID = group
         }
-        let card = target == nil ? floatingCardDropTarget(at: point, dragging: tabs, in: area) : nil
-        let attachment = target == nil && card == nil ? floatingAdjacentCardDropTarget(dragging: tabs, in: area) : nil
         floatingDropBridge = attachment?.bridge
         floatingDropMovingCardID = attachment == nil ? nil : tabs.first?.id
-        if floatingDropCardID != (card ?? attachment?.id) {
-            floatingDropCardID = card ?? attachment?.id
+        floatingDropAttachedCardID = attachment?.id
+        let looseCard = card ?? (attachedCard?.group == nil ? attachment?.id : nil)
+        if floatingDropCardID != looseCard {
+            floatingDropCardID = looseCard
         }
     }
 
@@ -223,6 +237,7 @@ extension TabCanvasManager {
             floatingDropCardID = nil
             floatingDropBridge = nil
             floatingDropMovingCardID = nil
+            floatingDropAttachedCardID = nil
         }
         if let cardID = floatingDropCardID, let card = floatingTabs.first(where: { $0.id == cardID }) {
             if floatingDropBridge != nil {
@@ -234,7 +249,11 @@ extension TabCanvasManager {
         }
         guard let targetID = floatingDropGroupID,
               let group = windowState.activeSpace?.groups.first(where: { $0.id == targetID }) else { return }
-        addToFloatingGroup(tabs.filter { $0.space?.id == group.space?.id }, group: group)
+        if floatingDropBridge != nil {
+            attachToFloatingGroup(tabs, group: group)
+        } else {
+            addToFloatingGroup(tabs.filter { $0.space?.id == group.space?.id }, group: group)
+        }
     }
 
     /// Joins the group or forms one with the loose card under `point`, for a card dropped from Recent.
@@ -288,6 +307,7 @@ extension TabCanvasManager {
             floatingDropGroupID = nil
             floatingDropBridge = nil
             floatingDropMovingCardID = nil
+            floatingDropAttachedCardID = nil
             return
         }
         let moving = cardsMoved(with: tab)

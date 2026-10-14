@@ -88,6 +88,22 @@ struct FloatingGroupWithTests {
         #expect(canvas.spatialNeighbor(from: second.id, toward: .left, among: [first.id, second.id]) == first.id)
         #expect(canvas.floatingRenamingGroupID == nil)
         #expect(canvas.floatingDropCardID == nil)
+
+        let third = try env.tabManager.createTab(url: #require(URL(string: "about:blank#third")), in: space, makeActive: false)
+        var thirdPlacement = canvas.floatingPlacement(for: third)
+        thirdPlacement.move(to: CGPoint(x: secondFrame.maxX + 12, y: 200), in: area)
+        canvas.updateFloatingPlacement(thirdPlacement, for: third)
+        let thirdFrame = canvas.floatingFrame(for: third, in: area)
+        canvas.updateFloatingDropTarget(at: CGPoint(x: thirdFrame.midX, y: thirdFrame.midY), dragging: [third], in: area)
+        #expect(canvas.floatingDropGroupID == first.group?.id)
+        #expect(canvas.floatingDropAttachedCardID == second.id)
+        canvas.dropIntoTarget([third])
+
+        #expect(third.group?.id == first.group?.id)
+        #expect(canvas.floatingFrame(for: first, in: area) == firstFrame)
+        #expect(canvas.floatingFrame(for: second, in: area) == secondFrame)
+        #expect(canvas.floatingFrame(for: third, in: area) == thirdFrame)
+        #expect(canvas.spatialNeighbor(from: second.id, toward: .right, among: [first.id, second.id, third.id]) == third.id)
     }
 
     @Test

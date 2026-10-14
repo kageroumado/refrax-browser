@@ -50,9 +50,15 @@ extension TabCanvasManager {
 
     func floatingAdjacentCardDropTarget(dragging tabs: [Tab], in area: CGRect) -> (id: Tab.ID, bridge: CGRect)? {
         guard tabs.count == 1, let moving = tabs.first else { return nil }
+        let movingGroupID = moving.group?.id
+        let cards = visibleFloatingTabs.filter {
+            $0.id != moving.id && !$0.isFavorite && $0.id != windowState.activeTabID
+                && $0.space?.id == windowState.activeSpaceID
+                && (movingGroupID == nil || $0.group?.id != movingGroupID)
+        }
         return FloatingGroupLayout.adjacentCardDropTarget(
             beside: floatingFrame(for: moving, in: area),
-            among: looseFloatingDropCards(excluding: tabs, in: area),
+            among: cards.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) },
         )
     }
 
