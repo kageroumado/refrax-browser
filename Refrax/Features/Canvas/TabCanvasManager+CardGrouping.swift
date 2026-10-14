@@ -1,0 +1,50 @@
+import CoreGraphics
+import Foundation
+
+nonisolated extension FloatingGroupLayout {
+    /// The loose card a card dropped at `point` forms a group with: the topmost of `cards`,
+    /// listed bottom to top, whose frame holds the point.
+    static func cardDropTarget<ID>(at point: CGPoint, among cards: [(id: ID, frame: CGRect)]) -> ID? {
+        cards.last { $0.frame.contains(point) }?.id
+    }
+}
+
+// MARK: - Grouping a Card onto a Card
+
+extension TabCanvasManager {
+    /// The loose card under `point` that `tabs` would group with: a card of this space, in no
+    /// group, that is not one of `tabs`, while at least one of `tabs` can join a group.
+    func floatingCardDropTarget(at point: CGPoint, dragging tabs: [Tab], in area: CGRect) -> Tab.ID? {
+        let moving = Set(tabs.map(\.id))
+        guard tabs.contains(where: { !$0.isLiveFavorite }) else { return nil }
+        let cards = visibleFloatingTabs.filter {
+            !moving.contains($0.id) && $0.group == nil && !$0.isLiveFavorite
+                && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID
+        }
+        return FloatingGroupLayout.cardDropTarget(at: point, among: cards.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) })
+    }
+
+    /// Forms a new group of `card` and `tabs`, sets the dropped cards beside `card`, and opens
+    /// the group's name for editing.
+    func groupFloatingCard(_ card: Tab, with tabs: [Tab]) {
+        let joining = tabs.filter { $0.id != card.id && !$0.isLiveFavorite && $0.space?.id == card.space?.id }
+        guard !joining.isEmpty,
+              let group = try? groupManager.createGroup(in: card.space, name: "Group", color: Self.nextGroupColor()) else { return }
+        for tab in [card] + joining {
+            groupManager.moveTabToGroup(tab, group: group, in: card.space)
+        }
+        let area = floatingArea
+        let target = floatingFrame(for: card, in: area)
+        let frames = joining.map { floatingFrame(for: $0, in: area) }
+        let size = frames.reduce(target.size) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) }
+        let origins = FloatingGroupLayout.fanOrigins(count: joining.count + 1, size: size, from: target.origin, in: area)
+        for (tab, origin) in zip(joining, origins.dropFirst()) {
+            var placement = floatingPlacement(for: tab)
+            placement.move(to: origin, in: area)
+            updateFloatingPlacement(placement, for: tab)
+        }
+        selectedFloatingTabIDs.subtract(joining.map(\.id))
+        dissolveLoneSiteStacks()
+        beginRenaming(group)
+    }
+}

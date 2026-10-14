@@ -36,6 +36,11 @@ struct ControlIslandRailMenu: View {
         Button(ControlIslandRailMenuItem.customizeControls.title, systemImage: ControlIslandRailMenuItem.customizeControls.symbol) {
             windowState.controlIsland.showsCustomization = true
         }
+        Toggle(ControlIslandPlacement.edgeHidingTitle, isOn: Binding(
+            get: { windowState.controlIsland.configuration.hidesAtEdge },
+            set: { windowState.controlIsland.setHidesAtEdge($0) },
+        ))
+        .help(ControlIslandPlacement.edgeHidingHelp)
         Button(ControlIslandRailMenuItem.resetPosition.title, systemImage: ControlIslandRailMenuItem.resetPosition.symbol) {
             windowState.controlIsland.resetPlacement()
         }

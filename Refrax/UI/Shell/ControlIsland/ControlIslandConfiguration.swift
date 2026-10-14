@@ -9,6 +9,7 @@ final class ControlIslandConfiguration {
     static let avoidanceKey = "controlIsland.avoidsPageControls"
     static let restKey = "controlIsland.restsWhenIdle"
     static let tintKey = "controlIsland.tintsWithSpaceColor"
+    static let edgeHidingKey = "controlIsland.hidesAtEdge"
 
     private(set) var items: [ControlIslandItemPreference]
     private(set) var avoidsPageControls: Bool
@@ -16,6 +17,9 @@ final class ControlIslandConfiguration {
     private(set) var restsWhenIdle: Bool
     /// The glass carries the active space's color, as the sidebar does.
     private(set) var tintsWithSpaceColor: Bool
+    /// Snapped to the window's left or right edge, the rail slides past it and returns when the
+    /// pointer reaches that edge, as the Dock hides.
+    private(set) var hidesAtEdge: Bool
     @ObservationIgnored private let defaults: UserDefaults?
 
     static var defaultItems: [ControlIslandItemPreference] {
@@ -27,6 +31,7 @@ final class ControlIslandConfiguration {
         self.avoidsPageControls = defaults?.object(forKey: Self.avoidanceKey) as? Bool ?? true
         self.restsWhenIdle = defaults?.object(forKey: Self.restKey) as? Bool ?? true
         self.tintsWithSpaceColor = defaults?.object(forKey: Self.tintKey) as? Bool ?? true
+        self.hidesAtEdge = defaults?.object(forKey: Self.edgeHidingKey) as? Bool ?? false
         let records = defaults?.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
         let known = records.compactMap { record in
@@ -48,6 +53,7 @@ final class ControlIslandConfiguration {
         avoidsPageControls: Bool = true,
         restsWhenIdle: Bool = true,
         tintsWithSpaceColor: Bool = true,
+        hidesAtEdge: Bool = false,
     ) {
         self.items = Self.normalized(items)
         self.avoidsPageControls = avoidsPageControls
@@ -56,7 +62,13 @@ final class ControlIslandConfiguration {
         defaults?.set(avoidsPageControls, forKey: Self.avoidanceKey)
         defaults?.set(restsWhenIdle, forKey: Self.restKey)
         defaults?.set(tintsWithSpaceColor, forKey: Self.tintKey)
+        setHidesAtEdge(hidesAtEdge)
         saveItems()
+    }
+
+    func setHidesAtEdge(_ hides: Bool) {
+        hidesAtEdge = hides
+        defaults?.set(hides, forKey: Self.edgeHidingKey)
     }
 
     private func saveItems() {

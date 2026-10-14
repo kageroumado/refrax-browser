@@ -151,8 +151,14 @@ final class TabCanvasManager {
     /// The card whose title is being edited; it stays on screen until the edit ends.
     var renamingTabID: Tab.ID?
     var selectedFloatingTabIDs: Set<Tab.ID> = []
-    /// The group a dragged card joins if it is let go now; its outline brightens.
-    var floatingDropGroupID: UUID?
+    /// The group a dragged card joins if it is let go now; its outline brightens. Setting it
+    /// clears ``floatingDropCardID``: a drag has one target at a time.
+    var floatingDropGroupID: UUID? {
+        didSet { floatingDropCardID = nil }
+    }
+    /// The loose card a dragged card forms a new group with if it is let go now; its outline
+    /// brightens and says Group.
+    var floatingDropCardID: Tab.ID?
     /// A group whose header shows its name field, as it does right after Group.
     var floatingRenamingGroupID: UUID?
     /// Group header widths as the layer drew them, for hit-testing headers.

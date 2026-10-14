@@ -35,6 +35,17 @@ final class ControlIslandState {
     /// The end of the latest ``holdAwake(for:now:)``.
     private var awakeUntil = Date.distantPast
     @ObservationIgnored private var awakeHoldTask: Task<Void, Never>?
+    /// Away past the window edge the rail is snapped to; meaningful while ``hiddenEdge`` is set.
+    private var isTuckedAway: Bool
+    /// What brought a hidden rail back; Escape sends a rail the pointer brought back away again.
+    private(set) var edgeReveal: EdgeReveal?
+    /// The strip along the window edge that brings a hidden rail back, in window content coordinates.
+    @ObservationIgnored var revealStrip: CGRect = .zero
+    /// Something beyond the rail needs it on screen: the tour, the lens, or a drag toward it.
+    @ObservationIgnored private(set) var isNeededOnScreen = false
+    @ObservationIgnored private var lastNearPointer = Date()
+    @ObservationIgnored private var pointerIsNear = false
+    @ObservationIgnored private var edgeHideTask: Task<Void, Never>?
 
     @ObservationIgnored private let defaults: UserDefaults?
     private static let placementKey = "controlIsland.placement"
@@ -50,8 +61,20 @@ final class ControlIslandState {
     init(defaults: UserDefaults? = .standard, configuration: ControlIslandConfiguration = .shared) {
         self.defaults = defaults
         self.configuration = configuration
-        self.placement = defaults?.data(forKey: Self.placementKey)
+        let placement = defaults?.data(forKey: Self.placementKey)
             .flatMap { try? JSONDecoder().decode(ControlIslandPlacement.self, from: $0) } ?? .init()
+        self.placement = placement
+        self.isTuckedAway = configuration.hidesAtEdge && placement.horizontalEdge != nil
+    }
+
+    /// The window edge the rail hides past: the side it is snapped to, while Hide at the Edge is on.
+    var hiddenEdge: ControlIslandPlacement.Edge? {
+        configuration.hidesAtEdge ? placement.horizontalEdge : nil
+    }
+
+    /// The rail is away past its window edge and takes no pointer.
+    var isHiddenAtEdge: Bool {
+        isTuckedAway && hiddenEdge != nil
     }
 
     /// Work in progress on the controls, which keeps the glass present and the pointer grace alive.
@@ -102,20 +125,108 @@ final class ControlIslandState {
     }
 
     func focus() {
+        revealAtEdge(.request)
         hasKeyboardFocus = true
         focusRequest &+= 1
     }
 
     func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
         lastPointerMovement = now
+        let reachedEdge = isHiddenAtEdge && revealStrip.contains(point)
+        if reachedEdge {
+            revealAtEdge(.pointer, now: now)
+        }
         let phase = hoverPath.phase(at: point, regions: hitRegions, now: now)
         let reach = isQuiet ? Self.nearDistance : Self.farDistance
-        let near = phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
+        let near = reachedEdge || phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
         setQuiet(!near)
+        pointerIsNear = near
         if near {
+            lastNearPointer = now
             watchForStillness()
+        } else {
+            scheduleEdgeHide()
         }
         return phase
+    }
+
+    // MARK: Hiding at the Edge
+
+    /// What brought a hidden rail back on screen.
+    enum EdgeReveal {
+        /// The pointer reached the window edge.
+        case pointer
+        /// A shortcut, the lens, the tour, or a drag that needs the rail.
+        case request
+    }
+
+    func setHidesAtEdge(_ hides: Bool, now: Date = Date()) {
+        configuration.setHidesAtEdge(hides)
+        isTuckedAway = false
+        edgeReveal = nil
+        lastNearPointer = now
+        scheduleEdgeHide()
+    }
+
+    /// Brings a hidden rail back and wakes it; it hides again once the pointer has stayed away.
+    func revealAtEdge(_ reveal: EdgeReveal, now: Date = Date()) {
+        lastNearPointer = now
+        guard hiddenEdge != nil else { return }
+        if isTuckedAway {
+            isTuckedAway = false
+            edgeReveal = reveal
+        }
+        wake()
+        scheduleEdgeHide()
+    }
+
+    /// Sends the rail past its window edge, closing the page card and recent list first.
+    func hideAtEdge() {
+        guard hiddenEdge != nil, !isTuckedAway else { return }
+        edgeHideTask?.cancel()
+        edgeHideTask = nil
+        dismiss(returnsFocusToPage: false)
+        isTuckedAway = true
+        edgeReveal = nil
+    }
+
+    /// Escape on a rail the pointer brought back: it hides at once. Returns whether it hid.
+    @discardableResult
+    func hideAfterPointerReveal() -> Bool {
+        guard edgeReveal == .pointer, !isPresenting, !showsCustomization, !isDragging, !isNeededOnScreen else { return false }
+        hideAtEdge()
+        return true
+    }
+
+    /// Keeps the rail on screen while the tour, the lens, or a drag needs it.
+    func setNeededOnScreen(_ needed: Bool) {
+        isNeededOnScreen = needed
+        if needed {
+            revealAtEdge(.request)
+        }
+    }
+
+    /// Hides the rail once the pointer has been past the wake distance for `stillDelay`, and
+    /// nothing on the rail or beyond it needs it.
+    private func scheduleEdgeHide() {
+        guard edgeHideTask == nil, hiddenEdge != nil, !isTuckedAway else { return }
+        edgeHideTask = Task(name: "Hide browser controls at the edge") { [weak self] in
+            while !Task.isCancelled {
+                let elapsed = Date().timeIntervalSince(self?.lastNearPointer ?? .distantPast)
+                try? await Task.sleep(for: .seconds(max(0.1, Self.stillDelay - elapsed)))
+                guard let self, !Task.isCancelled else { return }
+                guard hiddenEdge != nil, !isTuckedAway else {
+                    edgeHideTask = nil; return
+                }
+                if pointerIsNear || isEngaged || isNeededOnScreen {
+                    lastNearPointer = Date()
+                } else if Date().timeIntervalSince(lastNearPointer) >= Self.stillDelay {
+                    edgeHideTask = nil
+                    hideAtEdge()
+                    return
+                }
+            }
+        }
     }
 
     /// Rests the controls once the pointer has stayed still for `stillDelay`.

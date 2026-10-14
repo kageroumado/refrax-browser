@@ -5,6 +5,8 @@ import SwiftUI
 final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     var hitRegions: () -> [CGRect] = { [] }
     var onPointerDown: ((CGPoint) -> Void)?
+    /// A right-click at a point; returns whether it was handled, which keeps it from the page.
+    var onSecondaryPointerDown: ((CGPoint, NSEvent) -> Bool)?
     var controlState: (() -> ControlIslandState?)?
     private var pointerMonitor: Any?
 
@@ -25,6 +27,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
             }
             if event.type == .leftMouseDown {
                 onPointerDown?(point)
+            }
+            if event.type == .rightMouseDown, onSecondaryPointerDown?(point, event) == true {
+                return nil
             }
             guard let state = controlState?(),
                   !state.isPresenting, !state.hitRegions.isEmpty else { return event }
@@ -77,6 +82,7 @@ struct FloatingTabsLayer: View {
                         .offset(x: frame.minX, y: frame.minY)
                         .transition(.fold(toward: fold.map { CGSize(width: $0.x - frame.minX, height: $0.y - frame.minY) }))
                 }
+                FloatingCardGroupTarget(area: bounds)
                 FloatingSelectionCapsule(area: bounds)
                 if let request = canvas.rayRequest, let tab = canvas.floatingTabs.first(where: { $0.id == request.tabID }) {
                     FloatingRayView(path: FloatingRayPath(from: request.source, to: canvas.floatingFrame(for: tab, in: bounds), in: bounds)) {

@@ -198,17 +198,25 @@ extension TabCanvasManager {
         if floatingDropGroupID != target {
             floatingDropGroupID = target
         }
+        let card = target == nil ? floatingCardDropTarget(at: point, dragging: tabs, in: area) : nil
+        if floatingDropCardID != card {
+            floatingDropCardID = card
+        }
     }
 
     /// Adds `tabs` to the marked target, if any, and clears the mark.
     func dropIntoTarget(_ tabs: [Tab]) {
         defer { floatingDropGroupID = nil }
+        if let cardID = floatingDropCardID, let card = floatingTabs.first(where: { $0.id == cardID }) {
+            groupFloatingCard(card, with: tabs)
+            return
+        }
         guard let targetID = floatingDropGroupID,
               let group = windowState.activeSpace?.groups.first(where: { $0.id == targetID }) else { return }
         addToFloatingGroup(tabs.filter { $0.space?.id == group.space?.id }, group: group)
     }
 
-    /// Joins the group under `point`, for a card dropped from Recent.
+    /// Joins the group or forms one with the loose card under `point`, for a card dropped from Recent.
     func joinGroup(at point: CGPoint, tabs: [Tab], in area: CGRect) {
         updateFloatingDropTarget(at: point, dragging: tabs, in: area)
         dropIntoTarget(tabs)
@@ -288,6 +296,15 @@ extension TabCanvasManager {
 
     // MARK: Lasso and Selection
 
+    /// Selects every card of this space the lasso could catch.
+    func selectAllFloatingTabs() {
+        selectedFloatingTabIDs = Set(floatingLassoCandidates.map(\.id))
+    }
+
+    private var floatingLassoCandidates: [Tab] {
+        visibleFloatingTabs.filter { !$0.isFavorite && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID }
+    }
+
     /// The floating layer takes a ⇧-drag on empty page area while it is revealed.
     var isFloatingLassoArmed: Bool {
         floatingVisibility.isRevealed && NSEvent.modifierFlags.contains(.shift)
@@ -295,8 +312,7 @@ extension TabCanvasManager {
 
     /// Selects the cards a released lasso encircles; an empty catch clears the selection.
     func finishFloatingLasso(_ lasso: LassoSelection, in area: CGRect) {
-        let candidates = visibleFloatingTabs.filter { !$0.isFavorite && $0.space?.id == windowState.activeSpaceID && $0.id != windowState.activeTabID }
-        selectedFloatingTabIDs = lasso.caught(candidates.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) })
+        selectedFloatingTabIDs = lasso.caught(floatingLassoCandidates.map { (id: $0.id, frame: floatingFrame(for: $0, in: area)) })
     }
 
     var selectedFloatingTabs: [Tab] {

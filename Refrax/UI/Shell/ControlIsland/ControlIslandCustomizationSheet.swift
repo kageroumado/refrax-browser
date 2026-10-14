@@ -9,6 +9,7 @@ struct ControlIslandCustomizationSheet: View {
     @State private var avoidsPageControls: Bool
     @State private var restsWhenIdle: Bool
     @State private var tintsWithSpaceColor: Bool
+    @State private var hidesAtEdge: Bool
 
     private enum Layout {
         static let width: CGFloat = 480
@@ -22,6 +23,7 @@ struct ControlIslandCustomizationSheet: View {
         _avoidsPageControls = State(initialValue: configuration.avoidsPageControls)
         _restsWhenIdle = State(initialValue: configuration.restsWhenIdle)
         _tintsWithSpaceColor = State(initialValue: configuration.tintsWithSpaceColor)
+        _hidesAtEdge = State(initialValue: configuration.hidesAtEdge)
     }
 
     var body: some View {
@@ -56,6 +58,8 @@ struct ControlIslandCustomizationSheet: View {
                 Divider()
                 Toggle("Rest when the pointer is away or still", isOn: $restsWhenIdle)
                     .help("The glass clears and the symbols fade; moving toward the controls brings them back")
+                Toggle("Hide at the edge", isOn: $hidesAtEdge)
+                    .help(ControlIslandPlacement.edgeHidingHelp)
                 Toggle("Carry the window color", isOn: $tintsWithSpaceColor)
                     .help("The glass takes on the window background color: the space, website, or custom color chosen above")
                 Toggle("Move aside when covering a page control", isOn: $avoidsPageControls)
@@ -66,6 +70,7 @@ struct ControlIslandCustomizationSheet: View {
                         avoidsPageControls = true
                         restsWhenIdle = true
                         tintsWithSpaceColor = true
+                        hidesAtEdge = false
                     }
                     Spacer()
                     Button("Cancel", role: .cancel) { dismiss() }
@@ -76,6 +81,7 @@ struct ControlIslandCustomizationSheet: View {
                             avoidsPageControls: avoidsPageControls,
                             restsWhenIdle: restsWhenIdle,
                             tintsWithSpaceColor: tintsWithSpaceColor,
+                            hidesAtEdge: hidesAtEdge,
                         )
                         dismiss()
                     }
