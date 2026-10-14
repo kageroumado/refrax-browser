@@ -8,13 +8,21 @@ struct FloatingCardChromeTests {
 
     @Test
     func `Kept cards are rounder than transient ones`() {
-        #expect(FloatingCardChrome.cornerRadius(isKept: true) == 16)
-        #expect(FloatingCardChrome.cornerRadius(isKept: false) == 12)
+        #expect(FloatingCardChrome.cornerRadius(for: .live, isKept: true) == 16)
+        #expect(FloatingCardChrome.cornerRadius(for: .live, isKept: false) == 12)
+        #expect(FloatingCardChrome.cornerRadius(for: .tab, isKept: true) == 16)
+        #expect(FloatingCardChrome.cornerRadius(for: .tab, isKept: false) == 12)
+    }
+
+    @Test
+    func `An icon is a squircle, rounder when kept`() {
+        #expect(FloatingCardChrome.cornerRadius(for: .icon, isKept: true) == 12)
+        #expect(FloatingCardChrome.cornerRadius(for: .icon, isKept: false) == 10)
     }
 
     @Test(arguments: [true, false])
     func `The preview is concentric with its card`(isKept: Bool) {
-        let outer = FloatingCardChrome.cornerRadius(isKept: isKept)
+        let outer = FloatingCardChrome.cornerRadius(for: .live, isKept: isKept)
         #expect(FloatingCardChrome.previewCornerRadius(isKept: isKept) == outer - FloatingTabPlacement.previewInset)
         #expect(FloatingCardChrome.previewCornerRadius(isKept: true) == 10)
     }
@@ -101,7 +109,7 @@ struct FloatingCardChromeTests {
     func `A card beside the rail keeps the island's adjacent gap`() {
         let bounds = CGRect(x: 0, y: 0, width: 1_200, height: 800)
         let rail = CGRect(x: 12, y: 160, width: 48, height: 300)
-        var placement = FloatingTabPlacement(x: 0, y: 0.3, isCompact: true, isPinned: false)
+        var placement = FloatingTabPlacement(x: 0, y: 0.3, shape: .tab, isPinned: false)
         placement.move(to: CGPoint(x: rail.maxX + 3.5, y: 200), in: bounds)
         placement.keepClear(of: rail, gap: ControlIslandPlacement.adjacentGap, in: bounds)
         let frame = placement.frame(in: bounds)
@@ -112,7 +120,7 @@ struct FloatingCardChromeTests {
     func `A card already clear of the rail stays put`() {
         let bounds = CGRect(x: 0, y: 0, width: 1_200, height: 800)
         let rail = CGRect(x: 12, y: 160, width: 48, height: 300)
-        var placement = FloatingTabPlacement(x: 0.5, y: 0.5, isCompact: true, isPinned: false)
+        var placement = FloatingTabPlacement(x: 0.5, y: 0.5, shape: .tab, isPinned: false)
         let before = placement
         placement.keepClear(of: rail, gap: ControlIslandPlacement.adjacentGap, in: bounds)
         #expect(placement == before)

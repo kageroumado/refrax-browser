@@ -97,14 +97,14 @@ struct FavoriteMigrationTests {
 
     @Test
     func `a kept-visible card marked for every space is detected`() {
-        let data = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0.5,"y":0.5,"isCompact":false,"isPinned":true,"showsInEverySpace":true}}"#.utf8)
+        let data = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0.5,"y":0.5,"shape":"live","isPinned":true,"showsInEverySpace":true}}"#.utf8)
         #expect(FavoriteMigration.showsInEverySpace(data))
     }
 
     @Test
     func `a card hidden or shown in one space is not`() {
-        let hidden = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0,"y":0,"isCompact":true,"isPinned":false,"showsInEverySpace":true}}"#.utf8)
-        let oneSpace = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0,"y":0,"isCompact":false,"isPinned":true}}"#.utf8)
+        let hidden = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0,"y":0,"shape":"tab","isPinned":false,"showsInEverySpace":true}}"#.utf8)
+        let oneSpace = Data(#"{"x":0,"y":0,"width":0,"height":0,"floating":{"x":0,"y":0,"shape":"live","isPinned":true}}"#.utf8)
         #expect(!FavoriteMigration.showsInEverySpace(hidden))
         #expect(!FavoriteMigration.showsInEverySpace(oneSpace))
         #expect(!FavoriteMigration.showsInEverySpace(nil))
@@ -113,7 +113,7 @@ struct FavoriteMigrationTests {
 
     @Test
     func `re-encoding a placement drops the every-space flag`() throws {
-        let data = Data(#"{"x":0,"y":0,"width":0,"height":0,"hasDeskFrame":false,"floating":{"x":0.5,"y":0.5,"isCompact":false,"isPinned":true,"showsInEverySpace":true}}"#.utf8)
+        let data = Data(#"{"x":0,"y":0,"width":0,"height":0,"hasDeskFrame":false,"floating":{"x":0.5,"y":0.5,"shape":"live","isPinned":true,"showsInEverySpace":true}}"#.utf8)
         let placement = try #require(BoardFrame.value(data)?.floating)
         let rewritten = BoardFrame.updating(frame: nil, isCompact: false, floating: placement)
         #expect(!FavoriteMigration.showsInEverySpace(rewritten))

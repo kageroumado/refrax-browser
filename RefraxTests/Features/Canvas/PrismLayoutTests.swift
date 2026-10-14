@@ -58,7 +58,7 @@ struct PrismLayoutTests {
         let right = PrismLayout.placeholderFrames(in: bounds, railFrame: rail)
         #expect(right.count == 3)
         #expect(right.allSatisfy { $0.midX > bounds.midX && bounds.contains($0) })
-        #expect(right.allSatisfy { $0.size == CGSize(width: 250, height: FloatingTabPlacement.headerHeight) })
+        #expect(right.allSatisfy { $0.size == FloatingCardShape.tab.naturalSize })
         #expect(right[0].minY < right[1].minY && right[1].minY < right[2].minY)
         let railOnRight = CGRect(x: 1_540, y: 200, width: 48, height: 420)
         let left = PrismLayout.placeholderFrames(in: bounds, railFrame: railOnRight)
