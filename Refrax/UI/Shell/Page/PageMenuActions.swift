@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-/// The page menu's actions, bound to one page: copy, share, zoom, screenshots, recording,
-/// Calm, and extension page actions. The page card builds one from its environment and
+/// The page menu's actions, bound to one page: copy, share, download and save, zoom,
+/// screenshots, recording, Calm, and extension page actions. The page card builds one from its environment and
 /// hands it to ``PageMenuContent``.
 struct PageMenuActions {
     /// The live page, when it has one; the window screenshot and the copy actions work without it.
@@ -25,6 +25,11 @@ struct PageMenuActions {
 
     var isPageCalmed: Bool {
         url.map { siteSettings.isCalmPage(for: $0) } ?? false
+    }
+
+    /// The page shows a PDF or an image that Download can fetch into the download folder.
+    var canDownload: Bool {
+        webPage?.showsDownloadableFile ?? false
     }
 
     /// The enabled extensions, as the menu lists them.
@@ -67,6 +72,19 @@ struct PageMenuActions {
     func share() {
         guard let url else { return }
         sharing.shareURL(url.removingTrackingParameters(), title: webPage?.title)
+    }
+
+    /// Downloads the PDF or image the page shows, so it appears in the File Island.
+    func download() {
+        webPage?.downloadShownFile()
+    }
+
+    /// Asks where to save the page and in which format.
+    func savePageAs() {
+        guard let webPage, let window = windowState.window else { return }
+        Task(name: "Save page as") {
+            await webPage.presentSavePanel(in: window)
+        }
     }
 
     /// Captures the page, or the whole window for ``ScreenshotMode/window``.

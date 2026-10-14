@@ -23,9 +23,13 @@ struct PageMenuContent: View {
     let isRecording: Bool
     let recordingStartTime: Date?
     let isPageCalmed: Bool
+    let canDownload: Bool
+    let canSave: Bool
     let onZoomChanged: (Int) -> Void
     let onCopyURL: () -> Void
     let onShare: () -> Void
+    let onDownload: () -> Void
+    let onSavePageAs: () -> Void
     let onScreenshotFullPage: () -> Void
     let onScreenshotVisibleArea: () -> Void
     let onScreenshotSelection: () -> Void
@@ -99,6 +103,12 @@ struct PageMenuContent: View {
             VStack(spacing: Layout.itemSpacing) {
                 PageMenuItem(title: "Copy URL", icon: "link", action: onCopyURL)
                 PageMenuItem(title: "Share...", icon: "square.and.arrow.up", action: onShare)
+                if canDownload {
+                    PageMenuItem(title: "Download", icon: "arrow.down.circle", action: onDownload)
+                }
+                if canSave {
+                    PageMenuItem(title: "Save Page As…", icon: "arrow.up.document", action: onSavePageAs)
+                }
             }
 
             screenshotRow
@@ -466,9 +476,13 @@ extension PageMenuContent {
             isRecording: actions.recording.isRecording,
             recordingStartTime: actions.recording.recordingStartTime,
             isPageCalmed: actions.isPageCalmed,
+            canDownload: actions.canDownload,
+            canSave: actions.webPage != nil,
             onZoomChanged: actions.setZoom,
             onCopyURL: closing(actions.copyCleanURL),
             onShare: closing(actions.share),
+            onDownload: closing(actions.download),
+            onSavePageAs: closing(actions.savePageAs),
             onScreenshotFullPage: closing { actions.takeScreenshot(mode: .fullPage) },
             onScreenshotVisibleArea: closing { actions.takeScreenshot(mode: .visibleArea) },
             onScreenshotSelection: closing { actions.takeScreenshot(mode: .selection) },

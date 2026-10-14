@@ -104,13 +104,12 @@ extension MenuBarManager {
 
         fileMenu.addItem(.separator())
 
-        // Save As
         let saveAsItem = NSMenuItem(
-            title: "Save As…",
-            action: #selector(saveAs(_:)),
+            title: "Save Page As…",
+            action: #selector(savePageAs(_:)),
             keyEquivalent: "s",
         )
-        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+        saveAsItem.keyEquivalentModifierMask = [.command]
         saveAsItem.image = NSImage(systemSymbolName: "arrow.up.document", accessibilityDescription: nil)
         saveAsItem.target = self
         fileMenu.addItem(saveAsItem)
@@ -229,75 +228,13 @@ extension MenuBarManager {
     }
 
     @objc
-    func saveAs(_: Any?) {
+    func savePageAs(_: Any?) {
         guard let controller = activeWindowController,
               let webPage = controller.windowState.focusedWebPage,
               let window = controller.window else { return }
 
-        Task { @MainActor in
-            await presentSaveAsPanel(for: webPage, in: window)
-        }
-    }
-
-    /// Presents the Save As panel with format selection.
-    private func presentSaveAsPanel(for webPage: WebPage, in window: NSWindow) async {
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-
-        let formatPicker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 200, height: 25), pullsDown: false)
-        formatPicker.addItems(withTitles: SaveAsFormat.allCases.map(\.title))
-
-        let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 40))
-        let label = NSTextField(labelWithString: "Format:")
-        label.frame = NSRect(x: 0, y: 10, width: 50, height: 20)
-        formatPicker.frame = NSRect(x: 55, y: 8, width: 200, height: 25)
-
-        accessoryView.addSubview(label)
-        accessoryView.addSubview(formatPicker)
-        savePanel.accessoryView = accessoryView
-
-        let defaultFormat = SaveAsFormat.pageSource
-        savePanel.allowedContentTypes = [defaultFormat.contentType]
-        savePanel.nameFieldStringValue = "\(webPage.tabPage.title)\(defaultFormat.fileExtension)"
-
-        var currentFormat = defaultFormat
-        let observation = NotificationCenter.default.addObserver(
-            forName: NSMenu.didSendActionNotification,
-            object: formatPicker.menu,
-            queue: .main,
-        ) { [weak savePanel] _ in
-            MainActor.assumeIsolated {
-                guard let savePanel,
-                      let format = SaveAsFormat(rawValue: formatPicker.indexOfSelectedItem) else { return }
-                currentFormat = format
-                savePanel.allowedContentTypes = [format.contentType]
-            }
-        }
-
-        defer { NotificationCenter.default.removeObserver(observation) }
-
-        let response = await savePanel.beginSheetModal(for: window)
-        guard response == .OK, let url = savePanel.url else { return }
-
-        do {
-            let data = try await exportData(for: currentFormat, webPage: webPage)
-            try data.write(to: url)
-        } catch {
-            Logger.error("Failed to save page: \(error)", category: Logger.navigation)
-        }
-    }
-
-    /// Exports data in the specified format.
-    private func exportData(for format: SaveAsFormat, webPage: WebPage) async throws -> Data {
-        switch format {
-        case .pageSource:
-            try await webPage.exportAsPageSource()
-        case .webArchive:
-            try await webPage.exportAsWebArchive()
-        case .pdf:
-            try await webPage.exportAsPDF()
-        case .png:
-            try await webPage.exportAsImage()
+        Task(name: "Save page as") {
+            await webPage.presentSavePanel(in: window)
         }
     }
 
@@ -519,42 +456,5 @@ extension MenuBarManager {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         await alert.beginSheetModal(for: window)
-    }
-}
-
-// MARK: - Save As Format
-
-/// Available formats for Save As operation.
-private enum SaveAsFormat: Int, CaseIterable {
-    case pageSource
-    case webArchive
-    case pdf
-    case png
-
-    var title: String {
-        switch self {
-        case .pageSource: "Page Source"
-        case .webArchive: "Web Archive"
-        case .pdf: "PDF"
-        case .png: "PNG"
-        }
-    }
-
-    var fileExtension: String {
-        switch self {
-        case .pageSource: ".html"
-        case .webArchive: ".webarchive"
-        case .pdf: ".pdf"
-        case .png: ".png"
-        }
-    }
-
-    var contentType: UTType {
-        switch self {
-        case .pageSource: .html
-        case .webArchive: .webArchive
-        case .pdf: .pdf
-        case .png: .png
-        }
     }
 }
