@@ -83,9 +83,13 @@ struct SharedTableTests {
         #expect(table.destination(toward: .right)?.id == map.id)
         table.beginPan(CGSize(width: 0, height: -24))
         #expect(window.activeTabID == hotel.id)
+        #expect(table.approachDirection == .right)
+        #expect(table.approachFraction == 0.5)
         table.pan(CGSize(width: 0, height: -24))
         #expect(window.activeTabID == map.id)
         table.endPan()
+        #expect(table.approachDirection == nil)
+        #expect(table.approachFraction == 0)
         #expect(table.destination(toward: .left)?.id == hotel.id)
     }
 

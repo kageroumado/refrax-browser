@@ -165,7 +165,7 @@ struct FloatingTourOverlay: View {
             revealKey: revealKey,
             hasPage: windowState.activeTab != nil,
             lensIsOpen: windowState.showsCommandLens,
-            layerRevealed: canvas.floatingVisibility.isRevealed,
+            cardsVisible: canvas.floatingVisibility.isRevealed && !canvas.isMomentaryNavigation,
         )
     }
 

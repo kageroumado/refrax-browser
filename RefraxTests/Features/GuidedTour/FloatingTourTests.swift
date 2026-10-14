@@ -202,6 +202,10 @@ struct FloatingTourTests {
         tour.review()
         #expect(tour.currentStep == .visitNeighbor)
         tour.skipStep()
+        #expect(tour.spotlights(in: bounds) == [row(.floatingTabs)])
+        #expect(tour.highlightedItem == .floatingTabs)
+        stage.canvas.releaseFloatingTabs()
+        stage.canvas.toggleFloatingTabs()
         let cards = tour.spotlights(in: bounds)
         #expect(cards.count == stage.canvas.visibleFloatingTabs.filter { $0.id != stage.window.activeTabID }.count)
         #expect(!cards.isEmpty)
@@ -419,6 +423,27 @@ struct FloatingTourTests {
         #expect(FloatingTourManager.totalSteps == FloatingTourManager.Step.allCases.count - 1)
         #expect(FloatingTourManager.Step.done.completedSteps == FloatingTourManager.totalSteps)
         tour.endTour()
+    }
+
+    @Test
+    func `placement guidance opens the card layer after adjacent navigation`() throws {
+        let stage = try Stage()
+        try stage.advance(to: .placePage)
+        stage.reportRail()
+        #expect(stage.canvas.isMomentaryNavigation)
+        let tabsButton = try #require(Stage.rows[.floatingTabs])
+        #expect(stage.tour.spotlights(in: CGRect(x: 0, y: 0, width: 1200, height: 800)) == [
+            FloatingTourLayout.spotlight(around: tabsButton, of: .railRow),
+        ])
+        let navigating = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, cardsVisible: false)
+        #expect(FloatingTourManager.Step.placePage.instruction(in: navigating).contains("Click the tabs button"))
+
+        stage.canvas.releaseFloatingTabs()
+        stage.canvas.toggleFloatingTabs()
+        #expect(!stage.canvas.isMomentaryNavigation)
+        let arranging = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, cardsVisible: true)
+        #expect(FloatingTourManager.Step.placePage.instruction(in: arranging).contains("Drag a page's title"))
+        stage.tour.endTour()
     }
 
     @Test

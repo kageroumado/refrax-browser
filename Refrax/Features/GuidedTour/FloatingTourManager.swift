@@ -542,7 +542,7 @@ extension FloatingTourManager.Step {
         var revealKey: FloatingRevealKey
         var hasPage: Bool
         var lensIsOpen: Bool
-        var layerRevealed: Bool
+        var cardsVisible: Bool
     }
 
     var title: String {
@@ -574,7 +574,6 @@ extension FloatingTourManager.Step {
     }
 
     func instruction(in context: Context) -> String {
-        let hold = "Hold \(context.revealKey.glyph) or click the tabs button on the panel"
         /// "Press Return" once the lens is up; "Press ⌘T, then Return" while it has to be opened first.
         func open(_ page: FloatingTabsTutorial.Page, lensShown: Bool) -> String {
             lensShown ? "Press Return to open \(page.title)" : "Press ⌘T, then Return to open \(page.title)"
@@ -585,17 +584,17 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph) to reveal nearby pages. The Desk button shows every page on the table."
+            return "Hold \(context.revealKey.glyph) to see the next page at its edge. The Desk button shows the whole table."
         case .visitNeighbor:
             return "Hold \(context.revealKey.glyph). Scroll toward the highlighted page at the edge, then reverse to return."
         case .placePage:
-            return context.layerRevealed
+            return context.cardsVisible
                 ? "Drag a page's title to a spot you'll remember. It stays there."
-                : "\(hold), then drag a page's title to a spot you'll remember. It stays there."
+                : "Click the tabs button on the panel, then drag a page's title to a spot you'll remember."
         case .keepVisible:
-            return context.layerRevealed
+            return context.cardsVisible
                 ? "Click a page's pin, or choose Keep Visible from its actions menu. It stays after you release."
-                : "\(hold), then click a page's pin or choose Keep Visible from its actions menu. It stays after you release."
+                : "Click the tabs button on the panel, then pin a page to keep it visible."
         case .pageCard:
             return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."
         case .movePanel:

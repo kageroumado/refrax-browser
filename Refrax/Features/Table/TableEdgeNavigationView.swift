@@ -8,11 +8,14 @@ struct TableEdgeNavigationView: View {
     private enum Layout {
         static let edgeInset: CGFloat = 16
         static let faviconSize: CGFloat = 16
-        static let sidePreview = CGSize(width: 152, height: 116)
-        static let verticalPreview = CGSize(width: 198, height: 100)
+        static let sideWidthRange: ClosedRange<CGFloat> = 190 ... 300
+        static let sideHeightRange: ClosedRange<CGFloat> = 150 ... 260
+        static let verticalWidthRange: ClosedRange<CGFloat> = 220 ... 360
+        static let verticalHeightRange: ClosedRange<CGFloat> = 130 ... 220
         static let cornerRadius: CGFloat = 16
         static let sidePreviewRise: CGFloat = 88
         static let captionHeight: CGFloat = 34
+        static let approachDistance: CGFloat = 26
     }
 
     var body: some View {
@@ -80,6 +83,7 @@ struct TableEdgeNavigationView: View {
             .accessibilityLabel("Go \(direction.rawValue) to \(tab.displayTitle)")
             .help("Go \(direction.rawValue) to \(tab.displayTitle)")
             .task(id: tab.id) { table.requestStoredSnapshot(for: tab) }
+            .offset(approachOffset(for: direction))
         } else if hasOtherTabs && table.blockedDirection == direction {
             Button {
                 canvas.show(fittingEverything: true)
@@ -103,7 +107,7 @@ struct TableEdgeNavigationView: View {
     }
 
     private func neighborPreview(_ tab: Tab, direction: TableDirection) -> some View {
-        let size = direction == .left || direction == .right ? Layout.sidePreview : Layout.verticalPreview
+        let size = previewSize(for: direction)
         return VStack(spacing: 0) {
             ZStack {
                 Color(nsColor: .windowBackgroundColor)
@@ -143,6 +147,32 @@ struct TableEdgeNavigationView: View {
         }
         .shadow(color: .black.opacity(0.16), radius: 16, y: 6)
         .contentShape(RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous))
+    }
+
+    private func previewSize(for direction: TableDirection) -> CGSize {
+        switch direction {
+        case .left, .right:
+            CGSize(
+                width: min(max(table.viewport.width * 0.14, Layout.sideWidthRange.lowerBound), Layout.sideWidthRange.upperBound),
+                height: min(max(table.viewport.height * 0.20, Layout.sideHeightRange.lowerBound), Layout.sideHeightRange.upperBound),
+            )
+        case .up, .down:
+            CGSize(
+                width: min(max(table.viewport.width * 0.25, Layout.verticalWidthRange.lowerBound), Layout.verticalWidthRange.upperBound),
+                height: min(max(table.viewport.height * 0.16, Layout.verticalHeightRange.lowerBound), Layout.verticalHeightRange.upperBound),
+            )
+        }
+    }
+
+    private func approachOffset(for direction: TableDirection) -> CGSize {
+        guard table.approachDirection == direction else { return .zero }
+        let distance = table.approachFraction * Layout.approachDistance
+        switch direction {
+        case .left: return CGSize(width: distance, height: 0)
+        case .right: return CGSize(width: -distance, height: 0)
+        case .up: return CGSize(width: 0, height: distance)
+        case .down: return CGSize(width: 0, height: -distance)
+        }
     }
 
     @ViewBuilder

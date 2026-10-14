@@ -396,7 +396,7 @@ struct FloatingStartPage: View {
         let frame = local(outline.frame)
         return VStack(alignment: .leading, spacing: Layout.noteSpacing) {
             leader.frame(width: 1, height: Layout.leaderLength)
-            noteText("Pages keep their places. Hold \(revealKey.glyph) to reveal them; scroll to visit the highlighted neighbor.")
+            noteText("Pages keep their places. Hold \(revealKey.glyph) to see the next page at the edge; scroll to visit it.")
             Button("Take the tour") { tour.start() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

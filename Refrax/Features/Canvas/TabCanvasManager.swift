@@ -140,7 +140,7 @@ final class TabCanvasManager {
     /// The floating layer appears while Control is held or its toolbar button is on.
     private(set) var floatingVisibility = FloatingTabVisibility()
 
-    /// A held Control key previews adjacent pages while the reading page stays in place.
+    /// A held reveal key previews adjacent pages while the reading page stays in place.
     var isMomentaryNavigation: Bool {
         floatingVisibility.isHeld && !floatingVisibility.isLatched && !floatingVisibility.isManipulating
     }

@@ -16,6 +16,8 @@ final class TableController {
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
     private(set) var isMoving = false
     private(set) var blockedDirection: TableDirection?
+    private(set) var approachDirection: TableDirection?
+    private(set) var approachFraction: CGFloat = 0
     @ObservationIgnored private var gestureDistance: CGFloat = 0
     @ObservationIgnored private var gestureDirection: TableDirection?
     @ObservationIgnored private var gestureHasStepped = false
@@ -64,6 +66,8 @@ final class TableController {
         gestureDistance = 0
         gestureDirection = nil
         gestureHasStepped = false
+        approachDirection = nil
+        approachFraction = 0
         pan(delta, shift: shift, source: source)
     }
 
@@ -83,6 +87,8 @@ final class TableController {
             gestureHasStepped = true
             step(direction)
         }
+        approachDirection = direction
+        approachFraction = min(1, gestureDistance / threshold)
     }
 
     func endPan() {
@@ -90,6 +96,8 @@ final class TableController {
         gestureDistance = 0
         gestureDirection = nil
         gestureHasStepped = false
+        approachDirection = nil
+        approachFraction = 0
     }
 
     func destination(toward direction: TableDirection) -> Tab? {
