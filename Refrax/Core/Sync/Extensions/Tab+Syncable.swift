@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension Tab: Syncable {
-    nonisolated static var ckRecordType: String { "Tab" }
+    nonisolated static var ckRecordType: String {
+        "Tab"
+    }
 
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Scalars
@@ -20,7 +22,6 @@ extension Tab: Syncable {
         record["customName"] = customName as NSString?
         record["lastBadgeCount"] = lastBadgeCount as NSNumber?
         record["groupID"] = groupID?.uuidString as NSString?
-        record["originURL"] = originURL?.absoluteString as NSString?
         record["layoutConfigurationData"] = layoutConfigurationData as NSData?
         record["boardFrameData"] = boardFrameData as NSData?
 
@@ -28,7 +29,7 @@ extension Tab: Syncable {
         // Tab → Space: CASCADE (Tab is deleted when Space is deleted)
         if let spaceID = space?.id {
             record["spaceRef"] = RecordMapper.reference(
-                to: spaceID, recordType: Space.ckRecordType, action: .deleteSelf
+                to: spaceID, recordType: Space.ckRecordType, action: .deleteSelf,
             )
         } else {
             record["spaceRef"] = nil
@@ -36,7 +37,7 @@ extension Tab: Syncable {
 
         // Tab → TabGroup: NULLIFY (Tab survives group deletion)
         record["groupRef"] = RecordMapper.optionalReference(
-            to: group?.id, recordType: TabGroup.ckRecordType, action: .none
+            to: group?.id, recordType: TabGroup.ckRecordType, action: .none,
         )
 
         // Tab → Bookmark (linkedBookmark): NULLIFY — don't encode from Tab side,
@@ -63,10 +64,9 @@ extension Tab: Syncable {
             // Tab init requires space — resolve the space reference
             var space: Space?
             if let spaceRef = record["spaceRef"] as? CKRecord.Reference,
-               let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID)
-            {
+               let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID) {
                 var spaceDescriptor = FetchDescriptor<Space>(
-                    predicate: #Predicate { $0.id == spaceUUID }
+                    predicate: #Predicate { $0.id == spaceUUID },
                 )
                 spaceDescriptor.fetchLimit = 1
                 space = try? context.fetch(spaceDescriptor).first
@@ -89,17 +89,15 @@ extension Tab: Syncable {
         tab.customName = record["customName"] as? String
         tab.lastBadgeCount = record["lastBadgeCount"] as? Int
         tab.groupID = (record["groupID"] as? String).flatMap(UUID.init(uuidString:))
-        tab.originURL = (record["originURL"] as? String).flatMap(URL.init(string:))
         tab.layoutConfigurationData = record["layoutConfigurationData"] as? Data
         tab.boardFrameData = record["boardFrameData"] as? Data
 
         // Resolve space relationship
         if let spaceRef = record["spaceRef"] as? CKRecord.Reference,
-           let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID)
-        {
+           let spaceUUID = RecordMapper.uuid(from: spaceRef.recordID) {
             if tab.space?.id != spaceUUID {
                 var spaceDescriptor = FetchDescriptor<Space>(
-                    predicate: #Predicate { $0.id == spaceUUID }
+                    predicate: #Predicate { $0.id == spaceUUID },
                 )
                 spaceDescriptor.fetchLimit = 1
                 tab.space = try? context.fetch(spaceDescriptor).first
@@ -110,11 +108,10 @@ extension Tab: Syncable {
 
         // Resolve group relationship
         if let groupRef = record["groupRef"] as? CKRecord.Reference,
-           let groupUUID = RecordMapper.uuid(from: groupRef.recordID)
-        {
+           let groupUUID = RecordMapper.uuid(from: groupRef.recordID) {
             if tab.group?.id != groupUUID {
                 var groupDescriptor = FetchDescriptor<TabGroup>(
-                    predicate: #Predicate { $0.id == groupUUID }
+                    predicate: #Predicate { $0.id == groupUUID },
                 )
                 groupDescriptor.fetchLimit = 1
                 tab.group = try? context.fetch(groupDescriptor).first

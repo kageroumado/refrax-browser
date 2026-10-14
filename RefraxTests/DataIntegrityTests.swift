@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import Testing
-
 @testable import Refrax
 
 // MARK: - Test Tags
@@ -31,18 +30,18 @@ struct TabTests {
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
-    @Test("Tab always has at least one page after initialization")
-    func tabHasPageAfterInit() throws {
-        let tab = Tab(space: nil, url: URL(string: "https://example.com")!)
+    @Test
+    func `Tab always has at least one page after initialization`() throws {
+        let tab = try Tab(space: nil, url: #require(URL(string: "https://example.com")))
 
         #expect(tab.pages.count >= 1, "Tab must have at least one page")
         #expect(tab.pages.first != nil, "First page must exist")
     }
 
-    @Test("Tab.activePage returns first page without creating ephemeral objects")
-    func activePageReturnsExistingPage() throws {
-        let tab = Tab(space: nil, url: URL(string: "https://example.com")!)
-        let firstPage = tab.pages.first!
+    @Test
+    func `Tab.activePage returns first page without creating ephemeral objects`() throws {
+        let tab = try Tab(space: nil, url: #require(URL(string: "https://example.com")))
+        let firstPage = try #require(tab.pages.first)
 
         let activePage = tab.activePage
 
@@ -50,7 +49,6 @@ struct TabTests {
     }
 
     @Test(
-        "Tab initialization with various URLs",
         arguments: [
             "https://example.com",
             "https://apple.com/swift",
@@ -58,8 +56,8 @@ struct TabTests {
             "about:blank",
         ],
     )
-    func tabInitializationWithURLs(urlString: String) throws {
-        let url = URL(string: urlString)!
+    func `Tab initialization with various URLs`(urlString: String) throws {
+        let url = try #require(URL(string: urlString))
         let tab = Tab(space: nil, url: url)
 
         #expect(tab.activePage.url == url)
@@ -67,11 +65,10 @@ struct TabTests {
     }
 
     @Test(
-        "Tab status types",
         arguments: TabStatus.allCases,
     )
     @MainActor
-    func tabStatusTypes(status: TabStatus) throws {
+    func `Tab status types`(status: TabStatus) {
         let tab = Tab(space: nil, status: status)
 
         #expect(tab.status == status)
@@ -80,7 +77,7 @@ struct TabTests {
         switch status {
         case .regular:
             #expect(!status.isExemptFromCleanup)
-        case .pinned, .liveFavorite:
+        case .favorite:
             #expect(status.isExemptFromCleanup)
         }
     }
@@ -99,15 +96,15 @@ struct TabPageTests {
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
-    @Test("TabPage.tab is set via inverse relationship when added to Tab")
+    @Test
     @MainActor
-    func tabPageInverseRelationship() throws {
+    func `TabPage.tab is set via inverse relationship when added to Tab`() throws {
         let context = container.mainContext
 
         let space = Space(name: "Test", iconName: "star", colorHex: "#007AFF", position: 0)
         context.insert(space)
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
 
         // The page created in Tab.init should have its tab set
@@ -120,15 +117,15 @@ struct TabPageTests {
         #expect(page.tab?.id == tab.id, "TabPage.tab should reference the correct Tab")
     }
 
-    @Test("TabPage.parentTab provides non-optional access")
+    @Test
     @MainActor
-    func parentTabAccessor() throws {
+    func `TabPage.parentTab provides non-optional access`() throws {
         let context = container.mainContext
 
         let space = Space(name: "Test", iconName: "star", colorHex: "#007AFF", position: 0)
         context.insert(space)
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
         try context.save()
 
@@ -140,7 +137,6 @@ struct TabPageTests {
     }
 
     @Test(
-        "TabPage layout positions",
         arguments: [
             PanePosition.single,
             PanePosition.topLeft,
@@ -149,8 +145,8 @@ struct TabPageTests {
             PanePosition.bottomRight,
         ],
     )
-    func tabPageLayoutPositions(position: PanePosition) throws {
-        let page = TabPage(url: URL(string: "https://example.com")!, layoutPosition: position)
+    func `TabPage layout positions`(position: PanePosition) throws {
+        let page = try TabPage(url: #require(URL(string: "https://example.com")), layoutPosition: position)
 
         #expect(page.position == position)
         #expect(page.layoutPosition == position.rawValue)
@@ -170,19 +166,19 @@ struct BookmarkRelationshipTests {
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
-    @Test("Tab.linkedBookmark creates bidirectional relationship")
+    @Test
     @MainActor
-    func linkedBookmarkBidirectional() throws {
+    func `Tab.linkedBookmark creates bidirectional relationship`() throws {
         let context = container.mainContext
 
-        let bookmark = Bookmark(url: URL(string: "https://example.com")!, title: "Example")
+        let bookmark = try Bookmark(url: #require(URL(string: "https://example.com")), title: "Example")
         context.insert(bookmark)
 
         let tab = Tab(
             space: nil, // Live favorites don't belong to a space
             url: bookmark.url,
             title: bookmark.title,
-            status: .liveFavorite,
+            status: .favorite,
             linkedBookmark: bookmark,
         )
         context.insert(tab)
@@ -194,18 +190,18 @@ struct BookmarkRelationshipTests {
         #expect(bookmark.linkedTab?.id == tab.id)
     }
 
-    @Test("Deleting bookmark nullifies Tab.linkedBookmark")
+    @Test
     @MainActor
-    func deleteBookmarkNullifiesTabLink() throws {
+    func `Deleting bookmark nullifies Tab.linkedBookmark`() throws {
         let context = container.mainContext
 
-        let bookmark = Bookmark(url: URL(string: "https://example.com")!, title: "Example")
+        let bookmark = try Bookmark(url: #require(URL(string: "https://example.com")), title: "Example")
         context.insert(bookmark)
 
         let tab = Tab(
             space: nil, // Live favorites don't belong to a space
             url: bookmark.url,
-            status: .liveFavorite,
+            status: .favorite,
             linkedBookmark: bookmark,
         )
         context.insert(tab)
@@ -241,9 +237,9 @@ struct SpaceRelationshipTests {
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
-    @Test("Tab.space creates bidirectional relationship")
+    @Test
     @MainActor
-    func tabSpaceBidirectional() throws {
+    func `Tab.space creates bidirectional relationship`() throws {
         let context = container.mainContext
 
         let space = Space(
@@ -254,7 +250,7 @@ struct SpaceRelationshipTests {
         )
         context.insert(space)
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
 
         try context.save()
@@ -264,18 +260,18 @@ struct SpaceRelationshipTests {
         #expect(space.tabs.contains { $0.id == tab.id })
     }
 
-    @Test("Space.mainTabs excludes archived tabs")
+    @Test
     @MainActor
-    func mainTabsFiltering() throws {
+    func `Space.mainTabs excludes archived tabs`() throws {
         let context = container.mainContext
 
         let space = Space(name: "Test", iconName: "star", colorHex: "#007AFF", position: 0)
         context.insert(space)
 
-        let mainTab = Tab(space: space, url: URL(string: "https://main.com")!)
+        let mainTab = try Tab(space: space, url: #require(URL(string: "https://main.com")))
         context.insert(mainTab)
 
-        let archivedTab = Tab(space: space, url: URL(string: "https://archived.com")!)
+        let archivedTab = try Tab(space: space, url: #require(URL(string: "https://archived.com")))
         archivedTab.archivedAt = .now
         context.insert(archivedTab)
 
@@ -285,9 +281,9 @@ struct SpaceRelationshipTests {
         #expect(space.mainTabs.first?.id == mainTab.id)
     }
 
-    @Test("TabGroup.space creates bidirectional relationship")
+    @Test
     @MainActor
-    func tabGroupSpaceBidirectional() throws {
+    func `TabGroup.space creates bidirectional relationship`() throws {
         let context = container.mainContext
 
         let space = Space(name: "Test", iconName: "star", colorHex: "#007AFF", position: 0)
@@ -316,12 +312,12 @@ struct CascadeDeleteTests {
         self.container = try ModelContainer(for: schema, configurations: [config])
     }
 
-    @Test("Deleting Tab cascades to TabPages")
+    @Test
     @MainActor
-    func deleteTabCascadesToPages() throws {
+    func `Deleting Tab cascades to TabPages`() throws {
         let context = container.mainContext
 
-        let tab = Tab(space: nil, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: nil, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
 
         let pageID = tab.activePage.id
@@ -339,15 +335,15 @@ struct CascadeDeleteTests {
         #expect(pages.isEmpty, "TabPage should be cascade deleted with Tab")
     }
 
-    @Test("Deleting Space cascades to Tabs and TabGroups")
+    @Test
     @MainActor
-    func deleteSpaceCascadesToTabsAndGroups() throws {
+    func `Deleting Space cascades to Tabs and TabGroups`() throws {
         let context = container.mainContext
 
         let space = Space(name: "Test", iconName: "star", colorHex: "#007AFF", position: 0)
         context.insert(space)
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
 
         let group = TabGroup(space: space, name: "Test Group")
@@ -373,15 +369,15 @@ struct CascadeDeleteTests {
         #expect(groups.isEmpty, "TabGroup should be cascade deleted with Space")
     }
 
-    @Test("Deleting BookmarkFolder cascades to bookmarks")
+    @Test
     @MainActor
-    func deleteFolderCascadesToBookmarks() throws {
+    func `Deleting BookmarkFolder cascades to bookmarks`() throws {
         let context = container.mainContext
 
         let folder = BookmarkFolder(name: "Test Folder")
         context.insert(folder)
 
-        let bookmark = Bookmark(url: URL(string: "https://example.com")!, folder: folder)
+        let bookmark = try Bookmark(url: #require(URL(string: "https://example.com")), folder: folder)
         context.insert(bookmark)
         folder.bookmarks.append(bookmark)
 
@@ -400,9 +396,9 @@ struct CascadeDeleteTests {
         #expect(bookmarks.isEmpty, "Bookmark should be cascade deleted with folder")
     }
 
-    @Test("Deleting BookmarkFolder cascades to child folders")
+    @Test
     @MainActor
-    func deleteFolderCascadesToChildFolders() throws {
+    func `Deleting BookmarkFolder cascades to child folders`() throws {
         let context = container.mainContext
 
         let parentFolder = BookmarkFolder(name: "Parent")
@@ -429,9 +425,9 @@ struct CascadeDeleteTests {
         #expect(folders.isEmpty, "Child folder should be cascade deleted with parent")
     }
 
-    @Test("Nested folder cascade delete includes all descendants")
+    @Test
     @MainActor
-    func nestedFolderCascadeDelete() throws {
+    func `Nested folder cascade delete includes all descendants`() throws {
         let context = container.mainContext
 
         // Create hierarchy: Root → Child → Grandchild + Bookmarks at each level
@@ -446,16 +442,16 @@ struct CascadeDeleteTests {
         context.insert(grandchild)
         child.childFolders.append(grandchild)
 
-        let rootBookmark = Bookmark(url: URL(string: "https://root.com")!, folder: root)
+        let rootBookmark = try Bookmark(url: #require(URL(string: "https://root.com")), folder: root)
         context.insert(rootBookmark)
         root.bookmarks.append(rootBookmark)
 
-        let childBookmark = Bookmark(url: URL(string: "https://child.com")!, folder: child)
+        let childBookmark = try Bookmark(url: #require(URL(string: "https://child.com")), folder: child)
         context.insert(childBookmark)
         child.bookmarks.append(childBookmark)
 
-        let grandchildBookmark = Bookmark(
-            url: URL(string: "https://grandchild.com")!,
+        let grandchildBookmark = try Bookmark(
+            url: #require(URL(string: "https://grandchild.com")),
             folder: grandchild,
         )
         context.insert(grandchildBookmark)
@@ -496,8 +492,8 @@ struct CascadeDeleteTests {
 @Suite("Schema Versioning", .tags(.dataIntegrity), .serialized)
 @MainActor
 struct SchemaVersionTests {
-    @Test("SchemaV1 contains all required models")
-    func schemaV1ContainsAllModels() {
+    @Test
+    func `SchemaV1 contains all required models`() {
         let models = SchemaV1.models
 
         // Core tab models
@@ -523,8 +519,8 @@ struct SchemaVersionTests {
         #expect(models.contains { $0 == Download.self })
     }
 
-    @Test("SchemaV1 version identifier is correct")
-    func schemaV1VersionIdentifier() {
+    @Test
+    func `SchemaV1 version identifier is correct`() {
         let version = SchemaV1.versionIdentifier
 
         #expect(version.major == 1)
@@ -532,8 +528,8 @@ struct SchemaVersionTests {
         #expect(version.patch == 0)
     }
 
-    @Test("RefraxMigrationPlan includes SchemaV1")
-    func migrationPlanIncludesSchemaV1() {
+    @Test
+    func `RefraxMigrationPlan includes SchemaV1`() {
         let schemas = RefraxMigrationPlan.schemas
 
         #expect(schemas.count >= 1)

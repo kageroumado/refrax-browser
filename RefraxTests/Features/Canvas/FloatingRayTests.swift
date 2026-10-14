@@ -160,7 +160,7 @@ struct FloatingRayTriggerTests {
         #expect(canvas.rayRequest == nil)
 
         ControlIslandTabActions(tab: source, windowState: window, tabs: env.tabManager, bookmarks: env.bookmarksManager).toggleFavorite()
-        #expect(window.activeTab?.isLiveFavorite == true)
+        #expect(window.activeTab?.isFavorite == true)
         env.tabManager.setActiveTab(reference, in: window)
         #expect(canvas.rayRequest == nil)
 

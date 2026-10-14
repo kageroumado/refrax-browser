@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for handling external drags (URLs from other apps) entering the sidebar.
@@ -18,8 +17,8 @@ struct SidebarDragInboundExternalTests {
 
     // MARK: - Inbound Drop Zone Tests
 
-    @Test("Inbound drop zone set on external entry")
-    func inboundDropZoneSetOnExternalEntry() throws {
+    @Test
+    func `Inbound drop zone set on external entry`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
         _ = support.createTab(url: "https://tab.com")
@@ -35,8 +34,8 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.inboundDropZone == .favoritesGrid)
     }
 
-    @Test("isReceivingExternalDrop returns true when inboundDropZone set")
-    func isReceivingExternalDropReturnsTrue() throws {
+    @Test
+    func `isReceivingExternalDrop returns true when inboundDropZone set`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
@@ -51,8 +50,8 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.isReceivingExternalDrop == true)
     }
 
-    @Test("External drop zone highlights favorites")
-    func externalDropZoneHighlightsFavorites() throws {
+    @Test
+    func `External drop zone highlights favorites`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
         _ = support.createTab(url: "https://tab.com")
@@ -66,10 +65,10 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.isReceivingExternalDrop == true)
     }
 
-    @Test("External drop zone highlights pinned")
-    func externalDropZoneHighlightsPinned() throws {
+    @Test
+    func `External drop zone highlights pinned`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
@@ -81,8 +80,8 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.isReceivingExternalDrop == true)
     }
 
-    @Test("External drop zone highlights normal")
-    func externalDropZoneHighlightsNormal() throws {
+    @Test
+    func `External drop zone highlights normal`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
@@ -95,11 +94,11 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.isReceivingExternalDrop == true)
     }
 
-    @Test("External drop zone transitions between sections")
-    func externalDropZoneTransitions() throws {
+    @Test
+    func `External drop zone transitions between sections`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
@@ -117,8 +116,8 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.inboundDropZone == .normalSection)
     }
 
-    @Test("External drop cancellation clears state")
-    func externalDropCancellationClearsState() throws {
+    @Test
+    func `External drop cancellation clears state`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
@@ -134,19 +133,19 @@ struct SidebarDragInboundExternalTests {
         #expect(support.dragCoordinator.inboundDropZone == nil)
     }
 
-    @Test("External drop does not affect internal drag state")
-    func externalDropDoesNotAffectInternalState() throws {
+    @Test
+    func `External drop does not affect internal drag state`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         // Start internal drag
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),

@@ -176,8 +176,8 @@ final class RefraxControlServer {
         case let .uiAXClick(params):
             handleUIAXClick(params)
         // Tier 1A: Extended Tab Operations
-        case let .tabPin(params):
-            try handleTabPin(params)
+        case let .tabFavorite(params):
+            try handleTabFavorite(params)
         case let .tabDuplicate(params):
             try handleTabDuplicate(params)
         case let .tabRename(params):
@@ -1554,11 +1554,12 @@ final class RefraxControlServer {
 
     // MARK: - Tier 1A: Extended Tab Operations
 
-    private func handleTabPin(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
+    private func handleTabFavorite(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
         let tab = try resolveTabRef(params.id)
-        tabManager.togglePinTab(tab)
-        let state = tab.isPinned ? "pinned" : "unpinned"
-        return .ok("Tab \(state)")
+        guard tabManager.toggleFavorite(tab, in: windowManager.activeWindowController?.windowState) else {
+            throw ControlError.invalidParams("Favorites are full")
+        }
+        return .ok(tab.isFavorite ? "Added to Favorites" : "Removed from Favorites")
     }
 
     private func handleTabDuplicate(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
@@ -1639,7 +1640,7 @@ final class RefraxControlServer {
             url: webPage?.url?.absoluteString ?? tab.activePage.url.absoluteString,
             isActive: tab.id == activeTabID,
             isLoading: webPage?.isLoading ?? false,
-            isPinned: tab.isPinned,
+            isFavorite: tab.isFavorite,
             isUnread: tab.isUnread,
             customName: tab.customName,
             groupID: tab.groupID.map { "\($0)" },
@@ -3022,7 +3023,7 @@ final class RefraxControlServer {
             isActive: tab.id == activeTabID,
             spaceID: tab.space.map { "\($0.id)" },
             isLoading: webPage?.isLoading ?? false,
-            isPinned: tab.isPinned,
+            isFavorite: tab.isFavorite,
             isUnread: tab.isUnread,
             customName: tab.customName,
             groupID: tab.groupID.map { "\($0)" },

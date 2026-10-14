@@ -10,7 +10,6 @@ nonisolated struct FloatingTabPlacement: Codable, Equatable, Sendable {
     var previewWidth: Double?
     var previewHeight: Double?
     var region: FloatingPageRegion?
-    var showsInEverySpace: Bool?
     /// The window side the tab fills at full height. A docked tab is always visible, and its
     /// floating frame stays where it was so undocking returns it there.
     var dock: FloatingDockEdge?

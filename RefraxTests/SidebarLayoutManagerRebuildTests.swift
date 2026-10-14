@@ -1,13 +1,12 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 @Suite("Sidebar.LayoutManager Rebuild", .tags(.sidebarLayoutManager), .serialized)
 @MainActor
 struct SidebarLayoutManagerRebuildTests {
-    @Test("Rebuild keeps favorites when no active space")
-    func rebuildKeepsFavoritesWithoutSpace() throws {
+    @Test
+    func `Rebuild keeps favorites when no active space`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
         let managers = SidebarManagers(
@@ -19,8 +18,8 @@ struct SidebarLayoutManagerRebuildTests {
             settings: env.settings,
         )
 
-        let bookmark = env.bookmarksManager.createBookmark(
-            url: URL(string: "https://example.com")!, title: "Favorite",
+        let bookmark = try env.bookmarksManager.createBookmark(
+            url: #require(URL(string: "https://example.com")), title: "Favorite",
         )
         env.bookmarksManager.addToFavorites(bookmark)
 
@@ -31,13 +30,13 @@ struct SidebarLayoutManagerRebuildTests {
         #expect(managers.layoutManager.normalItems.isEmpty)
     }
 
-    @Test("Rebuild partitions pinned and normal items")
-    func rebuildPartitionsPinnedAndNormal() throws {
+    @Test
+    func `Rebuild partitions pinned and normal items`() throws {
         let support = try SidebarTestSupport()
 
         _ = try support.createGroup(name: "Pinned Group", isPinned: true)
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal.com", isPinned: false)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = support.createTab(url: "https://normal.com")
 
         support.rebuildLayout()
 
@@ -48,13 +47,13 @@ struct SidebarLayoutManagerRebuildTests {
         ))
     }
 
-    @Test("Rebuild applies filter only to normal items")
-    func rebuildAppliesFilterToNormal() throws {
+    @Test
+    func `Rebuild applies filter only to normal items`() throws {
         let support = try SidebarTestSupport()
 
-        _ = support.createTab(url: "https://match.com", isPinned: false)
-        _ = support.createTab(url: "https://other.com", isPinned: false)
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = support.createTab(url: "https://match.com")
+        _ = support.createTab(url: "https://other.com")
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
 
         support.filterManager.applyQuickFilter(searchText: "match", inTitle: false, inURL: true)
         support.rebuildLayout()
@@ -64,13 +63,13 @@ struct SidebarLayoutManagerRebuildTests {
         #expect(support.layoutManager.normalItems.first?.tab?.activePage.url.absoluteString.contains("match") == true)
     }
 
-    @Test("Metadata top padding applied only to first normal item when pinned exists")
-    func metadataTopPaddingForFirstNormalItem() throws {
+    @Test
+    func `Metadata top padding applied only to first normal item when pinned exists`() throws {
         let support = try SidebarTestSupport()
 
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://one.com", isPinned: false)
-        _ = support.createTab(url: "https://two.com", isPinned: false)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = support.createTab(url: "https://one.com")
+        _ = support.createTab(url: "https://two.com")
 
         support.rebuildLayout()
 
@@ -89,8 +88,8 @@ struct SidebarLayoutManagerRebuildTests {
 @Suite("Sidebar.LayoutManager Hierarchy", .tags(.sidebarLayoutManager), .serialized)
 @MainActor
 struct SidebarLayoutManagerHierarchyTests {
-    @Test("Metadata nesting levels reflect group hierarchy")
-    func metadataNestingLevels() throws {
+    @Test
+    func `Metadata nesting levels reflect group hierarchy`() throws {
         let support = try SidebarTestSupport()
 
         let rootGroup = try support.createGroup(name: "Root")
@@ -107,8 +106,8 @@ struct SidebarLayoutManagerHierarchyTests {
         #expect(support.layoutManager.metadata[nestedTab.id]?.nestingLevel == 2)
     }
 
-    @Test("Descendants cache includes nested groups and tabs")
-    func descendantsCacheIncludesNestedItems() throws {
+    @Test
+    func `Descendants cache includes nested groups and tabs`() throws {
         let support = try SidebarTestSupport()
 
         let rootGroup = try support.createGroup(name: "Root")
@@ -126,8 +125,8 @@ struct SidebarLayoutManagerHierarchyTests {
         #expect(descendants.contains(nestedTab.id))
     }
 
-    @Test("Group bounds span header and descendants")
-    func groupBoundsSpanHeaderAndDescendants() throws {
+    @Test
+    func `Group bounds span header and descendants`() throws {
         let support = try SidebarTestSupport()
 
         let group = try support.createGroup(name: "Group")
@@ -137,8 +136,8 @@ struct SidebarLayoutManagerHierarchyTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
         let bounds = support.layoutManager.calculateGroupBounds(groupID: group.id)
-        let headerFrame = support.dragCoordinator.computedItemFrame(for: group.id)!
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
+        let headerFrame = try #require(support.dragCoordinator.computedItemFrame(for: group.id))
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
 
         #expect(bounds.minY == headerFrame.minY)
         #expect(bounds.maxY == tabFrame.maxY)

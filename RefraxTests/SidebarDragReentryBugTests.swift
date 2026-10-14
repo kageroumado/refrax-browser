@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests specifically targeting re-entry bugs and coordinate space issues.
@@ -20,8 +19,8 @@ struct SidebarDragReentryBugTests {
 
     // MARK: - currentOffset Bug Tests
 
-    @Test("BUG: Re-entry does not recompute currentOffset")
-    func reentryDoesNotRecomputeCurrentOffset() throws {
+    @Test
+    func `BUG: Re-entry does not recompute currentOffset`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab1.com")
         _ = support.createTab(url: "https://tab2.com")
@@ -29,12 +28,12 @@ struct SidebarDragReentryBugTests {
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let draggedTab = tabItem.tab!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let draggedTab = try #require(tabItem.tab)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(draggedTab),
             originPosition: .normal(localIndex: localIndex),
@@ -60,7 +59,7 @@ struct SidebarDragReentryBugTests {
         _ = support.dragCoordinator.currentOffset
 
         // Restore from ghost state (simulating re-entry)
-        support.dragCoordinator.restoreFromGhostState(support.dragCoordinator.ghostState!)
+        try support.dragCoordinator.restoreFromGhostState(#require(support.dragCoordinator.ghostState))
         support.dragCoordinator.handoffPhase = .internal
 
         // After re-entry, simulate what handleReentryUpdated now does (with the fix):
@@ -85,8 +84,8 @@ struct SidebarDragReentryBugTests {
         #expect(offsetAfterReentry != offsetBeforeHandoff, "currentOffset should be updated after re-entry")
     }
 
-    @Test("BUG: Target index calculation uses stale offset after re-entry")
-    func targetIndexUsesStaleOffsetAfterReentry() throws {
+    @Test
+    func `BUG: Target index calculation uses stale offset after re-entry`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab1.com")
         _ = support.createTab(url: "https://tab2.com")
@@ -96,12 +95,12 @@ struct SidebarDragReentryBugTests {
         setupStandardFrames(support)
 
         // Drag first item (in layout order - most recently created)
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let draggedTab = tabItem.tab!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let draggedTab = try #require(tabItem.tab)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(draggedTab),
             originPosition: .normal(localIndex: localIndex),
@@ -124,7 +123,7 @@ struct SidebarDragReentryBugTests {
         support.dragCoordinator.itemPushOffsets.removeAll()
 
         // Simulate re-entry at a COMPLETELY DIFFERENT position (should target index 3)
-        support.dragCoordinator.restoreFromGhostState(support.dragCoordinator.ghostState!)
+        try support.dragCoordinator.restoreFromGhostState(#require(support.dragCoordinator.ghostState))
         support.dragCoordinator.handoffPhase = .internal
 
         // Re-entry updated - cursor now at position that would target index 3
@@ -151,72 +150,13 @@ struct SidebarDragReentryBugTests {
         }
     }
 
-    @Test("BUG: Re-entry with different section should update drop target")
-    func reentryWithDifferentSectionUpdatesDropTarget() throws {
-        let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        // Drag from pinned section
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let draggedTab = pinnedItem.tab!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-        support.dragCoordinator.startDrag(
-            item: .tab(draggedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Stay in pinned section before handoff
-        support.dragCoordinator.updateDrag(
-            offset: 20,
-            location: CGPoint(x: 100, y: 120),
-        )
-
-        let targetBeforeHandoff = support.dragCoordinator._dropTarget
-
-        // Capture and simulate handoff
-        support.dragCoordinator.ghostState = support.dragCoordinator.captureGhostState()
-        support.dragCoordinator.handoffPhase = .external
-        support.dragCoordinator.externalPhaseStartTime = CACurrentMediaTime() - 0.1
-        support.dragCoordinator.itemPushOffsets.removeAll()
-
-        // Re-entry in NORMAL section (cross-collection!)
-        support.dragCoordinator.restoreFromGhostState(support.dragCoordinator.ghostState!)
-        support.dragCoordinator.handoffPhase = .internal
-
-        // Cursor now in normal section
-        let reentryLocation = CGPoint(x: 100, y: 220) // In normal section
-        support.dragCoordinator.overlayPosition = reentryLocation
-        support.dragCoordinator.detectDropTarget(at: reentryLocation)
-        support.dragCoordinator.updateAffectedItems()
-
-        let targetAfterReentry = support.dragCoordinator._dropTarget
-
-        // Verify target collection changed from pinned to normal
-        if case let .reorder(targetBefore) = targetBeforeHandoff,
-           case let .reorder(targetAfter) = targetAfterReentry {
-            #expect(targetBefore.collection == .pinned)
-            #expect(targetAfter.collection == .normal, "Re-entry should detect new section")
-        } else {
-            Issue.record("Expected reorder targets")
-        }
-    }
-
     // MARK: - Coordinate Space Mismatch Tests
 
-    @Test("BUG: External drop uses view-local coords but frames are global")
-    func externalDropCoordinateSpaceMismatch() throws {
+    @Test
+    func `BUG: External drop uses view-local coords but frames are global`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         _ = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
 
@@ -267,19 +207,19 @@ struct SidebarDragReentryBugTests {
         )
     }
 
-    @Test("Overlay position consistency during re-entry cycle")
-    func overlayPositionConsistencyDuringReentry() throws {
+    @Test
+    func `Overlay position consistency during re-entry cycle`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let draggedTab = tabItem.tab!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let draggedTab = try #require(tabItem.tab)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(draggedTab),
             originPosition: .normal(localIndex: localIndex),
@@ -301,7 +241,7 @@ struct SidebarDragReentryBugTests {
         support.dragCoordinator.handoffPhase = .external
 
         // Restore from ghost
-        support.dragCoordinator.restoreFromGhostState(ghostState!)
+        try support.dragCoordinator.restoreFromGhostState(#require(ghostState))
 
         // Overlay position should be restored to the captured position
         #expect(support.dragCoordinator.overlayPosition == positionBeforeHandoff)
@@ -315,19 +255,19 @@ struct SidebarDragReentryBugTests {
 
     // MARK: - Layout Rebuild During External Phase Tests
 
-    @Test("BUG: Layout rebuild during external phase clears internal state")
-    func layoutRebuildDuringExternalPhaseClearsState() throws {
+    @Test
+    func `BUG: Layout rebuild during external phase clears internal state`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         _ = support.createTab(url: "https://tab2.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -364,19 +304,19 @@ struct SidebarDragReentryBugTests {
         )
     }
 
-    @Test("Ghost state should persist through external phase layout changes")
-    func ghostStatePersistsThroughLayoutChanges() throws {
+    @Test
+    func `Ghost state should persist through external phase layout changes`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         _ = support.createTab(url: "https://tab2.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -399,18 +339,18 @@ struct SidebarDragReentryBugTests {
 
     // MARK: - Handoff Frame Calculation Tests
 
-    @Test("Handoff overlay frame uses correct coordinate space")
-    func handoffOverlayFrameCoordinateSpace() throws {
+    @Test
+    func `Handoff overlay frame uses correct coordinate space`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),

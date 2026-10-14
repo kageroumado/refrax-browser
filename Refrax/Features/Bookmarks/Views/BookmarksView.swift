@@ -630,7 +630,7 @@ struct BookmarksView: View {
                 bookmarksManager.removeFromFavorites(bookmark)
             }
         } else {
-            Button("Add to Favorites") {
+            Button("Favorite") {
                 bookmarksManager.addToFavorites(bookmark, mode: .shortcut)
             }
         }

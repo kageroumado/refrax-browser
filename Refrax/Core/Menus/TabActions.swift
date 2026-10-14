@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-/// Menu actions on a tab as an object: its favorite, its floating placement, its selection on
-/// the desk, its sound, its name and unread mark, the space and window it lives in, its
-/// duplicate, its close, and Look.
+/// Menu actions on a tab as an object: Favorite and a favorite's home, its floating placement,
+/// its selection on the desk, its sound, its name and unread mark, the space and window it
+/// lives in, its duplicate, its close, and Look.
 ///
 /// Placement actions need the canvas and the area the card is laid out in, so they appear only
 /// on card surfaces that pass both. The sidebar row brings its own identity, organization, and
@@ -30,13 +30,7 @@ struct TabActions {
             actions += dockActions(canvas: canvas)
             actions += selectionActions(canvas: canvas)
         }
-        if surface.isCard, let bookmark = tab.linkedBookmark, behaviors.isFavorite {
-            actions.append(MenuAction("tab.updateSavedAddress", "Update Saved Address", symbol: "bookmark", group: .tab) {
-                bookmark.url = tab.activePage.url
-                bookmarks.refreshFavoritesCache()
-                tabs.state.scheduleSave()
-            })
-        }
+        actions += favoriteActions(behaviors)
         actions += mediaActions()
         if surface.isCard {
             actions += identityActions()
@@ -45,6 +39,25 @@ struct TabActions {
         if surface.isCard {
             actions += spaceActions() + windowActions()
             actions.append(MenuAction("tab.close", "Close Tab", symbol: "xmark", group: .close) { tabs.requestCloseTab(tab) })
+        }
+        return actions
+    }
+
+    /// Favorite, or for a favorite: Remove from Favorites, Go to Home once it has left home, and
+    /// Set Current Page as Home.
+    private func favoriteActions(_ behaviors: ControlIslandTabActions) -> [MenuAction] {
+        guard behaviors.isFavorite else {
+            guard behaviors.canFavorite else { return [] }
+            return [MenuAction("tab.favorite", "Favorite", symbol: "star", group: .tab, isPrimary: true) { behaviors.toggleFavorite() }]
+        }
+        var actions = [
+            MenuAction("tab.unfavorite", "Remove from Favorites", symbol: "star.slash", group: .tab) { behaviors.toggleFavorite() },
+        ]
+        if tab.hasNavigatedFromHome {
+            actions.append(MenuAction("tab.goHome", "Go to Home", symbol: "house", group: .go) { tabs.goHome(tab) })
+            actions.append(MenuAction("tab.setHome", "Set Current Page as Home", symbol: "house", group: .go) {
+                tabs.setCurrentPageAsHome(tab)
+            })
         }
         return actions
     }
@@ -98,7 +111,7 @@ struct TabActions {
     /// locked space shows a lock and asks to be unlocked before the tab moves in.
     private func spaceActions() -> [MenuAction] {
         let lock = tabs.state.spaceLockManager
-        guard !tab.isLiveFavorite, let current = tab.space, !lock.requiresAuth(for: current) else { return [] }
+        guard !tab.isFavorite, let current = tab.space, !lock.requiresAuth(for: current) else { return [] }
         let destinations = tabs.spaceManager.spaces.filter { $0.id != current.id }
         guard !destinations.isEmpty else { return [] }
         let targets = destinations.map { space in
@@ -112,7 +125,7 @@ struct TabActions {
 
     private func windowActions() -> [MenuAction] {
         var actions: [MenuAction] = []
-        if !tab.isLiveFavorite, tab.space != nil {
+        if !tab.isFavorite, tab.space != nil {
             actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option]), group: .window) {
                 if surface.isCard, let canvas {
                     canvas.moveFloatingTabToNewWindow(tab, in: area)
@@ -180,7 +193,7 @@ struct TabActions {
 
     private func selectionActions(canvas: TabCanvasManager) -> [MenuAction] {
         var actions: [MenuAction] = []
-        if !tab.isLiveFavorite, tab.space?.id == windowState.activeSpaceID {
+        if !tab.isFavorite, tab.space?.id == windowState.activeSpaceID {
             let isSelected = canvas.selectedFloatingTabIDs.contains(tab.id)
             actions.append(MenuAction("tab.select", isSelected ? "Deselect for Group" : "Select for Group", symbol: "checkmark.circle", group: .move) {
                 if isSelected {
@@ -192,15 +205,6 @@ struct TabActions {
             if canvas.selectedFloatingTabIDs.count > 1 {
                 actions.append(MenuAction("tab.groupSelection", "Group Selected Tabs", symbol: "rectangle.3.group", group: .move) { canvas.groupFloatingSelection() })
             }
-        }
-        let placement = canvas.floatingPlacement(for: tab)
-        if placement.isPinned, tab.space?.dataStoreMode != .private {
-            let everywhere = placement.showsInEverySpace == true
-            actions.append(MenuAction("tab.everySpace", everywhere ? "Show in This Space" : "Show in Every Space", symbol: "square.on.square", group: .move) {
-                var next = placement
-                next.showsInEverySpace = !everywhere
-                canvas.updateFloatingPlacement(next, for: tab)
-            })
         }
         return actions
     }

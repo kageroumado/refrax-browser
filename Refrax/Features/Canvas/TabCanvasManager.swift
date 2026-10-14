@@ -177,7 +177,7 @@ final class TabCanvasManager {
     /// layer to point at it. Pages that already have a place, favorites, pages from
     /// other spaces, and Look visits keep the layer quiet.
     func tabDisplaced(_ tab: Tab) {
-        guard showsFloatingControls, !tab.isLiveFavorite, !tab.isArchived,
+        guard showsFloatingControls, !tab.isFavorite, !tab.isArchived,
               tab.space?.id == windowState.activeSpaceID, tab.id != windowState.activeTabID,
               !tabManager.isShownInAnotherWindow(tab, besides: windowState),
               windowState.pageVisit.destination == nil,
@@ -219,15 +219,10 @@ final class TabCanvasManager {
         return CGRect(origin: .zero, size: bounds.size)
     }
 
+    /// The active space's tabs and the favorites, which keep their place in every space.
     var floatingTabs: [Tab] {
         _ = tabManager.state.tabListVersion
-        let retained = tabManager.state.spaces.filter {
-            $0.id != windowState.activeSpaceID && $0.dataStoreMode != .private && !tabManager.state.spaceLockManager.requiresAuth(for: $0)
-        }.flatMap(\.tabs).filter { tab in
-            let placement = windowState.floatingPlacements[tab.id] ?? tab.floatingPlacement
-            return placement?.showsInEverySpace == true && placement?.isPinned == true
-        }
-        return (windowState.activeSpaceTabs + tabManager.state.liveFavoriteTabs + retained).filter {
+        return (windowState.activeSpaceTabs + tabManager.state.favoriteTabs).filter {
             !$0.isArchived && !tabManager.isShownInAnotherWindow($0, besides: windowState)
         }
     }

@@ -138,13 +138,17 @@ struct FavoriteTileView: View {
 
     /// Whether this item is a live favorite (can be activated/selected).
     private var isLiveFavorite: Bool {
-        if case .liveFavorite = item.type { return true }
+        if case .liveFavorite = item.type {
+            return true
+        }
         return false
     }
 
     /// Whether this item is a shortcut favorite.
     private var isShortcut: Bool {
-        if case .shortcut = item.type { return true }
+        if case .shortcut = item.type {
+            return true
+        }
         return false
     }
 
@@ -444,7 +448,7 @@ private struct FolderMenuTile<Content: View>: View {
 
     private func openBookmark(_ bookmark: Bookmark) {
         if bookmark.favoriteMode == .liveFavorite,
-           let tab = bookmarksManager.liveFavoriteTab(for: bookmark) {
+           let tab = bookmarksManager.favoriteTab(for: bookmark) {
             tabManager.setActiveTab(tab, in: windowState)
         } else {
             windowState.clearActiveLiveFavorite()

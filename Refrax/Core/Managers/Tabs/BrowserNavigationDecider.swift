@@ -311,8 +311,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         switch policy {
         case .allow, .next:
             if let exitRoute,
-               exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url)
-            {
+               exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url) {
                 return .cancel
             }
         default:
@@ -694,8 +693,8 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         }
 
         // Default behavior
-        // Pinned/live favorite tabs have stale position and group info — use prepend
-        let isContained = tab?.isPinned == true || tab?.isLiveFavorite == true
+        // Favorites have stale position and group info — use prepend
+        let isContained = tab?.isFavorite == true
         let targetSpace = tab?.space ?? tabManager.state.spaces.first
         tabManager.createTab(
             url: url,

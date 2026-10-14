@@ -47,7 +47,7 @@ struct SidebarTabMenuTests {
         let tree = fixture.tree(for: fixture.tabs[1])
         #expect(tree.rowCount == 12)
         #expect(topLevel(tree) == [
-            "Rename Tab", "Tab ▸ (5)", "——", "Move to Group ▸ (1)", "Add to New Group…", "Move to Space ▸ (1)", "——", "Copy Address", "Copy as Markdown Link", "——",
+            "Rename Tab", "Tab ▸ (4)", "——", "Move to Group ▸ (1)", "Add to New Group…", "Move to Space ▸ (1)", "——", "Copy Address", "Copy as Markdown Link", "——",
             "Share…", "Sort Tabs ▸ (8)", "Open Reflected Window", "——", "Archive Tab", "Close ▸ (7)",
         ])
         let close = Array(tree.outline.drop { $0 != "Close ▸ (7)" }.dropFirst().prefix(7))
@@ -55,15 +55,15 @@ struct SidebarTabMenuTests {
             "  Archive Other Tabs", "  Archive All Tabs Above", "  Archive All Tabs Below", "  Delete Immediately",
             "  Delete Other Tabs Immediately", "  Delete All Tabs Above Immediately", "  Delete All Tabs Below Immediately",
         ])
-        let identity = Array(tree.outline.drop { $0 != "Tab ▸ (5)" }.dropFirst().prefix(5))
-        #expect(identity == ["  Get Info", "  Pin", "  Move to Favorites", "  Mark as Read", "  Duplicate Tab"])
+        let identity = Array(tree.outline.drop { $0 != "Tab ▸ (4)" }.dropFirst().prefix(4))
+        #expect(identity == ["  Get Info", "  Mark as Read", "  Favorite", "  Duplicate Tab"])
     }
 
     @Test
     func `without archiving the close family stays inline and compact mode promotes Get Info`() throws {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.tabs[0], isCompactMode: true)
-        #expect(Array(topLevel(tree).prefix(2)) == ["Get Info", "Tab ▸ (4)"])
+        #expect(Array(topLevel(tree).prefix(2)) == ["Get Info", "Tab ▸ (3)"])
         let closing = Array(topLevel(tree).suffix(3))
         #expect(Array(closing.prefix(2)) == ["Close Tab", "Close Other Tabs"])
         #expect(closing.last?.hasPrefix("Close All Tabs") == true)
@@ -71,19 +71,12 @@ struct SidebarTabMenuTests {
     }
 
     @Test
-    func `a pinned tab gains its home and a grouped tab loses the pin`() throws {
+    func `a grouped tab offers Remove from Group in place of Move to Group`() throws {
         let fixture = try Fixture()
-        let pinned = fixture.tabs[0]
-        fixture.env.tabManager.togglePinTab(pinned)
-        let pinnedTree = fixture.tree(for: pinned)
-        #expect(topLevel(pinnedTree).contains("Set Current Page as Home"))
-        #expect(pinnedTree.outline.contains("  Unpin"))
-
         let group = try #require(fixture.space.groups.first)
         let grouped = fixture.tabs[2]
         fixture.env.groupManager.moveTabToGroup(grouped, group: group)
         let groupedTree = fixture.tree(for: grouped)
-        #expect(!groupedTree.outline.contains("  Pin"))
         #expect(topLevel(groupedTree).contains("Remove from Group"))
         #expect(!groupedTree.ids.contains("sidebar.moveToGroup"))
     }

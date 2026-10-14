@@ -44,7 +44,7 @@ struct CompactSidebarContent: View {
 
         // Compute active live favorite favicon data once at body level
         let activeFavoriteFaviconData: Data? = {
-            guard let tab = activeTab, tab.status == .liveFavorite else { return nil }
+            guard let tab = activeTab, tab.status == .favorite else { return nil }
             return layoutManager.favoritesLayout
                 .first { $0.tab?.id == tab.id }?
                 .faviconData

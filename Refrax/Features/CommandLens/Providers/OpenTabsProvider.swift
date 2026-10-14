@@ -39,7 +39,7 @@ struct OpenTabsProvider: CommandLensSuggestionProvider {
         }
 
         // Search live favorite tabs
-        let matchingLiveFavorites = tabManager.state.liveFavoriteTabs
+        let matchingLiveFavorites = tabManager.state.favoriteTabs
             .filter { matchesQuery($0, query: query) }
 
         for tab in matchingLiveFavorites.prefix(maxSuggestions - suggestions.count) {

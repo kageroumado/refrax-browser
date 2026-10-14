@@ -267,7 +267,7 @@ final class WindowState {
         }
         guard !isSpaceLocked, activeSpace?.dataStoreMode != .private,
               let id = saved.mainTabID, let tab = browserState.tab(for: id), !tab.isArchived,
-              tab.isLiveFavorite || tab.space?.id == activeSpaceID else { return nil }
+              tab.isFavorite || tab.space?.id == activeSpaceID else { return nil }
         return tab
     }
 
@@ -348,7 +348,6 @@ final class WindowState {
         activeTab?.activePage
     }
     
-
     // MARK: - Focused Webpage Tracking
 
     /// The ID of the last-interacted webpage in this window.
@@ -789,7 +788,6 @@ final class WindowState {
         clearFocus()
     }
 
-
     private func clearFocus() {
         commandLensEntrance = nil
         commandLensFrame = .zero
@@ -826,7 +824,6 @@ final class WindowState {
     func toggleSidebar() {
         isSidebarCollapsed.toggle()
     }
-
 
     // MARK: - Detail Tray Actions
 
@@ -914,7 +911,7 @@ final class WindowState {
     ///   - trackPrevious: Whether to track the current tab as previous for "go back"
     ///     behavior. Set to false during batch operations or cleanup.
     func setActiveTab(_ tab: Tab, trackPrevious: Bool = true) {
-        if tab.status == .liveFavorite {
+        if tab.status == .favorite {
             // Live favorites override space-based active tab
             _activeLiveFavoriteTabID = tab.id
         } else if let spaceID = tab.space?.id {

@@ -117,7 +117,7 @@ extension TabCanvasManager {
     private func stackBySite(in space: Space, only selection: [Tab]?) {
         let chosen = selection.map { Set($0.map(\.id)) }
         let candidates = floatingTabs.filter { tab in
-            tab.space?.id == space.id && storedFloatingPlacement(for: tab) != nil && !tab.isLiveFavorite
+            tab.space?.id == space.id && storedFloatingPlacement(for: tab) != nil && !tab.isFavorite
                 && (tab.group == nil || tab.group?.stackSite != nil) && (chosen?.contains(tab.id) ?? true)
         }
         let stacks = FloatingArrangement.siteStacks(candidates.map { (id: $0.id, site: Self.stackSite(for: $0)) })
@@ -152,7 +152,7 @@ extension TabCanvasManager {
     /// the stack's pile.
     func fileIntoSiteStack(_ tab: Tab) {
         guard let space = tab.space, space.stacksBySite, space.id == windowState.activeSpaceID,
-              tab.group == nil, !tab.isLiveFavorite, let site = Self.stackSite(for: tab),
+              tab.group == nil, !tab.isFavorite, let site = Self.stackSite(for: tab),
               let group = space.groups.first(where: { $0.stackSite == site }) else { return }
         let pile = group.sortedTabs.first { $0.id != tab.id && storedFloatingPlacement(for: $0) != nil }
         groupManager.moveTabToGroup(tab, group: group, in: space)

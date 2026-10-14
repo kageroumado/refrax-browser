@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 extension Tag {
@@ -10,19 +9,19 @@ extension Tag {
 @Suite("Sidebar.DragCoordinator Drop Zones", .tags(.sidebarDragCoordinator), .serialized)
 @MainActor
 struct SidebarDragDropZoneTests {
-    @Test("Favorites drop zone shows when dragging above empty favorites")
-    func favoritesDropZoneVisibility() throws {
+    @Test
+    func `Favorites drop zone shows when dragging above empty favorites`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://example.com", isPinned: false)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = support.createTab(url: "https://example.com")
 
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
         // Get the actual normal tab (use normalItems ordering)
-        let normalTab = support.layoutManager.normalItems.first!.tab!
-        let originIndex = support.layoutManager.metadata[normalTab.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalTab.id)!
+        let normalTab = try #require(support.layoutManager.normalItems.first?.tab)
+        let originIndex = try #require(support.layoutManager.metadata[normalTab.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalTab.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -45,8 +44,8 @@ struct SidebarDragDropZoneTests {
         #expect(!support.dragCoordinator.shouldShowPinDropZone)
     }
 
-    @Test("Pin drop zone shows when dragging unpinned group above empty pinned section")
-    func pinDropZoneVisibility() throws {
+    @Test
+    func `Pin drop zone shows when dragging unpinned group above empty pinned section`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Favorite", url: "https://favorite.com")
         let group = try support.createGroup(name: "Group", isPinned: false)
@@ -54,8 +53,8 @@ struct SidebarDragDropZoneTests {
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let originIndex = support.layoutManager.metadata[group.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: group.id)!
+        let originIndex = try #require(support.layoutManager.metadata[group.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: group.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .group(group),
@@ -72,16 +71,16 @@ struct SidebarDragDropZoneTests {
         #expect(support.dragCoordinator.shouldShowPinDropZone)
     }
 
-    @Test("Tab list push offset reflects both drop zones at full progress")
-    func tabListPushOffsetMatchesDropZones() throws {
+    @Test
+    func `Tab list push offset reflects both drop zones at full progress`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://example.com")
 
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let originIndex = support.layoutManager.metadata[tab.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
+        let originIndex = try #require(support.layoutManager.metadata[tab.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .tab(tab),
@@ -98,8 +97,8 @@ struct SidebarDragDropZoneTests {
         #expect(support.dragCoordinator.shouldShowPinDropZone)
     }
 
-    @Test("Drop zones show/hide at thresholds")
-    func dropZoneShowHideThresholds() throws {
+    @Test
+    func `Drop zones show/hide at thresholds`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://example.com")
 
@@ -107,8 +106,8 @@ struct SidebarDragDropZoneTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
         let items = support.layoutManager.pinnedItems + support.layoutManager.normalItems
-        let originIndex = support.layoutManager.metadata[tab.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
+        let originIndex = try #require(support.layoutManager.metadata[tab.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .tab(tab),
@@ -116,8 +115,8 @@ struct SidebarDragDropZoneTests {
             startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
         )
 
-        let originalFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
-        let baseThreshold = support.dragCoordinator.computedItemFrame(for: items.first!.id)!.minY + Sidebar.DragCoordinator.DragConstants.dropZoneThresholdOffset
+        let originalFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
+        let baseThreshold = try #require(support.dragCoordinator.computedItemFrame(for: #require(items.first?.id))?.minY) + Sidebar.DragCoordinator.DragConstants.dropZoneThresholdOffset
         let transition = Sidebar.DragCoordinator.DragConstants.dropZoneTransitionDistance
 
         // At threshold, drop zones should not be visible
@@ -137,16 +136,16 @@ struct SidebarDragDropZoneTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone || support.dragCoordinator.shouldShowPinDropZone)
     }
 
-    @Test("Adjusted section frames account for tab list push")
-    func adjustedFramesAccountForPush() throws {
+    @Test
+    func `Adjusted section frames account for tab list push`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://example.com")
 
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let originIndex = support.layoutManager.metadata[tab.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
+        let originIndex = try #require(support.layoutManager.metadata[tab.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .tab(tab),
@@ -165,16 +164,16 @@ struct SidebarDragDropZoneTests {
         #expect(adjusted.minY == support.dragCoordinator.computedNormalSectionFrame.minY + pushOffset)
     }
 
-    @Test("Location conversion subtracts push offset")
-    func locationInStaticSpaceSubtractsPushOffset() throws {
+    @Test
+    func `Location conversion subtracts push offset`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://example.com")
 
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let originIndex = support.layoutManager.metadata[tab.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tab.id)!
+        let originIndex = try #require(support.layoutManager.metadata[tab.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tab.id))
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
             item: .tab(tab),

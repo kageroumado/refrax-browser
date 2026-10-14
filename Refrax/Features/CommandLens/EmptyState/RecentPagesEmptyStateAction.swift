@@ -36,7 +36,7 @@ struct RecentPagesEmptyStateAction: CommandLensEmptyStateAction {
 
             let openTabSuggestions = sortedTabs.enumerated().map { index, tab -> CommandLensSuggestion in
                 let timeLabel = tab.lastAccessed.map(relativeTimeString) ?? ""
-                let iconName = tab.status == .pinned ? "pin.fill" : "rectangle.on.rectangle"
+                let iconName = tab.isFavorite ? "star.fill" : "rectangle.on.rectangle"
                 return CommandLensSuggestion(
                     type: .openTab(tabID: tab.id),
                     text: tab.customName ?? tab.pages.map(\.title).joined(separator: " | "),

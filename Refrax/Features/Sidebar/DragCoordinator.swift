@@ -414,8 +414,12 @@ extension Sidebar {
             let isMultiSelect = items.count > 1
             let filteredItems = items.filter { item in
                 guard let group = item.group else { return true }
-                if group.isArchive { return false }
-                if isMultiSelect { return false }
+                if group.isArchive {
+                    return false
+                }
+                if isMultiSelect {
+                    return false
+                }
                 return true
             }
 
@@ -614,11 +618,9 @@ extension Sidebar {
                     didReorder = false
                     break
                 }
-                let isPinned = targetPosition.collection == .pinned
                 let convertedTabID = tabManager.convertFavoriteToTab(
                     favorite,
-                    atIndex: targetPosition.localIndex,
-                    isPinned: isPinned,
+                    atIndex: targetPosition.collection == .pinned ? 0 : targetPosition.localIndex,
                     using: layoutManager,
                 )
                 didReorder = convertedTabID != nil
@@ -742,7 +744,9 @@ extension Sidebar {
                 to: target,
             )
 
-            if !mainMoved { return false }
+            if !mainMoved {
+                return false
+            }
 
             // Step 2: Insert followers after main item (preserving relative order)
             if !followerItems.isEmpty, let mainTab = mainItem.tab {
@@ -755,11 +759,6 @@ extension Sidebar {
                 var insertIndex = mainNewIndex + 1
                 for follower in followerItems {
                     guard let tab = follower.tab else { continue }
-
-                    // Follower adopts main item's pin state (cross-collection move)
-                    if tab.isPinned != mainTab.isPinned {
-                        tab.isPinned = mainTab.isPinned
-                    }
 
                     // Remove from any group (followers follow main's context)
                     if tab.groupID != nil {
@@ -790,7 +789,7 @@ extension Sidebar {
 
         /// Find the current global index of a tab in the layout.
         private func findCurrentIndex(for tab: Tab) -> Int {
-            if tab.isPinned {
+            if tab.isInPinnedGroup {
                 return layoutManager.pinnedItems.firstIndex { $0.tab?.id == tab.id } ?? 0
             } else {
                 let normalIndex = layoutManager.normalItems.firstIndex { $0.tab?.id == tab.id } ?? 0

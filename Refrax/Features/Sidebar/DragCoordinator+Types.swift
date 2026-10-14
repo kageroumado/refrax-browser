@@ -46,17 +46,23 @@ extension Sidebar.DragCoordinator {
         }
 
         var favorite: FavoriteItem? {
-            if case let .favorite(item) = self { return item }
+            if case let .favorite(item) = self {
+                return item
+            }
             return nil
         }
 
         var tab: Tab? {
-            if case let .tab(tab) = self { return tab }
+            if case let .tab(tab) = self {
+                return tab
+            }
             return nil
         }
 
         var group: TabGroup? {
-            if case let .group(group) = self { return group }
+            if case let .group(group) = self {
+                return group
+            }
             return nil
         }
 
@@ -65,7 +71,7 @@ extension Sidebar.DragCoordinator {
             case .favorite:
                 true
             case let .tab(tab):
-                tab.isPinned
+                tab.isInPinnedGroup
             case let .group(tabGroup):
                 tabGroup.isPinned == true
             }

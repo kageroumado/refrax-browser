@@ -92,7 +92,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .floatingTabs: "Reveal your tabs · hold ⌥ and it becomes Recent tabs · hold Control to peek"
         case .desk: "Organize tabs on the desk · ⌘⇧\\ · ⌥-click opens the desk with the lab menu in debug builds"
         case .spaces: "Grouped space icons with the current space selected"
-        case .favoriteTabs: "Live favorite tabs as a scrolling column of site icons"
+        case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"
         case .reload: "Reload the page or stop loading · ⌘R"
         case .favorites: "Open all your favorites"
         case .history: "Browse visited pages"

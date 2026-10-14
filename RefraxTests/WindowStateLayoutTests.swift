@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 import Testing
-
 @testable import Refrax
 
 // MARK: - WindowState Regression Tests
@@ -12,8 +11,8 @@ import Testing
 @Suite("WindowState Regression", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateRegressionTests {
-    @Test("Windows start with floating tabs and a full-width page")
-    func floatingTabsArePrimary() throws {
+    @Test
+    func `Windows start with floating tabs and a full-width page`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
         #expect(windowState.usesFloatingTabs)
@@ -22,8 +21,8 @@ struct WindowStateRegressionTests {
 
     // MARK: - Active Space Tests
 
-    @Test("WindowState starts with no active space")
-    func windowStateStartsNoActiveSpace() throws {
+    @Test
+    func `WindowState starts with no active space`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -31,8 +30,8 @@ struct WindowStateRegressionTests {
         #expect(windowState.activeSpace == nil)
     }
 
-    @Test("WindowState activeSpaceID set on switch")
-    func windowStateActiveSpaceIDSet() throws {
+    @Test
+    func `WindowState activeSpaceID set on switch`() throws {
         let env = try SpaceManagerTestEnvironment()
 
         let space = env.spaceManager.createSpace(name: "Test", iconName: "star")
@@ -43,8 +42,8 @@ struct WindowStateRegressionTests {
         #expect(windowState.activeSpaceID == space.id)
     }
 
-    @Test("WindowState activeSpace returns space object")
-    func windowStateActiveSpaceReturns() throws {
+    @Test
+    func `WindowState activeSpace returns space object`() throws {
         let env = try SpaceManagerTestEnvironment()
 
         let space = env.spaceManager.createSpace(name: "Test", iconName: "star")
@@ -58,16 +57,16 @@ struct WindowStateRegressionTests {
 
     // MARK: - Active Tab Tests
 
-    @Test("WindowState activeTabID persists per space")
-    func windowStateActiveTabIDPerSpace() throws {
+    @Test
+    func `WindowState activeTabID persists per space`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
 
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
 
-        let tab1 = Tab(space: space1, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space2, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space1, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space2, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -90,14 +89,14 @@ struct WindowStateRegressionTests {
         #expect(windowState.activeTabID == tab2.id)
     }
 
-    @Test("WindowState activeTab returns tab object")
-    func windowStateActiveTabReturns() throws {
+    @Test
+    func `WindowState activeTab returns tab object`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://active.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://active.com")),
             in: space,
             makeActive: false,
         )
@@ -108,16 +107,16 @@ struct WindowStateRegressionTests {
 
     // MARK: - Layout Mode Tests
 
-    @Test("WindowState isInLayoutMode starts false")
-    func windowStateLayoutModeStartsFalse() throws {
+    @Test
+    func `WindowState isInLayoutMode starts false`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         #expect(!windowState.isInLayoutMode)
     }
 
-    @Test("WindowState enterLayoutMode sets flag")
-    func windowStateEnterLayoutMode() throws {
+    @Test
+    func `WindowState enterLayoutMode sets flag`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -126,8 +125,8 @@ struct WindowStateRegressionTests {
         #expect(windowState.isInLayoutMode)
     }
 
-    @Test("WindowState exitLayoutMode clears flag")
-    func windowStateExitLayoutMode() throws {
+    @Test
+    func `WindowState exitLayoutMode clears flag`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -138,8 +137,8 @@ struct WindowStateRegressionTests {
         #expect(!windowState.isInLayoutMode)
     }
 
-    @Test("Switching space exits layout mode")
-    func switchingSpaceExitsLayoutMode() throws {
+    @Test
+    func `Switching space exits layout mode`() throws {
         let env = try SpaceManagerTestEnvironment()
 
         let space1 = env.spaceManager.createSpace(name: "Space 1", iconName: "1.circle")
@@ -157,8 +156,8 @@ struct WindowStateRegressionTests {
 
     // MARK: - Sidebar State Tests
 
-    @Test("WindowState sidebar collapsed state persists")
-    func windowStateSidebarCollapsedPersists() throws {
+    @Test
+    func `WindowState sidebar collapsed state persists`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -173,8 +172,8 @@ struct WindowStateRegressionTests {
 
     // MARK: - Multiple Windows Tests
 
-    @Test("Multiple WindowStates are independent")
-    func multipleWindowStatesIndependent() throws {
+    @Test
+    func `Multiple WindowStates are independent`() throws {
         let env = try SpaceManagerTestEnvironment()
 
         let space1 = env.spaceManager.createSpace(name: "Space 1", iconName: "1.circle")
@@ -190,15 +189,15 @@ struct WindowStateRegressionTests {
         #expect(window2.activeSpaceID == space2.id)
     }
 
-    @Test("Multiple windows same space different active tabs")
-    func multipleWindowsSameSpaceDifferentTabs() throws {
+    @Test
+    func `Multiple windows same space different active tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
 
         let space = env.makeSpace()
 
-        let tab1 = Tab(space: space, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -223,14 +222,14 @@ struct WindowStateRegressionTests {
 @Suite("WindowState Tab Switching", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateTabSwitchingTests {
-    @Test("Set active tab updates window state")
-    func setActiveTabUpdatesState() throws {
+    @Test
+    func `Set active tab updates window state`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: false,
         )
@@ -240,19 +239,19 @@ struct WindowStateTabSwitchingTests {
         #expect(windowState.activeTabID == tab.id)
     }
 
-    @Test("Select next tab advances selection")
-    func selectNextTabAdvances() throws {
+    @Test
+    func `Select next tab advances selection`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
@@ -265,19 +264,19 @@ struct WindowStateTabSwitchingTests {
         #expect(windowState.activeTabID == tab2.id)
     }
 
-    @Test("Select previous tab goes back")
-    func selectPreviousTabGoesBack() throws {
+    @Test
+    func `Select previous tab goes back`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
@@ -290,24 +289,24 @@ struct WindowStateTabSwitchingTests {
         #expect(windowState.activeTabID == tab1.id)
     }
 
-    @Test("Select next tab wraps at end")
-    func selectNextTabWraps() throws {
+    @Test
+    func `Select next tab wraps at end`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
-        let tab3 = env.tabManager.createTab(
-            url: URL(string: "https://three.com")!,
+        let tab3 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://three.com")),
             in: space,
             makeActive: true,
         )
@@ -327,19 +326,19 @@ struct WindowStateTabSwitchingTests {
 @Suite("WindowState Cleanup", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateCleanupTests {
-    @Test("Closing active tab updates window state")
-    func closingActiveTabUpdatesState() throws {
+    @Test
+    func `Closing active tab updates window state`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://keep.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://keep.com")),
             in: space,
             makeActive: false,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://close.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://close.com")),
             in: space,
             makeActive: false,
         )
@@ -352,14 +351,14 @@ struct WindowStateCleanupTests {
         #expect(windowState.activeTabID == tab1.id)
     }
 
-    @Test("Closing last tab clears active tab ID")
-    func closingLastTabClearsActiveID() throws {
+    @Test
+    func `Closing last tab clears active tab ID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://only.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://only.com")),
             in: space,
             makeActive: false,
         )
@@ -371,8 +370,8 @@ struct WindowStateCleanupTests {
         #expect(windowState.activeTabID == nil)
     }
 
-    @Test("Deleting active space switches window")
-    func deletingActiveSpaceSwitchesWindow() throws {
+    @Test
+    func `Deleting active space switches window`() throws {
         let env = try SpaceManagerTestEnvironment()
 
         let space1 = env.spaceManager.createSpace(name: "Space 1", iconName: "1.circle")
@@ -392,15 +391,14 @@ struct WindowStateCleanupTests {
 @Suite("WindowState Stale Tab Cleanup", .tags(.tabManager), .serialized)
 @MainActor
 struct WindowStateStaleTabTests {
-
-    @Test("handleTabRemoved clears active tab for space")
-    func handleTabRemovedClearsActiveTab() throws {
+    @Test
+    func `handleTabRemoved clears active tab for space`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
         env.browserState.indexTab(tab)
 
@@ -412,15 +410,15 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == nil)
     }
 
-    @Test("handleTabRemoved clears previous active tab")
-    func handleTabRemovedClearsPreviousTab() throws {
+    @Test
+    func `handleTabRemoved clears previous active tab`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab1 = Tab(space: space, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -436,15 +434,15 @@ struct WindowStateStaleTabTests {
         #expect(windowState.previousActiveTabID(for: space.id) == nil)
     }
 
-    @Test("handleTabRemoved clears live favorite override")
-    func handleTabRemovedClearsLiveFavorite() throws {
+    @Test
+    func `handleTabRemoved clears live favorite override`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab = Tab(space: nil, url: URL(string: "https://favorite.com")!)
-        tab.status = .liveFavorite
+        let tab = try Tab(space: nil, url: #require(URL(string: "https://favorite.com")))
+        tab.status = .favorite
         context.insert(tab)
         env.browserState.indexTab(tab)
 
@@ -456,16 +454,16 @@ struct WindowStateStaleTabTests {
         #expect(!windowState.isShowingLiveFavorite)
     }
 
-    @Test("handleTabRemoved does not affect other spaces")
-    func handleTabRemovedScopedToSpace() throws {
+    @Test
+    func `handleTabRemoved does not affect other spaces`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
         let windowState = env.makeWindowState()
 
-        let tab1 = Tab(space: space1, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space2, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space1, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space2, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -480,16 +478,16 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == tab2.id)
     }
 
-    @Test("purgeStaleTabIDs removes deleted tabs from all spaces")
-    func purgeStaleTabIDsRemovesDeleted() throws {
+    @Test
+    func `purgeStaleTabIDs removes deleted tabs from all spaces`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
         let windowState = env.makeWindowState()
 
-        let tab1 = Tab(space: space1, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space2, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space1, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space2, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -510,14 +508,14 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == tab2.id)
     }
 
-    @Test("purgeStaleTabIDs preserves valid entries")
-    func purgeStaleTabIDsPreservesValid() throws {
+    @Test
+    func `purgeStaleTabIDs preserves valid entries`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
         env.browserState.indexTab(tab)
 
@@ -529,15 +527,15 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == tab.id)
     }
 
-    @Test("purgeStaleTabIDs clears stale previous tab IDs")
-    func purgeStaleTabIDsClearsStalePrevious() throws {
+    @Test
+    func `purgeStaleTabIDs clears stale previous tab IDs`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab1 = Tab(space: space, url: URL(string: "https://one.com")!)
-        let tab2 = Tab(space: space, url: URL(string: "https://two.com")!)
+        let tab1 = try Tab(space: space, url: #require(URL(string: "https://one.com")))
+        let tab2 = try Tab(space: space, url: #require(URL(string: "https://two.com")))
         context.insert(tab1)
         context.insert(tab2)
         env.browserState.indexTab(tab1)
@@ -557,14 +555,14 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == tab2.id)
     }
 
-    @Test("handleTabRemoved is idempotent")
-    func handleTabRemovedIdempotent() throws {
+    @Test
+    func `handleTabRemoved is idempotent`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
 
-        let tab = Tab(space: space, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
         env.browserState.indexTab(tab)
 
@@ -578,15 +576,15 @@ struct WindowStateStaleTabTests {
         #expect(windowState.activeTabID == nil)
     }
 
-    @Test("handleTabRemoved with wrong space ID is no-op")
-    func handleTabRemovedWrongSpace() throws {
+    @Test
+    func `handleTabRemoved with wrong space ID is no-op`() throws {
         let env = try TabManagerTestEnvironment()
         let context = env.modelContext
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
         let windowState = env.makeWindowState()
 
-        let tab = Tab(space: space1, url: URL(string: "https://example.com")!)
+        let tab = try Tab(space: space1, url: #require(URL(string: "https://example.com")))
         context.insert(tab)
         env.browserState.indexTab(tab)
 

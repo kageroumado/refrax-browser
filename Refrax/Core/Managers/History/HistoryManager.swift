@@ -455,7 +455,6 @@ final class HistoryManager {
                 url: tab.activePage.url,
                 title: tab.activePage.title,
                 position: tab.position,
-                isPinned: tab.isPinned,
                 groupID: tab.groupID,
                 customName: tab.customName,
                 faviconData: faviconData,

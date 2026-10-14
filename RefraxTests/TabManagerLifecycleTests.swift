@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 import Testing
 import WebKit
-
 @testable import Refrax
 
 // MARK: - TabManager Live Favorite Tests
@@ -11,13 +10,13 @@ import WebKit
 @Suite("TabManager Live Favorites", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerLiveFavoriteTests {
-    @Test("Create live favorite tab has no space")
-    func createLiveFavoriteNoSpace() throws {
+    @Test
+    func `Create live favorite tab has no space`() throws {
         let env = try TabManagerTestEnvironment()
 
         // Create a bookmark first
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
         )
         env.modelContext.insert(bookmark)
@@ -25,17 +24,17 @@ struct TabManagerLiveFavoriteTests {
         let tab = env.tabManager.createLiveFavoriteTab(for: bookmark)
 
         #expect(tab.space == nil, "Live favorite should not belong to a space")
-        #expect(tab.status == .liveFavorite, "Status should be liveFavorite")
-        #expect(env.browserState.liveFavoriteTabs.contains(where: { $0.id == tab.id }))
+        #expect(tab.status == .favorite, "Status should be liveFavorite")
+        #expect(env.browserState.favoriteTabs.contains(where: { $0.id == tab.id }))
     }
 
-    @Test("Create live favorite tab copies bookmark favicon")
-    func createLiveFavoriteCopiesFavicon() throws {
+    @Test
+    func `Create live favorite tab copies bookmark favicon`() throws {
         let env = try TabManagerTestEnvironment()
 
         let faviconData = Data([0x89, 0x50, 0x4E, 0x47])
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
         )
         bookmark.faviconData = faviconData
@@ -46,12 +45,12 @@ struct TabManagerLiveFavoriteTests {
         #expect(tab.activePage.faviconData == faviconData, "Favicon should be copied from bookmark")
     }
 
-    @Test("Create live favorite tab links to bookmark")
-    func createLiveFavoriteLinksToBookmark() throws {
+    @Test
+    func `Create live favorite tab links to bookmark`() throws {
         let env = try TabManagerTestEnvironment()
 
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
         )
         env.modelContext.insert(bookmark)
@@ -61,12 +60,12 @@ struct TabManagerLiveFavoriteTests {
         #expect(tab.linkedBookmark?.id == bookmark.id, "Tab should link to bookmark")
     }
 
-    @Test("Close live favorite tab removes from browser state")
-    func closeLiveFavoriteRemoves() throws {
+    @Test
+    func `Close live favorite tab removes from browser state`() throws {
         let env = try TabManagerTestEnvironment()
 
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
         )
         env.modelContext.insert(bookmark)
@@ -74,21 +73,21 @@ struct TabManagerLiveFavoriteTests {
         let tab = env.tabManager.createLiveFavoriteTab(for: bookmark)
         let tabID = tab.id
 
-        #expect(env.browserState.liveFavoriteTabs.contains(where: { $0.id == tabID }))
+        #expect(env.browserState.favoriteTabs.contains(where: { $0.id == tabID }))
 
         env.tabManager.closeLiveFavoriteTab(tab)
 
-        #expect(!env.browserState.liveFavoriteTabs.contains(where: { $0.id == tabID }))
+        #expect(!env.browserState.favoriteTabs.contains(where: { $0.id == tabID }))
     }
 
-    @Test("Close non-live-favorite as live favorite does nothing")
-    func closeNonLiveFavoriteAsLiveFavorite() throws {
+    @Test
+    func `Close non-live-favorite as live favorite does nothing`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let normalTab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let normalTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -106,14 +105,14 @@ struct TabManagerLiveFavoriteTests {
 @Suite("TabManager Restore Operations", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerRestoreTests {
-    @Test("Restore tab recreates in original space")
-    func restoreTabInOriginalSpace() throws {
+    @Test
+    func `Restore tab recreates in original space`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -125,7 +124,7 @@ struct TabManagerRestoreTests {
         #expect(!env.undoRedoManager.recentlyClosedTabs.isEmpty)
 
         // Get the closed tab info
-        let closedInfo = env.undoRedoManager.recentlyClosedTabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyClosedTabs.first)
 
         // Restore
         env.tabManager.restoreTab(closedInfo)
@@ -134,14 +133,14 @@ struct TabManagerRestoreTests {
         #expect(space.tabs.first?.activePage.url.absoluteString == "https://example.com")
     }
 
-    @Test("Restore tab preserves custom name")
-    func restoreTabPreservesCustomName() throws {
+    @Test
+    func `Restore tab preserves custom name`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -149,7 +148,7 @@ struct TabManagerRestoreTests {
 
         env.tabManager.closeTab(tab)
 
-        let closedInfo = env.undoRedoManager.recentlyClosedTabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyClosedTabs.first)
 
         #expect(closedInfo.customName == "My Custom Name")
 
@@ -158,16 +157,16 @@ struct TabManagerRestoreTests {
         #expect(space.tabs.first?.customName == "My Custom Name")
     }
 
-    @Test("Restore tab preserves group membership")
-    func restoreTabPreservesGroupMembership() throws {
+    @Test
+    func `Restore tab preserves group membership`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             groupID: group.id,
             makeActive: true,
@@ -175,29 +174,29 @@ struct TabManagerRestoreTests {
 
         env.tabManager.closeTab(tab)
 
-        let closedInfo = env.undoRedoManager.recentlyClosedTabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyClosedTabs.first)
         #expect(closedInfo.groupID == group.id)
 
         env.tabManager.restoreTab(closedInfo)
 
-        let restoredTab = space.tabs.first!
+        let restoredTab = try #require(space.tabs.first)
         #expect(restoredTab.groupID == group.id, "Group membership should be restored")
         #expect(group.tabs.contains(where: { $0.id == restoredTab.id }), "Group should contain restored tab")
     }
 
-    @Test("Reopen last closed tab restores most recent")
-    func reopenLastClosedTab() throws {
+    @Test
+    func `Reopen last closed tab restores most recent`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: true,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: true,
         )
@@ -220,14 +219,14 @@ struct TabManagerRestoreTests {
 @Suite("TabManager Request Close", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerRequestCloseTests {
-    @Test("Request close with no warnings closes immediately")
-    func requestCloseNoWarnings() throws {
+    @Test
+    func `Request close with no warnings closes immediately`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -239,8 +238,8 @@ struct TabManagerRequestCloseTests {
         #expect(space.tabs.isEmpty)
     }
 
-    @Test("Cancel close clears pending confirmation")
-    func cancelCloseClearsPending() throws {
+    @Test
+    func `Cancel close clears pending confirmation`() throws {
         let env = try TabManagerTestEnvironment()
 
         // Manually set pending confirmation to test cancel
@@ -255,24 +254,24 @@ struct TabManagerRequestCloseTests {
         #expect(env.tabManager.pendingCloseConfirmation == nil)
     }
 
-    @Test("Request close multiple tabs processes all")
-    func requestCloseMultipleTabs() throws {
+    @Test
+    func `Request close multiple tabs processes all`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://one.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://one.com")),
             in: space,
             makeActive: false,
         )
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://two.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://two.com")),
             in: space,
             makeActive: false,
         )
-        let tab3 = env.tabManager.createTab(
-            url: URL(string: "https://three.com")!,
+        let tab3 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://three.com")),
             in: space,
             makeActive: true,
         )

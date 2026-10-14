@@ -23,43 +23,6 @@ extension TabManager {
         state.extensionManager?.dispatchTabMoved(tab, fromIndex: currentIndex, oldWindow: nil)
     }
 
-    /// Toggles a tab's pinned state.
-    func togglePinTab(_ tab: Tab) {
-        guard let space = tab.space,
-              let currentIndex = space.tabs.firstIndex(of: tab) else {
-            return
-        }
-
-        if tab.groupID != nil {
-            Logger.warning("Cannot pin tab in group", category: Logger.tabs)
-            return
-        }
-
-        tab.isPinned.toggle()
-        space.tabs.remove(at: currentIndex)
-
-        if tab.isPinned {
-            // Capture origin URL for navigation containment
-            tab.originURL = tab.activePage.url
-            let pinnedCount = space.tabs.count(where: { $0.isPinned })
-            space.tabs.insert(tab, at: pinnedCount)
-        } else {
-            // Clear origin URL when unpinning
-            tab.originURL = nil
-            let firstUnpinned = space.tabs.prefix(while: { $0.isPinned }).count
-            space.tabs.insert(tab, at: firstUnpinned)
-        }
-
-        normalizePositions(in: space)
-        state.incrementListVersion()
-        scheduleSave()
-
-        // Notify extensions of pinned state change
-        state.extensionManager?.dispatchPinnedChanged(tab)
-
-        Logger.info("Tab pin toggled: \(tab.isPinned)", category: Logger.tabs)
-    }
-
     /// Sets a custom name for a tab.
     ///
     /// - Parameters:
@@ -248,10 +211,9 @@ extension TabManager {
                 tab.groupID = nil
 
                 // Calculate proper hierarchical position for the target space
-                let insertion = positioner.insertionPosition(for: space, isPinned: false)
+                let insertion = positioner.insertionPosition(for: space)
 
                 tab.space = space
-                tab.isPinned = false
                 tab.position = insertion.position
 
                 space.tabs.insert(tab, at: insertion.index)
@@ -306,17 +268,17 @@ extension TabManager {
         }
     }
 
-    /// Pinned tabs in the active space, sorted by position.
+    /// Tabs in pinned groups in the active space, sorted by position.
     var pinnedTabs: [Tab] {
         activeWindowState?.activeSpace?.tabs
-            .filter(\.isPinned)
+            .filter(\.isInPinnedGroup)
             .sorted { $0.position < $1.position } ?? []
     }
 
-    /// Unpinned tabs in the active space, sorted by position.
+    /// Tabs outside pinned groups in the active space, sorted by position.
     var unpinnedTabs: [Tab] {
         activeWindowState?.activeSpace?.tabs
-            .filter { !$0.isPinned }
+            .filter { !$0.isInPinnedGroup }
             .sorted { $0.position < $1.position } ?? []
     }
 }

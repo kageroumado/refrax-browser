@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 import Testing
 import WebKit
-
 @testable import Refrax
 
 // MARK: - Test Tags
@@ -18,8 +17,8 @@ extension Tag {
 @Suite("TabGroupManager Create", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupCreateTests {
-    @Test("Create group in explicit space takes precedence over active space")
-    func createInExplicitSpace() throws {
+    @Test
+    func `Create group in explicit space takes precedence over active space`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -33,8 +32,8 @@ struct TabGroupCreateTests {
         #expect(!space1.groups.contains(where: { $0.id == group.id }))
     }
 
-    @Test("Create group by spaceID falls back to ID lookup")
-    func createBySpaceID() throws {
+    @Test
+    func `Create group by spaceID falls back to ID lookup`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState()
@@ -44,8 +43,8 @@ struct TabGroupCreateTests {
         #expect(group.space?.id == space.id)
     }
 
-    @Test("Create group defaults to active space when no explicit space")
-    func createInActiveSpace() throws {
+    @Test
+    func `Create group defaults to active space when no explicit space`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -55,8 +54,8 @@ struct TabGroupCreateTests {
         #expect(group.space?.id == space.id)
     }
 
-    @Test("Create group throws when no space available")
-    func createWithNoSpaceThrows() throws {
+    @Test
+    func `Create group throws when no space available`() throws {
         let env = try TabManagerTestEnvironment()
         _ = env.makeSpace() // Don't activate it
 
@@ -65,8 +64,8 @@ struct TabGroupCreateTests {
         }
     }
 
-    @Test("Create nested group enforces max depth of 2")
-    func createNestedEnforcesMaxDepth() throws {
+    @Test
+    func `Create nested group enforces max depth of 2`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -80,8 +79,8 @@ struct TabGroupCreateTests {
         }
     }
 
-    @Test("Create group with non-existent parent throws")
-    func createWithMissingParentThrows() throws {
+    @Test
+    func `Create group with non-existent parent throws`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -93,49 +92,42 @@ struct TabGroupCreateTests {
         }
     }
 
-    @Test("Create pinned group gets position before pinned tabs")
-    func createPinnedGroupPosition() throws {
+    @Test
+    func `Create pinned group gets position before pinned items`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        // Create some pinned tabs first (using isPinned parameter for correct position calculation)
-        let pinnedTab1 = env.tabManager.createTab(
-            url: URL(string: "https://pinned1.com")!,
+        let existingGroup = try env.groupManager.createGroup(in: space, name: "Existing", isPinned: true)
+        let pinnedTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://pinned.com")),
             in: space,
-            isPinned: true,
-            makeActive: false,
-        )
-
-        let pinnedTab2 = env.tabManager.createTab(
-            url: URL(string: "https://pinned2.com")!,
-            in: space,
-            isPinned: true,
+            groupID: existingGroup.id,
             makeActive: false,
         )
 
         let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned Group", isPinned: true)
 
         #expect(pinnedGroup.isPinned)
-        // Pinned groups are prepended, so they come before existing pinned tabs in position order
-        #expect(pinnedGroup.position < pinnedTab1.position)
-        #expect(pinnedGroup.position < pinnedTab2.position)
+        // Pinned groups are prepended, so they come before existing pinned items in position order
+        #expect(pinnedGroup.position < existingGroup.position)
+        #expect(pinnedGroup.position < pinnedTab.position)
     }
 
-    @Test("Create unpinned group gets position before unpinned tabs")
-    func createUnpinnedGroupPosition() throws {
+    @Test
+    func `Create unpinned group gets position before unpinned tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab1 = env.tabManager.createTab(
-            url: URL(string: "https://tab1.com")!,
+        let tab1 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://tab1.com")),
             in: space,
             makeActive: false,
         )
 
-        let tab2 = env.tabManager.createTab(
-            url: URL(string: "https://tab2.com")!,
+        let tab2 = try env.tabManager.createTab(
+            url: #require(URL(string: "https://tab2.com")),
             in: space,
             makeActive: false,
         )
@@ -148,8 +140,8 @@ struct TabGroupCreateTests {
         #expect(group.position < tab2.position)
     }
 
-    @Test("Create group increments list version")
-    func createIncrementsVersion() throws {
+    @Test
+    func `Create group increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -161,8 +153,8 @@ struct TabGroupCreateTests {
         #expect(env.browserState.tabListVersion > versionBefore)
     }
 
-    @Test("Create group with custom color and icon")
-    func createWithCustomization() throws {
+    @Test
+    func `Create group with custom color and icon`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -184,14 +176,14 @@ struct TabGroupCreateTests {
 @Suite("TabGroupManager Delete", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupDeleteTests {
-    @Test("Delete group with tabs removes tabs when deleteContainedTabs=true")
-    func deleteWithTabsRemovesTabs() throws {
+    @Test
+    func `Delete group with tabs removes tabs when deleteContainedTabs=true`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Doomed Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://doomed.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://doomed.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         let tabID = tab.id
@@ -203,14 +195,14 @@ struct TabGroupDeleteTests {
         #expect(env.browserState.tab(for: tabID) == nil, "Tab should be removed from index")
     }
 
-    @Test("Delete group ungroups tabs when deleteContainedTabs=false")
-    func deleteUngroupsTabs() throws {
+    @Test
+    func `Delete group ungroups tabs when deleteContainedTabs=false`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Dissolving Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://preserved.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://preserved.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
@@ -221,8 +213,8 @@ struct TabGroupDeleteTests {
         #expect(tab.group == nil)
     }
 
-    @Test("Delete group with nested groups deletes nested first")
-    func deleteNestedGroupsCascade() throws {
+    @Test
+    func `Delete group with nested groups deletes nested first`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -230,10 +222,10 @@ struct TabGroupDeleteTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let parentTabBefore = env.tabManager.createTab(url: URL(string: "https://parent.com")!, in: space, makeActive: false)
+        let parentTabBefore = try env.tabManager.createTab(url: #require(URL(string: "https://parent.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(parentTabBefore, group: parentGroup, in: space)
 
-        let nestedTab = env.tabManager.createTab(url: URL(string: "https://nested.com")!, in: space, makeActive: false)
+        let nestedTab = try env.tabManager.createTab(url: #require(URL(string: "https://nested.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(nestedTab, group: nestedGroup, in: space)
 
         let nestedGroupID = nestedGroup.id
@@ -244,14 +236,14 @@ struct TabGroupDeleteTests {
         #expect(!space.groups.contains(where: { $0.id == nestedGroupID }), "Nested group should also be deleted")
     }
 
-    @Test("Delete group registers with UndoRedoManager")
-    func deleteRegistersUndo() throws {
+    @Test
+    func `Delete group registers with UndoRedoManager`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Undoable Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://undoable.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://undoable.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
@@ -261,30 +253,28 @@ struct TabGroupDeleteTests {
         #expect(env.undoRedoManager.recentlyDeletedGroups.first?.tabs.count == 1)
     }
 
-    @Test("Delete captures correct tab info for undo")
-    func deleteCaputresTabInfo() throws {
+    @Test
+    func `Delete captures correct tab info for undo`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Info Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://info.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://info.com")), in: space, makeActive: false)
         tab.customName = "Custom Name"
-        tab.isPinned = true
         tab.activePage.faviconData = Data([0x00, 0x01, 0x02])
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
-        let tabInfo = closedInfo.tabs.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
+        let tabInfo = try #require(closedInfo.tabs.first)
         #expect(tabInfo.customName == "Custom Name")
-        #expect(tabInfo.isPinned)
         #expect(tabInfo.faviconData == Data([0x00, 0x01, 0x02]))
     }
 
-    @Test("Delete group without tabs in space is no-op")
-    func deleteGroupNotInSpace() throws {
+    @Test
+    func `Delete group without tabs in space is no-op`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -299,8 +289,8 @@ struct TabGroupDeleteTests {
         #expect(space1.groups.count == countBefore, "Group should not be deleted from wrong space")
     }
 
-    @Test("Delete increments list version")
-    func deleteIncrementsVersion() throws {
+    @Test
+    func `Delete increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -320,8 +310,8 @@ struct TabGroupDeleteTests {
 @Suite("TabGroupManager Restore", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupRestoreTests {
-    @Test("Restore group recreates group with correct properties")
-    func restoreRecreatesGroup() throws {
+    @Test
+    func `Restore group recreates group with correct properties`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -335,12 +325,12 @@ struct TabGroupRestoreTests {
         )
         originalGroup.position = 42
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://restore.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://restore.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: originalGroup, in: space)
 
         env.groupManager.deleteGroup(originalGroup, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
         let restored = space.groups.first { $0.name == "Original" }
@@ -351,60 +341,58 @@ struct TabGroupRestoreTests {
         #expect(restored?.position == 42)
     }
 
-    @Test("Restore group recreates tabs with correct properties")
-    func restoreRecreatesTabs() throws {
+    @Test
+    func `Restore group recreates tabs with correct properties`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Tab Group")
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://restore-tab.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://restore-tab.com")), in: space, makeActive: false)
         tab.customName = "Restored Tab Name"
-        tab.isPinned = true
         tab.position = 999
         tab.activePage.faviconData = Data([0xAB, 0xCD])
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
-        let restoredGroup = space.groups.first { $0.name == "Tab Group" }!
+        let restoredGroup = try #require(space.groups.first { $0.name == "Tab Group" })
         let restoredTabs = space.tabs.filter { $0.groupID == restoredGroup.id }
 
         #expect(restoredTabs.count == 1)
-        let restoredTab = restoredTabs.first!
+        let restoredTab = try #require(restoredTabs.first)
         #expect(restoredTab.customName == "Restored Tab Name")
-        #expect(restoredTab.isPinned)
         // Position is normalized on restore, not preserved exactly
         #expect(restoredTab.activePage.faviconData == Data([0xAB, 0xCD]))
     }
 
-    @Test("Restore group with multiple tabs restores all tabs")
-    func restoreMultipleTabs() throws {
+    @Test
+    func `Restore group with multiple tabs restores all tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Multi Tab Group")
 
-        let tab1 = env.tabManager.createTab(url: URL(string: "https://first.com")!, in: space, makeActive: false)
+        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://first.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab1, group: group, in: space)
 
-        let tab2 = env.tabManager.createTab(url: URL(string: "https://second.com")!, in: space, makeActive: false)
+        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://second.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab2, group: group, in: space)
 
-        let tab3 = env.tabManager.createTab(url: URL(string: "https://third.com")!, in: space, makeActive: false)
+        let tab3 = try env.tabManager.createTab(url: #require(URL(string: "https://third.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab3, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
-        let restoredGroup = space.groups.first { $0.name == "Multi Tab Group" }!
+        let restoredGroup = try #require(space.groups.first { $0.name == "Multi Tab Group" })
         let restoredTabs = space.tabs.filter { $0.groupID == restoredGroup.id }
 
         #expect(restoredTabs.count == 3)
@@ -415,8 +403,8 @@ struct TabGroupRestoreTests {
         #expect(urls.contains("https://third.com"))
     }
 
-    @Test("Restore group in missing space logs error")
-    func restoreToMissingSpace() throws {
+    @Test
+    func `Restore group in missing space logs error`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -425,7 +413,7 @@ struct TabGroupRestoreTests {
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
 
         // Manipulate the closed info to reference a non-existent space
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
 
         // Delete the space
         env.spaceManager.deleteSpace(space, closeTabs: true)
@@ -437,8 +425,8 @@ struct TabGroupRestoreTests {
         #expect(env.browserState.spaces.flatMap(\.groups).isEmpty)
     }
 
-    @Test("Restore group with parentGroupID")
-    func restoreNestedGroup() throws {
+    @Test
+    func `Restore group with parentGroupID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -446,13 +434,13 @@ struct TabGroupRestoreTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://nested-tab.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://nested-tab.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: nestedGroup, in: space)
 
         // Only delete the nested group (not the parent)
         env.groupManager.deleteGroup(nestedGroup, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
         let restored = space.groups.first { $0.name == "Nested" }
@@ -460,8 +448,8 @@ struct TabGroupRestoreTests {
         #expect(restored?.parentGroupID == parentGroup.id)
     }
 
-    @Test("Restore increments list version")
-    func restoreIncrementsVersion() throws {
+    @Test
+    func `Restore increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -471,7 +459,7 @@ struct TabGroupRestoreTests {
 
         let versionBefore = env.browserState.tabListVersion
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
         #expect(env.browserState.tabListVersion > versionBefore)
@@ -483,8 +471,8 @@ struct TabGroupRestoreTests {
 @Suite("TabGroupManager Membership", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupMembershipTests {
-    @Test("Move tab to group clears previous group membership")
-    func moveTabClearsPrevious() throws {
+    @Test
+    func `Move tab to group clears previous group membership`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -492,7 +480,7 @@ struct TabGroupMembershipTests {
         let group1 = try env.groupManager.createGroup(in: space, name: "Group 1")
         let group2 = try env.groupManager.createGroup(in: space, name: "Group 2")
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://wanderer.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://wanderer.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group1, in: space)
 
         #expect(tab.groupID == group1.id)
@@ -506,14 +494,14 @@ struct TabGroupMembershipTests {
         #expect(group2.tabs.contains(where: { $0.id == tab.id }))
     }
 
-    @Test("Move tab to nil ungroups the tab")
-    func moveTabToNilUngroups() throws {
+    @Test
+    func `Move tab to nil ungroups the tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Source Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://escapee.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://escapee.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.moveTabToGroup(tab, group: nil, in: space)
@@ -523,15 +511,15 @@ struct TabGroupMembershipTests {
         #expect(!group.tabs.contains(where: { $0.id == tab.id }))
     }
 
-    @Test("Move tab with skipReordering=true preserves position")
-    func moveWithSkipReordering() throws {
+    @Test
+    func `Move tab with skipReordering=true preserves position`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Target Group")
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://positioned.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://positioned.com")), in: space, makeActive: false)
         let originalPosition = tab.position
 
         env.groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
@@ -539,8 +527,8 @@ struct TabGroupMembershipTests {
         #expect(tab.position == originalPosition, "Position should be preserved with skipReordering=true")
     }
 
-    @Test("Move tab with skipReordering=false updates position")
-    func moveWithoutSkipReordering() throws {
+    @Test
+    func `Move tab with skipReordering=false updates position`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -548,7 +536,7 @@ struct TabGroupMembershipTests {
         let group = try env.groupManager.createGroup(in: space, name: "Target Group")
         group.position = 1_000
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://repositioned.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://repositioned.com")), in: space, makeActive: false)
         tab.position = 5
 
         env.groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: false)
@@ -556,14 +544,14 @@ struct TabGroupMembershipTests {
         #expect(tab.position == group.position + 1, "Position should be updated relative to group")
     }
 
-    @Test("Remove tab from group is same as move to nil")
-    func removeFromGroup() throws {
+    @Test
+    func `Remove tab from group is same as move to nil`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://leaving.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://leaving.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.removeTabFromGroup(tab, in: space)
@@ -572,14 +560,14 @@ struct TabGroupMembershipTests {
         #expect(tab.group == nil)
     }
 
-    @Test("Move tab with space resolution uses tab's space as fallback")
-    func moveTabUsesTabSpaceFallback() throws {
+    @Test
+    func `Move tab with space resolution uses tab's space as fallback`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         // Don't activate any space
 
         let group = try env.groupManager.createGroup(in: space, name: "Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://orphan.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://orphan.com")), in: space, makeActive: false)
 
         // No explicit space, no active space, but tab has a space
         env.groupManager.moveTabToGroup(tab, group: group)
@@ -587,14 +575,14 @@ struct TabGroupMembershipTests {
         #expect(tab.groupID == group.id)
     }
 
-    @Test("Move tab increments list version")
-    func moveIncrementsVersion() throws {
+    @Test
+    func `Move tab increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://version.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://version.com")), in: space, makeActive: false)
 
         let versionBefore = env.browserState.tabListVersion
 
@@ -609,34 +597,34 @@ struct TabGroupMembershipTests {
 @Suite("TabGroupManager State", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupStateTests {
-    @Test("Toggle pinned cascades to all tabs in group")
-    func togglePinnedCascadesToTabs() throws {
+    @Test
+    func `Toggle pinned reaches all tabs in group`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Pinnable Group")
 
-        let tab1 = env.tabManager.createTab(url: URL(string: "https://tab1.com")!, in: space, makeActive: false)
-        let tab2 = env.tabManager.createTab(url: URL(string: "https://tab2.com")!, in: space, makeActive: false)
+        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://tab1.com")), in: space, makeActive: false)
+        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://tab2.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab1, group: group, in: space)
         env.groupManager.moveTabToGroup(tab2, group: group, in: space)
 
         env.groupManager.toggleGroupPinned(group, in: space)
 
         #expect(group.isPinned)
-        #expect(tab1.isPinned, "Tab1 should be pinned")
-        #expect(tab2.isPinned, "Tab2 should be pinned")
+        #expect(tab1.isInPinnedGroup, "Tab1 should be in a pinned group")
+        #expect(tab2.isInPinnedGroup, "Tab2 should be in a pinned group")
 
         env.groupManager.toggleGroupPinned(group, in: space)
 
         #expect(!group.isPinned)
-        #expect(!tab1.isPinned, "Tab1 should be unpinned")
-        #expect(!tab2.isPinned, "Tab2 should be unpinned")
+        #expect(!tab1.isInPinnedGroup, "Tab1 should be unpinned")
+        #expect(!tab2.isInPinnedGroup, "Tab2 should be unpinned")
     }
 
-    @Test("Toggle pinned cascades to nested groups and their tabs")
-    func togglePinnedCascadesToNested() throws {
+    @Test
+    func `Toggle pinned cascades to nested groups and their tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -644,34 +632,33 @@ struct TabGroupStateTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let parentTab = env.tabManager.createTab(url: URL(string: "https://parent-tab.com")!, in: space, makeActive: false)
+        let parentTab = try env.tabManager.createTab(url: #require(URL(string: "https://parent-tab.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(parentTab, group: parentGroup, in: space)
 
-        let nestedTab = env.tabManager.createTab(url: URL(string: "https://nested-tab.com")!, in: space, makeActive: false)
+        let nestedTab = try env.tabManager.createTab(url: #require(URL(string: "https://nested-tab.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(nestedTab, group: nestedGroup, in: space)
 
         env.groupManager.toggleGroupPinned(parentGroup, in: space)
 
         #expect(parentGroup.isPinned)
         #expect(nestedGroup.isPinned, "Nested group should be pinned")
-        #expect(parentTab.isPinned)
-        #expect(nestedTab.isPinned, "Nested tab should be pinned")
+        #expect(parentTab.isInPinnedGroup)
+        #expect(nestedTab.isInPinnedGroup, "Nested tab should be pinned")
     }
 
-    @Test("Toggle pinned repositions group correctly")
-    func togglePinnedRepositions() throws {
+    @Test
+    func `Toggle pinned repositions group correctly`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        // Create pinned tabs to establish pinned region
-        let pinnedTab = env.tabManager.createTab(url: URL(string: "https://pinned.com")!, in: space, makeActive: false)
-        pinnedTab.isPinned = true
+        // Create a pinned group's tab to establish pinned region
+        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
+        let pinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://pinned.com")), in: space, groupID: pinnedGroup.id, makeActive: false)
         pinnedTab.position = 50
 
         // Create unpinned tabs
-        let unpinnedTab = env.tabManager.createTab(url: URL(string: "https://unpinned.com")!, in: space, makeActive: false)
-        unpinnedTab.isPinned = false
+        let unpinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://unpinned.com")), in: space, makeActive: false)
         unpinnedTab.position = 1_000
 
         let group = try env.groupManager.createGroup(in: space, name: "Repositioned Group")
@@ -688,8 +675,8 @@ struct TabGroupStateTests {
         #expect(!group.isPinned)
     }
 
-    @Test("Toggle collapsed toggles state")
-    func toggleCollapsed() throws {
+    @Test
+    func `Toggle collapsed toggles state`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -707,8 +694,8 @@ struct TabGroupStateTests {
         #expect(!group.isCollapsed)
     }
 
-    @Test("Toggle collapsed increments list version")
-    func toggleCollapsedIncrementsVersion() throws {
+    @Test
+    func `Toggle collapsed increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -722,8 +709,8 @@ struct TabGroupStateTests {
         #expect(env.browserState.tabListVersion > versionBefore)
     }
 
-    @Test("Rename group updates name")
-    func renameGroup() throws {
+    @Test
+    func `Rename group updates name`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -735,8 +722,8 @@ struct TabGroupStateTests {
         #expect(group.name == "New Name")
     }
 
-    @Test("Rename group increments content version")
-    func renameIncrementsContentVersion() throws {
+    @Test
+    func `Rename group increments content version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -750,8 +737,8 @@ struct TabGroupStateTests {
         #expect(env.browserState.tabContentVersion > versionBefore)
     }
 
-    @Test("Update color changes colorString")
-    func updateColor() throws {
+    @Test
+    func `Update color changes colorString`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -763,8 +750,8 @@ struct TabGroupStateTests {
         #expect(group.colorString == "#34C759")
     }
 
-    @Test("Update color increments content version")
-    func updateColorIncrementsVersion() throws {
+    @Test
+    func `Update color increments content version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -784,8 +771,8 @@ struct TabGroupStateTests {
 @Suite("TabGroupManager Nesting", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupNestingTests {
-    @Test("Nest group sets parentGroupID")
-    func nestGroupSetsParent() throws {
+    @Test
+    func `Nest group sets parentGroupID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -798,8 +785,8 @@ struct TabGroupNestingTests {
         #expect(childGroup.parentGroupID == parentGroup.id)
     }
 
-    @Test("Nest group updates position relative to parent")
-    func nestGroupUpdatesPosition() throws {
+    @Test
+    func `Nest group updates position relative to parent`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -815,8 +802,8 @@ struct TabGroupNestingTests {
         #expect(childGroup.position == parentGroup.position + 1)
     }
 
-    @Test("Nest already-nested group throws")
-    func nestAlreadyNestedThrows() throws {
+    @Test
+    func `Nest already-nested group throws`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -830,8 +817,8 @@ struct TabGroupNestingTests {
         }
     }
 
-    @Test("Nest into already-nested parent throws")
-    func nestIntoNestedParentThrows() throws {
+    @Test
+    func `Nest into already-nested parent throws`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -845,8 +832,8 @@ struct TabGroupNestingTests {
         }
     }
 
-    @Test("Nest groups from different spaces throws")
-    func nestCrossSpaceThrows() throws {
+    @Test
+    func `Nest groups from different spaces throws`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -860,8 +847,8 @@ struct TabGroupNestingTests {
         }
     }
 
-    @Test("Nest increments list version")
-    func nestIncrementsVersion() throws {
+    @Test
+    func `Nest increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -876,8 +863,8 @@ struct TabGroupNestingTests {
         #expect(env.browserState.tabListVersion > versionBefore)
     }
 
-    @Test("Unnest group clears parentGroupID")
-    func unnestClearsParent() throws {
+    @Test
+    func `Unnest group clears parentGroupID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -892,8 +879,8 @@ struct TabGroupNestingTests {
         #expect(nested.parentGroupID == nil)
     }
 
-    @Test("Unnest root-level group is no-op")
-    func unnestRootLevelNoOp() throws {
+    @Test
+    func `Unnest root-level group is no-op`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -909,8 +896,8 @@ struct TabGroupNestingTests {
         #expect(env.browserState.tabListVersion == versionBefore)
     }
 
-    @Test("Unnest increments list version when actually unnesting")
-    func unnestIncrementsVersionWhenChanged() throws {
+    @Test
+    func `Unnest increments list version when actually unnesting`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -943,21 +930,21 @@ struct TabGroupQueryTests {
     // @Test("Tabs in group returns sorted tabs")
     // func tabsInGroupSorted() throws { ... }
 
-    @Test("Tabs in group returns correct tabs")
-    func tabsInGroupReturnsCorrectTabs() throws {
+    @Test
+    func `Tabs in group returns correct tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Query Group")
 
-        let tab1 = env.tabManager.createTab(url: URL(string: "https://first.com")!, in: space, makeActive: false)
+        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://first.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab1, group: group, in: space)
 
-        let tab2 = env.tabManager.createTab(url: URL(string: "https://second.com")!, in: space, makeActive: false)
+        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://second.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab2, group: group, in: space)
 
-        let ungroupedTab = env.tabManager.createTab(url: URL(string: "https://ungrouped.com")!, in: space, makeActive: false)
+        let ungroupedTab = try env.tabManager.createTab(url: #require(URL(string: "https://ungrouped.com")), in: space, makeActive: false)
 
         let tabs = env.groupManager.tabs(in: group, space: space)
 
@@ -967,8 +954,8 @@ struct TabGroupQueryTests {
         #expect(!tabs.contains(where: { $0.id == ungroupedTab.id }), "Should not contain ungrouped tab")
     }
 
-    @Test("Tabs in group with no space returns empty")
-    func tabsInGroupNoSpace() throws {
+    @Test
+    func `Tabs in group with no space returns empty`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -981,8 +968,8 @@ struct TabGroupQueryTests {
         #expect(tabs.isEmpty)
     }
 
-    @Test("Group count returns correct count")
-    func groupCountCorrect() throws {
+    @Test
+    func `Group count returns correct count`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -996,8 +983,8 @@ struct TabGroupQueryTests {
         #expect(env.groupManager.groupCount(in: space) == 2)
     }
 
-    @Test("Group count by spaceID works")
-    func groupCountBySpaceID() throws {
+    @Test
+    func `Group count by spaceID works`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
@@ -1006,8 +993,8 @@ struct TabGroupQueryTests {
         #expect(env.groupManager.groupCount(spaceID: space.id) == 1)
     }
 
-    @Test("Group count defaults to active space")
-    func groupCountDefaultsToActive() throws {
+    @Test
+    func `Group count defaults to active space`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1018,8 +1005,8 @@ struct TabGroupQueryTests {
         #expect(env.groupManager.groupCount() == 1)
     }
 
-    @Test("Groups in space returns all groups")
-    func groupsInSpace() throws {
+    @Test
+    func `Groups in space returns all groups`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1034,8 +1021,8 @@ struct TabGroupQueryTests {
         #expect(groups.contains(where: { $0.id == group2.id }))
     }
 
-    @Test("Groups with no space returns empty")
-    func groupsNoSpace() throws {
+    @Test
+    func `Groups with no space returns empty`() throws {
         let env = try TabManagerTestEnvironment()
         _ = env.makeSpace() // Don't activate
 
@@ -1050,8 +1037,8 @@ struct TabGroupQueryTests {
 @Suite("TabGroupManager Edge Cases", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupEdgeCaseTests {
-    @Test("Delete group with deeply nested structure cascades correctly")
-    func deleteDeepNestedStructure() throws {
+    @Test
+    func `Delete group with deeply nested structure cascades correctly`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1062,13 +1049,13 @@ struct TabGroupEdgeCaseTests {
 
         // Add tabs to parent
         for i in 0 ..< 3 {
-            let tab = env.tabManager.createTab(url: URL(string: "https://parent\(i).com")!, in: space, makeActive: false)
+            let tab = try env.tabManager.createTab(url: #require(URL(string: "https://parent\(i).com")), in: space, makeActive: false)
             env.groupManager.moveTabToGroup(tab, group: parentGroup, in: space)
         }
 
         // Add tabs to nested
         for i in 0 ..< 2 {
-            let tab = env.tabManager.createTab(url: URL(string: "https://nested\(i).com")!, in: space, makeActive: false)
+            let tab = try env.tabManager.createTab(url: #require(URL(string: "https://nested\(i).com")), in: space, makeActive: false)
             env.groupManager.moveTabToGroup(tab, group: nestedGroup, in: space)
         }
 
@@ -1081,14 +1068,14 @@ struct TabGroupEdgeCaseTests {
         #expect(space.tabs.count == initialTabCount - 5, "All 5 tabs should be deleted")
     }
 
-    @Test("Move tab that already belongs to target group is no-op for membership")
-    func moveTabToSameGroup() throws {
+    @Test
+    func `Move tab that already belongs to target group is no-op for membership`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Target")
-        let tab = env.tabManager.createTab(url: URL(string: "https://static.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://static.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         // Move to same group
@@ -1098,8 +1085,8 @@ struct TabGroupEdgeCaseTests {
         #expect(group.tabs.count == 1, "Should still have exactly 1 tab")
     }
 
-    @Test("Delete empty group works correctly")
-    func deleteEmptyGroup() throws {
+    @Test
+    func `Delete empty group works correctly`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1112,8 +1099,8 @@ struct TabGroupEdgeCaseTests {
         #expect(!space.groups.contains(where: { $0.id == groupID }))
     }
 
-    @Test("Toggle pinned with empty group works")
-    func togglePinnedEmptyGroup() throws {
+    @Test
+    func `Toggle pinned with empty group works`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1125,8 +1112,8 @@ struct TabGroupEdgeCaseTests {
         #expect(group.isPinned)
     }
 
-    @Test("Create multiple groups maintains unique positions")
-    func createMultipleGroupsUniquePositions() throws {
+    @Test
+    func `Create multiple groups maintains unique positions`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1141,8 +1128,8 @@ struct TabGroupEdgeCaseTests {
         #expect(uniquePositions.count == 3, "All groups should have unique positions")
     }
 
-    @Test("Space resolution with spaceID takes precedence over active space")
-    func spaceResolutionPrecedence() throws {
+    @Test
+    func `Space resolution with spaceID takes precedence over active space`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -1155,14 +1142,14 @@ struct TabGroupEdgeCaseTests {
         #expect(!space1.groups.contains(where: { $0.id == group.id }))
     }
 
-    @Test("Delete group cleans up pagePool pages")
-    func deleteGroupCleansPagePool() throws {
+    @Test
+    func `Delete group cleans up pagePool pages`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Page Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://withpage.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://withpage.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         // The pagePool.removePages is called in deleteGroup - we're verifying the path is exercised
@@ -1172,31 +1159,31 @@ struct TabGroupEdgeCaseTests {
         #expect(env.browserState.tab(for: tab.id) == nil)
     }
 
-    @Test("Restore group indexes restored tabs")
-    func restoreGroupIndexesTabs() throws {
+    @Test
+    func `Restore group indexes restored tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Indexed Group")
-        let tab = env.tabManager.createTab(url: URL(string: "https://indexed.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://indexed.com")), in: space, makeActive: false)
         env.groupManager.moveTabToGroup(tab, group: group, in: space)
 
         env.groupManager.deleteGroup(group, in: space, deleteContainedTabs: true)
 
-        let closedInfo = env.undoRedoManager.recentlyDeletedGroups.first!
+        let closedInfo = try #require(env.undoRedoManager.recentlyDeletedGroups.first)
         env.groupManager.restoreGroup(closedInfo)
 
         // Find the restored tab and verify it's indexed
-        let restoredGroup = space.groups.first { $0.name == "Indexed Group" }!
+        let restoredGroup = try #require(space.groups.first { $0.name == "Indexed Group" })
         let restoredTabs = space.tabs.filter { $0.groupID == restoredGroup.id }
-        let restoredTab = restoredTabs.first!
+        let restoredTab = try #require(restoredTabs.first)
 
         #expect(env.browserState.tab(for: restoredTab.id) != nil, "Restored tab should be indexed")
     }
 
-    @Test("Nested group inherits pinned state when deleted with parent that becomes pinned")
-    func nestedGroupFollowsParentPinState() throws {
+    @Test
+    func `Nested group inherits pinned state when deleted with parent that becomes pinned`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -1210,8 +1197,8 @@ struct TabGroupEdgeCaseTests {
         #expect(nestedGroup.isPinned, "Nested group should inherit pinned state")
     }
 
-    @Test("Group count with non-existent spaceID returns 0")
-    func groupCountNonExistentSpace() throws {
+    @Test
+    func `Group count with non-existent spaceID returns 0`() throws {
         let env = try TabManagerTestEnvironment()
         _ = env.makeSpace()
 
@@ -1220,8 +1207,8 @@ struct TabGroupEdgeCaseTests {
         #expect(count == 0)
     }
 
-    @Test("Groups query with non-existent spaceID returns empty")
-    func groupsNonExistentSpace() throws {
+    @Test
+    func `Groups query with non-existent spaceID returns empty`() throws {
         let env = try TabManagerTestEnvironment()
         _ = env.makeSpace()
 

@@ -28,7 +28,7 @@ enum TabListItem: Identifiable, Equatable {
     
     var isPinned: Bool {
         switch self {
-        case let .tab(tab): tab.isPinned
+        case let .tab(tab): tab.isInPinnedGroup
         case let .group(group): group.isPinned
         }
     }
@@ -41,12 +41,16 @@ enum TabListItem: Identifiable, Equatable {
     }
     
     var tab: Tab? {
-        if case let .tab(tab) = self { return tab }
+        if case let .tab(tab) = self {
+            return tab
+        }
         return nil
     }
     
     var group: TabGroup? {
-        if case let .group(group) = self { return group }
+        if case let .group(group) = self {
+            return group
+        }
         return nil
     }
     

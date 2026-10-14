@@ -5,59 +5,59 @@ import SwiftData
 import SwiftUI
 import WebKit
 
-/// Coordinates all tab operations and browsing sessions across the application.
-///
-/// `TabManager` is the single entry point for all tab-related operations in Refrax.
-/// It owns specialized sub-managers and provides a unified API for:
-///
-/// - Tab lifecycle (create, close, duplicate, restore)
-/// - Tab activation and navigation
-/// - Tab organization (pin, move, reorder)
-/// - Tab groups (create, nest, collapse)
-/// - Tab/page transfers between areas
-/// - Multi-page layouts
-/// - Cross-collection operations (tabs ↔ favorites)
-/// - Batch operations with unified undo
-///
-/// ## Multi-Window Architecture
-///
-/// TabManager supports multiple windows via WindowManager. Each window has independent
-/// navigation state stored in its WindowState:
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────┐
-/// │ TabManager (app-global, singleton)                      │
-/// │   state.spaces: [Space]     ← shared across windows     │
-/// │   state.tabIndex            ← O(1) tab lookup           │
-/// │   pagePool               ← shared session cache      │
-/// │   windowManager             ← access to all windows     │
-/// ├─────────────────────────────────────────────────────────┤
-/// │ Window A (WindowState)     │ Window B (WindowState)     │
-/// │   activeSpaceID: X         │   activeSpaceID: Y         │
-/// │   activeTabID: 1           │   activeTabID: 3           │
-/// └─────────────────────────────────────────────────────────┘
-/// ```
-///
-/// ## Window Access
-///
-/// Operations that affect window state access windows via `windowManager`:
-/// ```swift
-/// // Get active window
-/// let windowState = windowManager.activeWindowController?.windowState
-///
-/// // Iterate all windows showing a space
-/// for controller in windowManager.windowControllers {
-///     if controller.windowState.activeSpaceID == space.id { ... }
-/// }
-/// ```
-///
-/// ## Sub-Manager Access
-///
-/// Sub-managers are injected into the SwiftUI environment for direct access in views:
-/// ```swift
-/// @Environment(WebPagePool.self) var pagePool
-/// @Environment(SpaceManager.self) var spaceManager
-/// @Environment(TabGroupManager.self) var groupManager
+// Coordinates all tab operations and browsing sessions across the application.
+//
+// `TabManager` is the single entry point for all tab-related operations in Refrax.
+// It owns specialized sub-managers and provides a unified API for:
+//
+// - Tab lifecycle (create, close, duplicate, restore)
+// - Tab activation and navigation
+// - Tab organization (pin, move, reorder)
+// - Tab groups (create, nest, collapse)
+// - Tab/page transfers between areas
+// - Multi-page layouts
+// - Cross-collection operations (tabs ↔ favorites)
+// - Batch operations with unified undo
+//
+// ## Multi-Window Architecture
+//
+// TabManager supports multiple windows via WindowManager. Each window has independent
+// navigation state stored in its WindowState:
+//
+// ```
+// ┌─────────────────────────────────────────────────────────┐
+// │ TabManager (app-global, singleton)                      │
+// │   state.spaces: [Space]     ← shared across windows     │
+// │   state.tabIndex            ← O(1) tab lookup           │
+// │   pagePool               ← shared session cache      │
+// │   windowManager             ← access to all windows     │
+// ├─────────────────────────────────────────────────────────┤
+// │ Window A (WindowState)     │ Window B (WindowState)     │
+// │   activeSpaceID: X         │   activeSpaceID: Y         │
+// │   activeTabID: 1           │   activeTabID: 3           │
+// └─────────────────────────────────────────────────────────┘
+// ```
+//
+// ## Window Access
+//
+// Operations that affect window state access windows via `windowManager`:
+// ```swift
+// // Get active window
+// let windowState = windowManager.activeWindowController?.windowState
+//
+// // Iterate all windows showing a space
+// for controller in windowManager.windowControllers {
+//     if controller.windowState.activeSpaceID == space.id { ... }
+// }
+// ```
+//
+// ## Sub-Manager Access
+//
+// Sub-managers are injected into the SwiftUI environment for direct access in views:
+// ```swift
+// @Environment(WebPagePool.self) var pagePool
+// @Environment(SpaceManager.self) var spaceManager
+// @Environment(TabGroupManager.self) var groupManager
 
 ///
 /// // Then use directly
@@ -144,7 +144,6 @@ final class TabManager {
     /// Injected at initialization. Accessible via `@Environment(TabGroupManager.self)`.
     unowned let groupManager: TabGroupManager
 
-
     /// Evaluates URL routing rules for navigation decisions.
     ///
     /// Lazily initialized on first access.
@@ -196,7 +195,6 @@ final class TabManager {
     }
 
     // MARK: - Constants
-
 
     /// Maximum length for custom tab names.
     static let maxCustomNameLength = 20
@@ -362,21 +360,18 @@ extension TabManager {
     ///
     /// - Parameters:
     ///   - space: The space to insert into.
-    ///   - isPinned: Whether the tab will be pinned.
     ///   - groupID: Optional group to insert into.
     ///   - strategy: The insertion strategy to use. Defaults to `.prepend`.
     ///   - activeTabID: The active tab ID (used for `.afterActive` strategy).
     /// - Returns: A tuple containing the hierarchical position value and the array index.
     func insertionPosition(
         in space: Space,
-        isPinned: Bool,
         groupID: UUID? = nil,
         strategy: TabPositioner.InsertionStrategy = .prepend,
         activeTabID: UUID? = nil,
     ) -> (position: Int, index: Int) {
         positioner.insertionPosition(
             for: space,
-            isPinned: isPinned,
             groupID: groupID,
             strategy: strategy,
             activeTabID: activeTabID,
@@ -384,6 +379,10 @@ extension TabManager {
     }
 
     func closeTabsInBatch(_ tabs: [Tab], undoActionName: String, bypassArchive: Bool = false) {
+        for favorite in tabs where favorite.isFavorite {
+            returnFavoriteHome(favorite)
+        }
+        let tabs = tabs.filter { !$0.isFavorite }
         guard !tabs.isEmpty else { return }
 
         // Separate tabs that should be archived vs permanently closed
@@ -519,7 +518,7 @@ extension TabManager {
         }
 
         // Capture state before removal for incremental tracking
-        let wasPinned = tab.isPinned
+        let wasPinned = tab.isInPinnedGroup
         let wasInGroupID = tab.groupID
 
         // Get index in mainTabs for proper adjacency fallback
@@ -583,18 +582,6 @@ extension TabManager {
         let nestedGroups = space.groups.filter { $0.parentGroupID == groupID }
         for nested in nestedGroups {
             collectTabsRecursively(from: nested.id, in: space, into: &tabs)
-        }
-    }
-
-    func updatePinStateForCollection(_ tab: Tab, collection: SidebarCollection) {
-        if collection == .pinned, !tab.isPinned {
-            // Capture origin URL for navigation containment
-            tab.originURL = tab.activePage.url
-            tab.isPinned = true
-        } else if collection == .normal, tab.isPinned {
-            // Clear origin URL when unpinning
-            tab.originURL = nil
-            tab.isPinned = false
         }
     }
 
@@ -684,10 +671,10 @@ extension TabManager {
         positioner.multiplier(forLevel: level)
     }
 
-    /// Recursively sets the pinned state for a group and all its contents.
+    /// Recursively sets the pinned state for a group and its nested groups.
     ///
-    /// Updates the group's `isPinned` state along with all tabs directly in the group
-    /// and all nested groups (and their tabs) recursively.
+    /// The group's tabs follow it into or out of the sidebar's pinned section through
+    /// ``Tab/isInPinnedGroup``.
     ///
     /// - Parameters:
     ///   - group: The group to update.
@@ -696,10 +683,6 @@ extension TabManager {
         guard let space = group.space else { return }
 
         group.isPinned = isPinned
-
-        for tab in space.tabs where tab.groupID == group.id {
-            tab.isPinned = isPinned
-        }
 
         for nestedGroup in space.groups where nestedGroup.parentGroupID == group.id {
             setGroupPinStateRecursively(nestedGroup, isPinned: isPinned)

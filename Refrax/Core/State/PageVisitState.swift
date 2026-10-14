@@ -17,12 +17,9 @@ final class PageVisitState {
     private(set) var destination: Destination?
     /// When the visit that `destination` belongs to began.
     private(set) var beganAt: Date?
+    /// Set while a tab changes what it is (Favorite, Remove from Favorites), so the change
+    /// neither ends the visit nor hands the tab to the floating layer.
     var isTransformingIdentity = false
-
-    func replaceIdentity(of original: Tab.ID, with tab: Tab) {
-        guard let prior = destination, prior.tabID == original else { return }
-        destination = Destination(tabID: tab.id, spaceID: prior.spaceID, title: tab.displayTitle, focusedPageID: tab.activePage.id)
-    }
     @ObservationIgnored private var retainedPage: WebPage?
     @ObservationIgnored private weak var responder: NSResponder?
     @ObservationIgnored var authenticationTask: Task<Void, Never>?

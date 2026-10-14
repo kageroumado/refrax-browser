@@ -413,8 +413,8 @@ struct WindowStateNavigationCleanupTests {
         windowState.setActiveTabID(tab.id, for: space.id)
 
         // Create a live favorite tab to test live favorite clearing
-        let liveFavoriteTab = try Tab(space: nil, url: #require(URL(string: "https://example.com")), status: .liveFavorite)
-        env.browserState.addLiveFavoriteTab(liveFavoriteTab)
+        let liveFavoriteTab = try Tab(space: nil, url: #require(URL(string: "https://example.com")), status: .favorite)
+        env.browserState.addFavoriteTab(liveFavoriteTab)
         windowState.setActiveTab(liveFavoriteTab)
 
         #expect(windowState.activeSpaceID != nil)

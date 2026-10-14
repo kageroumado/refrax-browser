@@ -6,97 +6,46 @@ import SwiftData
 extension TabManager {
     /// Converts a tab to a favorite bookmark.
     ///
-    /// For live favorites from global-storage spaces, the WKWebView is transferred
-    /// to the new live favorite tab to preserve browsing state. For non-global spaces
-    /// or shortcuts, a fresh WebView is created.
+    /// A `.liveFavorite` conversion makes the tab itself a favorite in place
+    /// (``makeFavorite(_:home:in:)``). A `.shortcut` conversion closes the tab and keeps a
+    /// shortcut bookmark at its address.
     ///
     /// - Parameters:
     ///   - tab: The tab to convert.
-    ///   - mode: Whether to create a live favorite or shortcut.
+    ///   - mode: Whether the tab becomes a favorite or a shortcut.
     ///   - targetWindow: The window whose selection is preserved. Defaults to the active window.
     /// - Returns: The bookmark ID on success, nil on failure.
     @discardableResult
     func convertTabToFavorite(_ tab: Tab, mode: FavoriteMode, in targetWindow: WindowState? = nil) -> UUID? {
-        guard let space = tab.space else { return nil }
+        guard tab.space != nil else { return nil }
+        if mode == .liveFavorite {
+            return makeFavorite(tab, in: targetWindow)?.id
+        }
 
-        // Capture URL and metadata before closing the tab
         let url = tab.activePage.url
         let title = tab.activePage.title
         let faviconData = tab.activePage.faviconData
         let largeFaviconData = tab.activePage.largeFaviconData
-        let spaceID = mode == .liveFavorite ? space.id : nil
 
-        // Check if this tab is currently active BEFORE closing (in any window)
-        let windowState = targetWindow ?? activeWindowState
-        let wasActiveTab = windowState?.activeTabID(for: space.id) == tab.id
-
-        // For live favorites from global-storage spaces, we can preserve the WebView.
-        // Extract it from the pool BEFORE closeTab destroys it.
-        let canPreserveWebView = mode == .liveFavorite && space.dataStoreMode.isGlobal
-        let preservedPage: WebPage? = if canPreserveWebView {
-            pagePool.extractPage(for: tab.activePage)
-        } else {
-            nil
-        }
-
-        // For active tabs being converted to live favorites, prevent adjacent tab activation.
-        // We'll activate the new live favorite instead after it's created.
-        if wasActiveTab, mode == .liveFavorite {
-            // Clear active tab ID so the mutation pipeline's sync doesn't select a replacement
-            for controller in windowManager.windowControllers {
-                if controller.windowState.activeSpaceID == space.id {
-                    controller.windowState.setActiveTabID(nil, for: space.id, trackPrevious: false)
-                }
-            }
-        }
-
-        // Close the original tab (removes it from the space).
-        // The WebPage was already extracted, so removePages finds nothing to destroy.
-        // Skip undo registration - this is a conversion, not a close, and undo would be confusing
-        // (it would create a new tab while the live favorite still exists).
-        // Bypass archive - the content is preserved as a favorite, archiving would be redundant.
+        // Bypass archive and undo: the content is preserved as a shortcut.
         closeTab(tab, registerUndo: false, bypassArchive: true)
 
-        // Create the bookmark (and live favorite tab for .liveFavorite mode)
-        // Pass favicon data directly to avoid flash before refreshFavoritesCache
         let bookmark = bookmarksManager.createBookmark(
             url: url,
             title: title,
             isFavorite: true,
             favoriteMode: mode,
-            spaceID: spaceID,
             faviconData: faviconData,
             largeFaviconData: largeFaviconData,
         )
-
-        // Re-associate the preserved WebPage with the new live favorite's TabPage
-        if let preservedPage,
-           let liveFavoriteTab = state.liveFavoriteTab(for: bookmark.id) {
-            let destinationTabPage = liveFavoriteTab.activePage
-
-            // Transfer favicon data to the new TabPage
-            destinationTabPage.faviconData = faviconData
-            destinationTabPage.largeFaviconData = largeFaviconData
-
-            pagePool.associatePage(preservedPage, with: destinationTabPage)
-            Logger.info("WebView transferred to live favorite: \(title)", category: Logger.tabs)
-        }
-
-        // If the original tab was active and we created a live favorite, activate it
-        if wasActiveTab, mode == .liveFavorite,
-           let liveFavoriteTab = state.liveFavoriteTab(for: bookmark.id),
-           let windowState {
-            setActiveTab(liveFavoriteTab, in: windowState)
-        }
-
         state.incrementContentVersion()
         return bookmark.id
     }
 
-    /// Converts a live favorite tab to a regular tab in the active space.
+    /// Converts a favorite to a regular tab in the active space.
     ///
-    /// Used when removing a live favorite from favorites -- instead of closing the tab,
-    /// it becomes a regular tab at the end of the tab list. The bookmark/tab link is broken.
+    /// Used when removing a favorite from Favorites: instead of closing the tab, it becomes
+    /// a regular tab at the top of the tab list. The bookmark/tab link is broken.
     ///
     /// - Parameters:
     ///   - tab: The live favorite tab to convert.
@@ -113,12 +62,11 @@ extension TabManager {
         // Check if this was the active tab BEFORE we modify state
         let wasActiveLiveFavorite = windowState.activeTab == tab
 
-        // Set position at the top of the unpinned tabs (prepend)
-        let firstUnpinnedPosition = activeSpace.unpinnedTabs.first?.position ?? 1_000_000
-        tab.position = firstUnpinnedPosition - 1
+        // Prepend to the tabs outside pinned groups
+        let firstPosition = activeSpace.unpinnedTabs.first?.position ?? 1_000_000
+        tab.position = firstPosition - 1
 
-        // Move the tab from live favorites to the active space
-        state.convertLiveFavoriteToSpaceTab(tab, in: activeSpace, isPinned: false)
+        state.convertFavoriteToSpaceTab(tab, in: activeSpace)
 
         // Break the live favorite link
         bookmark.linkedTab = nil
@@ -135,20 +83,18 @@ extension TabManager {
 
     /// Converts a favorite to a tab in the active space.
     ///
-    /// For live favorites, activates the existing tab and optionally repositions it.
+    /// For favorites with a tab, moves the existing tab into the space at the position.
     /// For shortcuts, creates a new tab at the specified position.
     ///
     /// - Parameters:
     ///   - favorite: The favorite item to convert.
-    ///   - atIndex: Target position in the tab list (local index within pinned or normal).
-    ///   - isPinned: Whether to pin the resulting tab.
+    ///   - atIndex: Target position among the sidebar's tabs outside pinned groups.
     ///   - layoutManager: Layout manager for position calculation.
     /// - Returns: The ID of the resulting tab on success, `nil` on failure.
     @discardableResult
     func convertFavoriteToTab(
         _ favorite: FavoriteItem,
         atIndex targetIndex: Int,
-        isPinned: Bool,
         using layoutManager: Sidebar.LayoutManager,
     ) -> UUID? {
         switch favorite.type {
@@ -157,9 +103,9 @@ extension TabManager {
                   let activeSpace = windowState.activeSpace else { return nil }
 
             // Calculate position that sorts BEFORE the target item
-            let items = isPinned ? layoutManager.pinnedItems : layoutManager.normalItems
+            let items = layoutManager.normalItems
             if items.isEmpty {
-                tab.position = isPinned ? 0 : 1_000_000
+                tab.position = 1_000_000
             } else {
                 let clampedIndex = min(targetIndex, items.count)
                 if clampedIndex == 0 {
@@ -177,8 +123,7 @@ extension TabManager {
             // Check if this was the active tab BEFORE we modify state
             let wasActiveLiveFavorite = windowState.activeTab == tab
 
-            // Move the tab from live favorites to the active space
-            state.convertLiveFavoriteToSpaceTab(tab, in: activeSpace, isPinned: isPinned)
+            state.convertFavoriteToSpaceTab(tab, in: activeSpace)
 
             // Break the live favorite link and remove from favorites
             // (without calling removeLiveFavoriteTab which would try to close the tab)
@@ -203,12 +148,12 @@ extension TabManager {
                   let space = windowState.activeSpace else { return nil }
 
             // Get items sorted by position (same as layoutManager view)
-            let items = isPinned ? layoutManager.pinnedItems : layoutManager.normalItems
+            let items = layoutManager.normalItems
 
             // Calculate position that sorts BEFORE the target item
             let targetPosition: Int
             if items.isEmpty {
-                targetPosition = isPinned ? 0 : 1_000_000 // After pinned section
+                targetPosition = 1_000_000 // After pinned section
             } else {
                 let clampedIndex = min(targetIndex, items.count)
                 if clampedIndex == 0 {
@@ -226,7 +171,6 @@ extension TabManager {
             }
 
             let tab = Tab(space: space, url: bookmark.url, title: bookmark.title, position: targetPosition)
-            tab.isPinned = isPinned
             tab.activePage.faviconData = bookmark.faviconData
             tab.activePage.largeFaviconData = bookmark.largeFaviconData
 
@@ -296,7 +240,8 @@ extension TabManager {
 
     /// Reorders a tab within the sidebar.
     ///
-    /// Handles pin state changes, group membership changes, and position updates.
+    /// Handles group membership changes and position updates. A tab moved into the pinned
+    /// section from outside it becomes a favorite.
     ///
     /// - Parameters:
     ///   - tab: The tab to reorder.
@@ -316,9 +261,14 @@ extension TabManager {
         let items = layoutManager.pinnedItems + layoutManager.normalItems
 
         // Detect cross-collection move
-        let sourceIsPinned = tab.isPinned
+        let sourceIsPinned = tab.isInPinnedGroup
         let targetIsPinned = targetCollection == .pinned
         let isCrossCollectionMove = sourceIsPinned != targetIsPinned
+
+        // The pinned section holds pinned groups; a tab dropped there becomes a favorite.
+        if targetIsPinned, !sourceIsPinned {
+            return makeFavorite(tab) != nil
+        }
 
         // For cross-collection moves, we need to handle the case where indices might be equal
         // because the target position in the new collection maps to the same global index.
@@ -331,68 +281,24 @@ extension TabManager {
             return false
         }
 
-        // Set pin state based on target collection
-        updatePinStateForCollection(tab, collection: targetCollection)
-
-        // Handle insertion at boundary (e.g., appending to end of pinned section)
-        let effectiveTargetIndex: Int = if targetIndex >= items.count {
-            // Inserting at the very end - use last item as reference
-            items.count - 1
-        } else if isCrossCollectionMove, targetIndex == layoutManager.pinnedItems.count, targetIsPinned {
-            // Appending to end of pinned section - use first normal item as reference if available
-            if layoutManager.pinnedItems.isEmpty {
-                // No pinned items - position before all normal items
-                0
-            } else {
-                // Position after last pinned item
-                layoutManager.pinnedItems.count - 1
-            }
-        } else {
-            min(targetIndex, items.count - 1)
-        }
-
+        let effectiveTargetIndex = min(targetIndex, items.count - 1)
         let targetItem = items[effectiveTargetIndex]
         guard let targetMetadata = layoutManager.metadata[targetItem.id] else {
             return false
         }
 
-        let newPosition: Int = if isCrossCollectionMove, targetIndex == layoutManager.pinnedItems.count, targetIsPinned {
-            // Appending to end of pinned section - place after last pinned item
-            if let lastPinnedItem = layoutManager.pinnedItems.last,
-               layoutManager.metadata[lastPinnedItem.id] != nil {
-                // Get position after the last pinned item
-                if let lastPinnedTab = lastPinnedItem.tab {
-                    lastPinnedTab.position + 1_000_000
-                } else if case let .group(lastGroup) = lastPinnedItem {
-                    lastGroup.position + 1_000_000
-                } else {
-                    calculateNewPosition(
-                        for: tab.id,
-                        targetItem: targetItem,
-                        targetMetadata: targetMetadata,
-                        items: items,
-                        layoutManager: layoutManager,
-                        movingDown: true,
-                    )
-                }
-            } else {
-                // No pinned items - use smallest position
-                1_000_000
-            }
-        } else {
-            // For cross-collection moves, always insert BEFORE the target (movingDown = false).
-            // The direction relative to origin doesn't make sense across collections - we want
-            // to INSERT at a specific position, not move past the target item.
-            // For same-collection moves, use the natural direction based on index comparison.
-            calculateNewPosition(
-                for: tab.id,
-                targetItem: targetItem,
-                targetMetadata: targetMetadata,
-                items: items,
-                layoutManager: layoutManager,
-                movingDown: isCrossCollectionMove ? false : (targetIndex > originIndex),
-            )
-        }
+        // For cross-collection moves, always insert BEFORE the target (movingDown = false).
+        // The direction relative to origin doesn't make sense across collections - we want
+        // to INSERT at a specific position, not move past the target item.
+        // For same-collection moves, use the natural direction based on index comparison.
+        let newPosition = calculateNewPosition(
+            for: tab.id,
+            targetItem: targetItem,
+            targetMetadata: targetMetadata,
+            items: items,
+            layoutManager: layoutManager,
+            movingDown: isCrossCollectionMove ? false : (targetIndex > originIndex),
+        )
 
         tab.position = newPosition
 
@@ -403,21 +309,12 @@ extension TabManager {
             updateGroupMembership(for: tab, newGroupID: targetMetadata.parentGroupID)
         }
 
-        // Set pin state based on target collection (not from targetItem)
-        let wasPinned = sourceIsPinned
-        tab.isPinned = targetIsPinned
-
         normalizePositions()
         state.incrementListVersion()
         scheduleSave()
 
         // Notify extensions of tab move
         state.extensionManager?.dispatchTabMoved(tab, fromIndex: originIndex, oldWindow: nil)
-
-        // If pinned state changed, also notify of that
-        if wasPinned != targetIsPinned {
-            state.extensionManager?.dispatchPinnedChanged(tab)
-        }
 
         return true
     }

@@ -126,18 +126,14 @@ struct SpaceActions {
         NSPasteboard.general.setString(string, forType: .string)
     }
 
-    /// The space as a Markdown document: a heading, then its pinned tabs, each group, and the
-    /// rest, each a list of links.
+    /// The space as a Markdown document: a heading, then each group and the rest, each a list
+    /// of links.
     static func markdown(for space: Space, tabs: TabManager) -> String {
         let spaceTabs = tabs.state.tabs(in: space)
         func links(_ list: [Tab]) -> [String] {
             list.sorted { $0.position < $1.position }.map { "- [\($0.displayTitle)](\(tabs.copyableURL(for: $0)))" }
         }
         var lines = ["# \(space.displayNameWithIcon)", ""]
-        let pinned = spaceTabs.filter(\.isPinned)
-        if !pinned.isEmpty {
-            lines += ["## Pinned"] + links(pinned) + [""]
-        }
         let groups = tabs.state.groups(in: space).sorted { $0.position < $1.position }
         for group in groups {
             let members = spaceTabs.filter { $0.groupID == group.id }
@@ -145,9 +141,9 @@ struct SpaceActions {
                 lines += ["## \(group.displayNameWithIcon)"] + links(members) + [""]
             }
         }
-        let others = spaceTabs.filter { $0.groupID == nil && !$0.isPinned }
+        let others = spaceTabs.filter { $0.groupID == nil }
         if !others.isEmpty {
-            if !groups.isEmpty || !pinned.isEmpty {
+            if !groups.isEmpty {
                 lines.append("## Other")
             }
             lines += links(others)

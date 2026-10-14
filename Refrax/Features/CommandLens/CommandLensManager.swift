@@ -1480,7 +1480,7 @@ final class CommandLensManager {
             if let space = tab.space, space.id != windowState.activeSpaceID {
                 await tabManager.spaceManager.switchToSpace(space, for: windowState)
             }
-            guard tab.isLiveFavorite || tab.space?.id == windowState.activeSpaceID else { return }
+            guard tab.isFavorite || tab.space?.id == windowState.activeSpaceID else { return }
             controller.tabCanvasManager.showFloatingPlace(of: tab)
         }
     }
@@ -1522,7 +1522,6 @@ final class CommandLensManager {
                 closeCurrentLens()
                 reset()
             }
-
 
         case let .searchProvider(engine):
             selectSearchProvider(engine)
@@ -1628,7 +1627,7 @@ final class CommandLensManager {
                     TabMediaControl.muteOthers(than: tab, in: tabManager.pagePool)
                 }
             case let .moveCurrentTabToSpace(spaceID):
-                if let tab = windowState.activeTab, !tab.isLiveFavorite,
+                if let tab = windowState.activeTab, !tab.isFavorite,
                    let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
                     Task(name: "Move tab to space from the lens") { await tabManager.moveTabsUnlocking([tab], to: space) }
                 }
@@ -1672,7 +1671,6 @@ final class CommandLensManager {
     private var isAddressMode: Bool {
         windowState.commandLensEntrance?.editsCurrentPage == true
     }
-
 
     private func navigateToURL(_ url: URL, makeActive: Bool) {
         // Deep links (sslError, focusBlocked) render in-tab — no special handling needed

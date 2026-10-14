@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import Testing
-
 @testable import Refrax
 
 @MainActor
@@ -11,10 +10,18 @@ struct SidebarTestSupport {
     let windowState: WindowState
     let managers: SidebarManagers
 
-    var layoutManager: Sidebar.LayoutManager { managers.layoutManager }
-    var dragCoordinator: Sidebar.DragCoordinator { managers.dragCoordinator }
-    var filterManager: Sidebar.FilterManager { managers.filterManager }
-    var selectionManager: Sidebar.TabSelectionManager { managers.selectionManager }
+    var layoutManager: Sidebar.LayoutManager {
+        managers.layoutManager
+    }
+    var dragCoordinator: Sidebar.DragCoordinator {
+        managers.dragCoordinator
+    }
+    var filterManager: Sidebar.FilterManager {
+        managers.filterManager
+    }
+    var selectionManager: Sidebar.TabSelectionManager {
+        managers.selectionManager
+    }
 
     init() throws {
         self.env = try TabManagerTestEnvironment()
@@ -34,14 +41,12 @@ struct SidebarTestSupport {
     @discardableResult
     func createTab(
         url: String,
-        isPinned: Bool = false,
         groupID: UUID? = nil,
     ) -> Tab {
         env.tabManager.createTab(
             url: URL(string: url)!,
             in: space,
             groupID: groupID,
-            isPinned: isPinned,
             makeActive: false,
         )
     }

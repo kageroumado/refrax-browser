@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for edge cases in drag commit and state reset.
@@ -30,16 +29,16 @@ struct SidebarDragCommitResetTests {
 
     // MARK: - Commit Edge Cases
 
-    @Test("Commit with drop target none returns false")
-    func commitWithDropTargetNone() throws {
+    @Test
+    func `Commit with drop target none returns false`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -56,18 +55,18 @@ struct SidebarDragCommitResetTests {
         #expect(didCommit == false)
     }
 
-    @Test("Commit reorder to same position runs animation but no model change")
-    func commitReorderToSamePosition() throws {
+    @Test
+    func `Commit reorder to same position runs animation but no model change`() throws {
         let support = try SidebarTestSupport()
         _ = support.createTab(url: "https://tab2.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let tab1 = tabItem.tab!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let tab1 = try #require(tabItem.tab)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let originalPosition = tab1.position
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -89,16 +88,16 @@ struct SidebarDragCommitResetTests {
         #expect(tab1.position == originalPosition)
     }
 
-    @Test("Commit with isAnimatingReturn true is guarded")
-    func commitWithIsAnimatingReturnTrue() throws {
+    @Test
+    func `Commit with isAnimatingReturn true is guarded`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -117,8 +116,8 @@ struct SidebarDragCommitResetTests {
         #expect(support.dragCoordinator.isAnimatingReturn == true)
     }
 
-    @Test("Commit add to group when group deleted gracefully fails")
-    func commitAddToGroupWhenGroupDeleted() throws {
+    @Test
+    func `Commit add to group when group deleted gracefully fails`() throws {
         let support = try SidebarTestSupport()
         let group = try support.createGroup(name: "Group")
         _ = support.createTab(url: "https://grouped.com", groupID: group.id)
@@ -126,14 +125,16 @@ struct SidebarDragCommitResetTests {
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first { item in
-            if case let .tab(t) = item, t.id == tab.id { return true }
+        let tabItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .tab(t) = item, t.id == tab.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -154,17 +155,17 @@ struct SidebarDragCommitResetTests {
         #expect(didCommit == false || didCommit == true)
     }
 
-    @Test("Commit reorder cross-collection calculates indices correctly")
-    func commitReorderCrossCollectionIndexMath() throws {
+    @Test
+    func `Commit reorder cross-collection calculates indices correctly`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -182,22 +183,22 @@ struct SidebarDragCommitResetTests {
         let didCommit = support.dragCoordinator.commitDrag()
         #expect(didCommit)
 
-        // Tab should now be pinned
-        #expect(normalTab.isPinned == true)
+        // A tab dropped in the pinned section becomes a favorite
+        #expect(normalTab.isFavorite)
     }
 
     // MARK: - Reset Edge Cases
 
-    @Test("Direct reset clears all state immediately")
-    func directResetClearsAllState() throws {
+    @Test
+    func `Direct reset clears all state immediately`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -219,16 +220,16 @@ struct SidebarDragCommitResetTests {
         #expect(support.dragCoordinator.draggedItems.isEmpty)
     }
 
-    @Test("Cancel drag starts animation before cleanup")
-    func cancelDragStartsAnimation() throws {
+    @Test
+    func `Cancel drag starts animation before cleanup`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -249,22 +250,24 @@ struct SidebarDragCommitResetTests {
         #expect(support.dragCoordinator.isAnimatingReturn == true)
     }
 
-    @Test("Reset dragged item nesting level for group returns early")
-    func resetDraggedItemNestingForGroup() throws {
+    @Test
+    func `Reset dragged item nesting level for group returns early`() throws {
         let support = try SidebarTestSupport()
         let group = try support.createGroup(name: "Group")
         _ = support.createTab(url: "https://tab.com", groupID: group.id)
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let groupItem = support.layoutManager.normalItems.first { item in
-            if case let .group(g) = item, g.id == group.id { return true }
+        let groupItem = try #require(support.layoutManager.normalItems.first { item in
+            if case let .group(g) = item, g.id == group.id {
+                return true
+            }
             return false
-        }!
+        })
 
-        let originIndex = support.layoutManager.metadata[groupItem.id]!.globalIndex
+        let originIndex = try #require(support.layoutManager.metadata[groupItem.id]?.globalIndex)
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let startFrame = support.dragCoordinator.computedItemFrame(for: groupItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: groupItem.id))
         support.dragCoordinator.startDrag(
             item: .group(group),
             originPosition: .normal(localIndex: localIndex),
@@ -279,16 +282,16 @@ struct SidebarDragCommitResetTests {
         #expect(group.nestingLevel == 0)
     }
 
-    @Test("Direct reset clears all caches")
-    func directResetClearsAllCaches() throws {
+    @Test
+    func `Direct reset clears all caches`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -308,16 +311,16 @@ struct SidebarDragCommitResetTests {
         #expect(support.dragCoordinator._draggedItemExclusionSet.isEmpty)
     }
 
-    @Test("Direct reset clears ghost state and handoff phase")
-    func directResetClearsGhostState() throws {
+    @Test
+    func `Direct reset clears ghost state and handoff phase`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -339,8 +342,8 @@ struct SidebarDragCommitResetTests {
         #expect(support.dragCoordinator.handoffPhase == .internal)
     }
 
-    @Test("Cancel multi-item drag starts animation")
-    func cancelMultiItemDragStartsAnimation() throws {
+    @Test
+    func `Cancel multi-item drag starts animation`() throws {
         let support = try SidebarTestSupport()
         let tab1 = support.createTab(url: "https://tab1.com")
         let tab2 = support.createTab(url: "https://tab2.com")
@@ -348,9 +351,9 @@ struct SidebarDragCommitResetTests {
         support.rebuildLayout()
         setupTestGeometry(support)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(

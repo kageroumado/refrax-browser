@@ -194,7 +194,6 @@ final class UndoRedoManager {
         undoManager.setActionName(actionName)
     }
 
-
     // MARK: - Group Undo Operations
 
     /// Registers a group deletion for undo.
@@ -280,7 +279,6 @@ final class UndoRedoManager {
         recentlyClosedTabs.removeAll { $0.id == info.id }
     }
 
-
     /// Restores a group from an undo action.
     private func restoreGroupFromUndo(_ info: ClosedGroupInfo) {
         tabGroupManager.restoreGroup(info)
@@ -363,7 +361,6 @@ final class UndoRedoManager {
             tab.group = nil
             tab.position = index
         }
-
 
         // Delete the result group
         tabGroupManager.deleteGroup(group, in: targetSpace, deleteContainedTabs: false)
@@ -453,5 +450,4 @@ struct ConvertedTabInfo: Equatable {
     let tabID: UUID
     let position: Int
     let groupID: UUID?
-    let isPinned: Bool
 }

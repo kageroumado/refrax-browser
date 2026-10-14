@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for coordinate transformations between visual and static space.
@@ -15,8 +14,8 @@ import Testing
 struct SidebarDragCoordinateTests {
     // MARK: - Static Space Conversion Tests
 
-    @Test("Location in static space with large push offset")
-    func locationInStaticSpaceWithLargePushOffset() throws {
+    @Test
+    func `Location in static space with large push offset`() throws {
         let support = try SidebarTestSupport()
         // No favorites, no pinned - drop zones can appear
         let tab = support.createTab(url: "https://tab.com")
@@ -24,11 +23,11 @@ struct SidebarDragCoordinateTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        let frame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
         support.dragCoordinator.startDrag(
             item: .tab(tab),
             originPosition: .normal(localIndex: localIndex),
@@ -50,17 +49,17 @@ struct SidebarDragCoordinateTests {
         #expect(staticLocation.y == visualLocation.y - pushOffset)
     }
 
-    @Test("Location in static space with zero push offset")
-    func locationInStaticSpaceWithZeroPushOffset() throws {
+    @Test
+    func `Location in static space with zero push offset`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         _ = support.createTab(url: "https://tab2.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -85,10 +84,10 @@ struct SidebarDragCoordinateTests {
         }
     }
 
-    @Test("Adjusted pinned frame during zone animation")
-    func adjustedPinnedFrameDuringZoneAnimation() throws {
+    @Test
+    func `Adjusted pinned frame during zone animation`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
 
@@ -96,9 +95,9 @@ struct SidebarDragCoordinateTests {
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let normalFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let normalFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -122,17 +121,17 @@ struct SidebarDragCoordinateTests {
         }
     }
 
-    @Test("Adjusted normal frame during zone animation")
-    func adjustedNormalFrameDuringZoneAnimation() throws {
+    @Test
+    func `Adjusted normal frame during zone animation`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -156,16 +155,16 @@ struct SidebarDragCoordinateTests {
         }
     }
 
-    @Test("Sidebar bounds at zero origin")
-    func sidebarBoundsAtZeroOrigin() throws {
+    @Test
+    func `Sidebar bounds at zero origin`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 400))
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let frame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let frame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -182,8 +181,8 @@ struct SidebarDragCoordinateTests {
         #expect(inSidebar.y == 150)
     }
 
-    @Test("Overlay position in sidebar before bounds set")
-    func overlayPositionInSidebarBeforeBoundsSet() throws {
+    @Test
+    func `Overlay position in sidebar before bounds set`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
@@ -191,9 +190,9 @@ struct SidebarDragCoordinateTests {
         // Don't set sidebar bounds (use default .zero)
         support.setupTestGeometry(sidebarBounds: .zero)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -211,17 +210,17 @@ struct SidebarDragCoordinateTests {
         #expect(inSidebar.y == 150)
     }
 
-    @Test("Static space conversion round trip preserves location")
-    func staticSpaceConversionRoundTrip() throws {
+    @Test
+    func `Static space conversion round trip preserves location`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")
         support.rebuildLayout()
         support.setupTestGeometry(sidebarBounds: CGRect(x: 0, y: 0, width: 200, height: 500))
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
-        let tabItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[tabItem.id]!.globalIndex
-        let tabFrame = support.dragCoordinator.computedItemFrame(for: tabItem.id)!
+        let tabItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
+        let tabFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(

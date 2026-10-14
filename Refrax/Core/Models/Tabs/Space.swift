@@ -279,7 +279,9 @@ final class Space {
         if currentCount != _tabsCacheCount {
             _mainTabsCache = nil
         }
-        if let cached = _mainTabsCache { return cached }
+        if let cached = _mainTabsCache {
+            return cached
+        }
         let result = tabs.filter { !$0.isArchived }
             .sorted { $0.position < $1.position }
         _mainTabsCache = result
@@ -287,20 +289,20 @@ final class Space {
         return result
     }
 
-    /// Pinned tabs sorted by position.
+    /// Tabs in pinned groups, sorted by position.
     ///
     /// Uses cached `mainTabs` - already sorted by position.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
     var pinnedTabs: [Tab] {
-        mainTabs.filter(\.isPinned)
+        mainTabs.filter(\.isInPinnedGroup)
     }
 
-    /// Unpinned tabs sorted by position.
+    /// Tabs outside pinned groups, sorted by position.
     ///
     /// Uses cached `mainTabs` - already sorted by position.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
     var unpinnedTabs: [Tab] {
-        mainTabs.filter { !$0.isPinned }
+        mainTabs.filter { !$0.isInPinnedGroup }
     }
 
     /// Total number of main tabs.

@@ -203,7 +203,9 @@ extension Sidebar.DragCoordinator {
 
         // When drop zones are showing, divider state depends on what would happen
         // if dropped there - but visually it should stay as-is until commit
-        if _isDragAboveTabList { return currentlyShowing }
+        if _isDragAboveTabList {
+            return currentlyShowing
+        }
 
         // Case 1: Dragging LAST pinned item to normal section - divider will disappear
         if activeDropZone == .normalSection,
@@ -250,7 +252,9 @@ extension Sidebar.DragCoordinator {
         let currentlyShowing = !layoutManager.pinnedItems.isEmpty || !layoutManager.favoritesLayout.isEmpty
 
         // When drop zones are showing, they handle layout shifts
-        if _isDragAboveTabList { return 0 }
+        if _isDragAboveTabList {
+            return 0
+        }
 
         // Check if divider will disappear
         // Case 1: Dragging LAST pinned item to normal section
@@ -300,7 +304,7 @@ extension Sidebar.DragCoordinator {
         guard _isDragAboveTabList, layoutManager.pinnedItems.isEmpty else { return false }
 
         if let tab = primaryDraggedItem?.tab {
-            return !tab.isPinned
+            return !tab.isInPinnedGroup
         } else if let group = primaryDraggedItem?.group {
             return group.isPinned != true
         }
@@ -437,7 +441,7 @@ extension Sidebar.DragCoordinator {
         let wouldShowFavorites = layoutManager.favoritesLayout.isEmpty
         let wouldShowPinned: Bool = if layoutManager.pinnedItems.isEmpty {
             if let tab = primaryDraggedItem?.tab {
-                !tab.isPinned
+                !tab.isInPinnedGroup
             } else if let group = primaryDraggedItem?.group {
                 group.isPinned != true
             } else {

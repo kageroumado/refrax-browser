@@ -17,12 +17,12 @@ refrax-ctl open URL [--activate] [--space S]            # Open new tab (alias: t
 ```bash
 refrax-ctl tab list [--space S] [--json]      # List tabs
 refrax-ctl tab get ID [--json]                 # Basic tab info
-refrax-ctl tab detail [ID] [--json]            # Extended info (pages, pinned, group, etc.)
+refrax-ctl tab detail [ID] [--json]            # Extended info (pages, favorite, group, etc.)
 refrax-ctl tab open URL [--activate]           # Open new tab
 refrax-ctl tab close ID                        # Close tab
 refrax-ctl tab activate ID                     # Switch to tab
 refrax-ctl tab navigate URL [--tab ID] [--read] [--wait]  # Navigate within tab
-refrax-ctl tab pin ID                          # Toggle pin
+refrax-ctl tab favorite ID                     # Add to or remove from Favorites
 refrax-ctl tab duplicate ID                    # Duplicate tab
 refrax-ctl tab rename ID NAME                  # Set custom name (empty to clear)
 refrax-ctl tab mute ID                         # Toggle media mute

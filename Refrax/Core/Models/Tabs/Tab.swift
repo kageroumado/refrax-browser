@@ -35,16 +35,15 @@ import SwiftData
 ///
 /// ## Tab Status
 ///
-/// Tabs have three organizational states via ``TabStatus``:
+/// Tabs have two organizational states via ``TabStatus``:
 ///
 /// | Status | Description |
 /// |--------|-------------|
 /// | **Regular** | Standard tab in a space, subject to cleanup |
-/// | **Pinned** | Stays at top, never auto-closed |
-/// | **Live Favorite** | Global tab in favorites grid, visible across all spaces |
+/// | **Favorite** | A tab in every space, with a home address, never cleaned up |
 ///
-/// Live favorite tabs are linked to a ``Bookmark`` via ``linkedBookmark`` and
-/// always use global website data storage.
+/// Favorites are linked to a ``Bookmark`` via ``linkedBookmark``, whose URL is their home,
+/// and always use global website data storage.
 ///
 /// ## Organization
 ///
@@ -84,7 +83,7 @@ final class Tab {
     ///
     /// Tabs belong to exactly one space.
     ///
-    /// - Note: Live favorite tabs have `space == nil` since they exist globally.
+    /// - Note: Favorites have `space == nil` since they belong to every space.
     var space: Space?
     
     // MARK: - Content
@@ -179,8 +178,7 @@ final class Tab {
     ///
     /// Determines where the tab appears and its behavior:
     /// - `.regular`: Normal tab in a space, can be in groups
-    /// - `.pinned`: At top of space's tab list, exempt from cleanup
-    /// - `.live`: Global tab in favorites grid, visible across all spaces
+    /// - `.favorite`: A tab in every space with a home address, exempt from cleanup
     var status: TabStatus
 
     /// Whether this tab has unread content.
@@ -213,11 +211,10 @@ final class Tab {
     /// The group object (inverse relationship).
     var group: TabGroup?
 
-    /// The bookmark this live tab is linked to.
+    /// The bookmark this favorite is linked to; its URL is the favorite's home.
     ///
-    /// Set for `.liveFavorite` status tabs to maintain bidirectional relationship
-    /// between the favorites grid bookmark and its underlying tab. When the
-    /// bookmark is deleted, this is automatically set to nil.
+    /// Set for `.favorite` tabs to maintain the bidirectional relationship between the
+    /// favorited bookmark and its tab. When the bookmark is deleted, this is set to nil.
     @Relationship(deleteRule: .nullify, inverse: \Bookmark.linkedTab)
     var linkedBookmark: Bookmark?
     
@@ -226,7 +223,6 @@ final class Tab {
     /// Zero-based position in the space's tab list.
     ///
     /// Maintained by ``TabManager`` during reordering operations.
-    /// Pinned and unpinned tabs maintain separate position sequences.
     var position: Int
     
     // MARK: - Timestamps
@@ -254,11 +250,10 @@ final class Tab {
     /// - Note: Archived tabs are non-activatable. Clicking shows a restore prompt.
     var archivedAt: Date?
 
-    /// The URL this tab was pinned at. Used for navigation containment.
+    /// The home address a tab carried as a sidebar pin.
     ///
-    /// When a pinned tab navigates within the same domain, this stores the original
-    /// URL so users can return to it. For live favorites, use ``linkedBookmark?.url``
-    /// instead as that represents the bookmark's canonical URL.
+    /// ``FavoriteMigration`` reads it once to give the favorite it becomes a bookmark at
+    /// this address, then clears it. A favorite's home is ``linkedBookmark``'s URL.
     var originURL: URL?
 
     // MARK: - Initialization
@@ -266,12 +261,12 @@ final class Tab {
     /// Creates a new tab with a single page.
     ///
     /// - Parameters:
-    ///   - space: The space to contain this tab. Use `nil` for live favorite tabs.
+    ///   - space: The space to contain this tab. Use `nil` for favorites.
     ///   - url: Initial URL to load. Defaults to `about:blank`.
     ///   - title: Initial page title. Defaults to "New Tab".
     ///   - status: The organizational status. Defaults to `.regular`.
     ///   - groupID: Optional group to assign (only valid for `.regular` status).
-    ///   - linkedBookmark: Bookmark this tab is linked to (for `.liveFavorite` status tabs).
+    ///   - linkedBookmark: Bookmark this tab is linked to (for `.favorite` tabs).
     ///   - position: Position in tab list. Defaults to `0`.
     init(
         space: Space?,
@@ -484,20 +479,14 @@ final class Tab {
 
     // MARK: - Status Convenience Properties
 
-    /// Whether this tab is pinned to the top of its space's tab list.
-    ///
-    /// Pinned tabs sort before regular tabs and are exempt from auto-cleanup.
-    var isPinned: Bool {
-        get { status == .pinned }
-        set { status = newValue ? .pinned : .regular }
+    /// Whether this tab is a favorite: in every space, with a home address.
+    var isFavorite: Bool {
+        status == .favorite
     }
 
-    /// Whether this tab is a global live favorite.
-    ///
-    /// Live favorite tabs appear in the favorites grid across all spaces
-    /// and use global website data storage.
-    var isLiveFavorite: Bool {
-        status == .liveFavorite
+    /// Whether this tab sits in a pinned group, which the sidebar lists in its pinned section.
+    var isInPinnedGroup: Bool {
+        group?.isPinned == true
     }
 
     /// Whether this tab was created as a popup via `window.open()`.
@@ -510,23 +499,14 @@ final class Tab {
         activePage.openerTabPageID != nil
     }
 
-    /// The URL this tab should be contained to for navigation containment.
+    /// The favorite's home address, its linked bookmark's URL; `nil` for regular tabs.
     ///
-    /// Used for Arc-style navigation behavior where pinned tabs and live favorites
-    /// are kept focused on their designated sites. Cross-domain navigations are
-    /// shown in a preview panel instead of navigating the tab.
-    ///
-    /// | Status | Home URL |
-    /// |--------|----------|
-    /// | **Pinned** | ``originURL`` (captured when pinned) |
-    /// | **Live Favorite** | ``linkedBookmark?.url`` |
-    /// | **Regular** | `nil` (no containment) |
+    /// A favorite is kept to its site: cross-domain navigations open in a preview panel
+    /// instead of navigating the tab, and closing it returns it here.
     var homeURL: URL? {
         switch status {
-        case .liveFavorite:
+        case .favorite:
             linkedBookmark?.url
-        case .pinned:
-            originURL
         case .regular:
             nil
         }
@@ -534,8 +514,7 @@ final class Tab {
 
     /// Whether the current URL differs from the home URL.
     ///
-    /// When `true`, a "back to origin" button should be shown to allow
-    /// returning to the original pinned/favorite URL.
+    /// When `true`, Go to Home is offered to return the favorite to its home address.
     ///
     /// Returns `false` for regular tabs or when the current page is blank.
     var hasNavigatedFromHome: Bool {
@@ -584,9 +563,15 @@ final class Tab {
 
         // Compute fresh
         let elapsed = now.timeIntervalSince(baseline)
-        let category: TabAgeCategory = if elapsed >= 43_200 { .old12h } // 12+ hours
-        else if elapsed >= 21_600 { .old6h } // 6-12 hours
-        else { .recent } // < 6 hours
+        let category: TabAgeCategory = if elapsed >= 43_200 {
+            .old12h
+        } // 12+ hours
+        else if elapsed >= 21_600 {
+            .old6h
+        } // 6-12 hours
+        else {
+            .recent
+        } // < 6 hours
 
         cachedAgeCategory = (category, now, baseline)
         return category

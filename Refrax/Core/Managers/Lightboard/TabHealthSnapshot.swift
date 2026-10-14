@@ -148,11 +148,6 @@ extension TabHealthSnapshot {
         return "\(Int(processCPUPercent.rounded()))%"
     }
 
-    /// Whether this tab is pinned.
-    var isPinned: Bool {
-        tabPage.tab?.isPinned ?? false
-    }
-
     /// Whether this tab shares its process with other tabs.
     var sharesProcess: Bool {
         tabsInProcess > 1
@@ -196,7 +191,9 @@ enum TabProcessState: String, CaseIterable, Identifiable {
     case notRunning = "Not Running"
     case crashed = "Crashed"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Color for the state indicator.
     var color: Color {

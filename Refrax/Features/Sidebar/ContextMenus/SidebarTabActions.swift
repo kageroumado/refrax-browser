@@ -2,8 +2,7 @@ import AppKit
 import Foundation
 
 /// Menu actions a sidebar tab row adds beside ``PageActions`` and ``TabActions``: identity and
-/// status, pinned-tab navigation, organization, sorting, the reflected window, and the close
-/// family.
+/// status, organization, sorting, the reflected window, and the close family.
 struct SidebarTabActions {
     let tab: Tab
     let isCompactMode: Bool
@@ -38,26 +37,6 @@ struct SidebarTabActions {
 
     private func status() -> [MenuAction] {
         var actions: [MenuAction] = []
-        if tab.groupID == nil {
-            let pinned = tab.isPinned
-            actions.append(MenuAction(
-                "sidebar.pin", pinned ? "Unpin" : "Pin",
-                symbol: pinned ? ContextMenuIcon.unpin.systemName : ContextMenuIcon.pin.systemName, group: .tab,
-            ) { tabManager.togglePinTab(tab) })
-        }
-        if tab.isPinned {
-            if tab.hasNavigatedFromHome, let homeURL = tab.homeURL {
-                actions.append(MenuAction("sidebar.goHome", "Go to Home", symbol: "house", group: .go) {
-                    pagePool.existingPage(for: tab.activePage)?.load(homeURL)
-                })
-            }
-            actions.append(MenuAction("sidebar.setHome", "Set Current Page as Home", symbol: "house", group: .go) {
-                tab.originURL = tab.activePage.url
-            })
-        }
-        actions.append(MenuAction("sidebar.favorite", "Move to Favorites", symbol: ContextMenuIcon.favorite.systemName, group: .tab) {
-            tabManager.convertTabToFavorite(tab, mode: .liveFavorite)
-        })
         let unread = tab.isUnread
         actions.append(MenuAction(
             "sidebar.unread", unread ? "Mark as Read" : "Mark as Unread",

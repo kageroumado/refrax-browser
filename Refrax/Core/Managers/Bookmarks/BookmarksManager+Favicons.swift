@@ -67,7 +67,7 @@ extension BookmarksManager {
     ///
     /// - Parameter tab: Live favorite tab to sync favicon from
     func syncFaviconFromTab(_ tab: Tab) {
-        guard tab.status == .liveFavorite,
+        guard tab.status == .favorite,
               let bookmark = tab.linkedBookmark else {
             return
         }
@@ -234,8 +234,12 @@ extension BookmarksManager {
             )
 
             if let bookmark = try? _modelContext.fetch(descriptor).first {
-                if let small { bookmark.faviconData = small }
-                if let large { bookmark.largeFaviconData = large }
+                if let small {
+                    bookmark.faviconData = small
+                }
+                if let large {
+                    bookmark.largeFaviconData = large
+                }
                 updatedCount += 1
             }
         }
@@ -255,8 +259,12 @@ extension BookmarksManager {
         )
 
         if let bookmark = try? _modelContext.fetch(descriptor).first {
-            if let small { bookmark.faviconData = small }
-            if let large { bookmark.largeFaviconData = large }
+            if let small {
+                bookmark.faviconData = small
+            }
+            if let large {
+                bookmark.largeFaviconData = large
+            }
             scheduleSave()
         }
     }

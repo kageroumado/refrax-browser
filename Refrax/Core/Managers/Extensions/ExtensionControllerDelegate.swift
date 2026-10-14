@@ -165,11 +165,14 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
             url: url,
             in: space,
             groupID: parentTab?.groupID,
-            isPinned: configuration.shouldBePinned,
             makeActive: false,
             loadImmediately: true,
             insertionStrategy: insertionStrategy(at: Int(configuration.index), in: space),
         )
+        // Extensions see favorites as pinned tabs.
+        if configuration.shouldBePinned {
+            tabManager.makeFavorite(tab, in: windowState)
+        }
 
         Logger.info(
             "Extension created new tab: \(url.absoluteString)",

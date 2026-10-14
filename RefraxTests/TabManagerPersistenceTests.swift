@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 import Testing
 import WebKit
-
 @testable import Refrax
 
 // MARK: - TabManager Normalize Positions Tests
@@ -11,16 +10,16 @@ import WebKit
 @Suite("TabManager Normalize Positions", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerNormalizePositionsTests {
-    @Test("Normalize positions assigns hierarchical values")
-    func normalizeAssignsHierarchical() throws {
+    @Test
+    func `Normalize positions assigns hierarchical values`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         // Create tabs - they get positions sequentially on creation
-        _ = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
-        _ = env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
-        _ = env.tabManager.createTab(url: URL(string: "https://three.com")!, in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://three.com")), in: space, makeActive: false)
 
         env.tabManager.normalizePositions(in: space)
 
@@ -33,15 +32,15 @@ struct TabManagerNormalizePositionsTests {
         #expect(sorted[1].position < sorted[2].position)
     }
 
-    @Test("Normalize positions is stable across repeated calls")
-    func normalizeIsStable() throws {
+    @Test
+    func `Normalize positions is stable across repeated calls`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
-        env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
-        env.tabManager.createTab(url: URL(string: "https://three.com")!, in: space, makeActive: false)
+        try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
+        try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, makeActive: false)
+        try env.tabManager.createTab(url: #require(URL(string: "https://three.com")), in: space, makeActive: false)
 
         // Normalize twice
         env.tabManager.normalizePositions(in: space)
@@ -53,8 +52,8 @@ struct TabManagerNormalizePositionsTests {
         #expect(firstNormalize == secondNormalize, "Order should be stable")
     }
 
-    @Test("Normalize positions handles groups correctly")
-    func normalizeHandlesGroups() throws {
+    @Test
+    func `Normalize positions handles groups correctly`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -62,10 +61,10 @@ struct TabManagerNormalizePositionsTests {
         // Create a group with tabs
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tabInGroup = env.tabManager.createTab(url: URL(string: "https://grouped.com")!, in: space, makeActive: false)
+        let tabInGroup = try env.tabManager.createTab(url: #require(URL(string: "https://grouped.com")), in: space, makeActive: false)
         tabInGroup.groupID = group.id
 
-        _ = env.tabManager.createTab(url: URL(string: "https://root.com")!, in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://root.com")), in: space, makeActive: false)
 
         env.tabManager.normalizePositions(in: space)
 
@@ -78,8 +77,8 @@ struct TabManagerNormalizePositionsTests {
         #expect(tabInGroupPos > groupPos, "Tab in group should follow group position")
     }
 
-    @Test("Normalize positions handles nested groups")
-    func normalizeHandlesNestedGroups() throws {
+    @Test
+    func `Normalize positions handles nested groups`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -87,7 +86,7 @@ struct TabManagerNormalizePositionsTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let tabInNested = env.tabManager.createTab(url: URL(string: "https://nested.com")!, in: space, makeActive: false)
+        let tabInNested = try env.tabManager.createTab(url: #require(URL(string: "https://nested.com")), in: space, makeActive: false)
         tabInNested.groupID = nestedGroup.id
 
         env.tabManager.normalizePositions(in: space)
@@ -98,8 +97,8 @@ struct TabManagerNormalizePositionsTests {
         #expect(tabInNested.position > nestedGroup.position)
     }
 
-    @Test("Normalize positions handles empty space")
-    func normalizeHandlesEmptySpace() throws {
+    @Test
+    func `Normalize positions handles empty space`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -112,16 +111,20 @@ struct TabManagerNormalizePositionsTests {
         #expect(space.tabs.isEmpty)
     }
 
-    @Test("Normalize positions separates pinned and unpinned")
-    func normalizeSeparatesPinnedUnpinned() throws {
+    @Test
+    func `Normalize positions separates pinned and unpinned`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let pinnedTab = env.tabManager.createTab(url: URL(string: "https://pinned.com")!, in: space, makeActive: false)
-        pinnedTab.isPinned = true
-
-        let unpinnedTab = env.tabManager.createTab(url: URL(string: "https://unpinned.com")!, in: space, makeActive: false)
+        let unpinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://unpinned.com")), in: space, makeActive: false)
+        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
+        let pinnedTab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://pinned.com")),
+            in: space,
+            groupID: pinnedGroup.id,
+            makeActive: false,
+        )
 
         env.tabManager.normalizePositions(in: space)
 
@@ -135,13 +138,13 @@ struct TabManagerNormalizePositionsTests {
 @Suite("TabManager Initialize Window", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerInitializeWindowTests {
-    @Test("Initialize window sets active space but not active tab")
-    func initializeWindowSetsSpace() throws {
+    @Test
+    func `Initialize window sets active space but not active tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        _ = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
-        _ = env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, makeActive: false)
 
         let windowState = env.makeWindowState()
         env.tabManager.initializeWindow(windowState, with: space)
@@ -151,13 +154,13 @@ struct TabManagerInitializeWindowTests {
         #expect(windowState.activeTabID == nil, "Should not set active tab (lazy initialization)")
     }
 
-    @Test("Initialize window does not set active tab when activeTabID is nil")
-    func initializeWindowNoActiveTab() throws {
+    @Test
+    func `Initialize window does not set active tab when activeTabID is nil`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        _ = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
-        _ = env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, makeActive: false)
 
         let windowState = env.makeWindowState()
         env.tabManager.initializeWindow(windowState, with: space)
@@ -166,12 +169,12 @@ struct TabManagerInitializeWindowTests {
         #expect(windowState.activeTabID == nil, "Should not set active tab")
     }
 
-    @Test("Initialize window uses first space when none provided")
-    func initializeWindowUsesFirstSpace() throws {
+    @Test
+    func `Initialize window uses first space when none provided`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
-        env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
+        try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
 
         let windowState = env.makeWindowState()
         env.tabManager.initializeWindow(windowState, with: nil)
@@ -185,8 +188,8 @@ struct TabManagerInitializeWindowTests {
 @Suite("TabManager Temporary Space", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerTemporarySpaceTests {
-    @Test("Create temporary space returns a space")
-    func createTemporarySpaceReturnsSpace() throws {
+    @Test
+    func `Create temporary space returns a space`() throws {
         let env = try TabManagerTestEnvironment()
 
         let space = env.tabManager.createTemporarySpace()
@@ -200,14 +203,14 @@ struct TabManagerTemporarySpaceTests {
 @Suite("TabManager Save Operations", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerSaveTests {
-    @Test("scheduleSave delegates to state")
-    func scheduleSaveDelegatesToState() throws {
+    @Test
+    func `scheduleSave delegates to state`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         // Create a tab to have something to save
-        env.tabManager.createTab(url: URL(string: "https://example.com")!, in: space, makeActive: true)
+        try env.tabManager.createTab(url: #require(URL(string: "https://example.com")), in: space, makeActive: true)
 
         // Should not crash
         env.tabManager.scheduleSave()
@@ -215,20 +218,19 @@ struct TabManagerSaveTests {
         // No assertion needed - just verifying it doesn't crash
     }
 
-    @Test("saveImmediately completes without error")
-    func saveImmediatelyCompletes() async throws {
+    @Test
+    func `saveImmediately completes without error`() async throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        env.tabManager.createTab(url: URL(string: "https://example.com")!, in: space, makeActive: true)
+        try env.tabManager.createTab(url: #require(URL(string: "https://example.com")), in: space, makeActive: true)
 
         // Should complete without error
         await env.tabManager.saveImmediately()
 
         // No assertion needed - just verifying it completes
     }
-
 }
 
 // MARK: - TabManager Memory Warning Tests
@@ -236,8 +238,8 @@ struct TabManagerSaveTests {
 @Suite("TabManager Memory Warning", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerMemoryWarningTests {
-    @Test("handleMemoryWarning delegates to page pool")
-    func handleMemoryWarningDelegates() throws {
+    @Test
+    func `handleMemoryWarning delegates to page pool`() throws {
         let env = try TabManagerTestEnvironment()
 
         // Should not crash
@@ -250,13 +252,13 @@ struct TabManagerMemoryWarningTests {
 @Suite("TabManager Restore From Persistence", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerRestoreFromPersistenceTests {
-    @Test("restoreFromPersistence with existing spaces preserves them")
-    func restorePreservesExistingSpaces() throws {
+    @Test
+    func `restoreFromPersistence with existing spaces preserves them`() throws {
         let env = try TabManagerTestEnvironment()
 
         // Create a space first
         let existingSpace = env.makeSpace(name: "Existing")
-        env.tabManager.createTab(url: URL(string: "https://existing.com")!, in: existingSpace, makeActive: false)
+        try env.tabManager.createTab(url: #require(URL(string: "https://existing.com")), in: existingSpace, makeActive: false)
 
         // Restore should not lose the existing space
         let restoredSpace = env.tabManager.restoreFromPersistence()

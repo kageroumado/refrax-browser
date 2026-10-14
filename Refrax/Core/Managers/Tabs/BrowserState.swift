@@ -79,22 +79,22 @@ final class BrowserState {
         lastActiveSpaceID.flatMap { space(for: $0) }
     }
 
-    /// Global live favorite tabs visible across all spaces.
+    /// Favorites: tabs that belong to no space and show in every space.
     ///
-    /// Live favorite tabs are persistent tabs linked to favorited bookmarks. They appear
-    /// in the favorites grid at the top of every space's sidebar and use global website
-    /// data storage regardless of space settings.
+    /// Each is linked to a favorited bookmark whose URL is its home. They appear in the
+    /// island's favorites column in every space and use global website data storage
+    /// regardless of space settings.
     ///
-    /// - Note: Live favorite tabs have `status == .liveFavorite` and are indexed in
+    /// - Note: Favorites have `status == .favorite` and are indexed in
     ///   `tabIndex` like regular tabs. Their `linkedBookmark` relationship points to the
     ///   associated `Bookmark`.
     @ObservationIgnored
-    private(set) var liveFavoriteTabs: [Tab] = []
+    private(set) var favoriteTabs: [Tab] = []
 
-    /// Fast O(1) lookup for tabs by ID across all spaces and live favorites.
+    /// Fast O(1) lookup for tabs by ID across all spaces and favorites.
     ///
     /// Maintained via `indexTab(_:)` and `removeFromIndex(_:)`.
-    /// Includes space tabs and live favorite tabs.
+    /// Includes space tabs and favorites.
     ///
     /// - Note: This index must be kept in sync with tab insertions/deletions.
     ///   Always use TabManager methods which handle index maintenance automatically.
@@ -110,7 +110,6 @@ final class BrowserState {
     /// - Tabs are reordered or moved between groups
     /// - Groups are created, deleted, collapsed, or nested
     /// - Spaces are switched or modified
-    /// - Pin state changes (affects visual ordering)
     ///
     /// Views observing tab list structure should use:
     /// ```swift
@@ -345,7 +344,6 @@ final class BrowserState {
         space.tabs
     }
     
-    
     // MARK: - Tab Lookup
 
     /// Finds a tab by ID using O(1) index lookup.
@@ -353,18 +351,17 @@ final class BrowserState {
     /// - Parameter id: The tab's unique identifier.
     /// - Returns: The tab if found in the index, nil otherwise.
     ///
-    /// - Note: This searches all tabs including space tabs and live favorites.
+    /// - Note: This searches all tabs including space tabs and favorites.
     func tab(for id: Tab.ID) -> Tab? {
         tabIndex[id]
     }
 
-
-    /// Finds a live favorite tab by its linked bookmark ID.
+    /// Finds a favorite by its linked bookmark ID.
     ///
     /// - Parameter bookmarkID: The bookmark ID the live tab is linked to.
-    /// - Returns: The live favorite tab if found, nil otherwise.
-    func liveFavoriteTab(for bookmarkID: UUID) -> Tab? {
-        liveFavoriteTabs.first { $0.linkedBookmark?.id == bookmarkID }
+    /// - Returns: The favorite if found, nil otherwise.
+    func favoriteTab(for bookmarkID: UUID) -> Tab? {
+        favoriteTabs.first { $0.linkedBookmark?.id == bookmarkID }
     }
     
     // MARK: - Initialization
@@ -448,8 +445,10 @@ final class BrowserState {
     private func startSettingsObservation() {
         let settings = settings
         let settingsChanges = Observations {
-            (settings.enableJavaScript,
-            settings.featureFlagOverridesJSON)
+            (
+                settings.enableJavaScript,
+                settings.featureFlagOverridesJSON,
+            )
         }
 
         settingsObservationTask = Task { [weak self] in
@@ -483,7 +482,7 @@ final class BrowserState {
         tabIndex.removeValue(forKey: tab.id)
     }
     
-    /// Rebuilds the entire tab index from all spaces and live favorites.
+    /// Rebuilds the entire tab index from all spaces and favorites.
     ///
     /// Call this after bulk operations like restoring from persistence
     /// or when the index may have become stale.
@@ -494,7 +493,7 @@ final class BrowserState {
                 tabIndex[tab.id] = tab
             }
         }
-        for tab in liveFavoriteTabs {
+        for tab in favoriteTabs {
             tabIndex[tab.id] = tab
         }
     }
@@ -520,7 +519,7 @@ final class BrowserState {
                     expectedTabs.insert(tab.id)
                 }
             }
-            for tab in liveFavoriteTabs {
+            for tab in favoriteTabs {
                 expectedTabs.insert(tab.id)
             }
 
@@ -561,7 +560,6 @@ final class BrowserState {
     /// - Tab reorder or group membership change
     /// - Group create/delete/collapse/nest
     /// - Space switch
-    /// - Pin state change
     func incrementListVersion() {
         tabListVersion &+= 1
     }
@@ -625,55 +623,50 @@ final class BrowserState {
         isContentBlockingReady = ready
     }
 
-    // MARK: - Live Favorite Tab Management
+    // MARK: - Favorite Tab Management
 
-    /// Adds a live favorite tab.
+    /// Adds a favorite.
     ///
-    /// Called by TabManager when creating a new live favorite tab from a bookmark.
+    /// Called by TabManager when creating a new favorite from a bookmark.
     ///
-    /// - Parameter tab: The live favorite tab to add. Must have `status == .liveFavorite`.
-    func addLiveFavoriteTab(_ tab: Tab) {
-        liveFavoriteTabs.append(tab)
+    /// - Parameter tab: The favorite to add. Must have `status == .favorite`.
+    func addFavoriteTab(_ tab: Tab) {
+        favoriteTabs.append(tab)
         indexTab(tab)
         incrementListVersion()
     }
 
-    /// Removes a live favorite tab.
+    /// Removes a favorite.
     ///
     /// Called by TabManager when removing a bookmark from favorites.
     ///
-    /// - Parameter tab: The live favorite tab to remove.
+    /// - Parameter tab: The favorite to remove.
     func removeLiveFavoriteTab(_ tab: Tab) {
-        liveFavoriteTabs.removeAll { $0.id == tab.id }
+        favoriteTabs.removeAll { $0.id == tab.id }
         removeFromIndex(tab)
         incrementListVersion()
     }
 
-    /// Moves a live favorite tab to a space, converting it to a regular or pinned tab.
+    /// Moves a favorite into a space as a regular tab.
     ///
     /// Unlike `removeLiveFavoriteTab`, this preserves the tab in the index since it's
     /// being moved to a space rather than deleted.
     ///
     /// - Parameters:
-    ///   - tab: The live favorite tab to convert.
+    ///   - tab: The favorite to move.
     ///   - space: The target space.
-    ///   - isPinned: Whether the tab should be pinned in the space.
-    func convertLiveFavoriteToSpaceTab(_ tab: Tab, in space: Space, isPinned: Bool) {
-        liveFavoriteTabs.removeAll { $0.id == tab.id }
+    func convertFavoriteToSpaceTab(_ tab: Tab, in space: Space) {
+        favoriteTabs.removeAll { $0.id == tab.id }
         tab.space = space
-        tab.status = isPinned ? .pinned : .regular
-        // Set origin URL for navigation containment when becoming pinned
-        // Use the bookmark's URL (the original home) or current URL as fallback
-        tab.originURL = isPinned ? (tab.linkedBookmark?.url ?? tab.activePage.url) : nil
-        tab.isPinned = isPinned
+        tab.status = .regular
         incrementListVersion()
     }
 
-    /// Sets all live favorite tabs. Used during initialization.
+    /// Sets all favorites. Used during initialization.
     ///
-    /// - Parameter tabs: The live favorite tabs to set.
-    func setLiveFavoriteTabs(_ tabs: [Tab]) {
-        liveFavoriteTabs = tabs
+    /// - Parameter tabs: The favorites to set.
+    func setFavoriteTabs(_ tabs: [Tab]) {
+        favoriteTabs = tabs
         for tab in tabs {
             indexTab(tab)
         }
@@ -690,7 +683,6 @@ struct ClosedTabInfo: Identifiable, Equatable {
     let title: String
     let faviconData: Data?
     let customName: String?
-    let isPinned: Bool
     let groupID: UUID?
     let position: Int
     let spaceID: UUID
@@ -702,7 +694,6 @@ struct ClosedTabInfo: Identifiable, Equatable {
         self.title = tab.activePage.title
         self.faviconData = tab.activePage.faviconData
         self.customName = tab.customName
-        self.isPinned = tab.isPinned
         self.groupID = tab.groupID
         self.position = tab.position
         self.spaceID = tab.space?.id ?? UUID()

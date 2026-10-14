@@ -318,7 +318,7 @@ extension RefraxAPI {
                 groupID: groupID,
                 makeActive: activate,
             )
-            return .tab(TabInfo( tab))
+            return .tab(TabInfo(tab))
 
         case let .closeTab(id):
             guard let tab = state.tab(for: id) else { throw RefraxError.tabNotFound(id: id) }
@@ -384,22 +384,21 @@ extension RefraxAPI {
             tabManager.setActiveTab(tab, in: windowState)
             return .success
 
-        case let .setTabPinned(id, isPinned):
+        case let .setTabFavorite(id, isFavorite):
             guard let tab = state.tab(for: id) else {
                 throw RefraxError.tabNotFound(id: id)
             }
-            // Only toggle if state change is needed
-            if tab.isPinned != isPinned {
-                tabManager.togglePinTab(tab)
+            if tab.isFavorite != isFavorite {
+                tabManager.toggleFavorite(tab, in: windowManager.activeWindowController?.windowState)
             }
-            return .tab(TabInfo( tab))
+            return .tab(TabInfo(tab))
 
         case let .moveTab(id, toIndex):
             guard let tab = state.tab(for: id) else {
                 throw RefraxError.tabNotFound(id: id)
             }
             tabManager.moveTab(tab, to: toIndex)
-            return .tab(TabInfo( tab))
+            return .tab(TabInfo(tab))
 
         case let .moveTabToSpace(id, spaceID):
             guard let tab = state.tab(for: id) else {
@@ -409,7 +408,7 @@ extension RefraxAPI {
                 throw RefraxError.spaceNotFound(id: spaceID)
             }
             tabManager.moveTabs([tab], to: space)
-            return .tab(TabInfo( tab))
+            return .tab(TabInfo(tab))
 
         case let .duplicateTab(id, activate):
             guard let tab = state.tab(for: id) else { throw RefraxError.tabNotFound(id: id) }
@@ -417,7 +416,7 @@ extension RefraxAPI {
             if activate, let windowState = windowManager.activeWindowController?.windowState {
                 tabManager.setActiveTab(duplicate, in: windowState)
             }
-            return .tab(TabInfo( duplicate))
+            return .tab(TabInfo(duplicate))
 
         // MARK: Space Commands
 
@@ -431,7 +430,7 @@ extension RefraxAPI {
                 iconName: icon,
                 dataStoreMode: mode,
             )
-            return .space(SpaceInfo( space))
+            return .space(SpaceInfo(space))
 
         case let .deleteSpace(id, closeTabs):
             guard let space = state.space(for: id) else {
@@ -447,7 +446,7 @@ extension RefraxAPI {
             }
             let color = colorHex.map { Color.resolveStoredColor($0) }
             spaceManager.updateSpace(space, name: name, iconName: iconName, color: color)
-            return .space(SpaceInfo( space))
+            return .space(SpaceInfo(space))
 
         case let .switchToSpace(id):
             guard let space = state.space(for: id) else {
@@ -477,7 +476,7 @@ extension RefraxAPI {
                     groupManager.moveTabToGroup(tab, group: group)
                 }
             }
-            return .group(TabGroupInfo( group, tabCount: group.tabCount))
+            return .group(TabGroupInfo(group, tabCount: group.tabCount))
 
         case let .deleteGroup(id, closeTabs):
             guard let group = findGroup(id: id) else {
@@ -499,7 +498,7 @@ extension RefraxAPI {
             if let isCollapsed {
                 group.isCollapsed = isCollapsed
             }
-            return .group(TabGroupInfo( group, tabCount: group.tabCount))
+            return .group(TabGroupInfo(group, tabCount: group.tabCount))
 
         case let .addTabsToGroup(groupID, tabIDs):
             guard let group = findGroup(id: groupID) else {
@@ -559,12 +558,12 @@ extension RefraxAPI {
                 guard let space = state.space(for: spaceID) else {
                     throw RefraxError.spaceNotFound(id: spaceID)
                 }
-                let tabs = space.mainTabs.map { TabInfo( $0) }
+                let tabs = space.mainTabs.map { TabInfo($0) }
                 return .tabs(tabs)
             } else {
                 var allTabs: [TabInfo] = []
                 for space in state.spaces {
-                    allTabs.append(contentsOf: space.mainTabs.map { TabInfo( $0) })
+                    allTabs.append(contentsOf: space.mainTabs.map { TabInfo($0) })
                 }
                 return .tabs(allTabs)
             }
@@ -573,7 +572,7 @@ extension RefraxAPI {
             guard let tab = state.tab(for: id) else {
                 throw RefraxError.tabNotFound(id: id)
             }
-            return .tab(TabInfo( tab))
+            return .tab(TabInfo(tab))
 
         case .activeTab:
             guard let windowState = windowManager.activeWindowController?.windowState,
@@ -583,8 +582,7 @@ extension RefraxAPI {
             else {
                 throw RefraxError.noActiveTab
             }
-            return .tab(TabInfo( tab))
-
+            return .tab(TabInfo(tab))
 
         case let .tabContent(tabID, includeHTML, includeText):
             guard let tab = state.tab(for: tabID) else {
@@ -598,14 +596,14 @@ extension RefraxAPI {
             return .content(content)
 
         case .spaces:
-            let spaces = state.spaces.map { SpaceInfo( $0) }
+            let spaces = state.spaces.map { SpaceInfo($0) }
             return .spaces(spaces)
 
         case let .space(id):
             guard let space = state.space(for: id) else {
                 throw RefraxError.spaceNotFound(id: id)
             }
-            return .space(SpaceInfo( space))
+            return .space(SpaceInfo(space))
 
         case .activeSpace:
             guard let windowState = windowManager.activeWindowController?.windowState,
@@ -614,18 +612,18 @@ extension RefraxAPI {
             else {
                 throw RefraxError.noActiveWindow
             }
-            return .space(SpaceInfo( space))
+            return .space(SpaceInfo(space))
 
         case let .groups(spaceID):
             let space = try resolveSpace(spaceID)
-            let groups = space.groups.map { TabGroupInfo( $0, tabCount: $0.tabCount) }
+            let groups = space.groups.map { TabGroupInfo($0, tabCount: $0.tabCount) }
             return .groups(groups)
 
         case let .group(id):
             guard let group = findGroup(id: id) else {
                 throw RefraxError.groupNotFound(id: id)
             }
-            return .group(TabGroupInfo( group, tabCount: group.tabCount))
+            return .group(TabGroupInfo(group, tabCount: group.tabCount))
 
         case let .history(range, limit, offset, domain):
             var entries: [HistoryEntryData]
@@ -652,12 +650,12 @@ extension RefraxAPI {
                 entries = Array(entries.prefix(limit))
             }
 
-            let infos = entries.map { HistoryEntryInfo( $0) }
+            let infos = entries.map { HistoryEntryInfo($0) }
             return .history(infos)
 
         case let .searchHistory(query, limit):
             let entries = await historyManager.search(query: query, limit: limit)
-            let infos = entries.map { HistoryEntryInfo( $0) }
+            let infos = entries.map { HistoryEntryInfo($0) }
             return .history(infos)
 
         case .browserState:

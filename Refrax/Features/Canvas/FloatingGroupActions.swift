@@ -33,7 +33,7 @@ struct FloatingGroupActions {
                 symbol: group.isCollapsed ? "chevron.down" : "chevron.right", group: Self.groupFamily,
             ) { canvas.toggleFold(group) },
         ]
-        if let current = windowState.activeTab, current.group?.id != group.id, !current.isLiveFavorite,
+        if let current = windowState.activeTab, current.group?.id != group.id, !current.isFavorite,
            current.space?.id == group.space?.id {
             actions.append(MenuAction("group.addCurrent", "Add Current Page", symbol: "plus.rectangle.on.folder", group: .move) {
                 canvas.addToFloatingGroup([current], group: group)

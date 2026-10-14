@@ -1382,9 +1382,10 @@ final class ExtensionManager {
         controller.didChangeTabProperties(.title, for: adapter)
     }
 
-    /// Notifies extensions that a tab's pinned state changed.
+    /// Notifies extensions that a tab became a favorite or stopped being one; extensions
+    /// see favorites as pinned tabs.
     ///
-    /// - Parameter tab: The tab whose pinned state changed.
+    /// - Parameter tab: The tab that changed.
     func dispatchPinnedChanged(_ tab: Tab) {
         guard let tabPage = tab.pages.first else { return }
         guard let adapter = tabAdapters[tabPage.id] else { return }

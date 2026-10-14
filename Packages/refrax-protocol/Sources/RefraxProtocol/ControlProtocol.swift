@@ -56,7 +56,7 @@ public enum ControlRequest: Sendable {
     case uiAXClick(UIAXClickParams)
 
     // Tier 1A: Extended Tab Operations
-    case tabPin(TabIDParams)
+    case tabFavorite(TabIDParams)
     case tabDuplicate(TabIDParams)
     case tabRename(TabRenameParams)
     case tabMute(TabIDParams)
@@ -941,7 +941,9 @@ public extension ControlRequest {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case id, name, color
+            case id
+            case name
+            case color
         }
     }
 
@@ -1327,7 +1329,7 @@ public extension ControlRequest {
             timeout: Int? = nil,
             activate: Bool? = nil,
             wait: Bool? = nil,
-            spaceID: String? = nil
+            spaceID: String? = nil,
         ) {
             self.url = url
             self.scope = scope
@@ -1455,7 +1457,7 @@ extension ControlRequest: Codable {
         case uiAXClick
 
         // Tier 1A
-        case tabPin
+        case tabFavorite
         case tabDuplicate
         case tabRename
         case tabMute
@@ -1645,7 +1647,7 @@ extension ControlRequest: Codable {
         case .uiAXTree: self = try .uiAXTree(UIAXTreeParams(from: decoder))
         case .uiAXClick: self = try .uiAXClick(UIAXClickParams(from: decoder))
         // Tier 1A
-        case .tabPin: self = try .tabPin(TabIDParams(from: decoder))
+        case .tabFavorite: self = try .tabFavorite(TabIDParams(from: decoder))
         case .tabDuplicate: self = try .tabDuplicate(TabIDParams(from: decoder))
         case .tabRename: self = try .tabRename(TabRenameParams(from: decoder))
         case .tabMute: self = try .tabMute(TabIDParams(from: decoder))
@@ -1844,8 +1846,8 @@ extension ControlRequest: Codable {
             try container.encode("uiAXClick", forKey: .type)
             try params.encode(to: encoder)
         // Tier 1A
-        case let .tabPin(params):
-            try container.encode("tabPin", forKey: .type)
+        case let .tabFavorite(params):
+            try container.encode("tabFavorite", forKey: .type)
             try params.encode(to: encoder)
         case let .tabDuplicate(params):
             try container.encode("tabDuplicate", forKey: .type)
@@ -2212,20 +2214,20 @@ public enum CTL {
         public let isActive: Bool
         public let spaceID: String?
         public let isLoading: Bool
-        public let isPinned: Bool
+        public let isFavorite: Bool
         public let isUnread: Bool?
         public let customName: String?
         public let groupID: String?
         public let pageCount: Int
 
-        public init(id: String, title: String, url: String?, isActive: Bool, spaceID: String?, isLoading: Bool, isPinned: Bool, isUnread: Bool?, customName: String?, groupID: String?, pageCount: Int) {
+        public init(id: String, title: String, url: String?, isActive: Bool, spaceID: String?, isLoading: Bool, isFavorite: Bool, isUnread: Bool?, customName: String?, groupID: String?, pageCount: Int) {
             self.id = id
             self.title = title
             self.url = url
             self.isActive = isActive
             self.spaceID = spaceID
             self.isLoading = isLoading
-            self.isPinned = isPinned
+            self.isFavorite = isFavorite
             self.isUnread = isUnread
             self.customName = customName
             self.groupID = groupID
@@ -2347,7 +2349,7 @@ public enum CTL {
         public let url: String?
         public let isActive: Bool
         public let isLoading: Bool
-        public let isPinned: Bool
+        public let isFavorite: Bool
         public let isUnread: Bool
         public let customName: String?
         public let groupID: String?
@@ -2359,13 +2361,13 @@ public enum CTL {
         public let pageCount: Int
         public let pages: [PageInfo]
 
-        public init(id: String, title: String, url: String?, isActive: Bool, isLoading: Bool, isPinned: Bool, isUnread: Bool, customName: String?, groupID: String?, groupName: String?, spaceID: String?, canGoBack: Bool, canGoForward: Bool, isMuted: Bool, pageCount: Int, pages: [PageInfo]) {
+        public init(id: String, title: String, url: String?, isActive: Bool, isLoading: Bool, isFavorite: Bool, isUnread: Bool, customName: String?, groupID: String?, groupName: String?, spaceID: String?, canGoBack: Bool, canGoForward: Bool, isMuted: Bool, pageCount: Int, pages: [PageInfo]) {
             self.id = id
             self.title = title
             self.url = url
             self.isActive = isActive
             self.isLoading = isLoading
-            self.isPinned = isPinned
+            self.isFavorite = isFavorite
             self.isUnread = isUnread
             self.customName = customName
             self.groupID = groupID
@@ -2540,7 +2542,13 @@ public enum CTL {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case name, value, domain, path, isSecure, isHTTPOnly, expiresDate
+            case name
+            case value
+            case domain
+            case path
+            case isSecure
+            case isHTTPOnly
+            case expiresDate
         }
     }
 
@@ -2645,8 +2653,17 @@ public enum CTL {
         public let isCompact: Bool
         public let isPinned: Bool
         public let isVisible: Bool
-        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double,
-                    isCompact: Bool, isPinned: Bool, isVisible: Bool) {
+        public init(
+            tabID: String,
+            title: String,
+            x: Double,
+            y: Double,
+            width: Double,
+            height: Double,
+            isCompact: Bool,
+            isPinned: Bool,
+            isVisible: Bool,
+        ) {
             self.tabID = tabID
             self.title = title
             self.x = x

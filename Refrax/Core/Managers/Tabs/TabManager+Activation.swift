@@ -21,7 +21,7 @@ extension TabManager {
         }
 
         // Live favorites don't have a space; regular tabs must have one
-        let isLiveFavorite = tab.status == .liveFavorite
+        let isLiveFavorite = tab.status == .favorite
         if !isLiveFavorite {
             guard tab.space?.id != nil, state.tab(for: tab.id) != nil else {
                 return

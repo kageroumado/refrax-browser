@@ -441,7 +441,7 @@ extension Sidebar.DragCoordinator {
     ) -> DropTargetResult? {
         switch item {
         case let .tab(tab):
-            if !tab.isPinned {
+            if !tab.isInPinnedGroup {
                 let localIndex = calculatePinnedTargetIndex(at: location, pinnedCount: layoutManager.pinnedItems.count)
                 return DropTargetResult(
                     target: .reorder(target: .pinned(localIndex: localIndex)),
@@ -629,7 +629,7 @@ extension Sidebar.DragCoordinator {
 
         switch item {
         case let .tab(tab):
-            if !tab.isPinned {
+            if !tab.isInPinnedGroup {
                 let localIndex = calculatePinnedTargetIndex(at: location, pinnedCount: layoutManager.pinnedItems.count)
                 return DropTargetResult(
                     target: .reorder(target: .pinned(localIndex: localIndex)),
@@ -735,8 +735,8 @@ extension Sidebar.DragCoordinator {
             )
 
         case let .tab(tab):
-            // Pinned tab being dropped into normal section - unpin it
-            if tab.isPinned {
+            // A tab from a pinned group dropped into the normal section leaves its group
+            if tab.isInPinnedGroup {
                 let localIndex = calculateNormalTargetIndex(at: location)
                 return DropTargetResult(
                     target: .reorder(target: .normal(localIndex: localIndex)),
@@ -793,9 +793,7 @@ extension Sidebar.DragCoordinator {
         let insertIndex = max(0, Int((relativeY + spacing / 2) / slotStride))
 
         // Clamp to valid range (0 to count)
-        let result = min(insertIndex, normalItems.count)
-
-        return result
+        return min(insertIndex, normalItems.count)
     }
 
     func checkGroupHeaderTarget(
@@ -918,14 +916,12 @@ extension Sidebar.DragCoordinator {
         updateDraggedItemNestingLevel(hoveredIndex: hoveredIndex)
 
         // Reorder within collection (or cross-collection move)
-        let result = handleTabListReorder(
+        return handleTabListReorder(
             source: source,
             targetCollection: targetCollection,
             hoveredIndex: hoveredIndex,
             item: item,
         )
-
-        return result
     }
 
     func handleTabListReorder(

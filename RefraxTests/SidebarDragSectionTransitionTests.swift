@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import Refrax
 
 /// Tests for section transitions and boundary conditions.
@@ -21,59 +20,19 @@ struct SidebarDragSectionTransitionTests {
 
     // MARK: - Single Item Edge Cases
 
-    @Test("Drag only pinned tab to normal - section becomes empty")
-    func dragOnlyPinnedToNormal() throws {
+    @Test
+    func `Drag only normal tab to pinned - normal section becomes empty`() throws {
         let support = try SidebarTestSupport()
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        #expect(support.layoutManager.pinnedItems.count == 1)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag to normal section
-        support.dragCoordinator.updateDrag(
-            offset: 100,
-            location: CGPoint(x: 100, y: 250),
-        )
-
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        }
-
-        let didCommit = support.dragCoordinator.commitDrag()
-        #expect(didCommit)
-
-        #expect(pinnedTab.isPinned == false)
-
-        support.rebuildLayout()
-        #expect(support.layoutManager.pinnedItems.isEmpty)
-    }
-
-    @Test("Drag only normal tab to pinned - normal section becomes empty")
-    func dragOnlyNormalToPinned() throws {
-        let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
         #expect(support.layoutManager.normalItems.count == 1)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -95,13 +54,14 @@ struct SidebarDragSectionTransitionTests {
         let didCommit = support.dragCoordinator.commitDrag()
         #expect(didCommit)
 
-        #expect(normalTab.isPinned == true)
+        // A tab dropped in the pinned section becomes a favorite
+        #expect(normalTab.isFavorite)
     }
 
     // MARK: - Drop Zone Tests
 
-    @Test("Pin drop zone shows when no pinned tabs exist")
-    func pinDropZoneShowsWhenEmpty() throws {
+    @Test
+    func `Pin drop zone shows when no pinned tabs exist`() throws {
         let support = try SidebarTestSupport()
         // Only normal tabs, no pinned
         let normalTab = support.createTab(url: "https://normal.com")
@@ -111,9 +71,9 @@ struct SidebarDragSectionTransitionTests {
 
         #expect(support.layoutManager.pinnedItems.isEmpty)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -131,17 +91,17 @@ struct SidebarDragSectionTransitionTests {
         #expect(support.dragCoordinator.shouldShowPinDropZone == true)
     }
 
-    @Test("Pin drop zone hidden when pinned tabs exist")
-    func pinDropZoneHiddenWhenPinned() throws {
+    @Test
+    func `Pin drop zone hidden when pinned tabs exist`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -160,8 +120,8 @@ struct SidebarDragSectionTransitionTests {
         #expect(support.dragCoordinator.shouldShowPinDropZone == false)
     }
 
-    @Test("Favorites drop zone shows when no favorites exist")
-    func favoritesDropZoneShowsWhenEmpty() throws {
+    @Test
+    func `Favorites drop zone shows when no favorites exist`() throws {
         let support = try SidebarTestSupport()
         // Only tabs, no favorites
         let normalTab = support.createTab(url: "https://normal.com")
@@ -175,9 +135,9 @@ struct SidebarDragSectionTransitionTests {
         #expect(support.layoutManager.favoritesLayout.isEmpty)
 
         let items = support.layoutManager.normalItems
-        let normalItem = items.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(items.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -195,17 +155,17 @@ struct SidebarDragSectionTransitionTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone == true)
     }
 
-    @Test("Favorites drop zone hidden when favorites exist")
-    func favoritesDropZoneHiddenWhenExists() throws {
+    @Test
+    func `Favorites drop zone hidden when favorites exist`() throws {
         let support = try SidebarTestSupport()
         _ = support.createFavorite(title: "Fav", url: "https://fav.com")
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -224,8 +184,8 @@ struct SidebarDragSectionTransitionTests {
         #expect(support.dragCoordinator.shouldShowFavoritesDropZone == false)
     }
 
-    @Test("Drop zone progress increases when dragging above threshold")
-    func dropZoneProgressIncreases() throws {
+    @Test
+    func `Drop zone progress increases when dragging above threshold`() throws {
         let support = try SidebarTestSupport()
         // No pinned, no favorites
         let normalTab = support.createTab(url: "https://normal.com")
@@ -235,9 +195,9 @@ struct SidebarDragSectionTransitionTests {
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
         let items = support.layoutManager.normalItems
-        let normalItem = items.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(items.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -274,18 +234,18 @@ struct SidebarDragSectionTransitionTests {
 
     // MARK: - Position Edge Cases
 
-    @Test("Drag to first position in pinned section")
-    func dragToFirstPinned() throws {
+    @Test
+    func `Drag to first position in pinned section`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -295,7 +255,7 @@ struct SidebarDragSectionTransitionTests {
         )
 
         // Drag to top portion of first pinned item (inside frame, above midpoint)
-        let firstPinnedFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.pinnedItems[0].id)!
+        let firstPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: support.layoutManager.pinnedItems[0].id))
         let targetY = firstPinnedFrame.minY + 5 // Inside the frame, near the top
         support.dragCoordinator.updateDrag(
             offset: targetY - 180,
@@ -310,18 +270,18 @@ struct SidebarDragSectionTransitionTests {
         }
     }
 
-    @Test("Drag to last position in pinned section")
-    func dragToLastPinned() throws {
+    @Test
+    func `Drag to last position in pinned section`() throws {
         let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://pinned1.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
         setupStandardFrames(support)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -332,7 +292,7 @@ struct SidebarDragSectionTransitionTests {
 
         // Drag to the lower portion of the last pinned item (inside frame, below midpoint)
         // This targets the position AFTER the last item (targetIndex = count)
-        let lastPinnedFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.pinnedItems.last!.id)!
+        let lastPinnedFrame = try #require(support.dragCoordinator.computedItemFrame(for: #require(support.layoutManager.pinnedItems.last?.id)))
         let targetY = lastPinnedFrame.maxY - 5 // Inside the frame, near the bottom
         support.dragCoordinator.updateDrag(
             offset: targetY - 180,
@@ -350,77 +310,10 @@ struct SidebarDragSectionTransitionTests {
         }
     }
 
-    @Test("Drag to first position in normal section")
-    func dragToFirstNormal() throws {
-        let support = try SidebarTestSupport()
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag to top portion of first normal item (inside frame, above midpoint)
-        let firstNormalFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.normalItems[0].id)!
-        let targetY = firstNormalFrame.minY + 5 // Inside the frame, near the top
-        support.dragCoordinator.updateDrag(
-            offset: targetY - 120,
-            location: CGPoint(x: 100, y: targetY),
-        )
-
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        } else {
-            Issue.record("Expected reorder to normal section")
-        }
-    }
-
-    @Test("Drag to last position in normal section")
-    func dragToLastNormal() throws {
-        let support = try SidebarTestSupport()
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://normal1.com")
-        _ = support.createTab(url: "https://normal2.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag to bottom of normal section (past all items)
-        let lastNormalFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.normalItems.last!.id)!
-        support.dragCoordinator.updateDrag(
-            offset: lastNormalFrame.maxY + 20 - 120,
-            location: CGPoint(x: 100, y: lastNormalFrame.maxY + 20),
-        )
-
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
-        }
-    }
-
     // MARK: - Coordinate System Tests
 
-    @Test("Tab list push offset affects section frames")
-    func tabListPushOffsetAffectsFrames() throws {
+    @Test
+    func `Tab list push offset affects section frames`() throws {
         let support = try SidebarTestSupport()
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
@@ -429,10 +322,10 @@ struct SidebarDragSectionTransitionTests {
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
         let items = support.layoutManager.normalItems
-        let normalItem = items.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
+        let normalItem = try #require(items.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
         let originalNormalFrame = support.dragCoordinator.computedNormalSectionFrame
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -455,8 +348,8 @@ struct SidebarDragSectionTransitionTests {
         #expect(adjustedFrame.minY == originalNormalFrame.minY + pushOffset)
     }
 
-    @Test("Location in static space subtracts push offset")
-    func locationInStaticSpaceSubtractsPush() throws {
+    @Test
+    func `Location in static space subtracts push offset`() throws {
         let support = try SidebarTestSupport()
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
@@ -465,9 +358,9 @@ struct SidebarDragSectionTransitionTests {
         support.dragCoordinator.updateFavoritesGridFrame(.zero)
 
         let items = support.layoutManager.normalItems
-        let normalItem = items.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(items.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -492,62 +385,12 @@ struct SidebarDragSectionTransitionTests {
 
     // MARK: - Section Boundary Detection
 
-    @Test("Detect transition from pinned to normal section")
-    func detectPinnedToNormalTransition() throws {
-        let support = try SidebarTestSupport()
-        // Create multiple pinned tabs so same-section reorder is meaningful
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned3.com", isPinned: true)
-        _ = support.createTab(url: "https://normal.com")
-        _ = support.createTab(url: "https://normal2.com")
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        // Drag the FIRST pinned item in layout order (most recently created gets position 0)
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let draggedTab = pinnedItem.tab!
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(draggedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Stay in pinned section - reorder within same section
-        // With 3 pinned items starting at y=100, frames are at y=100, 140, 180
-        // Drag to y=150 should be within pinned section (reordering between items)
-        support.dragCoordinator.updateDrag(
-            offset: 50,
-            location: CGPoint(x: 100, y: 150),
-        )
-        let zone1 = support.dragCoordinator.activeDropZone
-
-        // Move to normal section - cross-section move shows zone
-        // Normal items start at y=220 (after 3 pinned items at 40px each)
-        support.dragCoordinator.updateDrag(
-            offset: 150,
-            location: CGPoint(x: 100, y: 250),
-        )
-        let zone2 = support.dragCoordinator.activeDropZone
-
-        // Verify transition detection: zone should change when moving between sections
-        // The exact zone for same-section (nil vs section) depends on implementation,
-        // but cross-section should definitely show the target section
-        #expect(zone2 == .normalSection)
-        // zone1 may be nil or .pinnedSection depending on implementation
-        #expect(zone1 == nil || zone1 == .pinnedSection)
-    }
-
-    @Test("Detect transition from normal to pinned section")
-    func detectNormalToPinnedTransition() throws {
+    @Test
+    func `Detect transition from normal to pinned section`() throws {
         let support = try SidebarTestSupport()
         // Create multiple items in each section so same-section reorder is meaningful
-        _ = support.createTab(url: "https://pinned.com", isPinned: true)
-        _ = support.createTab(url: "https://pinned2.com", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
+        _ = try support.createGroup(name: "Pinned", isPinned: true)
         _ = support.createTab(url: "https://normal.com")
         _ = support.createTab(url: "https://normal2.com")
         _ = support.createTab(url: "https://normal3.com")
@@ -555,10 +398,10 @@ struct SidebarDragSectionTransitionTests {
         setupStandardFrames(support)
 
         // Drag the FIRST normal item in layout order (most recently created)
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let draggedTab = normalItem.tab!
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let draggedTab = try #require(normalItem.tab)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -595,12 +438,11 @@ struct SidebarDragSectionTransitionTests {
 
     // MARK: - Many Items Tests
 
-    @Test("Section transition with many pinned tabs")
-    func manyPinnedTabs() throws {
+    @Test
+    func `Section transition with many pinned groups`() throws {
         let support = try SidebarTestSupport()
-        var pinnedTabs: [Tab] = []
         for i in 0 ..< 10 {
-            pinnedTabs.append(support.createTab(url: "https://pinned\(i).com", isPinned: true))
+            _ = try support.createGroup(name: "Pinned \(i)", isPinned: true)
         }
         let normalTab = support.createTab(url: "https://normal.com")
         support.rebuildLayout()
@@ -608,9 +450,9 @@ struct SidebarDragSectionTransitionTests {
 
         #expect(support.layoutManager.pinnedItems.count == 10)
 
-        let normalItem = support.layoutManager.normalItems.first!
-        let originIndex = support.layoutManager.metadata[normalItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: normalItem.id)!
+        let normalItem = try #require(support.layoutManager.normalItems.first)
+        let originIndex = try #require(support.layoutManager.metadata[normalItem.id]?.globalIndex)
+        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: normalItem.id))
 
         let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
         support.dragCoordinator.startDrag(
@@ -621,7 +463,7 @@ struct SidebarDragSectionTransitionTests {
 
         // Drag to middle of pinned section
         let middleIndex = 5
-        let middleFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.pinnedItems[middleIndex].id)!
+        let middleFrame = try #require(support.dragCoordinator.computedItemFrame(for: support.layoutManager.pinnedItems[middleIndex].id))
         support.dragCoordinator.updateDrag(
             offset: middleFrame.midY - 500,
             location: CGPoint(x: 100, y: middleFrame.midY),
@@ -630,42 +472,6 @@ struct SidebarDragSectionTransitionTests {
         if case let .reorder(target) = support.dragCoordinator._dropTarget {
             #expect(target.collection == .pinned)
             #expect(target.localIndex >= 4 && target.localIndex <= 6)
-        }
-    }
-
-    @Test("Section transition with many normal tabs")
-    func manyNormalTabs() throws {
-        let support = try SidebarTestSupport()
-        let pinnedTab = support.createTab(url: "https://pinned.com", isPinned: true)
-        for i in 0 ..< 20 {
-            _ = support.createTab(url: "https://normal\(i).com")
-        }
-        support.rebuildLayout()
-        setupStandardFrames(support)
-
-        #expect(support.layoutManager.normalItems.count == 20)
-
-        let pinnedItem = support.layoutManager.pinnedItems.first!
-        let originIndex = support.layoutManager.metadata[pinnedItem.id]!.globalIndex
-        let startFrame = support.dragCoordinator.computedItemFrame(for: pinnedItem.id)!
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.pinned.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(pinnedTab),
-            originPosition: .pinned(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Drag to middle of normal section
-        let middleIndex = 10
-        let middleFrame = support.dragCoordinator.computedItemFrame(for: support.layoutManager.normalItems[middleIndex].id)!
-        support.dragCoordinator.updateDrag(
-            offset: middleFrame.midY - 120,
-            location: CGPoint(x: 100, y: middleFrame.midY),
-        )
-
-        if case let .reorder(target) = support.dragCoordinator._dropTarget {
-            #expect(target.collection == .normal)
         }
     }
 }

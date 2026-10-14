@@ -215,7 +215,7 @@ struct SidebarManagers {
             }
 
             // Search in live favorite tabs
-            return state.liveFavoriteTabs.first { $0.pages.contains { $0.id == pageID } }
+            return state.favoriteTabs.first { $0.pages.contains { $0.id == pageID } }
         }
 
         mediaControlsManager.activeSpaceIDLookup = { [weak windowState] in

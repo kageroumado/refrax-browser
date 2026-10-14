@@ -2,13 +2,11 @@ import CloudKit
 import Foundation
 import SwiftData
 import Testing
-
 @testable import Refrax
 
 @Suite("Sync Round-Trip", .serialized)
 @MainActor
 struct SyncRoundTripTests {
-
     // MARK: - Helpers
 
     /// Creates an in-memory ModelContainer with the full app schema.
@@ -22,14 +20,14 @@ struct SyncRoundTripTests {
     private static func makeRecord(for uuid: UUID, recordType: String) -> CKRecord {
         CKRecord(
             recordType: recordType,
-            recordID: RecordMapper.recordID(for: uuid)
+            recordID: RecordMapper.recordID(for: uuid),
         )
     }
 
     // MARK: - Space Round-Trip
 
-    @Test("Space encodes all fields to CKRecord")
-    func spaceEncode() throws {
+    @Test
+    func `Space encodes all fields to CKRecord`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
@@ -39,7 +37,7 @@ struct SyncRoundTripTests {
             colorHex: "Flamingo",
             position: 7,
             dataStoreMode: .separate,
-            isLockEnabled: true
+            isLockEnabled: true,
         )
         space.spaceDescription = "My work space"
         space.customDownloadPath = "/tmp/downloads"
@@ -64,8 +62,8 @@ struct SyncRoundTripTests {
         #expect(record["lockTimeoutOverride"] as? Int == 120)
     }
 
-    @Test("Space round-trips through CKRecord without data loss")
-    func spaceRoundTrip() throws {
+    @Test
+    func `Space round-trips through CKRecord without data loss`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
@@ -75,7 +73,7 @@ struct SyncRoundTripTests {
             colorHex: "Emerald",
             position: 3,
             dataStoreMode: .global,
-            isLockEnabled: false
+            isLockEnabled: false,
         )
         original.spaceDescription = "Deep dives"
         context.insert(original)
@@ -103,61 +101,59 @@ struct SyncRoundTripTests {
 
     // MARK: - Tab Round-Trip
 
-    @Test("Tab encodes all fields to CKRecord")
-    func tabEncode() throws {
+    @Test
+    func `Tab encodes all fields to CKRecord`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
         let space = Space(name: "Default", iconName: "globe")
         context.insert(space)
 
-        let tab = Tab(
+        let tab = try Tab(
             space: space,
-            url: URL(string: "https://example.com")!,
+            url: #require(URL(string: "https://example.com")),
             title: "Example",
-            status: .pinned,
-            position: 5
+            status: .favorite,
+            position: 5,
         )
         tab.customName = "My Tab"
         tab.isUnread = true
         tab.unreadFromBadge = true
         tab.lastBadgeCount = 3
-        tab.originURL = URL(string: "https://origin.example.com")!
         context.insert(tab)
         try context.save()
 
         let record = Self.makeRecord(for: tab.id, recordType: Tab.ckRecordType)
         tab.encodeToRecord(record)
 
-        #expect(record["status"] as? String == "pinned")
+        #expect(record["status"] as? String == "favorite")
 
         #expect(record["isUnread"] as? Bool == true)
         #expect(record["unreadFromBadge"] as? Bool == true)
         #expect(record["position"] as? Int == 5)
         #expect(record["customName"] as? String == "My Tab")
         #expect(record["lastBadgeCount"] as? Int == 3)
-        #expect(record["originURL"] as? String == "https://origin.example.com")
         #expect(record["createdAt"] as? Date != nil)
 
         let spaceRef = record["spaceRef"] as? CKRecord.Reference
         #expect(spaceRef != nil)
-        #expect(RecordMapper.uuid(from: spaceRef!.recordID) == space.id)
+        #expect(try RecordMapper.uuid(from: #require(spaceRef?.recordID)) == space.id)
     }
 
-    @Test("Tab round-trips through CKRecord without data loss")
-    func tabRoundTrip() throws {
+    @Test
+    func `Tab round-trips through CKRecord without data loss`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
         let space = Space(name: "Default", iconName: "globe")
         context.insert(space)
 
-        let tab = Tab(
+        let tab = try Tab(
             space: space,
-            url: URL(string: "https://swift.org")!,
+            url: #require(URL(string: "https://swift.org")),
             title: "Swift",
             status: .regular,
-            position: 2
+            position: 2,
         )
         tab.customName = "Swift Lang"
         tab.isUnread = true
@@ -186,16 +182,16 @@ struct SyncRoundTripTests {
 
     // MARK: - Bookmark Round-Trip
 
-    @Test("Bookmark encodes all fields to CKRecord")
-    func bookmarkEncode() throws {
+    @Test
+    func `Bookmark encodes all fields to CKRecord`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
-        let bookmark = Bookmark(
-            url: URL(string: "https://apple.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://apple.com")),
             title: "Apple",
             isFavorite: true,
-            tags: ["tech", "apple"]
+            tags: ["tech", "apple"],
         )
         bookmark.favoriteColor = "Coral"
         bookmark.visitCount = 42
@@ -216,15 +212,15 @@ struct SyncRoundTripTests {
         #expect(record["lastModified"] as? Date != nil)
     }
 
-    @Test("Bookmark lastModified survives round-trip")
-    func bookmarkLastModifiedRoundTrip() throws {
+    @Test
+    func `Bookmark lastModified survives round-trip`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
         let fixedDate = Date(timeIntervalSince1970: 1_700_000_000)
-        let bookmark = Bookmark(
-            url: URL(string: "https://example.com/article")!,
-            title: "Article"
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://example.com/article")),
+            title: "Article",
         )
         bookmark.lastModified = fixedDate
         context.insert(bookmark)
@@ -246,19 +242,19 @@ struct SyncRoundTripTests {
         #expect(decoded.lastModified == fixedDate)
     }
 
-    @Test("Bookmark round-trips tags and optional fields")
-    func bookmarkFullRoundTrip() throws {
+    @Test
+    func `Bookmark round-trips tags and optional fields`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
         let spaceID = UUID()
-        let bookmark = Bookmark(
-            url: URL(string: "https://news.ycombinator.com")!,
+        let bookmark = try Bookmark(
+            url: #require(URL(string: "https://news.ycombinator.com")),
             title: "Hacker News",
             isFavorite: true,
             favoriteMode: .shortcut,
             tags: ["news", "tech", "daily"],
-            spaceID: spaceID
+            spaceID: spaceID,
         )
         bookmark.favoriteColor = "Violet"
         bookmark.customIconJSON = "{\"type\":\"emoji\",\"value\":\"📰\"}"
@@ -289,8 +285,8 @@ struct SyncRoundTripTests {
 
     // MARK: - BrowserSettings Round-Trip
 
-    @Test("BrowserSettings encodes representative fields to CKRecord")
-    func browserSettingsEncode() throws {
+    @Test
+    func `BrowserSettings encodes representative fields to CKRecord`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
@@ -307,7 +303,7 @@ struct SyncRoundTripTests {
 
         let recordID = CKRecord.ID(
             recordName: BrowserSettings.singletonRecordName,
-            zoneID: RecordMapper.zoneID
+            zoneID: RecordMapper.zoneID,
         )
         let record = CKRecord(recordType: BrowserSettings.ckRecordType, recordID: recordID)
         settings.encodeToRecord(record)
@@ -321,8 +317,8 @@ struct SyncRoundTripTests {
         #expect(record["archiveEnabled"] as? Bool == true)
     }
 
-    @Test("BrowserSettings applyRecord updates existing singleton")
-    func browserSettingsSingletonBehavior() throws {
+    @Test
+    func `BrowserSettings applyRecord updates existing singleton`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
@@ -333,7 +329,7 @@ struct SyncRoundTripTests {
 
         let recordID = CKRecord.ID(
             recordName: BrowserSettings.singletonRecordName,
-            zoneID: RecordMapper.zoneID
+            zoneID: RecordMapper.zoneID,
         )
         let record = CKRecord(recordType: BrowserSettings.ckRecordType, recordID: recordID)
         record["feedbackName"] = "Updated" as NSString
@@ -351,8 +347,8 @@ struct SyncRoundTripTests {
         #expect(allSettings.count == 1, "BrowserSettings must remain a singleton")
     }
 
-    @Test("BrowserSettings round-trips representative fields")
-    func browserSettingsRoundTrip() throws {
+    @Test
+    func `BrowserSettings round-trips representative fields`() throws {
         let container = try Self.makeContainer()
         let context = ModelContext(container)
 
@@ -371,7 +367,7 @@ struct SyncRoundTripTests {
 
         let recordID = CKRecord.ID(
             recordName: BrowserSettings.singletonRecordName,
-            zoneID: RecordMapper.zoneID
+            zoneID: RecordMapper.zoneID,
         )
         let record = CKRecord(recordType: BrowserSettings.ckRecordType, recordID: recordID)
         settings.encodeToRecord(record)
@@ -395,16 +391,16 @@ struct SyncRoundTripTests {
 
     // MARK: - RecordMapper Utilities
 
-    @Test("RecordMapper round-trips UUID through record ID")
-    func recordMapperUUIDRoundTrip() {
+    @Test
+    func `RecordMapper round-trips UUID through record ID`() {
         let uuid = UUID()
         let recordID = RecordMapper.recordID(for: uuid)
         let extracted = RecordMapper.uuid(from: recordID)
         #expect(extracted == uuid)
     }
 
-    @Test("RecordMapper uses correct zone")
-    func recordMapperZone() {
+    @Test
+    func `RecordMapper uses correct zone`() {
         let uuid = UUID()
         let recordID = RecordMapper.recordID(for: uuid)
         #expect(recordID.zoneID == RecordMapper.zoneID)
@@ -412,23 +408,23 @@ struct SyncRoundTripTests {
         #expect(recordID.zoneID.zoneName.hasPrefix("RefraxSync"))
     }
 
-    @Test("RecordMapper reference contains correct target UUID")
-    func recordMapperReference() {
+    @Test
+    func `RecordMapper reference contains correct target UUID`() {
         let targetUUID = UUID()
         let ref = RecordMapper.reference(
             to: targetUUID,
             recordType: "Space",
-            action: .deleteSelf
+            action: .deleteSelf,
         )
         #expect(RecordMapper.uuid(from: ref.recordID) == targetUUID)
     }
 
-    @Test("RecordMapper optional reference returns nil for nil UUID")
-    func recordMapperOptionalReference() {
+    @Test
+    func `RecordMapper optional reference returns nil for nil UUID`() {
         let ref = RecordMapper.optionalReference(
             to: nil,
             recordType: "Space",
-            action: .none
+            action: .none,
         )
         #expect(ref == nil)
     }

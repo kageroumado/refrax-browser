@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 import Testing
 import WebKit
-
 @testable import Refrax
 
 // MARK: - TabManager Convert Tab To Favorite Tests
@@ -11,14 +10,14 @@ import WebKit
 @Suite("TabManager Convert Tab To Favorite", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerConvertToFavoriteTests {
-    @Test("Convert tab to live favorite creates bookmark")
-    func convertToLiveFavorite() throws {
+    @Test
+    func `Convert tab to live favorite creates bookmark`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -27,20 +26,21 @@ struct TabManagerConvertToFavoriteTests {
         let success = env.tabManager.convertTabToFavorite(tab, mode: .liveFavorite)
 
         #expect(success != nil, "Conversion should succeed")
+        #expect(tab.isFavorite, "The same tab should become the favorite")
 
         // Check a favorite bookmark was created
         let favorites = env.bookmarksManager.favorites
         #expect(favorites.contains(where: { $0.bookmark?.url == tab.activePage.url }), "Favorite should exist")
     }
 
-    @Test("Convert tab to shortcut creates bookmark")
-    func convertToShortcut() throws {
+    @Test
+    func `Convert tab to shortcut creates bookmark`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://shortcut.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://shortcut.com")),
             in: space,
             makeActive: true,
         )
@@ -54,14 +54,14 @@ struct TabManagerConvertToFavoriteTests {
         #expect(favorites.contains(where: { $0.bookmark?.url == tab.activePage.url }), "Shortcut favorite should exist")
     }
 
-    @Test("Convert tab copies favicon data to bookmark")
-    func convertCopiesFavicon() throws {
+    @Test
+    func `Convert tab copies favicon data to bookmark`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://favicon.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://favicon.com")),
             in: space,
             makeActive: true,
         )
@@ -78,14 +78,14 @@ struct TabManagerConvertToFavoriteTests {
         #expect(favoriteItem?.bookmark?.faviconData == faviconData, "Favicon data should be copied")
     }
 
-    @Test("Convert tab increments content version")
-    func convertIncrementsVersion() throws {
+    @Test
+    func `Convert tab increments content version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://version.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://version.com")),
             in: space,
             makeActive: true,
         )
@@ -103,16 +103,16 @@ struct TabManagerConvertToFavoriteTests {
 @Suite("TabManager Add Tab To Group", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerAddToGroupTests {
-    @Test("Add tab to group sets group ID")
-    func addTabToGroupSetsID() throws {
+    @Test
+    func `Add tab to group sets group ID`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -125,15 +125,15 @@ struct TabManagerAddToGroupTests {
         #expect(tab.groupID == group.id, "Tab should be in group")
     }
 
-    @Test("Add tab to group increments list version")
-    func addTabToGroupIncrementsVersion() throws {
+    @Test
+    func `Add tab to group increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -145,14 +145,14 @@ struct TabManagerAddToGroupTests {
         #expect(env.browserState.tabListVersion > versionBefore, "Should increment list version")
     }
 
-    @Test("Add tab to non-existent group fails")
-    func addTabToNonExistentGroupFails() throws {
+    @Test
+    func `Add tab to non-existent group fails`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space,
             makeActive: true,
         )
@@ -164,8 +164,8 @@ struct TabManagerAddToGroupTests {
         #expect(tab.groupID == nil, "Tab should remain ungrouped")
     }
 
-    @Test("Add tab to group in different space fails")
-    func addTabToGroupDifferentSpaceFails() throws {
+    @Test
+    func `Add tab to group in different space fails`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -173,8 +173,8 @@ struct TabManagerAddToGroupTests {
 
         let group = try env.groupManager.createGroup(in: space2, name: "Group in Space 2")
 
-        let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: space1,
             makeActive: true,
         )
@@ -190,8 +190,8 @@ struct TabManagerAddToGroupTests {
 @Suite("TabManager Pin Group", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerPinGroupTests {
-    @Test("Pin group sets group isPinned")
-    func pinGroupSetsFlag() throws {
+    @Test
+    func `Pin group sets group isPinned`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -205,31 +205,28 @@ struct TabManagerPinGroupTests {
         #expect(group.isPinned, "Group should be pinned")
     }
 
-    @Test("Pin group pins all tabs in group")
-    func pinGroupPinsAllTabs() throws {
+    @Test
+    func `Pin group pins all tabs in group`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab1 = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
-        tab1.groupID = group.id
+        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, groupID: group.id, makeActive: false)
+        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, groupID: group.id, makeActive: false)
 
-        let tab2 = env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
-        tab2.groupID = group.id
-
-        #expect(!tab1.isPinned)
-        #expect(!tab2.isPinned)
+        #expect(!tab1.isInPinnedGroup)
+        #expect(!tab2.isInPinnedGroup)
 
         env.tabManager.pinGroup(group)
 
-        #expect(tab1.isPinned, "Tab 1 should be pinned")
-        #expect(tab2.isPinned, "Tab 2 should be pinned")
+        #expect(tab1.isInPinnedGroup, "Tab 1 should be pinned")
+        #expect(tab2.isInPinnedGroup, "Tab 2 should be pinned")
     }
 
-    @Test("Pin group pins nested groups and their tabs")
-    func pinGroupPinsNestedGroups() throws {
+    @Test
+    func `Pin group pins nested groups and their tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -237,22 +234,19 @@ struct TabManagerPinGroupTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let tabInParent = env.tabManager.createTab(url: URL(string: "https://parent.com")!, in: space, makeActive: false)
-        tabInParent.groupID = parentGroup.id
-
-        let tabInNested = env.tabManager.createTab(url: URL(string: "https://nested.com")!, in: space, makeActive: false)
-        tabInNested.groupID = nestedGroup.id
+        let tabInParent = try env.tabManager.createTab(url: #require(URL(string: "https://parent.com")), in: space, groupID: parentGroup.id, makeActive: false)
+        let tabInNested = try env.tabManager.createTab(url: #require(URL(string: "https://nested.com")), in: space, groupID: nestedGroup.id, makeActive: false)
 
         env.tabManager.pinGroup(parentGroup)
 
         #expect(parentGroup.isPinned, "Parent should be pinned")
         #expect(nestedGroup.isPinned, "Nested group should be pinned")
-        #expect(tabInParent.isPinned, "Tab in parent should be pinned")
-        #expect(tabInNested.isPinned, "Tab in nested should be pinned")
+        #expect(tabInParent.isInPinnedGroup, "Tab in parent should be pinned")
+        #expect(tabInNested.isInPinnedGroup, "Tab in nested should be pinned")
     }
 
-    @Test("Pin group increments list version")
-    func pinGroupIncrementsVersion() throws {
+    @Test
+    func `Pin group increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -272,8 +266,8 @@ struct TabManagerPinGroupTests {
 @Suite("TabManager Nest Group", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerNestGroupTests {
-    @Test("Nest group prevents same group nesting")
-    func nestGroupPreventsSameGroup() throws {
+    @Test
+    func `Nest group prevents same group nesting`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -288,8 +282,8 @@ struct TabManagerNestGroupTests {
         #expect(!success, "Should not allow nesting group in itself")
     }
 
-    @Test("Nest group only allows root groups to be nested")
-    func nestGroupOnlyAllowsRootGroups() throws {
+    @Test
+    func `Nest group only allows root groups to be nested`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -306,8 +300,8 @@ struct TabManagerNestGroupTests {
         #expect(!success, "Already nested group should not be allowed to nest")
     }
 
-    @Test("Nest group only allows nesting into root groups")
-    func nestGroupOnlyIntoRootGroups() throws {
+    @Test
+    func `Nest group only allows nesting into root groups`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -324,8 +318,8 @@ struct TabManagerNestGroupTests {
         #expect(!success, "Should not allow nesting into nested group")
     }
 
-    @Test("Nest group succeeds for valid nesting")
-    func nestGroupSucceeds() throws {
+    @Test
+    func `Nest group succeeds for valid nesting`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -343,8 +337,8 @@ struct TabManagerNestGroupTests {
         #expect(childGroup.parentGroupID == parentGroup.id, "Child should be nested")
     }
 
-    @Test("Nest group increments list version on success")
-    func nestGroupIncrementsVersion() throws {
+    @Test
+    func `Nest group increments list version on success`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -391,18 +385,18 @@ struct TabManagerNestGroupTests {
 @Suite("TabManager Favorite Group", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerFavoriteGroupTests {
-    @Test("Favorite group creates live favorites for all tabs")
-    func favoriteGroupCreatesFavorites() throws {
+    @Test
+    func `Favorite group creates live favorites for all tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab1 = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
+        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
         tab1.groupID = group.id
 
-        let tab2 = env.tabManager.createTab(url: URL(string: "https://two.com")!, in: space, makeActive: false)
+        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://two.com")), in: space, makeActive: false)
         tab2.groupID = group.id
 
         let favoritesBefore = env.bookmarksManager.favorites.count
@@ -413,8 +407,8 @@ struct TabManagerFavoriteGroupTests {
         #expect(favoritesAfter == favoritesBefore + 2, "Should create 2 favorites")
     }
 
-    @Test("Favorite group includes nested group tabs")
-    func favoriteGroupIncludesNestedTabs() throws {
+    @Test
+    func `Favorite group includes nested group tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -422,11 +416,8 @@ struct TabManagerFavoriteGroupTests {
         let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
         let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
 
-        let tabInParent = env.tabManager.createTab(url: URL(string: "https://parent.com")!, in: space, makeActive: false)
-        tabInParent.groupID = parentGroup.id
-
-        let tabInNested = env.tabManager.createTab(url: URL(string: "https://nested.com")!, in: space, makeActive: false)
-        tabInNested.groupID = nestedGroup.id
+        let tabInParent = try env.tabManager.createTab(url: #require(URL(string: "https://parent.com")), in: space, groupID: parentGroup.id, makeActive: false)
+        let tabInNested = try env.tabManager.createTab(url: #require(URL(string: "https://nested.com")), in: space, groupID: nestedGroup.id, makeActive: false)
 
         let favoritesBefore = env.bookmarksManager.favorites.count
 
@@ -436,15 +427,15 @@ struct TabManagerFavoriteGroupTests {
         #expect(favoritesAfter == favoritesBefore + 2, "Should create favorites for both tabs")
     }
 
-    @Test("Favorite group increments content version")
-    func favoriteGroupIncrementsVersion() throws {
+    @Test
+    func `Favorite group increments content version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let group = try env.groupManager.createGroup(in: space, name: "Test Group")
 
-        let tab = env.tabManager.createTab(url: URL(string: "https://one.com")!, in: space, makeActive: false)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://one.com")), in: space, makeActive: false)
         tab.groupID = group.id
 
         let versionBefore = env.browserState.tabContentVersion

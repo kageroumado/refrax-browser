@@ -28,4 +28,7 @@ enum MenuItemTag: Int {
 
     /// View menu - sound
     case muteTab = 3_020
+
+    /// View menu - Favorite Current Page / Remove from Favorites
+    case favoriteCurrentPage = 3_030
 }

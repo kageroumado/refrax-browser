@@ -74,10 +74,10 @@ struct TabView: View {
 
     /// Whether to show the back-to-origin button for navigation containment.
     ///
-    /// Shows when a pinned tab or live favorite has navigated away from its
-    /// home URL (within the same domain due to containment).
+    /// Shows when a favorite has navigated away from its home URL (within the same
+    /// domain due to containment).
     private var showBackToOriginButton: Bool {
-        (tab.isPinned || tab.isLiveFavorite) && tab.hasNavigatedFromHome
+        tab.isFavorite && tab.hasNavigatedFromHome
     }
 
     /// Whether this tab's page is currently loading.
@@ -189,7 +189,11 @@ struct TabView: View {
             view.popover(
                 isPresented: Binding(
                     get: { env.tabManager.showingRestorePopoverForTabID == tab.id },
-                    set: { if !$0 { env.tabManager.showingRestorePopoverForTabID = nil } },
+                    set: {
+                        if !$0 {
+                            env.tabManager.showingRestorePopoverForTabID = nil
+                        }
+                    },
                 ),
                 arrowEdge: .trailing,
             ) {
@@ -311,30 +315,39 @@ struct TabView: View {
 
     /// Determines text opacity based on tab state for visual hierarchy.
     private var displayOpacity: Double {
-        if isDragging { return 1 }
-        if isSelected { return Constants.Opacity.tabSelected }
-        if effectiveHoverState { return Constants.Opacity.tabHover }
+        if isDragging {
+            return 1
+        }
+        if isSelected {
+            return Constants.Opacity.tabSelected
+        }
+        if effectiveHoverState {
+            return Constants.Opacity.tabHover
+        }
         return Constants.Opacity.tabDefault
     }
 
     /// The background style for the tab item.
     private func highlightState(isMultiSelected: Bool) -> AdaptiveBackgroundStyle {
-        if isSelected, isMultiSelected { return .emphasizedSecondary }
-        if isSelected { return .emphasized }
-        if isMultiSelected { return .secondary }
-        if isDragging { return .subtle }
+        if isSelected, isMultiSelected {
+            return .emphasizedSecondary
+        }
+        if isSelected {
+            return .emphasized
+        }
+        if isMultiSelected {
+            return .secondary
+        }
+        if isDragging {
+            return .subtle
+        }
         return .clear
     }
     
-    /// Trailing button that shows pin/unpin for pinned tabs or close for unpinned tabs on hover.
-    ///
-    /// Note: Tabs in groups don't show pin buttons - only the group header can be pinned.
+    /// Trailing close button, shown on hover.
     private func trailingButton(hoverState: Bool) -> some View {
         Group {
-            // Don't show pin button for tabs in groups
-            if tab.isPinned, tab.groupID == nil {
-                pinButton(hoverState: hoverState)
-            } else if hoverState {
+            if hoverState {
                 closeButton
             }
         }
@@ -345,25 +358,6 @@ struct TabView: View {
     /// Background style for button hover state - subtle for selected tabs, muted for non-selected.
     private var buttonHoverStyle: AdaptiveBackgroundStyle {
         isSelected ? .subtle : .muted
-    }
-
-    /// Pin/unpin button for pinned tabs.
-    private func pinButton(hoverState: Bool) -> some View {
-        Button(action: { env.tabManager.togglePinTab(tab) }) {
-            Image(systemName: hoverState ? "pin.slash.fill" : "pin.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .frame(width: Constants.Layout.tabButtonVisibleSize, height: Constants.Layout.tabButtonVisibleSize)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .adaptiveBackground(
-            hoverState && buttonIsHovered ? buttonHoverStyle : .clear,
-            in: Circle(),
-        )
-        .help(hoverState ? "Unpin Tab" : "Pinned")
-        .accessibilityIdentifier("\(tabAccessibilityID)-pin")
-        .accessibilityLabel(hoverState ? "Unpin Tab" : "Pinned Tab")
     }
 
     /// Close button for unpinned tabs on hover.
@@ -649,7 +643,9 @@ private struct TabRenameField: View {
                 }
             }
             .onChange(of: isTextFieldFocused) { _, focused in
-                if !focused { onCancel() }
+                if !focused {
+                    onCancel()
+                }
             }
             .accessibilityIdentifier("tab-title-edit-\(tab.id)")
     }

@@ -147,7 +147,7 @@ final class TabArchiveManager {
         tab.groupID = nil
 
         // Prepend to space root (position 0 for regular tabs)
-        let regularTabs = space.tabs.filter { !$0.isPinned && !$0.isArchived }
+        let regularTabs = space.tabs.filter { !$0.isInPinnedGroup && !$0.isArchived }
         for existingTab in regularTabs {
             existingTab.position += 1
         }

@@ -293,7 +293,7 @@ struct BookmarksTrayView: View {
 
         Divider()
 
-        Button(bookmark.isFavorite ? "Remove from Favorites" : "Add to Favorites") {
+        Button(bookmark.isFavorite ? "Remove from Favorites" : "Favorite") {
             if bookmark.isFavorite {
                 bookmarksManager.removeFromFavorites(bookmark)
             } else {
