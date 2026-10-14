@@ -68,9 +68,10 @@ struct WindowStateSync {
     /// active tab is invalid (no longer in the space).
     ///
     /// Uses smart selection to find the best replacement tab:
-    /// 1. Previous active tab (the tab before switching to the now-closed one)
-    /// 2. Adjacent tab in visual order (next, then previous)
-    /// 3. First main tab as fallback
+    /// 1. Adjacent page offered at the closed page's edge
+    /// 2. Previous active tab
+    /// 3. Adjacent tab in list order
+    /// 4. First main tab as fallback
     ///
     /// - Parameters:
     ///   - space: The space to check.
@@ -112,9 +113,10 @@ struct WindowStateSync {
     /// Finds the best tab to activate after the current active tab becomes invalid.
     ///
     /// Selection priority:
-    /// 1. Previous active tab (if still valid)
-    /// 2. Adjacent tab at the closed tab's position
-    /// 3. First main tab
+    /// 1. Adjacent page at the closed page's edge
+    /// 2. Previous active tab
+    /// 3. Adjacent tab at the closed tab's list position
+    /// 4. First main tab
     private func findBestTabToActivate(
         for space: Space,
         windowState: WindowState,
@@ -123,13 +125,16 @@ struct WindowStateSync {
         let mainTabs = space.mainTabs
         guard !mainTabs.isEmpty else { return nil }
 
-        // Priority 1: Previous active tab (if still valid)
+        if let spatialID = closedContext?.spatialReplacementID,
+           mainTabs.contains(where: { $0.id == spatialID }) {
+            return spatialID
+        }
+
         if let previousID = windowState.previousActiveTabID(for: space.id),
            mainTabs.contains(where: { $0.id == previousID }) {
             return previousID
         }
 
-        // Priority 2: Adjacent tab at closed position
         if let context = closedContext {
             let closedIndex = context.mainTabIndex
             if closedIndex < mainTabs.count {

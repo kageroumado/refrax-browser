@@ -262,6 +262,34 @@ struct SharedTableTests {
         #expect(canvas.tablePlacement(for: restored) == placement)
     }
 
+    @Test(arguments: [false, true])
+    func `closing a page returns to its visible neighbor before a distant recent page`(archiveEnabled: Bool) throws {
+        let env = try TabManagerTestEnvironment()
+        env.settings.archiveEnabled = archiveEnabled
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
+        window.tableController = table
+        var tabs: [Tab] = []
+        for x in [0.0, 262, 900] {
+            let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank#\(x)")), in: space, makeActive: false)
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = CGPoint(x: x, y: 100)
+            canvas.storeTablePlacement(placement, for: tab)
+            tabs.append(tab)
+        }
+        env.tabManager.setActiveTab(tabs[0], in: window)
+        env.tabManager.setActiveTab(tabs[2], in: window)
+        env.tabManager.setActiveTab(tabs[1], in: window)
+        #expect(window.previousActiveTabID(for: space.id) == tabs[2].id)
+        #expect(table.destination(toward: .left)?.id == tabs[0].id)
+
+        env.tabManager.closeTab(tabs[1])
+
+        #expect(window.activeTabID == tabs[0].id)
+    }
+
     @Test
     func `pan has equal screen displacement at every zoom level`() {
         let frame = CGRect(x: 400, y: 300, width: 250, height: 34)

@@ -105,6 +105,7 @@ extension TabManager {
             effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
                 tabID: tab.id,
                 mainTabIndex: mainTabIndex,
+                spatialReplacementID: nil,
             )
         }
     }

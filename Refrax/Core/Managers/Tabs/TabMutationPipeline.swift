@@ -89,6 +89,9 @@ struct TabMutationPipeline {
 
         /// The index of the closed tab in mainTabs before removal.
         let mainTabIndex: Int
+
+        /// The adjacent page shown at the edge before the tab closed.
+        let spatialReplacementID: Tab.ID?
     }
 
     /// Executes a mutation with automatic invariant maintenance.
@@ -186,13 +189,14 @@ extension TabMutationPipeline.MutationEffects {
     ///
     /// - Note: Does not trigger normalization by default. Position gaps from removal
     ///   are acceptable; normalization happens lazily when needed.
-    func tabRemoved(_ tab: Tab, from space: Space, mainTabIndex: Int) {
+    func tabRemoved(_ tab: Tab, from space: Space, mainTabIndex: Int, spatialReplacementID: Tab.ID? = nil) {
         tabsToRemoveFromIndex.append(tab)
         didChangeList = true
         spaceIDsToSyncActiveTab.insert(space.id)
         closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
             tabID: tab.id,
             mainTabIndex: mainTabIndex,
+            spatialReplacementID: spatialReplacementID,
         )
     }
 

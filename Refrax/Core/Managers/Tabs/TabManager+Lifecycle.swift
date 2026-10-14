@@ -184,6 +184,7 @@ extension TabManager {
             returnFavoriteHome(tab)
             return
         }
+        let spatialReplacementID = spatialReplacement(for: tab)
 
         // Route through archive if enabled and not bypassing
         if state.settings.archiveEnabled, !bypassArchive, !tab.isArchived {
@@ -203,6 +204,7 @@ extension TabManager {
                     effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
                         tabID: tab.id,
                         mainTabIndex: mainTabIndex,
+                        spatialReplacementID: spatialReplacementID,
                     )
                 }
                 return
@@ -247,7 +249,7 @@ extension TabManager {
             space.tabs.remove(at: index)
             state.modelContext.delete(tab)
             // Pass mainTabIndex for smart adjacent tab selection in the pipeline
-            effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex)
+            effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex, spatialReplacementID: spatialReplacementID)
         }
 
         if registerUndo {
@@ -394,6 +396,20 @@ extension TabManager {
     func closedTabInfo(for tab: Tab) -> ClosedTabInfo {
         let placement = tab.space.flatMap { windowSync.findWindowState(for: $0) }?.floatingPlacements[tab.id]
         return ClosedTabInfo(tab: tab, floatingPlacement: placement)
+    }
+
+    /// Picks the page advertised at a nearby edge while the closing page is still present.
+    private func spatialReplacement(for tab: Tab) -> Tab.ID? {
+        guard let space = tab.space,
+              let window = windowSync.findWindowState(for: space),
+              window.activeTabID(for: space.id) == tab.id,
+              let table = window.tableController else { return nil }
+        for direction in [TableDirection.left, .right, .up, .down] {
+            if let neighbor = table.destination(toward: direction) {
+                return neighbor.id
+            }
+        }
+        return nil
     }
 
     /// Reopens the last closed tab.
