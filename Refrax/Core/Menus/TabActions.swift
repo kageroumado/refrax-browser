@@ -27,6 +27,7 @@ struct TabActions {
         if let canvas {
             actions += placementActions(canvas: canvas)
             actions += dockActions(canvas: canvas)
+            actions += tableActions()
             actions += selectionActions(canvas: canvas)
         }
         actions += favoriteActions(behaviors)

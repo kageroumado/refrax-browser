@@ -28,6 +28,8 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
     static let media = MenuGroupID(id: "media", title: "Sound", symbol: "speaker.wave.2", rank: 35)
     /// Groups, spaces, floating selection.
     static let move = MenuGroupID(id: "move", title: "Move", symbol: "folder", rank: 40)
+    /// The tab's slab on the table: its width, a row of its own.
+    static let table = MenuGroupID(id: "table", title: "Table", symbol: "rectangle.split.3x1", rank: 45)
     /// Floating placement: kept visible, compact, region, zoom.
     static let preview = MenuGroupID(id: "preview", title: "Preview", symbol: "rectangle.on.rectangle", rank: 50)
     static let copy = MenuGroupID(id: "copy", title: "Copy", symbol: "doc.on.doc", rank: 60)

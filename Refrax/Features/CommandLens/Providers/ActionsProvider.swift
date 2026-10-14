@@ -223,6 +223,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             }
         }
         results += dockSuggestions(matching: matches, suggestion: suggestion)
+        results += tableSuggestions(for: query, matching: matches, suggestion: suggestion)
         if matches(["new space", "create space", "add space"]) {
             results.append(suggestion(.newSpace, "New Space…", "A place for its own set of tabs  ⌃⌘N", "plus.square.on.square"))
         }

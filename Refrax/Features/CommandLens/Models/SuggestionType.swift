@@ -121,6 +121,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case undockPage(FloatingDockEdge)
     /// Open New Space beside the island's space picker.
     case newSpace
+    /// Move around the table or reshape the current slab.
+    case table(TableCommand)
 }
 
 /// Scope of a setting (global or per-site).

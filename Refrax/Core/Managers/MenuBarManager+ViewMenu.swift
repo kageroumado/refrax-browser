@@ -200,6 +200,7 @@ extension MenuBarManager {
             dockItem.target = self
             viewMenu.addItem(dockItem)
         }
+        viewMenu.addItem(createTableMenuItem())
         let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
         favoriteItem.target = self
         favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue

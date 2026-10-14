@@ -1661,6 +1661,8 @@ final class CommandLensManager {
                 (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.undockPage(on: edge)
             case .newSpace:
                 windowState.controlIsland.spaceRequest = .create
+            case let .table(command):
+                windowState.tableController?.perform(command)
             }
             closeCurrentLens()
             reset()
