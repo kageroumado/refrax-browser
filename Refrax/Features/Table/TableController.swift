@@ -10,24 +10,16 @@ final class TableController {
     private enum Layout {
         static let snapshotLimit = 12
         static let moveStep: CGFloat = 24
-        static let gestureStepDistance: CGFloat = 48
-        static let smoothWheelFirstStepDistance: CGFloat = 16
         static let pageTravelDuration: Duration = .milliseconds(320)
     }
 
     private(set) var viewport: CGSize = .zero
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
-    private(set) var isMoving = false
     private(set) var blockedDirection: TableDirection?
-    private(set) var approachDirection: TableDirection?
-    private(set) var approachFraction: CGFloat = 0
     private(set) var departingTab: Tab?
     private(set) var departingSnapshot: NSImage?
     private(set) var pageTravelOpacity: Double = 0
     @ObservationIgnored private var pageTravelTask: Task<Void, Never>?
-    @ObservationIgnored private var gestureDistance: CGFloat = 0
-    @ObservationIgnored private var gestureDirection: TableDirection?
-    @ObservationIgnored private var gestureHasStepped = false
     private var captures: [UUID: NSImage] = [:]
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
@@ -54,59 +46,9 @@ final class TableController {
         canvas.floatingTabs.contains { $0.id == tab.id }
     }
 
-    func canSlide(atWindowPoint point: CGPoint) -> Bool {
-        guard let window = windowState.window, let content = window.contentView,
-              !windowState.showsCommandLens, !windowState.isSpaceLocked,
-              window.attachedSheet == nil, !canvas.isActive, currentTab != nil else { return false }
-        let local = content.convert(point, from: nil)
-        let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
-        return viewportFrame.contains(topLeft)
-    }
-
     func updateViewport(_ frame: CGRect) {
         viewportFrame = frame
         viewport = frame.size
-    }
-
-    func beginPan(_ delta: CGSize, shift: Bool = false, source: TableScrollSource = .trackpad) {
-        isMoving = true
-        gestureDistance = 0
-        gestureDirection = nil
-        gestureHasStepped = false
-        approachDirection = nil
-        approachFraction = 0
-        pan(delta, shift: shift, source: source)
-    }
-
-    /// A continuous gesture reaches one announced neighbor and settles there.
-    func pan(_ delta: CGSize, shift: Bool = false, source: TableScrollSource = .trackpad) {
-        guard isMoving, !gestureHasStepped,
-              let direction = TableDirection.wheelStep(deltaX: delta.width, deltaY: delta.height, shift: shift) else { return }
-        if direction != gestureDirection {
-            gestureDistance = 0
-            gestureDirection = direction
-        }
-        gestureDistance += abs(abs(delta.width) > abs(delta.height) ? delta.width : delta.height)
-        let threshold = source == .smoothWheel
-            ? Layout.smoothWheelFirstStepDistance : Layout.gestureStepDistance
-        if gestureDistance >= threshold {
-            gestureHasStepped = true
-            approachDirection = nil
-            approachFraction = 0
-            step(direction)
-            return
-        }
-        approachDirection = direction
-        approachFraction = min(1, gestureDistance / threshold)
-    }
-
-    func endPan() {
-        isMoving = false
-        gestureDistance = 0
-        gestureDirection = nil
-        gestureHasStepped = false
-        approachDirection = nil
-        approachFraction = 0
     }
 
     func destination(toward direction: TableDirection) -> Tab? {
@@ -116,7 +58,7 @@ final class TableController {
         return canvas.floatingTabs.first { $0.id == target }
     }
 
-    /// Every wheel step follows the destination displayed at the page edge.
+    /// Opens the neighbor displayed at the page edge.
     func step(_ direction: TableDirection) {
         if canvas.isActive {
             blockedDirection = nil
@@ -148,10 +90,6 @@ final class TableController {
 
     func clearBlockedDirection() {
         blockedDirection = nil
-    }
-
-    func zoom(by factor: CGFloat, at point: CGPoint) {
-        canvas.zoomFromPage(by: factor, aboutWindowPoint: point)
     }
 
     /// Moves the selected tab on the same table used by cards and overview.

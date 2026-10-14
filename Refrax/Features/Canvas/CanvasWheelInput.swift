@@ -13,6 +13,34 @@ nonisolated enum CanvasWheelInput {
         static let zoomPerLine: CGFloat = 1.1
         static let preciseZoomGain: CGFloat = 0.01
         static let maximumZoomDelta: CGFloat = 3
+        static let wheelCameraTravel: CGFloat = 96
+    }
+
+    /// Trackpads preserve both axes; wheels follow the row, or cross rows with Shift.
+    static func cameraPan(for event: NSEvent) -> CGPoint {
+        cameraPan(
+            delta: CGPoint(x: event.scrollingDeltaX, y: event.scrollingDeltaY),
+            source: TableScrollSource.classify(
+                hasPreciseDeltas: event.hasPreciseScrollingDeltas,
+                phase: event.phase,
+                momentumPhase: event.momentumPhase,
+            ),
+            shift: event.modifierFlags.contains(.shift),
+        )
+    }
+
+    static func cameraPan(delta: CGPoint, source: TableScrollSource, shift: Bool) -> CGPoint {
+        guard delta.x.isFinite, delta.y.isFinite else { return .zero }
+        guard source != .trackpad else { return delta }
+        let dominant = abs(delta.x) > abs(delta.y) ? delta.x : delta.y
+        guard dominant != 0 else { return .zero }
+        let travel = source == .wheel
+            ? (dominant > 0 ? Constants.wheelCameraTravel : -Constants.wheelCameraTravel)
+            : dominant
+        if shift {
+            return CGPoint(x: 0, y: travel)
+        }
+        return CGPoint(x: travel, y: 0)
     }
 
     static func action(for event: NSEvent) -> Action {

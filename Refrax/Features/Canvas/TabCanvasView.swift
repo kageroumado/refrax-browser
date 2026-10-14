@@ -212,10 +212,6 @@ private struct TabCanvasBoard: NSViewRepresentable {
                 fitting: manager.openingFitRect,
             )
             view.pan(by: manager.pendingPan)
-            if let zoom = manager.pendingCameraZoom {
-                manager.pendingCameraZoom = nil
-                view.zoom(by: zoom.factor, aboutWindowPoint: zoom.point)
-            }
         }
         return view
     }

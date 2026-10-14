@@ -167,6 +167,33 @@ struct SpatialArrangementTests {
     }
 
     @Test
+    func `page camera tracks each delta and targets the tile it reaches`() throws {
+        let left = try Tab(space: nil, url: #require(URL(string: "about:blank#left")))
+        let right = try Tab(space: nil, url: #require(URL(string: "about:blank#right")))
+        let view = TabCanvasScrollView(deskSize: CGSize(width: 1_280, height: 820))
+        view.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        view.layoutSubtreeIfNeeded()
+        view.reload(CanvasBoardContent(
+            tabs: [left, right],
+            frames: [left.id: CGRect(x: 100, y: 100, width: 250, height: 34), right.id: CGRect(x: 400, y: 100, width: 250, height: 34)],
+            snapshots: [:], zones: [], magnets: [], selectedTabIDs: [], focusedTabID: left.id,
+            tileSize: CGSize(width: 250, height: 34), deskSize: CGSize(width: 1_280, height: 820),
+        ))
+        view.showTable(at: CGRect(x: 0, y: 0, width: 800, height: 600), trackingTarget: true)
+        #expect(view.navigationTabID == left.id)
+
+        view.pan(by: CGPoint(x: -75, y: 0))
+        #expect(abs(view.contentView.bounds.minX - 75) < 0.01)
+        #expect(view.navigationTabID == left.id)
+        view.pan(by: CGPoint(x: -100, y: 0))
+        #expect(abs(view.contentView.bounds.minX - 175) < 0.01)
+        #expect(view.navigationTabID == right.id)
+        view.pan(by: CGPoint(x: 100, y: 0))
+        #expect(abs(view.contentView.bounds.minX - 75) < 0.01)
+        #expect(view.navigationTabID == left.id)
+    }
+
+    @Test
     func `a pile offers no invisible wheel destinations`() {
         let ids = [UUID(), UUID(), UUID()]
         let frames = ids.map { CanvasNavigation.Tile(id: $0, frame: CGRect(x: 100, y: 100, width: 250, height: 34)) }
@@ -191,6 +218,18 @@ struct SpatialArrangementTests {
 }
 
 struct CanvasWheelInputTests {
+    @Test
+    func `camera follows precise motion and each physical wheel notch`() {
+        let delta = CGPoint(x: -13, y: 27)
+        #expect(CanvasWheelInput.cameraPan(delta: delta, source: .trackpad, shift: false) == delta)
+        #expect(CanvasWheelInput.cameraPan(delta: delta, source: .smoothWheel, shift: false) == CGPoint(x: 27, y: 0))
+        #expect(CanvasWheelInput.cameraPan(delta: delta, source: .smoothWheel, shift: true) == CGPoint(x: 0, y: 27))
+        #expect(CanvasWheelInput.cameraPan(delta: CGPoint(x: -13, y: 2), source: .smoothWheel, shift: false) == CGPoint(x: -13, y: 0))
+        #expect(CanvasWheelInput.cameraPan(delta: CGPoint(x: 0, y: -1), source: .wheel, shift: false) == CGPoint(x: -96, y: 0))
+        #expect(CanvasWheelInput.cameraPan(delta: CGPoint(x: 0, y: -1), source: .wheel, shift: true) == CGPoint(x: 0, y: -96))
+        #expect(CanvasWheelInput.cameraPan(delta: CGPoint(x: 1, y: 0), source: .wheel, shift: false) == CGPoint(x: 96, y: 0))
+    }
+
     @Test(arguments: [false, true])
     func `ordinary wheel uses the same direction as the full size table`(shift: Bool) {
         for delta in [CGPoint(x: 0, y: 1), CGPoint(x: 0, y: -4), CGPoint(x: 2, y: 0)] {

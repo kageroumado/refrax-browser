@@ -350,7 +350,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             else { return false }
             return pageFrame.contains(point)
         }
-        canvasPageGestures?.tableInput = TableInput(table: tableController)
+        canvasPageGestures?.table = tableController
     }
 
     private func setupOverlayView(contentView: NSView) {

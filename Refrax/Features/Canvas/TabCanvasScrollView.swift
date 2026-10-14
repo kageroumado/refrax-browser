@@ -23,6 +23,7 @@ final class TabCanvasScrollView: NSScrollView {
     private let canvasClip = CanvasClipView()
     private var flight: ProgressFlight?
     private var isPeeking = false
+    private var peekAimPoint: CGPoint?
     private var pinchIntent: CanvasPinchIntent?
     private var pinchTargetID: Tab.ID?
     private var pendingLayoutActions: [() -> Void] = []
@@ -190,6 +191,15 @@ final class TabCanvasScrollView: NSScrollView {
         whenLaidOut { [weak self] in
             guard let self else { return }
             openingPath = nil
+            if trackingTarget, let id = board.originTabID, let tile = board.tile(withID: id), visible.width > 0 {
+                let scale = contentView.frame.width / visible.width
+                peekAimPoint = CGPoint(
+                    x: (tile.frame.midX - visible.minX) * scale,
+                    y: (tile.frame.midY - visible.minY) * scale,
+                )
+            } else {
+                peekAimPoint = nil
+            }
             setVisibleRect(visible)
             alphaValue = 1
             if let rect {
@@ -414,7 +424,11 @@ final class TabCanvasScrollView: NSScrollView {
     private func updatePeekTarget() {
         guard isPeeking, magnification > 0 else { return }
         let visible = contentView.bounds
-        board.target(near: CGPoint(x: visible.midX, y: visible.midY), hysteresis: Constants.targetHysteresis / magnification)
+        let aim = peekAimPoint ?? CGPoint(x: contentView.frame.midX, y: contentView.frame.midY)
+        board.target(
+            near: CGPoint(x: visible.minX + aim.x / magnification, y: visible.minY + aim.y / magnification),
+            hysteresis: Constants.targetHysteresis / magnification,
+        )
     }
 
     /// Keeps keyboard navigation at the current scale, moving only far enough to reveal the tile.

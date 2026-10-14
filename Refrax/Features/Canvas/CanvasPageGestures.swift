@@ -13,8 +13,8 @@ import AppKit
 ///   pinch turns out to be its own.
 /// - **⌃** held alone shows adjacent pages immediately; clicks keep those destinations
 ///   available while the key is down. Releasing it leaves pinned previews visible.
-/// - **⌃ + scroll** over the page follows adjacent tabs (``TableInput``): each destination
-///   appears at the page edge before a wheel step reaches it.
+/// - **⌃ + scroll** moves the table beneath the pointer. Releasing ⌃ opens the tile
+///   reached by the camera.
 /// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
 ///   held, scrolling and dragging move the camera at full trackpad precision, a click
 ///   enters the tile under it, and Option-wheel zooms about the pointer. One more tap of
@@ -62,8 +62,8 @@ final class CanvasPageGestures {
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
-    /// Routes ⌃ + scroll and directional keys through the page's adjacent tabs.
-    var tableInput: TableInput?
+    /// Directional keys select the adjacent tab announced by the edge previews.
+    var table: TableController?
     /// When ⌃ last went down with no other input since, for telling taps from holds.
     private var controlDownAt: Date?
     /// When the last tap of ⌃ ended, for telling a double tap.
@@ -84,7 +84,6 @@ final class CanvasPageGestures {
         self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
         self.resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.tableInput?.interrupt()
                 self?.interruptControl()
                 self?.canvas.dismissFloatingTabs()
             }
@@ -110,22 +109,19 @@ final class CanvasPageGestures {
         if !canvas.isPanningFromPage {
             isMoveMode = false
         }
-        if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown].contains(event.type) {
-            tableInput?.interrupt()
+        if event.type == .scrollWheel, canvas.isPanningFromPage {
+            return handleScroll(event)
         }
-        if event.type == .scrollWheel, !canvas.isPanningFromPage, let tableInput,
-           tableInput.route(
-               event,
-               canStart: floatingEligible() && !canvas.isActive
-                   && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow),
-           ) {
+        if event.type == .scrollWheel, !canvas.isPanningFromPage,
+           FloatingRevealKey.current.matchesHold(event.modifierFlags),
+           floatingEligible(), isEligible(event.locationInWindow), !canvas.isActive,
+           !canvas.floatingVisibility.isManipulating,
+           event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0,
+           !floatingControlsContain(event.locationInWindow) {
             controlDownAt = nil
             lastControlTap = nil
-            if tableInput.didNavigate, FloatingRevealKey.current.matchesHold(event.modifierFlags),
-               !canvas.floatingVisibility.isHeld, floatingEligible() {
-                canvas.revealFloatingTabs()
-            }
-            return nil
+            canvas.beginPan()
+            return handleScroll(event)
         }
         if [
             .leftMouseDown,
@@ -218,9 +214,9 @@ final class CanvasPageGestures {
         }
         if canvas.floatingVisibility.isRevealed, !floatingHasKeyboardFocus() {
             let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control]).subtracting(FloatingRevealKey.current.flag)
-            if modifiers.isEmpty, let tableInput,
+            if modifiers.isEmpty, let table,
                let direction = TableDirection.allCases.first(where: { $0.canvasDirection.rawValue == event.keyCode }) {
-                tableInput.step(direction)
+                table.step(direction)
                 return nil
             }
             if modifiers.isEmpty, event.keyCode == 36 {
@@ -236,11 +232,11 @@ final class CanvasPageGestures {
 
     private func handleScroll(_ event: NSEvent) -> NSEvent? {
         if canvas.isPanningFromPage {
-            switch CanvasWheelInput.action(for: event) {
-            case let .step(direction): canvas.step(direction)
-            case let .pan(delta): canvas.scroll(by: delta)
-            case let .zoom(factor): canvas.zoom(by: factor, aboutWindowPoint: event.locationInWindow)
-            case .none: break
+            if event.modifierFlags.contains(.option),
+               case let .zoom(factor) = CanvasWheelInput.action(for: event) {
+                canvas.zoom(by: factor, aboutWindowPoint: event.locationInWindow)
+            } else {
+                canvas.pan(by: CanvasWheelInput.cameraPan(for: event))
             }
             return nil
         }
@@ -270,9 +266,6 @@ final class CanvasPageGestures {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let revealKey = FloatingRevealKey.current
         let now = Date()
-        if !revealKey.matchesHold(modifiers) {
-            tableInput?.interrupt()
-        }
         Logger.debug("flags \(modifiers.rawValue) moveMode \(isMoveMode) panning \(canvas.isPanningFromPage) eligible \(isEligible(pointer(for: event))) sinceTap \(lastControlTap.map { now.timeIntervalSince($0) } ?? -1)", category: Logger.canvas)
 
         if canvas.floatingVisibility.isHeld, modifiers.contains(revealKey.flag), floatingHasKeyboardFocus() {

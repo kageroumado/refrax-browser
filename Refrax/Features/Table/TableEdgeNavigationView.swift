@@ -64,7 +64,6 @@ struct TableEdgeNavigationView: View {
         static let verticalHeightRange: ClosedRange<CGFloat> = 130 ... 220
         static let cornerRadius: CGFloat = 16
         static let captionHeight: CGFloat = 40
-        static let approachDistance: CGFloat = 26
     }
 
     var body: some View {
@@ -145,7 +144,6 @@ struct TableEdgeNavigationView: View {
             .accessibilityLabel("Go \(direction.rawValue) to \(tab.displayTitle)")
             .help("Go \(direction.rawValue) to \(tab.displayTitle)")
             .task(id: tab.id) { table.requestStoredSnapshot(for: tab) }
-            .offset(approachOffset(for: direction))
             .offset(placementOffset(for: direction, center: center, in: viewport))
         } else if hasOtherTabs && table.blockedDirection == direction {
             let size = CGSize(width: 180, height: 36)
@@ -240,17 +238,6 @@ struct TableEdgeNavigationView: View {
                 width: min(max(viewport.width * 0.25, Layout.verticalWidthRange.lowerBound), Layout.verticalWidthRange.upperBound),
                 height: min(max(viewport.height * 0.16, Layout.verticalHeightRange.lowerBound), Layout.verticalHeightRange.upperBound),
             )
-        }
-    }
-
-    private func approachOffset(for direction: TableDirection) -> CGSize {
-        guard table.approachDirection == direction else { return .zero }
-        let distance = table.approachFraction * Layout.approachDistance
-        switch direction {
-        case .left: return CGSize(width: distance, height: 0)
-        case .right: return CGSize(width: -distance, height: 0)
-        case .up: return CGSize(width: 0, height: distance)
-        case .down: return CGSize(width: 0, height: -distance)
         }
     }
 

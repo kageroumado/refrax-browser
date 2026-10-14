@@ -43,8 +43,6 @@ protocol CanvasBoardDriver: AnyObject {
     func settle(on place: CanvasPanSettle)
     /// Zooms by `factor` about a point in window coordinates.
     func zoom(by factor: CGFloat, aboutWindowPoint point: CGPoint)
-    /// Moves the desk for a trackpad scroll of `delta` points.
-    func scroll(by delta: CGPoint)
     /// Moves the destination one visible neighbor at the current scale.
     func step(_ direction: TableDirection)
     /// Reveals a tab at the current camera scale.
@@ -149,7 +147,6 @@ final class TabCanvasManager {
     private(set) var floatingCamera = TabSpatialCamera()
     private(set) var openingCameraFrame: CGRect?
     private(set) var openingFitRect: CGRect?
-    var pendingCameraZoom: (factor: CGFloat, point: CGPoint)?
     var regionSelectionError: String?
     var regionSelection: FloatingRegionSelection?
     @ObservationIgnored var regionSelectionTask: Task<Void, Never>?
@@ -211,11 +208,7 @@ final class TabCanvasManager {
         guard let incoming = windowState.activeTab, incoming.space?.id == tab.space?.id,
               !incoming.isFavorite, storedFloatingPlacement(for: incoming) == nil else { return }
         let occupied = floatingTabs.filter { $0.id != incoming.id && storedFloatingPlacement(for: $0) != nil }.map { floatingPlacement(for: $0) }
-        let ordered = windowState.activeSpaceTabs
-        let parentIndex = ordered.firstIndex { $0.id == tab.id }
-        let incomingIndex = ordered.firstIndex { $0.id == incoming.id }
-        let parent = parentIndex != nil && incomingIndex == parentIndex.map { $0 + 1 } ? tab : nil
-        if let placement = startingPlacement(for: incoming, avoiding: occupied, beside: parent) {
+        if let placement = startingPlacement(for: incoming, avoiding: occupied, beside: tab) {
             updateFloatingPlacement(placement, for: incoming)
         }
     }
@@ -535,15 +528,6 @@ final class TabCanvasManager {
     /// The overview reports its projection into the shared camera.
     func updateTableCamera(_ camera: TabSpatialCamera) {
         floatingCamera = camera
-    }
-
-    func zoomFromPage(by factor: CGFloat, aboutWindowPoint point: CGPoint) {
-        if isActive {
-            board?.zoom(by: factor, aboutWindowPoint: point)
-        } else {
-            pendingCameraZoom = (factor, point)
-            show(fittingEverything: false)
-        }
     }
 
     /// Moves only the camera to reveal a destination; the saved cards stay on the table.
@@ -889,12 +873,12 @@ final class TabCanvasManager {
 
     // MARK: - Panning from a Page
 
-    /// ⌃-scrolling on a page brings the desk up at page size, to slide under the wheel.
+    /// ⌃-scrolling reveals the same table at its current camera position.
     func beginPan() {
         guard !isActive else { return }
         pendingPan = .zero
         isPanningFromPage = true
-        show()
+        show(fittingEverything: false)
     }
 
     /// The wheel moved by `delta` screen points.
@@ -906,12 +890,6 @@ final class TabCanvasManager {
             pendingPan.x += delta.x
             pendingPan.y += delta.y
         }
-    }
-
-    /// A trackpad scroll moves the desk brought up from a page.
-    func scroll(by delta: CGPoint) {
-        guard isPanningFromPage else { return }
-        board?.scroll(by: delta)
     }
 
     /// Zooms the arrangement around the pointer.
@@ -1014,7 +992,6 @@ final class TabCanvasManager {
         }
         floatingCamera.zoom(to: 1, at: CGPoint(x: floatingArea.midX, y: floatingArea.midY))
         openingFitRect = nil
-        pendingCameraZoom = nil
         snapshotTask?.cancel()
         snapshotTask = nil
         selectedTabIDs = []
