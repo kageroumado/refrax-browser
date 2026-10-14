@@ -247,8 +247,9 @@ struct ControlIsland: View {
                 if showsArrangeHint {
                     arrangeHint
                         .fixedSize()
-                        .background(spaceTint.opacity(isResting ? 0 : 1), in: Capsule())
-                        .glassEffect(glass, in: Capsule())
+                        // Text on it is read over pages, so it stays frosted like the page card.
+                        .background(spaceTint, in: Capsule())
+                        .glassEffect(.regular, in: Capsule())
                         .glassEffectID("arrange", in: glassNamespace)
                         .onGeometryChange(for: CGSize.self) { $0.size } action: { arrangeHintSize = $0 }
                         .offset(x: arrangeHintFrame.minX, y: arrangeHintFrame.minY)
@@ -850,6 +851,8 @@ struct ControlIsland: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .labelStyle(.titleAndIcon)
+                .tint(.primary)
+                .foregroundStyle(.primary)
                 .fixedSize()
                 .help("Arrange the tabs on this space")
             Divider()
