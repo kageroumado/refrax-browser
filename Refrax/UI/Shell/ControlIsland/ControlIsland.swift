@@ -514,11 +514,6 @@ struct ControlIsland: View {
                 }
             }
             .contentTransition(.symbolEffect(.replace))
-            .overlay(alignment: .bottomTrailing) {
-                if !showsRecent {
-                    unplacedBadge
-                }
-            }
             .contextMenu {
                 Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
                 FloatingArrangeMenu()
@@ -896,22 +891,6 @@ struct ControlIsland: View {
     /// Pages other than the current one that wait without a place of their own.
     private var unplacedCount: Int {
         canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
-    }
-
-    /// How many pages wait without a place of their own, in the corner of the tab control.
-    @ViewBuilder
-    private var unplacedBadge: some View {
-        let count = unplacedCount
-        if count > 0 {
-            Text(count, format: .number)
-                .font(.caption2.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(isResting || !appearsActive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .padding(.trailing, Layout.badgeInset)
-                .padding(.bottom, Layout.badgeInset)
-                .allowsHitTesting(false)
-                .accessibilityLabel("\(count) unplaced tabs")
-        }
     }
 
     private func control(_ title: String, symbol: String, enabled: Bool = true, help: String? = nil, action: @escaping () -> Void) -> some View {
