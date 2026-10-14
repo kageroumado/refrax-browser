@@ -62,7 +62,9 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     }
 
     /// Rendering mode for the sidebar icon.
-    var iconRenderingMode: SymbolRenderingMode { .monochrome }
+    var iconRenderingMode: SymbolRenderingMode {
+        .monochrome
+    }
 
     var description: String {
         switch self {
@@ -131,6 +133,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
             [
                 SearchableSettingItem(id: "appearance.theme", title: "Appearance theme", keywords: ["theme", "appearance", "light", "dark", "mode"]),
                 SearchableSettingItem(id: "appearance.accentColor", title: "Accent color", keywords: ["accent", "color", "tint", "theme"]),
+                SearchableSettingItem(id: "appearance.lightThickness", title: "Light thickness", keywords: ["light", "beam", "ray", "thickness", "width"]),
                 SearchableSettingItem(id: "appearance.sidebarMode", title: "Default sidebar mode", keywords: ["sidebar", "mode", "compact", "overlay"]),
                 SearchableSettingItem(id: "appearance.windowBackground", title: "Window background color", keywords: ["window", "background", "color"]),
                 SearchableSettingItem(id: "appearance.mixAmount", title: "Color blend strength", keywords: ["mix", "amount", "strength", "intensity", "blend"]),
@@ -235,7 +238,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(
                     id: "featureFlags.\(flag.key)",
                     title: flag.name,
-                    keywords: flag.name.lowercased().split(separator: " ").map(String.init) + ["feature", "flag", "experimental"]
+                    keywords: flag.name.lowercased().split(separator: " ").map(String.init) + ["feature", "flag", "experimental"],
                 )
             }
         }

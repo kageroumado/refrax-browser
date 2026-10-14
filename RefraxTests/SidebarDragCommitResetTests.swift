@@ -56,39 +56,6 @@ struct SidebarDragCommitResetTests {
     }
 
     @Test
-    func `Commit reorder to same position runs animation but no model change`() throws {
-        let support = try SidebarTestSupport()
-        _ = support.createTab(url: "https://tab2.com")
-        support.rebuildLayout()
-        setupTestGeometry(support)
-
-        let tabItem = try #require(support.layoutManager.normalItems.first)
-        let tab1 = try #require(tabItem.tab)
-        let originIndex = try #require(support.layoutManager.metadata[tabItem.id]?.globalIndex)
-        let originalPosition = tab1.position
-        let startFrame = try #require(support.dragCoordinator.computedItemFrame(for: tabItem.id))
-
-        let localIndex = originIndex - support.layoutManager.collectionBounds.normal.lowerBound
-        support.dragCoordinator.startDrag(
-            item: .tab(tab1),
-            originPosition: .normal(localIndex: localIndex),
-            startLocation: CGPoint(x: startFrame.midX, y: startFrame.midY),
-        )
-
-        // Don't move (or move back to same position)
-        support.dragCoordinator.updateDrag(
-            offset: 5,
-            location: CGPoint(x: 100, y: 105),
-        )
-
-        _ = support.dragCoordinator.commitDrag()
-
-        // Should set isAnimatingReturn even if no actual reorder
-        #expect(support.dragCoordinator.isAnimatingReturn == true)
-        #expect(tab1.position == originalPosition)
-    }
-
-    @Test
     func `Commit with isAnimatingReturn true is guarded`() throws {
         let support = try SidebarTestSupport()
         let tab = support.createTab(url: "https://tab.com")

@@ -27,6 +27,9 @@ struct AppearanceSettingsView: View {
                 )
                 .highlightable(id: "appearance.accentColor", highlightedItemId: highlightedItemId)
 
+                LightThicknessSlider(thickness: $settings.lightThickness)
+                    .highlightable(id: "appearance.lightThickness", highlightedItemId: highlightedItemId)
+
                 SettingsColorPicker(
                     label: "Window background",
                     selectedColor: $settings.customWindowBackgroundColor,
@@ -295,7 +298,6 @@ struct SettingsColorPicker: View {
             .fixedSize()
             .offset(y: 12)
     }
-
 }
 
 // MARK: - Custom Color Swatch

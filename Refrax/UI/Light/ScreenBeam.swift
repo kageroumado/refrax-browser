@@ -32,7 +32,7 @@ enum ScreenBeam {
     /// The panel's rectangle for a beam between `source` and `destination`, in screen
     /// coordinates, with room for the halo on every side.
     nonisolated static func panelFrame(from source: CGRect, to destination: CGRect) -> CGRect {
-        let margin = LightPath.Layout.glowWidth
+        let margin = LightPath.Layout.glowWidth * BrowserSettings.Defaults.lightThicknessRange.upperBound
         return source.union(destination).insetBy(dx: -margin, dy: -margin)
     }
 

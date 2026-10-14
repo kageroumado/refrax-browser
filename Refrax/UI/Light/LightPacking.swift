@@ -27,7 +27,8 @@ nonisolated enum LightPacking {
     static let pathStride = 24
     static let segmentStride = 8
 
-    static func pack(_ paths: [LightPath]) -> [Float] {
+    /// `thickness` scales every path's core and halo widths (the browser's light thickness setting).
+    static func pack(_ paths: [LightPath], thickness: CGFloat = 1) -> [Float] {
         var kept: [LightPath] = []
         var segmentCount = 0
         for path in paths {
@@ -56,8 +57,8 @@ nonisolated enum LightPacking {
             data[record + 5] = Float(path.color.green)
             data[record + 6] = Float(path.color.blue)
             data[record + 7] = Float(min(max(path.intensity, 0), 1))
-            data[record + 8] = Float(path.coreWidth)
-            data[record + 9] = Float(path.glowWidth)
+            data[record + 8] = Float(path.coreWidth * thickness)
+            data[record + 9] = Float(path.glowWidth * thickness)
             data[record + 10] = Float(min(max(path.dispersion, 0), 1))
             data[record + 11] = Float(path.spotScale)
             data[record + 12] = Float(bands.low.red)

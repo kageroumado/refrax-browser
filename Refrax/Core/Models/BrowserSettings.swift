@@ -66,6 +66,10 @@ final class BrowserSettings {
     /// How much to mix the window background color (0.0 to 1.0).
     var windowBackgroundMixAmount: Double
 
+    /// How thick every beam of light is drawn, as a scale on its core and halo
+    /// (``Defaults/lightThicknessRange``).
+    var lightThickness: Double = Defaults.lightThickness
+
     /// Raw value for color mix mode.
     ///
     /// Use ``windowBackgroundMixMode`` computed property for type-safe access.
@@ -702,6 +706,8 @@ final class BrowserSettings {
         static let accentColorHex = "p3:0.7840,0.6900,0.9930"
         static let windowBackgroundColorHex = "p3:0.7840,0.6900,0.9930"
         static let windowBackgroundMixAmount = 0.6
+        static let lightThickness = 1.0
+        static let lightThicknessRange: ClosedRange<Double> = 0.5 ... 2
         static let windowBackgroundMixMode: ColorMixMode = .multiply
         static let windowBackgroundFillOpacity = 0.84
     }
@@ -1051,6 +1057,7 @@ final class BrowserSettings {
         customAccentColorHex = Defaults.accentColorHex
         customWindowBackgroundColor = Color.Components(encoded: Defaults.windowBackgroundColorHex)
         windowBackgroundMixAmount = Defaults.windowBackgroundMixAmount
+        lightThickness = Defaults.lightThickness
         windowBackgroundMixMode = Defaults.windowBackgroundMixMode
         windowBackgroundFillOpacity = Defaults.windowBackgroundFillOpacity
         enableSpaceWindowColoring = false

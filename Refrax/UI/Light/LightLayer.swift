@@ -6,7 +6,7 @@ import SwiftUI
 /// layer that fills the window draws paths in window coordinates. The output carries
 /// premultiplied alpha, so it composites over page content and glass like light would.
 /// The layer takes no clicks. ``LightPacking/maximumSegments`` caps how many segments
-/// one layer draws.
+/// one layer draws. Every width is scaled by the browser's light thickness setting.
 struct LightLayer: View {
     let paths: [LightPath]
 
@@ -19,9 +19,15 @@ struct LightLayer: View {
                 // shader writes each output pixel itself, transparent where no light falls.
                 Rectangle()
                     .fill(.black)
-                    .colorEffect(ShaderLibrary.lightPaths(.floatArray(LightPacking.pack(paths))))
+                    .colorEffect(ShaderLibrary.lightPaths(.floatArray(LightPacking.pack(paths, thickness: Self.thickness))))
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// The light thickness setting, read where the accent is read so a beam drawn in its own
+    /// panel (``ScreenBeam``) follows it too.
+    private static var thickness: CGFloat {
+        CGFloat(NSApp.typedDelegate.settings.lightThickness)
     }
 }

@@ -100,6 +100,7 @@ struct ControlIslandCustomizationSheet: View {
                 selectedColor: $settings.customAccentColor,
                 systemColor: .accentColor,
             )
+            LightThicknessSlider(thickness: $settings.lightThickness)
             SettingsColorPicker(
                 label: "Window background",
                 selectedColor: $settings.customWindowBackgroundColor,

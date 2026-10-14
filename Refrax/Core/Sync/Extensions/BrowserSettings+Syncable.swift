@@ -26,6 +26,7 @@ extension BrowserSettings: Syncable {
 
         record["customWindowBackgroundColorHex"] = customWindowBackgroundColorHex as NSString?
         record["windowBackgroundMixAmount"] = windowBackgroundMixAmount as NSNumber
+        record["lightThickness"] = lightThickness as NSNumber
         record["windowBackgroundMixModeRawValue"] = windowBackgroundMixModeRawValue as NSString
         record["enableSpaceWindowColoring"] = enableSpaceWindowColoring as NSNumber
         record["enableWebsiteWindowColoring"] = enableWebsiteWindowColoring as NSNumber
@@ -234,6 +235,7 @@ extension BrowserSettings: Syncable {
         settings.customWindowBackgroundColorHex = record["customWindowBackgroundColorHex"] as? String
         settings.windowBackgroundMixAmount = (record["windowBackgroundMixAmount"] as? Double)
             ?? Defaults.windowBackgroundMixAmount
+        settings.lightThickness = (record["lightThickness"] as? Double) ?? Defaults.lightThickness
         settings.windowBackgroundMixModeRawValue = record["windowBackgroundMixModeRawValue"] as? String
             ?? Defaults.windowBackgroundMixMode.rawValue
         settings.enableSpaceWindowColoring = (record["enableSpaceWindowColoring"] as? Bool) ?? false
