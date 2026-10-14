@@ -86,7 +86,7 @@ final class TableInput {
             return true
         case let .begin(delta):
             momentumWindow?.cancel()
-            table.beginPan(delta, shift: sample.shift)
+            table.beginPan(delta, shift: sample.shift, source: sample.source)
             if sample.source == .smoothWheel {
                 armSmoothWheelQuiet()
             }
@@ -94,7 +94,7 @@ final class TableInput {
         case let .pan(delta):
             momentumWindow?.cancel()
             if sample.momentumPhase.isEmpty {
-                table.pan(delta, shift: sample.shift)
+                table.pan(delta, shift: sample.shift, source: sample.source)
             }
             if sample.source == .smoothWheel {
                 armSmoothWheelQuiet()

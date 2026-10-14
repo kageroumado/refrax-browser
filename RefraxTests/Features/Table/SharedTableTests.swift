@@ -84,6 +84,45 @@ struct SharedTableTests {
     }
 
     @Test
+    func `smooth mouse movement responds early and keeps fractional progress through a row`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let window = env.makeActiveWindowState(with: space)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let table = TableController(windowState: window, tabManager: env.tabManager, canvas: canvas, pagePool: env.pagePool)
+        var tabs: [Tab] = []
+        for x in [0.0, 300, 600] {
+            let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank#\(x)")), in: space, makeActive: false)
+            var placement = FloatingTabPlacement.initial(index: 0)
+            placement.tableOrigin = CGPoint(x: x, y: 100)
+            canvas.storeTablePlacement(placement, for: tab)
+            tabs.append(tab)
+        }
+        env.tabManager.setActiveTab(tabs[0], in: window)
+        let smooth: TableScrollSource = .smoothWheel
+        table.beginPan(CGSize(width: 0, height: -8), source: smooth)
+        #expect(window.activeTabID == tabs[0].id)
+        table.pan(CGSize(width: 0, height: -8), source: smooth)
+        #expect(window.activeTabID == tabs[1].id)
+        table.pan(CGSize(width: 0, height: -40), source: smooth)
+        #expect(window.activeTabID == tabs[1].id)
+        table.pan(CGSize(width: 0, height: -12), source: smooth)
+        #expect(window.activeTabID == tabs[2].id)
+        table.pan(CGSize(width: 0, height: 8), source: smooth)
+        table.pan(CGSize(width: 0, height: 8), source: smooth)
+        #expect(window.activeTabID == tabs[1].id)
+        table.endPan()
+
+        env.tabManager.setActiveTab(tabs[0], in: window)
+        table.beginPan(CGSize(width: 0, height: -40))
+        table.pan(CGSize(width: 0, height: -40))
+        #expect(window.activeTabID == tabs[1].id)
+        table.pan(CGSize(width: 0, height: -16))
+        #expect(window.activeTabID == tabs[2].id)
+        table.endPan()
+    }
+
+    @Test
     func `reading navigation uses the visible page when a different card is focused`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()

@@ -9,13 +9,15 @@ final class TableController {
         static let snapshotLimit = 12
         static let moveStep: CGFloat = 24
         static let gestureStepDistance: CGFloat = 48
+        static let smoothWheelFirstStepDistance: CGFloat = 16
     }
 
     private(set) var viewport: CGSize = .zero
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
     private(set) var isMoving = false
-    private var gestureDistance: CGFloat = 0
-    private var gestureDirection: TableDirection?
+    @ObservationIgnored private var gestureDistance: CGFloat = 0
+    @ObservationIgnored private var gestureDirection: TableDirection?
+    @ObservationIgnored private var gestureHasStepped = false
     private var captures: [UUID: NSImage] = [:]
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
@@ -56,23 +58,28 @@ final class TableController {
         viewport = frame.size
     }
 
-    func beginPan(_ delta: CGSize, shift: Bool = false) {
+    func beginPan(_ delta: CGSize, shift: Bool = false, source: TableScrollSource = .trackpad) {
         isMoving = true
         gestureDistance = 0
         gestureDirection = nil
-        pan(delta, shift: shift)
+        gestureHasStepped = false
+        pan(delta, shift: shift, source: source)
     }
 
-    func pan(_ delta: CGSize, shift: Bool = false) {
+    func pan(_ delta: CGSize, shift: Bool = false, source: TableScrollSource = .trackpad) {
         guard isMoving,
               let direction = TableDirection.wheelStep(deltaX: delta.width, deltaY: delta.height, shift: shift) else { return }
         if direction != gestureDirection {
             gestureDistance = 0
             gestureDirection = direction
+            gestureHasStepped = false
         }
         gestureDistance += abs(abs(delta.width) > abs(delta.height) ? delta.width : delta.height)
-        if gestureDistance >= Layout.gestureStepDistance {
-            gestureDistance = 0
+        let threshold = source == .smoothWheel && !gestureHasStepped
+            ? Layout.smoothWheelFirstStepDistance : Layout.gestureStepDistance
+        if gestureDistance >= threshold {
+            gestureDistance = gestureDistance.truncatingRemainder(dividingBy: threshold)
+            gestureHasStepped = true
             step(direction)
         }
     }
@@ -81,6 +88,7 @@ final class TableController {
         isMoving = false
         gestureDistance = 0
         gestureDirection = nil
+        gestureHasStepped = false
     }
 
     func destination(toward direction: TableDirection) -> Tab? {
