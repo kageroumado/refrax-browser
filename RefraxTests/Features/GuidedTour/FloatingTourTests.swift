@@ -132,7 +132,7 @@ struct FloatingTourTests {
         await lens.showStandingSuggestions()
         #expect(lens.suggestions.isEmpty)
         #expect(!lens.isPopupVisible)
-        stage.tour.skip()
+        stage.tour.endTour()
     }
 
     @Test(arguments: FloatingTourTarget.allCases)
@@ -190,7 +190,7 @@ struct FloatingTourTests {
         #expect(!cards.isEmpty)
         #expect(cards.allSatisfy { $0.cornerRadius == 20 })
         #expect(tour.highlightedItem == nil)
-        tour.skip()
+        tour.endTour()
     }
 
     @Test
@@ -219,7 +219,7 @@ struct FloatingTourTests {
         #expect(beam.from == Stage.rows[.page]!)
         #expect(beam.to == card)
         #expect(beam.revision == revisionBefore + 1)
-        tour.skip()
+        tour.endTour()
     }
 
     @Test
@@ -263,7 +263,7 @@ struct FloatingTourTests {
         tour.review()
         #expect(tour.beamRequests.first?.revision == 2)
         #expect(tour.currentStep == .openSecondPage)
-        tour.skip()
+        tour.endTour()
     }
 
     @Test
@@ -361,17 +361,17 @@ struct FloatingTourTests {
         #expect(tour.progress == 2 / Double(FloatingTourManager.totalSteps))
         #expect(FloatingTourManager.totalSteps == FloatingTourManager.Step.allCases.count - 1)
         #expect(FloatingTourManager.Step.done.completedSteps == FloatingTourManager.totalSteps)
-        tour.skip()
+        tour.endTour()
     }
 
     @Test
-    func `skip ends the tour and records the dismissal`() throws {
+    func `End Tour ends the tour and records the dismissal`() throws {
         let stage = try Stage()
         let tour = stage.tour
         tour.start()
         _ = try stage.openPage("first")
         tour.review()
-        tour.skip()
+        tour.endTour()
         #expect(!tour.isActive)
         #expect(tour.currentStep == nil)
         #expect(tour.progress == 0)
@@ -384,7 +384,7 @@ struct FloatingTourTests {
         #expect(!tour.isActive)
         tour.start()
         #expect(tour.currentStep == .openPage)
-        tour.skip()
+        tour.endTour()
     }
 
     @Test
@@ -393,7 +393,7 @@ struct FloatingTourTests {
         FloatingTourManager.hasOfferedThisLaunch = false
         stage.tour.offer()
         #expect(stage.tour.isActive)
-        stage.tour.skip()
+        stage.tour.endTour()
         stage.defaults.removeObject(forKey: FloatingTourManager.outcomeKey)
         stage.tour.offer()
         #expect(!stage.tour.isActive)
@@ -424,7 +424,7 @@ struct FloatingTourTests {
         #expect(Set(pages.map(\.displayTitle)) == ["Trip draft", "Arrival details"])
         #expect(stage.window.activeTab?.displayTitle == "Trip draft")
         #expect(pages.allSatisfy { stage.window.floatingPlacements[$0.id] != nil })
-        tour.skip()
+        tour.endTour()
     }
 
     @Test(arguments: [
