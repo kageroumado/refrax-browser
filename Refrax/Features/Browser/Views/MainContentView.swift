@@ -6,7 +6,6 @@ struct MainContentView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabManager
-    @Environment(TableController.self) private var table
 
     @State private var showClipboardToast = false
     @State private var size: CGSize = .zero
@@ -45,15 +44,11 @@ struct MainContentView: View {
         .tabCloseConfirmation(tabManager: tabManager, windowState: windowState)
     }
 
-    /// Displays the active page at its shared table anchor.
+    /// The page, with the way one page replaces another.
     @ViewBuilder
     private var contentRouter: some View {
-        if let activeTab = windowState.activeTab {
-            if table.holds(activeTab) {
-                TableView()
-            } else {
-                UnifiedContentView(tab: activeTab)
-            }
+        if windowState.activeTab != nil {
+            PageTravelView()
         } else {
             FloatingStartPage()
         }

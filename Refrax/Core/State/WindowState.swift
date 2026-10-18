@@ -450,8 +450,10 @@ final class WindowState {
     /// Receives the tab that stopped filling the window when another took its place.
     @ObservationIgnored var tabDisplacedHandler: ((Tab) -> Void)?
 
-    /// The window's table, for menus and lens commands built from the window's state.
-    @ObservationIgnored weak var tableController: TableController?
+    /// The window's islands, for menus and lens commands built from the window's state.
+    @ObservationIgnored weak var islandController: IslandController?
+    /// The chip being dragged between cells or islands.
+    var draggedChipID: Tab.ID?
 
     /// The empty page hosts Command Lens itself; each request refocuses that lens.
     var startPageLensRequest = 0

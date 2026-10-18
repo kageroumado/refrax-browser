@@ -17,7 +17,7 @@ struct FloatingTabPreview: View {
     @State private var session = FloatingPreviewSession()
     @State private var livePage: WebPage?
     @State private var hasPainted = false
-    @Environment(TableController.self) private var table
+    @Environment(IslandController.self) private var table
 
     private enum Layout {
         static let firstPaintFade: TimeInterval = 0.15
@@ -105,12 +105,7 @@ struct FloatingTabPreview: View {
 
     private func activate() {
         guard isLive || isMainContent else {
-            if let page = livePage, page.ownerWindowID == session.id {
-                deactivate()
-                Task { await table.captureSnapshot(of: tab) }
-            } else {
-                deactivate()
-            }
+            deactivate()
             return
         }
         guard let page = pagePool.page(for: tab.activePage) else { return }

@@ -1,33 +1,5 @@
 import Foundation
 
-/// A slab's width as a preset share of the window's width.
-nonisolated enum TableWidth: String, Codable, CaseIterable, Sendable {
-    case third
-    case half
-    case twoThirds
-    case full
-
-    /// The share of the viewport width a slab of this preset takes.
-    var fraction: Double {
-        switch self {
-        case .third: 1.0 / 3.0
-        case .half: 0.5
-        case .twoThirds: 2.0 / 3.0
-        case .full: 1
-        }
-    }
-
-    /// The next preset in the cycle ⅓ → ½ → ⅔ → 1 → ⅓.
-    var next: Self {
-        switch self {
-        case .third: .half
-        case .half: .twoThirds
-        case .twoThirds: .full
-        case .full: .third
-        }
-    }
-}
-
 /// A direction on the shared spatial table.
 nonisolated enum TableDirection: String, Codable, CaseIterable, Sendable {
     case left

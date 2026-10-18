@@ -1701,7 +1701,7 @@ final class CommandLensManager {
             case .newSpace:
                 windowState.controlIsland.spaceRequest = .create
             case let .table(command):
-                windowState.tableController?.perform(command)
+                windowState.islandController?.perform(command)
             case let .copyCurrentAddress(asMarkdown):
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
                     let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: tabManager.bookmarksManager)

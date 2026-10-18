@@ -403,7 +403,7 @@ extension TabManager {
         guard let space = tab.space,
               let window = windowSync.findWindowState(for: space),
               window.activeTabID(for: space.id) == tab.id,
-              let table = window.tableController else { return nil }
+              let table = window.islandController else { return nil }
         for direction in [TableDirection.left, .right, .up, .down] {
             if let neighbor = table.destination(toward: direction) {
                 return neighbor.id

@@ -250,7 +250,7 @@ struct RefraxPreviewModifier: PreviewModifier {
             appUpdateManager: AppUpdateManager(settings: settings),
             floatingTourManager: floatingTourManager,
             engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
-            tableController: TableController(windowState: windowState, tabManager: tabManager, groupManager: groupManager, canvas: tabCanvasManager, pagePool: pagePool),
+            islandController: IslandController(windowState: windowState, tabManager: tabManager, groupManager: groupManager, canvas: tabCanvasManager, pagePool: pagePool),
         )
     }
 

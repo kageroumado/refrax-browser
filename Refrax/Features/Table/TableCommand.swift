@@ -1,34 +1,22 @@
 import Foundation
 
-/// A table command the Command Lens offers, run on the window's ``TableController``.
+/// A command the Command Lens and menus offer, run on the window's ``IslandController``.
 nonisolated enum TableCommand: Hashable, Sendable {
-    /// Focus the neighboring tab (⌃⌘ arrows).
+    /// Step to the neighboring chip (⌃⌘ arrows).
     case focus(TableDirection)
-    /// Move the current slab on the table (⌃⌘⇧ arrows).
-    case moveSlab(TableDirection)
-    /// Cycle the current slab's width (⌃⌘R).
-    case cycleWidth
-    /// Fill the width with the current slab, or return it to its preset (⌃⌘⇧F).
-    case toggleFill
-    /// Give the current slab a preset width.
-    case setWidth(TableWidth)
+    /// Make a new island from the current chip and the chips below it.
+    case newIsland
 }
 
-extension TableController {
-    /// Runs a lens command on the current slab.
+extension IslandController {
+    /// Runs a lens or menu command on the current chip.
     func perform(_ command: TableCommand) {
         switch command {
         case let .focus(direction):
             step(direction)
-        case let .moveSlab(direction):
-            moveFocusedSlab(direction)
-        case .cycleWidth:
-            cycleWidth()
-        case .toggleFill:
-            toggleFill()
-        case let .setWidth(width):
+        case .newIsland:
             if let tab = currentTab {
-                setWidth(width, of: tab)
+                makeIsland(from: tab.id)
             }
         }
     }

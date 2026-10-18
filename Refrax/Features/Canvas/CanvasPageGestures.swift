@@ -62,10 +62,10 @@ final class CanvasPageGestures {
 
     /// The desk is up in move mode, until a tap of ⌃, Esc, or a click settles it.
     private var isMoveMode = false
-    /// Directional keys step to the adjacent slab.
-    var table: TableController?
-    /// Scroll events with the scroll key down slide the table.
-    var tableInput: TableInput?
+    /// Directional keys step to the adjacent chip.
+    var islands: IslandController?
+    /// Scroll events with the reveal key down step between chips.
+    var islandInput: IslandInput?
     /// When ⌃ last went down with no other input since, for telling taps from holds.
     private var controlDownAt: Date?
     /// When the last tap of ⌃ ended, for telling a double tap.
@@ -114,8 +114,8 @@ final class CanvasPageGestures {
         if event.type == .scrollWheel, canvas.isPanningFromPage {
             return handleScroll(event)
         }
-        if event.type == .scrollWheel, let tableInput, !canvas.isActive,
-           tableInput.route(event, canStart: floatingEligible() && isEligible(event.locationInWindow)
+        if event.type == .scrollWheel, let islandInput, !canvas.isActive,
+           islandInput.route(event, canStart: floatingEligible() && isEligible(event.locationInWindow)
                && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow)) {
             controlDownAt = nil
             lastControlTap = nil
@@ -213,9 +213,9 @@ final class CanvasPageGestures {
         }
         if canvas.floatingVisibility.isRevealed, !floatingHasKeyboardFocus() {
             let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control]).subtracting(FloatingRevealKey.current.flag)
-            if modifiers.isEmpty, let table,
+            if modifiers.isEmpty, let islands,
                let direction = TableDirection.allCases.first(where: { $0.canvasDirection.rawValue == event.keyCode }) {
-                table.step(direction)
+                islands.step(direction)
                 return nil
             }
             if modifiers.isEmpty, event.keyCode == 36 {
@@ -313,7 +313,7 @@ final class CanvasPageGestures {
 
     /// Other input while ⌃ is down makes it part of a shortcut or ⌃-click.
     private func interruptControl() {
-        tableInput?.interrupt()
+        islandInput?.interrupt()
         canvas.releaseFloatingTabs()
         controlDownAt = nil
         lastControlTap = nil
@@ -341,7 +341,6 @@ final class CanvasPageGestures {
             case .opening:
                 // The release event's own step is the fingers lifting, often a jolt
                 // outward; the table decides from where the pinch stood before.
-                table?.endPinch()
                 return nil
             case let .undecided(began):
                 window?.sendEvent(began)
@@ -364,7 +363,6 @@ final class CanvasPageGestures {
             if event.magnification < 0 {
                 let scale = max(Constants.minimumScale, 1 + event.magnification)
                 pinch = .opening(scale: scale, trend: event.magnification)
-                table?.pinch(to: scale, aboutWindowPoint: pointer(for: event))
                 return nil
             }
             if event.magnification > 0 {
@@ -379,7 +377,6 @@ final class CanvasPageGestures {
             let next = max(Constants.minimumScale, scale * (1 + event.magnification))
             let nextTrend = trend + (event.magnification - trend) * Constants.trendWeight
             pinch = .opening(scale: next, trend: nextTrend)
-            table?.pinch(to: next, aboutWindowPoint: pointer(for: event))
             return nil
 
         case .idle, .passing:

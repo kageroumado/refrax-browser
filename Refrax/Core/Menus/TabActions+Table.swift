@@ -2,28 +2,13 @@ import AppKit
 import Foundation
 
 extension TabActions {
-    /// Tab Width ▸ (⅓ ½ ⅔ Full), for a tab on this window's table.
+    /// New Island from Here, for a tab on one of this window's islands.
     func tableActions() -> [MenuAction] {
-        guard let table = windowState.tableController, table.holds(tab), let current = table.width(of: tab) else { return [] }
-        let widths = TableWidth.allCases.map { width in
-            MenuAction("tab.table.width.\(width.rawValue)", width.title, group: .table, state: width == current ? .on : .off) {
-                table.setWidth(width, of: tab)
-            }
-        }
+        guard let islands = windowState.islandController, islands.holds(tab) else { return [] }
         return [
-            MenuAction("tab.table.width", "Tab Width", symbol: "arrow.left.and.right", group: .table, children: widths),
+            MenuAction("tab.island.new", "New Island from Here", symbol: "plus.rectangle.on.rectangle", group: .table) {
+                islands.makeIsland(from: tab.id)
+            },
         ]
-    }
-}
-
-extension TableWidth {
-    /// The preset as menus and the lens name it.
-    var title: String {
-        switch self {
-        case .third: "⅓"
-        case .half: "½"
-        case .twoThirds: "⅔"
-        case .full: "Full"
-        }
     }
 }

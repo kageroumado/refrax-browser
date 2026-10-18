@@ -454,7 +454,7 @@ final class TabCanvasManager {
         spaceToReveal = nil
         dismissFloatingTabs()
         floatingCamera = TabSpatialCamera()
-        if let tab = windowState.activeTab, let viewport = windowState.tableController?.viewportFrame {
+        if let tab = windowState.activeTab, let viewport = windowState.islandController?.viewportFrame {
             focusPage(tab, in: viewport)
         }
         if shouldReveal {
@@ -568,7 +568,7 @@ final class TabCanvasManager {
     func openFloatingTab(_ tab: Tab) {
         floatingVisibility.dismiss()
         tabManager.setActiveTab(tab, in: windowState)
-        if let viewport = windowState.tableController?.viewportFrame {
+        if let viewport = windowState.islandController?.viewportFrame {
             focusPage(tab, in: viewport)
         }
     }

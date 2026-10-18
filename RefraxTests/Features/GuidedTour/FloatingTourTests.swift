@@ -11,7 +11,7 @@ struct FloatingTourTests {
         let space: Space
         let window: WindowState
         let canvas: TabCanvasManager
-        let table: TableController
+        let table: IslandController
         let defaults: UserDefaults
         let tour: FloatingTourManager
 
@@ -20,8 +20,8 @@ struct FloatingTourTests {
             self.space = env.makeSpace()
             self.window = env.makeActiveWindowState(with: space)
             self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
-            self.table = TableController(windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool)
-            window.tableController = table
+            self.table = IslandController(windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool)
+            window.islandController = table
             self.defaults = try #require(UserDefaults(suiteName: "FloatingTourTests.\(UUID())"))
             self.tour = FloatingTourManager(windowState: window, canvas: canvas, tabManager: env.tabManager, defaults: defaults)
         }

@@ -43,7 +43,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     let tabSwitcherManager: TabSwitcherManager
     let tabCanvasManager: TabCanvasManager
     /// The window's view onto its space's table of slabs.
-    let tableController: TableController
+    let islandController: IslandController
 
     private(set) var environment: RefraxEnvironment!
 
@@ -117,7 +117,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             pagePool: appDelegate.pagePool,
             groupManager: appDelegate.groupManager,
         )
-        self.tableController = TableController(
+        self.islandController = IslandController(
             windowState: windowState,
             tabManager: appDelegate.tabManager,
             groupManager: appDelegate.groupManager,
@@ -189,10 +189,10 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             appUpdateManager: appDelegate.appUpdateManager,
             floatingTourManager: floatingTourManager,
             engineRegistry: appDelegate.engineRegistry,
-            tableController: tableController,
+            islandController: islandController,
         )
-        windowState.tableController = tableController
-        tableController.start()
+        windowState.islandController = islandController
+        islandController.start()
 
         setupRootView(window: window)
 
@@ -249,48 +249,28 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     }
 
     private func setupFloatingTabsLayer(contentView: NSView) {
-        let floatingView = FloatingTabsHostingView(rootView: FloatingTabsLayer().refraxEnvironment(environment))
+        let floatingView = FloatingTabsHostingView(rootView: IslandsLayer().refraxEnvironment(environment))
         floatingView.sizingOptions = []
-        floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState] point in
-            guard let floatingView, let tabCanvasManager, let windowState else { return }
+        floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState, weak islandController] point in
+            guard let floatingView, let tabCanvasManager, let windowState, let islandController else { return }
             if (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) }) {
-                return
-            }
-            if tabCanvasManager.floatingControlRegions(in: floatingView.bounds).contains(where: { $0.contains(point) }) {
                 return
             }
             if let tab = tabCanvasManager.dockedTab(at: point, in: floatingView.bounds) {
                 windowState.recordInteraction(with: tab.activePage.id)
                 return
             }
-            if let tab = tabCanvasManager.visibleFloatingTabs.first(where: { tabCanvasManager.floatingHitFrame(for: $0, in: floatingView.bounds).contains(point) }) {
-                let frame = tabCanvasManager.floatingFrame(for: tab, in: floatingView.bounds)
-                if tabCanvasManager.floatingPlacement(for: tab).shape == .live, frame.contains(point),
-                   point.y > frame.minY + FloatingTabPlacement.headerHeight, tab.id != windowState.activeTabID {
-                    windowState.recordInteraction(with: tab.activePage.id)
-                }
-            } else {
-                tabCanvasManager.retainedInputTabID = nil
-                if !windowState.controlIsland.tabInfo.isMenuPresented {
-                    tabCanvasManager.dismissFloatingTabs()
-                }
+            if islandController.hitRegions(in: floatingView.bounds).contains(where: { $0.contains(point) }) {
+                return
+            }
+            if !windowState.controlIsland.tabInfo.isMenuPresented {
+                tabCanvasManager.dismissFloatingTabs()
             }
         }
-        floatingView.onSecondaryPointerDown = { [weak self, weak floatingView] point, event in
-            guard let self, let floatingView,
-                  !(windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) })
-            else { return false }
-            return tabCanvasManager.showFloatingCardMenu(
-                at: point, for: event, in: floatingView,
-                bookmarks: bookmarksManager, sharing: environment.sharingCoordinator,
-            ) || tabCanvasManager.showFloatingLayerMenu(at: point, for: event, in: floatingView)
-        }
-        floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager] in
-            guard let floatingView, let tabCanvasManager else { return [] }
-            if tabCanvasManager.draggedRecentTabID != nil {
-                return [floatingView.bounds]
-            }
-            return tabCanvasManager.floatingHitRegions(in: floatingView.bounds)
+        floatingView.onSecondaryPointerDown = { _, _ in false }
+        floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
+            guard let floatingView, let tabCanvasManager, let islandController else { return [] }
+            return islandController.hitRegions(in: floatingView.bounds) + tabCanvasManager.dockHitRegions(in: floatingView.bounds)
         }
         contentView.addSubview(floatingView)
         floatingView.translatesAutoresizingMaskIntoConstraints = false
@@ -352,8 +332,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             else { return false }
             return pageFrame.contains(point)
         }
-        canvasPageGestures?.table = tableController
-        canvasPageGestures?.tableInput = TableInput(table: tableController)
+        canvasPageGestures?.islands = islandController
+        canvasPageGestures?.islandInput = IslandInput(islands: islandController)
     }
 
     private func setupOverlayView(contentView: NSView) {

@@ -1,10 +1,9 @@
 import AppKit
 
-// MARK: - View ▸ Tab Layout
+// MARK: - View ▸ Islands
 
 extension MenuBarManager {
-    /// One of the Tab Layout submenu's keyed items.
-    private struct TableItem {
+    private struct IslandItem {
         let title: String
         let symbol: String
         let action: Selector
@@ -16,28 +15,20 @@ extension MenuBarManager {
         String(UnicodeScalar(UInt32(key))!)
     }
 
-    /// View ▸ Tab Layout: move focus with ⌃⌘ arrows, move the tab with ⌃⌘⇧ arrows, cycle its
-    /// width with ⌃⌘R, and fill the width with ⌃⌘⇧F (⌃⌘F is Enter Full Screen).
+    /// View ▸ Islands: step to a neighboring chip with ⌃⌘ arrows, and make a new island
+    /// from the current chip with ⌃⌘I.
     func createTableMenuItem() -> NSMenuItem {
-        let menu = NSMenu(title: "Tab Layout")
+        let menu = NSMenu(title: "Islands")
         let focus: NSEvent.ModifierFlags = [.control, .command]
-        let move: NSEvent.ModifierFlags = [.control, .command, .shift]
-        let groups: [[TableItem]] = [
+        let groups: [[IslandItem]] = [
             [
-                TableItem(title: "Focus Tab Left", symbol: "arrow.left", action: #selector(tableFocusLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Focus Tab Right", symbol: "arrow.right", action: #selector(tableFocusRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Tab Above", symbol: "arrow.up", action: #selector(tableFocusUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: focus),
-                TableItem(title: "Tab Below", symbol: "arrow.down", action: #selector(tableFocusDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: focus),
+                IslandItem(title: "Tab Left", symbol: "arrow.left", action: #selector(tableFocusLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: focus),
+                IslandItem(title: "Tab Right", symbol: "arrow.right", action: #selector(tableFocusRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: focus),
+                IslandItem(title: "Tab Above", symbol: "arrow.up", action: #selector(tableFocusUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: focus),
+                IslandItem(title: "Tab Below", symbol: "arrow.down", action: #selector(tableFocusDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: focus),
             ],
             [
-                TableItem(title: "Move Tab Left", symbol: "arrow.left.square", action: #selector(tableMoveLeft(_:)), key: Self.arrow(NSLeftArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Tab Right", symbol: "arrow.right.square", action: #selector(tableMoveRight(_:)), key: Self.arrow(NSRightArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Tab Up", symbol: "arrow.up.square", action: #selector(tableMoveUp(_:)), key: Self.arrow(NSUpArrowFunctionKey), modifiers: move),
-                TableItem(title: "Move Tab Down", symbol: "arrow.down.square", action: #selector(tableMoveDown(_:)), key: Self.arrow(NSDownArrowFunctionKey), modifiers: move),
-            ],
-            [
-                TableItem(title: "Cycle Tab Width", symbol: "arrow.left.and.right", action: #selector(tableCycleWidth(_:)), key: "r", modifiers: focus),
-                TableItem(title: "Fill Width", symbol: "arrow.up.left.and.arrow.down.right", action: #selector(tableToggleFill(_:)), key: "f", modifiers: move),
+                IslandItem(title: "New Island from Here", symbol: "plus.rectangle.on.rectangle", action: #selector(tableNewIsland(_:)), key: "i", modifiers: focus),
             ],
         ]
         for (index, group) in groups.enumerated() {
@@ -52,63 +43,38 @@ extension MenuBarManager {
                 menu.addItem(item)
             }
         }
-        let item = NSMenuItem(title: "Tab Layout", action: nil, keyEquivalent: "")
-        item.image = NSImage(systemSymbolName: "rectangle.split.3x1", accessibilityDescription: nil)
+        let item = NSMenuItem(title: "Islands", action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: nil)
         item.submenu = menu
         return item
     }
 
-    private var activeTable: TableController? {
-        activeWindowController?.tableController
+    private var activeIslands: IslandController? {
+        activeWindowController?.islandController
     }
 
     @objc
     func tableFocusLeft(_: Any?) {
-        activeTable?.step(.left)
+        activeIslands?.step(.left)
     }
 
     @objc
     func tableFocusRight(_: Any?) {
-        activeTable?.step(.right)
+        activeIslands?.step(.right)
     }
 
     @objc
     func tableFocusUp(_: Any?) {
-        activeTable?.step(.up)
+        activeIslands?.step(.up)
     }
 
     @objc
     func tableFocusDown(_: Any?) {
-        activeTable?.step(.down)
+        activeIslands?.step(.down)
     }
 
     @objc
-    func tableMoveLeft(_: Any?) {
-        activeTable?.moveFocusedSlab(.left)
-    }
-
-    @objc
-    func tableMoveRight(_: Any?) {
-        activeTable?.moveFocusedSlab(.right)
-    }
-
-    @objc
-    func tableMoveUp(_: Any?) {
-        activeTable?.moveFocusedSlab(.up)
-    }
-
-    @objc
-    func tableMoveDown(_: Any?) {
-        activeTable?.moveFocusedSlab(.down)
-    }
-
-    @objc
-    func tableCycleWidth(_: Any?) {
-        activeTable?.cycleWidth()
-    }
-
-    @objc
-    func tableToggleFill(_: Any?) {
-        activeTable?.toggleFill()
+    func tableNewIsland(_: Any?) {
+        activeIslands?.perform(.newIsland)
     }
 }
