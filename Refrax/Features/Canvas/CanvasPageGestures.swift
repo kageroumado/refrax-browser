@@ -15,12 +15,6 @@ import AppKit
 ///   available while the key is down. Releasing it leaves pinned previews visible.
 /// - **The scroll key + scroll** slides the table under the window: the events go to the
 ///   table's scroll view instead of the page, for the whole gesture and its momentum.
-/// - **⌃ double-tapped** brings the desk up and keeps it there in move mode: with no key
-///   held, scrolling and dragging move the camera at full trackpad precision, a click
-///   enters the tile under it, and Option-wheel zooms about the pointer. One more tap of
-///   ⌃ settles into the nearest tile; Esc goes back to the tab it started from. ⌃ is let
-///   go for this because macOS turns ⌃-click into a right click and ⌃-scroll into coarse,
-///   accelerated wheel steps.
 @MainActor
 final class CanvasPageGestures {
     private enum PinchState {
@@ -114,12 +108,19 @@ final class CanvasPageGestures {
         if event.type == .scrollWheel, canvas.isPanningFromPage {
             return handleScroll(event)
         }
-        if event.type == .scrollWheel, let islandInput, !canvas.isActive,
-           islandInput.route(event, canStart: floatingEligible() && isEligible(event.locationInWindow)
-               && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow)) {
-            controlDownAt = nil
-            lastControlTap = nil
-            return nil
+        // With the reveal key down, a scroll anywhere over the page steps between chips; over
+        // an island or the Control Island it is theirs. Either way it never ends the hold.
+        if event.type == .scrollWheel, let islandInput, !canvas.isActive {
+            let keyHeld = FloatingRevealKey.current.matchesHold(event.modifierFlags.intersection([.control, .option, .command]))
+            if islandInput.route(event, canStart: floatingEligible() && !canvas.floatingVisibility.isManipulating
+                && !floatingContains(event.locationInWindow)) {
+                controlDownAt = nil
+                lastControlTap = nil
+                return nil
+            }
+            if keyHeld {
+                return event
+            }
         }
         if [
             .leftMouseDown,
@@ -273,16 +274,6 @@ final class CanvasPageGestures {
             guard !canvas.floatingVisibility.isHeld else { return event }
             controlDownAt = now
             if isMoveMode {
-                return event
-            }
-            if revealKey == .control, let lastTap = lastControlTap, now.timeIntervalSince(lastTap) <= Constants.doubleTapInterval,
-               !canvas.isActive, isEligible(pointer(for: event)) {
-                lastControlTap = nil
-                // The release of this second tap belongs to the double tap; only a later
-                // tap settles.
-                controlDownAt = nil
-                isMoveMode = true
-                canvas.beginPan()
                 return event
             }
             if !canvas.isActive, floatingEligible() {
