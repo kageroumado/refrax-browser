@@ -12,6 +12,7 @@ extension RefraxWindowController {
             if tabCanvasManager?.regionSelection != nil, let controls {
                 return [controls.bounds]
             }
+            guard tabCanvasManager?.showsControlIsland == true else { return [] }
             return windowState?.controlIsland.hitRegions ?? []
         }
         contentView.addSubview(controls)

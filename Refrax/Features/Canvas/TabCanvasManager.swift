@@ -132,6 +132,19 @@ final class TabCanvasManager {
         !isActive && !windowState.isSpaceLocked
     }
 
+    /// The page is about to be captured from the window server: everything over it steps
+    /// aside for the frames the capture needs, so the image shows the page alone.
+    var isCapturingPage = false
+
+    /// The page is shown as its image, a slab over the window's background. The control rail
+    /// belongs to the live page and steps away with it.
+    var showsPageSlab = false
+
+    /// The control rail shows over the live page.
+    var showsControlIsland: Bool {
+        showsFloatingControls && !isCapturingPage && !showsPageSlab
+    }
+
     /// Whether the canvas covers the content area.
     private(set) var isActive = false
 

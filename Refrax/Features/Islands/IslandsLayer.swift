@@ -26,7 +26,7 @@ struct IslandsLayer: View {
                     IslandView(island: island, area: bounds)
                         .frame(width: frame.width, height: frame.height)
                         .offset(x: frame.minX, y: frame.minY)
-                        .zIndex(island.layout[windowState.activeTabID ?? UUID()] != nil ? 1 : 0)
+                        .zIndex(zIndex(of: island))
                         .transition(reduceMotion ? .opacity : .scale(scale: Layout.emergeScale).combined(with: .opacity))
                 }
                 ForEach(islands.beams) { beam in
@@ -36,6 +36,8 @@ struct IslandsLayer: View {
                 }
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
+            // Out of the frame the page is captured in, so pinned islands stay out of its image.
+            .opacity(canvas.isCapturingPage ? 0 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "islands")
             .onChange(of: geometry.size, initial: true) {
@@ -51,6 +53,12 @@ struct IslandsLayer: View {
                 canvas.dismissFloatingTabs()
             }
         }
+    }
+
+    /// The island being moved is on top; the current tab's island above the rest.
+    private func zIndex(of island: Island) -> Double {
+        if islands.draggedIslandID == island.id { return 2 }
+        return island.layout[windowState.activeTabID ?? UUID()] != nil ? 1 : 0
     }
 }
 
@@ -70,7 +78,8 @@ private struct IslandBeamView: View {
 }
 
 /// One island: its chips on their grid inside glass, a silhouette where a dragged chip may
-/// land, and a footer naming it that moves it, pins it, and holds its actions.
+/// land, and a footer naming it, pinning it, and holding its actions. Any of its empty glass
+/// moves it; its chips move themselves.
 struct IslandView: View {
     let island: Island
     let area: CGRect
@@ -103,6 +112,14 @@ struct IslandView: View {
                 .frame(height: IslandGeometry.footerHeight)
         }
         .frame(width: frame.width, height: frame.height)
+        // The glass behind the chips takes the drag that moves the island: the open hand
+        // over any empty space says so.
+        .background {
+            Color.clear
+                .contentShape(shape)
+                .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+                .gesture(moveGesture)
+        }
         // The Control Island's glass: the window's tint under regular glass.
         .background(windowState.controlIslandTint, in: shape)
         .glassEffect(.regular, in: shape)
@@ -154,8 +171,26 @@ struct IslandView: View {
         return chip.span
     }
 
+    /// The drag that moves the island, from its origin when the drag began.
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("islands"))
+            .onChanged { value in
+                if dragStart == nil {
+                    dragStart = islands.frame(of: island).origin
+                    islands.draggedIslandID = island.id
+                }
+                if let dragStart {
+                    islands.moveIsland(island.id, to: CGPoint(x: dragStart.x + value.translation.width, y: dragStart.y + value.translation.height))
+                }
+            }
+            .onEnded { _ in
+                dragStart = nil
+                islands.draggedIslandID = nil
+            }
+    }
+
     /// The island's name, its count, and, while the pointer is on the island, its pin and
-    /// actions. Double-click the name to rename a group's island. The footer moves the island.
+    /// actions. Double-click the name to rename a group's island.
     private var footer: some View {
         let showsControls = isHovered || island.placement.isPinned
         return HStack(spacing: 7) {
@@ -196,6 +231,7 @@ struct IslandView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.default)
                 .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
                 Menu {
                     Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
@@ -215,24 +251,15 @@ struct IslandView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
+                .pointerStyle(.default)
                 .frame(width: 18, height: 18)
             }
         }
         .padding(.horizontal, IslandGeometry.padding)
         .animation(.easeInOut(duration: 0.15), value: showsControls)
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 3, coordinateSpace: .named("islands"))
-                .onChanged { value in
-                    if dragStart == nil {
-                        dragStart = islands.frame(of: island).origin
-                    }
-                    if let dragStart {
-                        islands.moveIsland(island.id, to: CGPoint(x: dragStart.x + value.translation.width, y: dragStart.y + value.translation.height))
-                    }
-                }
-                .onEnded { _ in dragStart = nil },
-        )
+        .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
+        .gesture(moveGesture)
         .accessibilityAddTraits(.isHeader)
     }
 

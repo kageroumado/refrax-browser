@@ -73,6 +73,8 @@ final class IslandController {
     private(set) var beams: [IslandBeam] = []
     /// A chip being dragged: where it would land, if it may.
     var dropCandidate: (island: UUID, cell: IslandCell)?
+    /// The island being moved, drawn over the others.
+    var draggedIslandID: UUID?
     /// The island that just appeared, for its unfold.
     private(set) var emergingIslandID: UUID?
     /// The area the islands are placed in, in the layer's coordinates.
@@ -350,10 +352,27 @@ final class IslandController {
     }
 
     /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot and a beam
-    /// runs from the page card to the new chip.
+    /// runs from the page card to the new chip. A page still live is captured first, once the
+    /// window's controls have stepped away from it.
     private func travel(to tab: Tab, style: TravelStyle) {
-        let snapshot = windowState.activeTab.flatMap { captureSnapshot(of: $0) }
-        travel = PageTravel(outgoing: snapshot, style: style)
+        guard liveIsVisible, let current = windowState.activeTab else {
+            start(PageTravel(outgoing: windowState.activeTab.flatMap { snapshot(for: $0.id) }, style: style), to: tab)
+            return
+        }
+        canvas.isCapturingPage = true
+        Task(name: "Capture the page before a move") { [weak self] in
+            try? await Task.sleep(for: PageCapture.compositingDelay)
+            guard let self else { return }
+            canvas.isCapturingPage = false
+            guard !Task.isCancelled, windowState.activeTabID == current.id else { return }
+            let snapshot = captureSnapshot(of: current)
+            canvas.showsPageSlab = true
+            start(PageTravel(outgoing: snapshot, style: style), to: tab)
+        }
+    }
+
+    private func start(_ move: PageTravel, to tab: Tab) {
+        travel = move
         activatedHere = tab.id
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
         if let island = island(holding: tab.id) {
@@ -538,6 +557,17 @@ final class IslandController {
             return image
         }
         return snapshot(for: tab.id)
+    }
+
+    /// Renders the page through WebKit, which draws the page alone, and keeps the image in
+    /// memory and on disk: for the captures that can wait while the page stays on screen.
+    func refreshSnapshot(of tab: Tab) async {
+        guard let page = pagePool.existingPage(for: tab.activePage), page.contentView.bounds.width > 0,
+              let image = try? await page.snapshot(), !Task.isCancelled, tab.id == windowState.activeTabID else { return }
+        store(image, for: tab.id)
+        if tab.space?.dataStoreMode != .private, let data = image.tiffRepresentation {
+            await CanvasSnapshotStore.save(tiff: data, for: tab.id)
+        }
     }
 
     func requestStoredSnapshot(for tab: Tab) {
