@@ -352,13 +352,7 @@ final class IslandController {
         let outgoing = windowState.activeTab
         Task(name: "Travel to a chip") { [weak self] in
             guard let self else { return }
-            var snapshot: NSImage?
-            if let outgoing, let page = pagePool.existingPage(for: outgoing.activePage) {
-                snapshot = (try? await page.snapshot()) ?? captures[outgoing.id]
-                if let snapshot {
-                    store(snapshot, for: outgoing.id)
-                }
-            }
+            let snapshot = outgoing == nil ? nil : await captureSnapshot(of: outgoing!)
             travel = PageTravel(outgoing: snapshot, style: style)
             activatedHere = tab.id
             tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
@@ -520,6 +514,18 @@ final class IslandController {
 
     func snapshot(for tabID: UUID) -> NSImage? {
         captures[tabID] ?? canvas.snapshots[tabID]
+    }
+
+    /// Takes the page's snapshot now, while its view is on screen, and keeps it; otherwise the
+    /// newest image kept for it.
+    @discardableResult
+    func captureSnapshot(of tab: Tab) async -> NSImage? {
+        if let page = pagePool.existingPage(for: tab.activePage), page.contentView.window != nil,
+           !page.contentView.isHiddenOrHasHiddenAncestor, let image = try? await page.snapshot() {
+            store(image, for: tab.id)
+            return image
+        }
+        return snapshot(for: tab.id)
     }
 
     func requestStoredSnapshot(for tab: Tab) {

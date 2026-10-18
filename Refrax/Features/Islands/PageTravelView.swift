@@ -1,15 +1,17 @@
 import AppKit
 import SwiftUI
 
-/// The window's page as a slab, and the way one page replaces another.
+/// The window's page, and the way one page replaces another.
 ///
-/// At rest the page fills the window. While the reveal key is held the page sits zoomed out a
-/// little, a slab with a shadow and a glass rim over the window's tinted background, and the
-/// margins name the tab in each direction. A move never moves a page: the outgoing page's
-/// snapshot and the incoming tab's stored snapshot slide as slabs, with the background
-/// showing in the gap between them, and the live page mounts only once its slab is in place,
-/// under its snapshot until it has painted. A crossing to another island shrinks the outgoing
-/// slab away and grows the next one in.
+/// At rest the page fills the window, live. The moment the reveal key goes down the page is
+/// snapshotted and its image takes its place: a slab at 84%, with a shadow and a glass rim
+/// over the window's tinted background, the margins naming the tab in each direction. Every
+/// move while the key is held slides slabs of images, the outgoing page's snapshot and the
+/// incoming tab's stored one, with the background in the gap between them; nothing is live
+/// and nothing takes input. Only when the key is released does the slab grow back to the
+/// window and the live page mount beneath it, staying under its snapshot until it has
+/// painted. A crossing to another island shrinks the outgoing slab away and grows the next
+/// one in.
 struct PageTravelView: View {
     @Environment(IslandController.self) private var islands
     @Environment(TabCanvasManager.self) private var canvas
@@ -20,23 +22,23 @@ struct PageTravelView: View {
     /// The move being shown and its progress from 0 (just begun) to 1 (arrived).
     @State private var shown: PageTravel?
     @State private var progress: CGFloat = 1
-    /// The tab that arrived, whose live page is still painting under its snapshot.
+    /// The page's image stands in for it: while the key is held, and until the live page has
+    /// painted after it is let go.
+    @State private var showsSlab = false
+    @State private var slabScale: CGFloat = 1
+    /// The tab whose live page is painting under its snapshot.
     @State private var arrivingTabID: UUID?
     @State private var size: CGSize = .zero
 
     private enum Layout {
         /// The page's share of the window while the reveal key is held.
         static let inspectionScale: CGFloat = 0.84
+        static let inspectDuration: TimeInterval = 0.28
         static let slideDuration: TimeInterval = 0.32
         static let crossDuration: TimeInterval = 0.4
         static let jumpDuration: TimeInterval = 0.2
-        static let crossScale: CGFloat = 0.9
         /// The background showing between two sliding slabs.
         static let gap: CGFloat = 28
-        static let cornerRadius: CGFloat = 16
-        static let shadowRadius: CGFloat = 22
-        static let shadowOpacity: Double = 0.22
-        static let rimOpacity: Double = 0.45
         static let labelInset: CGFloat = 14
         static let firstPaintFade: TimeInterval = 0.18
     }
@@ -49,13 +51,13 @@ struct PageTravelView: View {
         shown != nil
     }
 
-    /// The page's scale: zoomed out while inspecting or traveling, full at rest.
-    private var scale: CGFloat {
-        isInspecting || isTraveling ? Layout.inspectionScale : 1
+    /// The live page is drawn: no slab stands in for it and no move is under way.
+    private var showsLive: Bool {
+        !showsSlab && !isTraveling
     }
 
     private var slabSize: CGSize {
-        CGSize(width: size.width * scale, height: size.height * scale)
+        CGSize(width: size.width * Layout.inspectionScale, height: size.height * Layout.inspectionScale)
     }
 
     var body: some View {
@@ -63,6 +65,10 @@ struct PageTravelView: View {
             background
             if let tab = windowState.activeTab {
                 livePage(tab)
+                if showsSlab, !isTraveling {
+                    slab(image: islands.snapshot(for: tab.id), tab: tab, scale: slabScale)
+                        .allowsHitTesting(false)
+                }
             }
             if let shown {
                 travelingSlabs(shown)
@@ -73,10 +79,16 @@ struct PageTravelView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: isInspecting)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
             size = frame.size
             islands.updateViewport(frame)
+        }
+        .onChange(of: isInspecting) { _, inspecting in
+            if inspecting {
+                beginInspecting()
+            } else if !isTraveling {
+                endInspecting()
+            }
         }
         .onChange(of: islands.travel?.id) { _, id in
             guard let travel = islands.travel, travel.id == id else { return }
@@ -92,12 +104,11 @@ struct PageTravelView: View {
             .ignoresSafeArea()
     }
 
-    /// The live page, slab-shaped while it does not fill the window, hidden while a move's
-    /// slabs are on screen, and under its snapshot until it has painted after arriving.
-    @ViewBuilder
+    /// The live page, full size; invisible and deaf while a slab stands in for it, and under
+    /// its snapshot until it has painted after arriving.
     private func livePage(_ tab: Tab) -> some View {
         let arriving = arrivingTabID == tab.id
-        UnifiedContentView(tab: tab)
+        return UnifiedContentView(tab: tab)
             .id(tab.id)
             .frame(width: size.width, height: size.height)
             .overlay {
@@ -106,9 +117,8 @@ struct PageTravelView: View {
                         .transition(.opacity)
                 }
             }
-            .modifier(SlabChrome(isSlab: scale < 1, scale: scale))
-            .opacity(isTraveling ? 0 : 1)
-            .allowsHitTesting(!isTraveling && !arriving)
+            .opacity(showsLive ? 1 : 0)
+            .allowsHitTesting(showsLive && !arriving)
             .task(id: arriving ? tab.id : nil) {
                 guard arriving else { return }
                 await Task.yield()
@@ -122,21 +132,21 @@ struct PageTravelView: View {
             }
     }
 
-    /// The two slabs of a move: images only, nothing live.
+    /// The two slabs of a move: images only.
     @ViewBuilder
     private func travelingSlabs(_ travel: PageTravel) -> some View {
         let incoming = windowState.activeTab
         ZStack {
-            slab(image: travel.outgoing, tab: nil)
+            slab(image: travel.outgoing, tab: nil, scale: Layout.inspectionScale)
                 .modifier(TravelMotion(style: travel.style, progress: progress, step: slabSize, gap: Layout.gap, incoming: false))
-            slab(image: incoming.flatMap { islands.snapshot(for: $0.id) }, tab: incoming)
+            slab(image: incoming.flatMap { islands.snapshot(for: $0.id) }, tab: incoming, scale: Layout.inspectionScale)
                 .modifier(TravelMotion(style: travel.style, progress: progress, step: slabSize, gap: Layout.gap, incoming: true))
         }
         .allowsHitTesting(false)
     }
 
-    /// A slab of a page's image at the slab's size, or its placeholder.
-    private func slab(image: NSImage?, tab: Tab?) -> some View {
+    /// A slab of a page's image at the window's size, scaled about the center, or its placeholder.
+    private func slab(image: NSImage?, tab: Tab?, scale: CGFloat) -> some View {
         Group {
             if let image {
                 Image(nsImage: image)
@@ -150,7 +160,7 @@ struct PageTravelView: View {
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .clipped()
-        .modifier(SlabChrome(isSlab: true, scale: Layout.inspectionScale))
+        .modifier(SlabChrome(scale: scale))
     }
 
     @ViewBuilder
@@ -201,6 +211,33 @@ struct PageTravelView: View {
         }
     }
 
+    // MARK: - Inspecting
+
+    /// The key went down: the page is snapshotted, and its image steps back to a slab.
+    private func beginInspecting() {
+        guard let tab = windowState.activeTab else { return }
+        Task(name: "Snapshot the page for inspection") {
+            await islands.captureSnapshot(of: tab)
+            guard isInspecting || isTraveling else { return }
+            showsSlab = true
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {
+                slabScale = Layout.inspectionScale
+            }
+        }
+    }
+
+    /// The key was let go: the slab grows back to the window and the live page mounts under it.
+    private func endInspecting() {
+        guard showsSlab else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {
+            slabScale = 1
+        } completion: {
+            guard !isInspecting, !isTraveling else { return }
+            arrivingTabID = windowState.activeTabID
+            showsSlab = false
+        }
+    }
+
     // MARK: - Moves
 
     private func begin(_ travel: PageTravel) {
@@ -219,16 +256,24 @@ struct PageTravelView: View {
             progress = 1
         } completion: {
             guard shown?.id == travel.id else { return }
-            arrivingTabID = windowState.activeTabID
             shown = nil
             islands.finishTravel(travel.id)
+            if isInspecting {
+                // The key is still down: the arrived slab stays an image until it is let go.
+                showsSlab = true
+                slabScale = Layout.inspectionScale
+            } else {
+                showsSlab = true
+                slabScale = Layout.inspectionScale
+                endInspecting()
+            }
         }
     }
 }
 
-/// A page drawn as a slab: scaled about the center, rounded, with a shadow and a glass rim.
+/// A page's image drawn as a slab: scaled about the center, rounded, with a shadow and a
+/// glass rim.
 private struct SlabChrome: ViewModifier {
-    let isSlab: Bool
     let scale: CGFloat
 
     private enum Layout {
@@ -239,20 +284,19 @@ private struct SlabChrome: ViewModifier {
     }
 
     func body(content: Content) -> some View {
+        let isSlab = scale < 0.999
         let shape = RoundedRectangle(cornerRadius: isSlab ? Layout.cornerRadius : 0, style: .continuous)
         content
             .clipShape(shape)
             .overlay {
-                if isSlab {
-                    shape.strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(Layout.rimOpacity), .white.opacity(Layout.rimOpacity * 0.3), .white.opacity(Layout.rimOpacity * 0.6)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing,
-                        ),
-                        lineWidth: 1,
-                    )
-                    .allowsHitTesting(false)
-                }
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(Layout.rimOpacity), .white.opacity(Layout.rimOpacity * 0.3), .white.opacity(Layout.rimOpacity * 0.6)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing,
+                    ),
+                    lineWidth: isSlab ? 1 : 0,
+                )
+                .allowsHitTesting(false)
             }
             .shadow(color: .black.opacity(isSlab ? Layout.shadowOpacity : 0), radius: Layout.shadowRadius, y: 8)
             .scaleEffect(scale)

@@ -119,7 +119,6 @@ final class CanvasPageGestures {
                && !canvas.floatingVisibility.isManipulating && !floatingControlsContain(event.locationInWindow)) {
             controlDownAt = nil
             lastControlTap = nil
-            canvas.releaseFloatingTabs()
             return nil
         }
         if [
