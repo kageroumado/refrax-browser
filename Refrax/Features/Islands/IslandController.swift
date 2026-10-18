@@ -451,7 +451,8 @@ final class IslandController {
         let size = IslandGeometry(iconsOnly: iconsOnly).islandSize(of: layout, in: area.size)
         let sourceFrame = frame(of: source)
         let others = islands.filter { $0.id != source.id }.map(frame(of:)) + [sourceFrame]
-        let gap = IslandGeometry.padding
+        // A full cell of room, so either island can grow toward the other before they touch.
+        let gap = IslandGeometry.titleCell.width + IslandGeometry.gap
         var candidates: [CGPoint] = []
         for step in 0 ..< 6 {
             let shift = CGFloat(step) * (size.height + gap)

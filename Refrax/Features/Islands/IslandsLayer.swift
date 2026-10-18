@@ -222,6 +222,8 @@ private struct ChipView: View {
         /// Chips untouched this long step back a shade.
         static let restAge: TimeInterval = 24 * 60 * 60
         static let restOpacity: Double = 0.55
+        /// How far inside another island a dragged chip must be to move there.
+        static let otherIslandInset: CGFloat = 24
     }
 
     private var isCurrent: Bool {
@@ -324,7 +326,7 @@ private struct ChipView: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
+        DragGesture(minimumDistance: 6, coordinateSpace: .named("islands"))
             .onChanged { value in
                 dragOffset = value.translation
                 windowState.draggedChipID = tab.id
@@ -333,12 +335,16 @@ private struct ChipView: View {
                 let geometry = islands.geometry(for: island)
                 // A chip may land one cell beyond its island's edges, which grows the island.
                 let reach = home.insetBy(dx: -(geometry.cell.width + IslandGeometry.gap), dy: -(geometry.cell.height + IslandGeometry.gap))
-                if let target = islands.visibleIslands.first(where: { $0.id != island.id && islands.frame(of: $0).contains(point) }) {
+                let local = CGPoint(x: point.x - home.minX, y: point.y - home.minY)
+                let cell = geometry.cell(at: local, in: island.layout)
+                // The chip's own island has first claim; another island takes a drop only well
+                // inside its frame, so a neighbor island never catches a chip moved one cell over.
+                if reach.contains(point), island.layout.canPlace(tab.id, at: cell, span: chip.span) {
+                    islands.dropCandidate = (island.id, cell)
+                } else if let target = islands.visibleIslands.first(where: {
+                    $0.id != island.id && islands.frame(of: $0).insetBy(dx: Layout.otherIslandInset, dy: Layout.otherIslandInset).contains(point)
+                }) {
                     islands.dropCandidate = (target.id, IslandCell(x: 0, y: 0))
-                } else if reach.contains(point) {
-                    let local = CGPoint(x: point.x - home.minX, y: point.y - home.minY)
-                    let cell = geometry.cell(at: local, in: island.layout)
-                    islands.dropCandidate = island.layout.canPlace(tab.id, at: cell, span: chip.span) ? (island.id, cell) : nil
                 } else {
                     islands.dropCandidate = nil
                 }
