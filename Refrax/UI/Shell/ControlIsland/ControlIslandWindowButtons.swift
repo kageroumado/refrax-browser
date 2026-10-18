@@ -189,7 +189,13 @@ final class ControlIslandWindowButtonGroup: NSView {
     @objc
     private func performWindowAction(_ sender: NSButton) {
         switch NSWindow.ButtonType(rawValue: UInt(sender.tag)) {
-        case .closeButton: window?.performClose(sender)
+        case .closeButton:
+            // Closed the way the standard button would, asking the delegate first, without
+            // `performClose`, which does nothing for a window that is not key.
+            guard let window else { return }
+            if (window.delegate?.windowShouldClose?(window)) ?? true {
+                window.close()
+            }
         case .miniaturizeButton: window?.miniaturize(sender)
         default: window?.toggleFullScreen(sender)
         }
