@@ -84,9 +84,9 @@ nonisolated enum CrashMonitor: Sendable {
         }
     }
 
-    /// Collects crash reports from `~/Library/Logs/DiagnosticReports/` that
-    /// match "Refrax" in the filename, were created within the last 7 days,
-    /// and haven't been sent already.
+    /// Collects this build's crash reports from `~/Library/Logs/DiagnosticReports/`:
+    /// files with "Refrax" in the name, created within the last 7 days, not yet
+    /// sent, and written by this copy of Refrax (``isFromThisBuild(_:bundleID:)``).
     ///
     /// - Returns: URLs of matching crash report files, sorted most recent first.
     static func collectCrashReports() -> [URL] {
@@ -113,17 +113,49 @@ nonisolated enum CrashMonitor: Sendable {
                 guard !alreadySent.contains(name) else { return false }
 
                 guard let values = try? url.resourceValues(forKeys: [.creationDateKey]),
-                      let created = values.creationDate
+                      let created = values.creationDate,
+                      created >= cutoff
                 else {
                     return false
                 }
-                return created >= cutoff
+                return isFromThisBuild(url, bundleID: Bundle.main.bundleIdentifier)
             }
             .sorted { lhs, rhs in
                 let lhsDate = (try? lhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
                 let rhsDate = (try? rhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
                 return lhsDate > rhsDate
             }
+    }
+
+    /// Whether a crash report was written by this copy of Refrax.
+    ///
+    /// A debug build and the installed app share the process name, so the file
+    /// name matches both. The report's header names the crashed app's bundle
+    /// identifier, which differs between them. A crash of a helper this copy runs
+    /// (a plug-in engine's processes) carries the helper's own identifier, but its
+    /// path runs through this copy's Application Support folder, which is named
+    /// after the app's bundle identifier.
+    ///
+    /// - Parameters:
+    ///   - url: An `.ips` file: one JSON header line, then the JSON body.
+    ///   - bundleID: The running app's bundle identifier.
+    static func isFromThisBuild(_ url: URL, bundleID: String?) -> Bool {
+        guard let bundleID, let data = try? Data(contentsOf: url) else { return false }
+        let headerLine = data.prefix { $0 != UInt8(ascii: "\n") }
+        guard let header = try? JSONSerialization.jsonObject(with: headerLine) as? [String: Any] else {
+            return false
+        }
+        if header["bundleID"] as? String == bundleID {
+            return true
+        }
+
+        let bodyData = data.dropFirst(headerLine.count + 1)
+        guard let body = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let processPath = body["procPath"] as? String
+        else {
+            return false
+        }
+        return processPath.contains("/Application Support/\(bundleID)/")
     }
 
     private static func loadSentReportNames() -> Set<String> {
