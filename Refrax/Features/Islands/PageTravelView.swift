@@ -37,6 +37,8 @@ struct PageTravelView: View {
     @State private var visible: CGRect = .zero
     /// The wait for the frame without the window's controls, then the capture.
     @State private var captureTask: Task<Void, Never>?
+    /// The slab's lean against an edge that did not give.
+    @State private var bumpOffset: CGSize = .zero
 
     private enum Layout {
         /// The page's share of the window while the reveal key is held.
@@ -48,6 +50,8 @@ struct PageTravelView: View {
         static let jumpDuration: TimeInterval = 0.2
         /// The background showing between two sliding slabs.
         static let gap: CGFloat = 28
+        /// How far the slab leans against an edge.
+        static let bumpDistance: CGFloat = 22
         static let firstPaintFade: TimeInterval = 0.18
     }
 
@@ -75,6 +79,7 @@ struct PageTravelView: View {
                 livePage(tab)
                 if showsSlab, !isTraveling {
                     slab(image: islands.snapshot(for: tab.id), tab: tab, scale: slabScale)
+                        .offset(bumpOffset)
                         .allowsHitTesting(false)
                 }
             }
@@ -114,6 +119,10 @@ struct PageTravelView: View {
         .onChange(of: islands.travel?.id) { _, id in
             guard let travel = islands.travel, travel.id == id else { return }
             begin(travel)
+        }
+        .onChange(of: islands.bump?.id) { _, id in
+            guard let bump = islands.bump, bump.id == id, showsSlab, !isTraveling else { return }
+            lean(toward: bump.direction)
         }
     }
 
@@ -218,8 +227,11 @@ struct PageTravelView: View {
         return ZStack {
             ForEach(TableDirection.allCases, id: \.self) { direction in
                 if let label = label(toward: direction) {
-                    DirectionLabel(direction: direction, text: label.text, crosses: label.crosses)
-                        .position(Self.labelPosition(for: direction, on: slab))
+                    DirectionLabel(
+                        direction: direction, text: label.text, crosses: label.crosses,
+                        isArmed: label.crosses && islands.armedCrossing?.direction == direction,
+                    )
+                    .position(Self.labelPosition(for: direction, on: slab))
                 }
             }
         }
@@ -277,12 +289,29 @@ struct PageTravelView: View {
         }
     }
 
+    /// The slab leans the way it was pushed and springs back: the edge did not give.
+    private func lean(toward direction: TableDirection) {
+        let unit = TravelMotion.vector(direction, step: CGSize(width: 1, height: 1))
+        let lean = CGSize(width: -unit.width * Layout.bumpDistance, height: -unit.height * Layout.bumpDistance)
+        if reduceMotion {
+            return
+        }
+        withAnimation(.snappy(duration: 0.14)) {
+            bumpOffset = lean
+        } completion: {
+            withAnimation(.bouncy(duration: 0.42, extraBounce: 0.1)) {
+                bumpOffset = .zero
+            }
+        }
+    }
+
     /// The key was let go: the slab grows back to the window and the live page mounts under
     /// it, its snapshot over it until it has painted, with nothing moving at the swap.
     private func endInspecting() {
         captureTask?.cancel()
         captureTask = nil
         canvas.isCapturingPage = false
+        islands.leaveEdges()
         guard showsSlab else { return }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {
             slabScale = 1
@@ -425,7 +454,7 @@ private struct TravelMotion: ViewModifier {
     }
 
     /// Where an incoming slab starts for a move in `direction`: one step off, the way it comes from.
-    private static func vector(_ direction: TableDirection, step: CGSize) -> CGSize {
+    static func vector(_ direction: TableDirection, step: CGSize) -> CGSize {
         switch direction {
         case .left: CGSize(width: -step.width, height: 0)
         case .right: CGSize(width: step.width, height: 0)
@@ -436,11 +465,12 @@ private struct TravelMotion: ViewModifier {
 }
 
 /// The name of the tab a direction leads to, with its chevron; an island's name when the
-/// direction crosses to it.
+/// direction crosses to it, lit once its edge has been pushed and the next push will cross.
 private struct DirectionLabel: View {
     let direction: TableDirection
     let text: String
     let crosses: Bool
+    let isArmed: Bool
 
     private var symbol: String {
         switch direction {
@@ -464,10 +494,11 @@ private struct DirectionLabel: View {
             }
         }
         .font(.subheadline.weight(.medium))
-        .foregroundStyle(crosses ? .secondary : .primary)
+        .foregroundStyle(isArmed ? AnyShapeStyle(Color.appAccentColor) : crosses ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .glassEffect(.regular, in: Capsule())
+        .animation(.easeOut(duration: 0.15), value: isArmed)
         .frame(maxWidth: direction == .left || direction == .right ? 220 : 420)
         .accessibilityLabel("\(direction.rawValue): \(text)")
     }

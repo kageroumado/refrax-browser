@@ -31,6 +31,18 @@ struct PageTravel: Identifiable {
     let style: TravelStyle
 }
 
+/// A push against an island's edge that did not cross it, for the page view to show.
+struct EdgeBump: Identifiable, Equatable {
+    let id = UUID()
+    let direction: TableDirection
+}
+
+/// An edge pushed against: a second push the same way, soon enough, crosses to the island there.
+struct ArmedCrossing: Equatable {
+    let direction: TableDirection
+    let at: Date
+}
+
 /// One window's islands: the layout of every island built from the space's groups, the
 /// placements kept for them, the moves between pages, and the islands' own edits.
 ///
@@ -43,6 +55,8 @@ struct PageTravel: Identifiable {
 final class IslandController {
     enum Layout {
         static let snapshotLimit = 16
+        /// How long after a push against an edge a second push crosses it.
+        static let crossingWindow: TimeInterval = 1.5
         /// Where the first island of a space goes, normalized to the window.
         static let firstIslandOrigin = CGPoint(x: 0.1, y: 0.1)
         /// How far a new island lands from the one it came from, in window widths.
@@ -63,6 +77,10 @@ final class IslandController {
     private(set) var travel: PageTravel?
     /// A step asked for while a move is under way: it runs when the move lands.
     @ObservationIgnored private var pendingStep: TableDirection?
+    /// The last push against an edge that did not cross it.
+    private(set) var bump: EdgeBump?
+    /// The edge the last push leaned on: the next push the same way crosses.
+    private(set) var armedCrossing: ArmedCrossing?
     /// A chip being dragged: where it would land, if it may.
     var dropCandidate: (island: UUID, cell: IslandCell)?
     /// The island being moved, drawn over the others.
@@ -316,12 +334,35 @@ final class IslandController {
             return
         }
         if let tab = destination(toward: direction) {
+            armedCrossing = nil
             travel(to: tab, style: .slide(direction))
         } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.layout.tabIDs.first, let tab = tab(for: tabID) {
-            travel(to: tab, style: .cross(direction))
+            // The island's edge resists: the first push leans on it, the second crosses.
+            if let armed = armedCrossing, armed.direction == direction, Date.now.timeIntervalSince(armed.at) < Layout.crossingWindow {
+                armedCrossing = nil
+                travel(to: tab, style: .cross(direction))
+            } else {
+                armedCrossing = ArmedCrossing(direction: direction, at: .now)
+                pushEdge(direction, toast: "Once more to go to \(island.title).")
+            }
         } else {
-            windowState.showToast(direction == .up || direction == .down ? "No tab \(direction.rawValue) from here." : "No tab to the \(direction.rawValue) from here.")
+            armedCrossing = nil
+            pushEdge(direction, toast: direction == .up || direction == .down ? "No tab \(direction.rawValue) from here." : "No tab to the \(direction.rawValue) from here.")
         }
+    }
+
+    /// A push that stays on this page: the slab bumps against the edge; a live page gets the word.
+    private func pushEdge(_ direction: TableDirection, toast: String) {
+        if canvas.showsPageSlab {
+            bump = EdgeBump(direction: direction)
+        } else {
+            windowState.showToast(toast)
+        }
+    }
+
+    /// The hold ended: no edge stays leaned on.
+    func leaveEdges() {
+        armedCrossing = nil
     }
 
     /// Opens `tab` from its chip: a slide when it is a neighbor, a crossing from another
