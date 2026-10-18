@@ -78,6 +78,10 @@ struct IslandView: View {
     @Environment(IslandController.self) private var islands
     @Environment(WindowState.self) private var windowState
     @State private var dragStart: CGPoint?
+    @State private var isHovered = false
+    @State private var isRenaming = false
+    @State private var draftName = ""
+    @FocusState private var nameIsFocused: Bool
 
     private var geometry: IslandGeometry {
         islands.geometry(for: island)
@@ -102,7 +106,8 @@ struct IslandView: View {
         // The Control Island's glass: the window's tint under regular glass.
         .background(windowState.controlIslandTint, in: shape)
         .glassEffect(.regular, in: shape)
-        .shadow(color: .black.opacity(0.14), radius: 16, y: 6)
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.layout.chips.count) tabs")
     }
@@ -149,41 +154,72 @@ struct IslandView: View {
         return chip.span
     }
 
+    /// The island's name, its count, and, while the pointer is on the island, its pin and
+    /// actions. Double-click the name to rename a group's island. The footer moves the island.
     private var footer: some View {
-        HStack(spacing: 8) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(island.title)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
+        let showsControls = isHovered || island.placement.isPinned
+        return HStack(spacing: 7) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            if isRenaming {
+                TextField("Name", text: $draftName)
+                    .textFieldStyle(.plain)
+                    .font(.caption.weight(.semibold))
+                    .focused($nameIsFocused)
+                    .onSubmit { commitRename() }
+                    .onExitCommand { isRenaming = false }
+                    .onChange(of: nameIsFocused) { _, focused in
+                        if !focused { commitRename() }
+                    }
+            } else {
+                Text(island.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .onTapGesture(count: 2) {
+                        guard !island.isDefault else { return }
+                        draftName = island.title
+                        isRenaming = true
+                        nameIsFocused = true
+                    }
+            }
             Text("\(island.layout.chips.count)")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.tertiary)
             Spacer(minLength: 0)
-            Button {
-                islands.togglePin(island.id)
-            } label: {
-                Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
-                    .font(.system(size: 12))
-                    .foregroundStyle(island.placement.isPinned ? color : .secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
+            if showsControls {
+                Button {
+                    islands.togglePin(island.id)
+                } label: {
+                    Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 11))
+                        .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.tertiary))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
+                Menu {
+                    Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
+                    if !island.isDefault {
+                        Button("Rename…") {
+                            draftName = island.title
+                            isRenaming = true
+                            nameIsFocused = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 18, height: 18)
             }
-            .buttonStyle(.plain)
-            .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
-            Menu {
-                Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(width: 20, height: 20)
         }
         .padding(.horizontal, IslandGeometry.padding)
+        .animation(.easeInOut(duration: 0.15), value: showsControls)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 3, coordinateSpace: .named("islands"))
@@ -198,6 +234,12 @@ struct IslandView: View {
                 .onEnded { _ in dragStart = nil },
         )
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private func commitRename() {
+        guard isRenaming else { return }
+        isRenaming = false
+        islands.rename(island.id, to: draftName)
     }
 }
 
@@ -217,7 +259,7 @@ private struct ChipView: View {
     @State private var isHovering = false
 
     private enum Layout {
-        static let faviconSize: CGFloat = 16
+        static let faviconSize: CGFloat = 14
         static let previewHeaderHeight: CGFloat = 24
         /// Chips untouched this long step back a shade.
         static let restAge: TimeInterval = 24 * 60 * 60
@@ -248,10 +290,7 @@ private struct ChipView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isCurrent ? color.opacity(0.18) : Color.primary.opacity(isHovering ? 0.08 : 0.04), in: shape)
-        .overlay {
-            shape.strokeBorder(isCurrent ? color : Color.primary.opacity(0.08), lineWidth: isCurrent ? 1.5 : 1)
-        }
+        .background(isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.1 : 0.055), in: shape)
         .clipShape(shape)
         .opacity(isResting ? Layout.restOpacity : 1)
         .offset(dragOffset)
@@ -271,13 +310,27 @@ private struct ChipView: View {
             favicon
             if !island.placement.iconsOnly {
                 Text(tab.displayTitle)
-                    .font(.subheadline)
+                    .font(.callout.weight(isCurrent ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+                if isHovering {
+                    Button {
+                        tabManager.requestCloseTab(tab)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close Tab")
+                }
             }
         }
-        .padding(.horizontal, island.placement.iconsOnly ? 0 : 10)
+        .padding(.leading, island.placement.iconsOnly ? 0 : 9)
+        .padding(.trailing, island.placement.iconsOnly ? 0 : 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: island.placement.iconsOnly ? .center : .leading)
     }
 
@@ -301,9 +354,15 @@ private struct ChipView: View {
     @ViewBuilder
     private var favicon: some View {
         if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
-            Image(nsImage: image).resizable().scaledToFit().frame(width: Layout.faviconSize, height: Layout.faviconSize)
+            Image(nsImage: image).resizable().scaledToFit()
+                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         } else {
-            Image(systemName: "globe").font(.system(size: 12)).frame(width: Layout.faviconSize, height: Layout.faviconSize)
+            Image(systemName: "globe")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
         }
     }
 

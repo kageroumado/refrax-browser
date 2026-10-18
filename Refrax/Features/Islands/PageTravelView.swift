@@ -39,7 +39,6 @@ struct PageTravelView: View {
         static let jumpDuration: TimeInterval = 0.2
         /// The background showing between two sliding slabs.
         static let gap: CGFloat = 28
-        static let labelInset: CGFloat = 14
         static let firstPaintFade: TimeInterval = 0.18
     }
 
@@ -189,20 +188,32 @@ struct PageTravelView: View {
         }
     }
 
-    /// The names of the tabs in each direction, in the margins around the zoomed-out page.
+    /// The names of the tabs in each direction, each sitting on the slab's rim on that side.
     private var directionLabels: some View {
-        ZStack {
+        let slab = CGRect(
+            x: (size.width - slabSize.width) / 2, y: (size.height - slabSize.height) / 2,
+            width: slabSize.width, height: slabSize.height,
+        )
+        return ZStack {
             ForEach(TableDirection.allCases, id: \.self) { direction in
                 if let label = label(toward: direction) {
                     DirectionLabel(direction: direction, text: label.text, crosses: label.crosses)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment(for: direction))
-                        .padding(Layout.labelInset)
+                        .position(Self.labelPosition(for: direction, on: slab))
                 }
             }
         }
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)
         .transition(.opacity)
+    }
+
+    private static func labelPosition(for direction: TableDirection, on slab: CGRect) -> CGPoint {
+        switch direction {
+        case .left: CGPoint(x: slab.minX, y: slab.midY)
+        case .right: CGPoint(x: slab.maxX, y: slab.midY)
+        case .up: CGPoint(x: slab.midX, y: slab.minY)
+        case .down: CGPoint(x: slab.midX, y: slab.maxY)
+        }
     }
 
     private func label(toward direction: TableDirection) -> (text: String, crosses: Bool)? {
@@ -213,15 +224,6 @@ struct PageTravelView: View {
             return (island.title, true)
         }
         return nil
-    }
-
-    private func alignment(for direction: TableDirection) -> Alignment {
-        switch direction {
-        case .left: .leading
-        case .right: .trailing
-        case .up: .top
-        case .down: .bottom
-        }
     }
 
     // MARK: - Inspecting
@@ -290,7 +292,6 @@ private struct SlabChrome: ViewModifier {
         static let cornerRadius: CGFloat = 16
         static let shadowRadius: CGFloat = 22
         static let shadowOpacity: Double = 0.22
-        static let rimOpacity: Double = 0.45
     }
 
     func body(content: Content) -> some View {
@@ -299,14 +300,22 @@ private struct SlabChrome: ViewModifier {
         content
             .clipShape(shape)
             .overlay {
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(Layout.rimOpacity), .white.opacity(Layout.rimOpacity * 0.3), .white.opacity(Layout.rimOpacity * 0.6)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing,
-                    ),
-                    lineWidth: isSlab ? 1 : 0,
-                )
-                .allowsHitTesting(false)
+                if isSlab {
+                    shape.strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.7), location: 0),
+                                .init(color: .white.opacity(0.18), location: 0.45),
+                                .init(color: .white.opacity(0.35), location: 1),
+                            ],
+                            startPoint: .top, endPoint: .bottom,
+                        ),
+                        lineWidth: 1,
+                    )
+                    .allowsHitTesting(false)
+                    shape.inset(by: -0.5).strokeBorder(.black.opacity(0.14), lineWidth: 0.5)
+                        .allowsHitTesting(false)
+                }
             }
             .shadow(color: .black.opacity(isSlab ? Layout.shadowOpacity : 0), radius: Layout.shadowRadius, y: 8)
             .scaleEffect(scale)

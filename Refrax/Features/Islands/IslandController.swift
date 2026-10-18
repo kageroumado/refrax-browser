@@ -415,6 +415,14 @@ final class IslandController {
         persist()
     }
 
+    /// Renames a group's island; the space's own island carries the space's name.
+    func rename(_ islandID: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let group = windowState.activeSpace?.groups.first(where: { $0.id == islandID }) else { return }
+        groupManager.renameGroup(group, to: trimmed)
+        rebuild()
+    }
+
     func togglePin(_ islandID: UUID) {
         guard let index = islands.firstIndex(where: { $0.id == islandID }) else { return }
         islands[index].placement.isPinned.toggle()

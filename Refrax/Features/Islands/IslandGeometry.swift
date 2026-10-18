@@ -8,14 +8,14 @@ import Foundation
 /// rectangle of cells, so its frame is that rectangle plus the gaps inside it.
 nonisolated struct IslandGeometry: Equatable, Sendable {
     /// A title cell: favicon, a short title, and room for the pointer.
-    static let titleCell = CGSize(width: 168, height: 34)
+    static let titleCell = CGSize(width: 172, height: 32)
     /// An icon cell: the favorites column's square.
-    static let iconCell = CGSize(width: 34, height: 34)
+    static let iconCell = CGSize(width: 32, height: 32)
     /// The gap between chips.
-    static let gap: CGFloat = 6
+    static let gap: CGFloat = 5
     /// The island's padding around its chips, and the footer's height.
-    static let padding: CGFloat = 10
-    static let footerHeight: CGFloat = 28
+    static let padding: CGFloat = 12
+    static let footerHeight: CGFloat = 30
     /// The Control Island's corner.
     static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
     /// The chips' corner, concentric with the island's.
