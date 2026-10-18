@@ -88,6 +88,9 @@ final class IslandController {
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var spaceID: UUID?
     @ObservationIgnored private var activatedHere: UUID?
+    /// The page view shows the page itself, so a capture of its region is the page: set by
+    /// the page view, false while a slab or a move's images stand in for it.
+    @ObservationIgnored var liveIsVisible = false
 
     @ObservationIgnored private unowned let windowState: WindowState
     @ObservationIgnored private unowned let tabManager: TabManager
@@ -349,17 +352,13 @@ final class IslandController {
     /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot and a beam
     /// runs from the page card to the new chip.
     private func travel(to tab: Tab, style: TravelStyle) {
-        let outgoing = windowState.activeTab
-        Task(name: "Travel to a chip") { [weak self] in
-            guard let self else { return }
-            let snapshot = outgoing == nil ? nil : await captureSnapshot(of: outgoing!)
-            travel = PageTravel(outgoing: snapshot, style: style)
-            activatedHere = tab.id
-            tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
-            if let island = island(holding: tab.id) {
-                lastTab[island.id] = tab.id
-                beam(to: tab.id, color: color(of: island))
-            }
+        let snapshot = windowState.activeTab.flatMap { captureSnapshot(of: $0) }
+        travel = PageTravel(outgoing: snapshot, style: style)
+        activatedHere = tab.id
+        tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
+        if let island = island(holding: tab.id) {
+            lastTab[island.id] = tab.id
+            beam(to: tab.id, color: color(of: island))
         }
     }
 
@@ -517,13 +516,17 @@ final class IslandController {
         captures[tabID] ?? canvas.snapshots[tabID]
     }
 
-    /// Takes the page's snapshot now, while its view is on screen, and keeps it; otherwise the
-    /// newest image kept for it.
+    /// Captures the page from the window server now, while the page view shows it, and keeps
+    /// the image in memory and on disk; otherwise the newest image kept for it.
     @discardableResult
-    func captureSnapshot(of tab: Tab) async -> NSImage? {
-        if let page = pagePool.existingPage(for: tab.activePage), page.contentView.window != nil,
-           !page.contentView.isHiddenOrHasHiddenAncestor, let image = try? await page.snapshot() {
+    func captureSnapshot(of tab: Tab) -> NSImage? {
+        if liveIsVisible, tab.id == windowState.activeTabID, let page = pagePool.existingPage(for: tab.activePage),
+           let image = PageCapture.image(of: page.contentView) {
             store(image, for: tab.id)
+            if tab.space?.dataStoreMode != .private, let data = image.tiffRepresentation {
+                let id = tab.id
+                Task(name: "Keep a page's image", priority: .utility) { await CanvasSnapshotStore.save(tiff: data, for: id) }
+            }
             return image
         }
         return snapshot(for: tab.id)

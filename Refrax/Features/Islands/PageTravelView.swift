@@ -83,6 +83,9 @@ struct PageTravelView: View {
             size = frame.size
             islands.updateViewport(frame)
         }
+        .onChange(of: showsLive && arrivingTabID == nil, initial: true) { _, visible in
+            islands.liveIsVisible = visible
+        }
         .onChange(of: isInspecting) { _, inspecting in
             if inspecting {
                 beginInspecting()
@@ -130,6 +133,14 @@ struct PageTravelView: View {
                     arrivingTabID = nil
                 }
             }
+            // A page that has finished loading while on screen is captured, so its slab is
+            // a picture of it from then on, in this session and the next.
+            .task(id: LoadKey(tabID: tab.id, isLoading: pagePool.existingPage(for: tab.activePage)?.isLoading ?? true, visible: showsLive && !arriving)) {
+                guard showsLive, !arriving, pagePool.existingPage(for: tab.activePage)?.isLoading == false else { return }
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                islands.captureSnapshot(of: tab)
+            }
     }
 
     /// The two slabs of a move: images only.
@@ -161,6 +172,8 @@ struct PageTravelView: View {
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .clipped()
         .modifier(SlabChrome(scale: scale))
+        // One texture per slab: the image, rim, and shadow are drawn once and then moved.
+        .drawingGroup()
     }
 
     @ViewBuilder
@@ -213,16 +226,13 @@ struct PageTravelView: View {
 
     // MARK: - Inspecting
 
-    /// The key went down: the page is snapshotted, and its image steps back to a slab.
+    /// The key went down: the page is captured, and its image steps back to a slab.
     private func beginInspecting() {
         guard let tab = windowState.activeTab else { return }
-        Task(name: "Snapshot the page for inspection") {
-            await islands.captureSnapshot(of: tab)
-            guard isInspecting || isTraveling else { return }
-            showsSlab = true
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {
-                slabScale = Layout.inspectionScale
-            }
+        islands.captureSnapshot(of: tab)
+        showsSlab = true
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {
+            slabScale = Layout.inspectionScale
         }
     }
 
@@ -379,4 +389,11 @@ private struct DirectionLabel: View {
         .frame(maxWidth: direction == .left || direction == .right ? 220 : 420)
         .accessibilityLabel("\(direction.rawValue): \(text)")
     }
+}
+
+/// What decides when a page is captured after loading.
+private struct LoadKey: Equatable {
+    var tabID: UUID
+    var isLoading: Bool
+    var visible: Bool
 }
