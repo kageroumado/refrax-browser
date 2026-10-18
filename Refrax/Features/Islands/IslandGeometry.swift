@@ -51,4 +51,18 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
         let y = point.y - Self.bandHeight - Self.padding
         return min(count, max(0, Int((y / Self.rowHeight).rounded())))
     }
+
+    /// The row `point` is on, when it is on one's middle: a drop there joins that row's tab
+    /// instead of landing beside it.
+    func joinedRow(at point: CGPoint, count: Int) -> Int? {
+        let y = point.y - Self.bandHeight - Self.padding
+        guard y >= 0 else { return nil }
+        let row = Int(y / Self.rowHeight)
+        let within = (y - CGFloat(row) * Self.rowHeight) / Self.rowHeight
+        guard row < count, within > Self.joinBand, within < 1 - Self.joinBand else { return nil }
+        return row
+    }
+
+    /// The part of a row's height at its top and bottom where a drop lands beside it.
+    private static let joinBand: CGFloat = 0.3
 }

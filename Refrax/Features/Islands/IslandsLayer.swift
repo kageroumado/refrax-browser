@@ -30,6 +30,10 @@ struct IslandsLayer: View {
                         .zIndex(zIndex(of: island))
                         .transition(reduceMotion ? .opacity : .scale(scale: Layout.emergeScale).combined(with: .opacity))
                 }
+                if let side = islands.sideDrop {
+                    SideDropZone(side: side, bounds: bounds)
+                        .transition(.opacity)
+                }
                 ForEach(islands.detachedTabs.filter { $0.id != windowState.activeTabID }) { tab in
                     let frame = canvas.floatingFrame(for: tab, in: bounds)
                     FloatingTabCard(tab: tab, placement: canvas.floatingPlacement(for: tab), area: bounds)
@@ -40,6 +44,7 @@ struct IslandsLayer: View {
                 }
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
+            .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
             // Out of the frame the page is captured in, so pinned islands stay out of its image.
             .opacity(canvas.isCapturingPage ? 0 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -144,7 +149,7 @@ struct IslandView: View {
     /// How far a row moves while another is dragged: the rows below the lifted one close its
     /// hole, and the rows at and past the drop row open a gap for it.
     private func shift(of index: Int, tabID: UUID) -> CGFloat {
-        guard let dragged = islands.draggedTabID, dragged != tabID, let drop = islands.drop, drop.island == island.id else { return 0 }
+        guard let dragged = islands.draggedTabID, dragged != tabID, let drop = islands.drop, drop.island == island.id, drop.joins == nil else { return 0 }
         var target = index
         if let lifted = island.tabIDs.firstIndex(of: dragged), lifted < index {
             target -= 1
@@ -257,6 +262,7 @@ private struct IslandTabRow: View {
 
     private enum Layout {
         static let faviconSize: CGFloat = 16
+        static let paneFaviconSize: CGFloat = 12
         static let ringSize: CGFloat = 20
         /// How far past an island's edge a row still lands on it.
         static let reach: CGFloat = 12
@@ -274,11 +280,15 @@ private struct IslandTabRow: View {
         islands.color(of: island)
     }
 
+    /// Another row is held over this one: it would join this tab as a second pane.
+    private var isJoinTarget: Bool {
+        islands.drop?.joins == tab.id
+    }
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: IslandGeometry.rowCornerRadius, style: .continuous)
         HStack(spacing: 8) {
-            FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
-                .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
+            pages
             if !iconsOnly {
                 FloatingTabTitle(tab: tab)
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
@@ -302,6 +312,11 @@ private struct IslandTabRow: View {
         .padding(.horizontal, iconsOnly ? 0 : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
         .background(isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.08 : 0), in: shape)
+        .overlay {
+            if isJoinTarget {
+                shape.strokeBorder(Color.appAccentColor, lineWidth: 1.5)
+            }
+        }
         .contentShape(shape)
         .offset(dragOffset)
         .zIndex(dragOffset == .zero ? 0 : 2)
@@ -314,6 +329,24 @@ private struct IslandTabRow: View {
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { islands.open(tab) }
+    }
+
+    /// The tab's page as its favicon with the loading ring; a tab of two pages shows both,
+    /// the two panes side by side in small.
+    @ViewBuilder
+    private var pages: some View {
+        if tab.pages.count > 1 {
+            HStack(spacing: 2) {
+                ForEach(tab.pages.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }.prefix(2)) { page in
+                    FaviconView(data: page.faviconData, url: page.url, size: Layout.paneFaviconSize)
+                }
+            }
+            .frame(width: Layout.faviconSize + Layout.paneFaviconSize + 2, height: Layout.faviconSize)
+            .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
+        } else {
+            FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
+                .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
+        }
     }
 
     /// The page's actions and the tab's, with a rename that edits the row's title in place
@@ -343,25 +376,79 @@ private struct IslandTabRow: View {
                 if let target = islands.visibleIslands.first(where: { islands.frame(of: $0).insetBy(dx: -Layout.reach, dy: -Layout.reach).contains(point) }) {
                     let frame = islands.frame(of: target)
                     let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+                    let geometry = islands.geometry(for: target)
                     let count = target.tabIDs.filter { $0 != tab.id }.count
-                    let drop = IslandDrop(island: target.id, row: islands.geometry(for: target).insertion(at: local, count: count))
+                    var drop = IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count))
+                    // On a row's middle the row joins that tab as its second pane.
+                    if let hit = geometry.joinedRow(at: local, count: target.tabIDs.count), islands.canJoin(tab.id, with: target.tabIDs[hit]) {
+                        drop.joins = target.tabIDs[hit]
+                    }
                     if islands.drop != drop {
                         islands.drop = drop
                     }
-                } else if islands.drop != nil {
-                    islands.drop = nil
+                    if islands.sideDrop != nil {
+                        islands.sideDrop = nil
+                    }
+                } else {
+                    if islands.drop != nil {
+                        islands.drop = nil
+                    }
+                    let side = islands.sideZone(at: point, dragging: tab.id)
+                    if islands.sideDrop != side {
+                        islands.sideDrop = side
+                    }
                 }
             }
             .onEnded { value in
                 if let drop = islands.drop {
-                    islands.moveTab(tab.id, to: drop.row, in: drop.island)
+                    if let joins = drop.joins {
+                        islands.join(tab.id, with: joins)
+                    } else {
+                        islands.moveTab(tab.id, to: drop.row, in: drop.island)
+                    }
+                } else if let side = islands.sideDrop {
+                    islands.joinPage(tab.id, at: side)
                 } else {
                     islands.detach(tab.id, at: value.location)
                 }
                 islands.drop = nil
+                islands.sideDrop = nil
                 islands.draggedTabID = nil
                 dragOffset = .zero
             }
+    }
+}
+
+/// The side of the page a dragged row would join the current tab on: the band lights up
+/// with the split it makes.
+private struct SideDropZone: View {
+    let side: PanePosition
+    let bounds: CGRect
+
+    private enum Layout {
+        static let inset: CGFloat = 12
+        static let symbolSize: CGFloat = 30
+    }
+
+    var body: some View {
+        let width = bounds.width * IslandController.Layout.sideZoneShare
+        let zone = CGRect(x: side == .topLeft ? bounds.minX : bounds.maxX - width, y: bounds.minY, width: width, height: bounds.height)
+            .insetBy(dx: Layout.inset, dy: Layout.inset)
+        RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+            .fill(Color.appAccentColor.opacity(0.14))
+            .overlay {
+                RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+                    .strokeBorder(Color.appAccentColor.opacity(0.5), lineWidth: 1)
+            }
+            .overlay {
+                Image(systemName: side == .topLeft ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled")
+                    .font(.system(size: Layout.symbolSize, weight: .regular))
+                    .foregroundStyle(Color.appAccentColor)
+            }
+            .frame(width: zone.width, height: zone.height)
+            .offset(x: zone.minX, y: zone.minY)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

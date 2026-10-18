@@ -14,10 +14,12 @@ struct Island: Identifiable, Equatable {
     var isDefault: Bool
 }
 
-/// Where a dragged row would land: an island and the row it goes before.
+/// Where a dragged row would land: an island and the row it goes before, or the tab on that
+/// island it joins as a second pane.
 struct IslandDrop: Equatable {
     let island: UUID
     let row: Int
+    var joins: UUID?
 }
 
 /// How a page replaces the current one.
@@ -68,6 +70,8 @@ final class IslandController {
         static let newIslandOffset: Double = 0.26
         /// Where under its top edge a card taken out of an island hangs from the pointer.
         static let cardGrab: CGFloat = 14
+        /// The share of the page's width at each side where a dragged row joins the page.
+        static let sideZoneShare: CGFloat = 0.28
     }
 
     private nonisolated struct SyncKey: Equatable, Sendable {
@@ -91,6 +95,8 @@ final class IslandController {
     /// The row being dragged, and where it would land; nowhere means it leaves as a card.
     var draggedTabID: UUID?
     var drop: IslandDrop?
+    /// The side of the page a dragged row would join the current tab on, as a pane.
+    var sideDrop: PanePosition?
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
     /// The island that just appeared, for its unfold.
@@ -151,6 +157,11 @@ final class IslandController {
     }
 
     private func sync(_ key: SyncKey) {
+        // A tab shown as the window's page is a row again, not a card.
+        if let tabID = key.activeTabID, state.detached.contains(tabID) {
+            state.detached.remove(tabID)
+            persist()
+        }
         rebuild()
         if let tabID = key.activeTabID, let island = island(holding: tabID) {
             lastTab[island.id] = tabID
@@ -214,9 +225,26 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
-    /// Where the islands take the pointer: every visible island and every card.
+    /// Where the islands take the pointer: every visible island and every card on screen.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
-        visibleIslands.map(frame(of:)) + detachedTabs.map { canvas.floatingHitFrame(for: $0, in: bounds) }
+        visibleIslands.map(frame(of:))
+            + detachedTabs.filter { $0.id != windowState.activeTabID }.map { canvas.floatingHitFrame(for: $0, in: bounds) }
+    }
+
+    /// The side of the page a row dragged to `point` would join the current tab on: the
+    /// band at either side, when the row's tab can be its second pane.
+    func sideZone(at point: CGPoint, dragging tabID: UUID) -> PanePosition? {
+        guard let current = currentTab, canJoin(tabID, with: current.id) else { return nil }
+        let width = bounds.width * Layout.sideZoneShare
+        if point.x < bounds.minX + width { return .topLeft }
+        if point.x > bounds.maxX - width { return .topRight }
+        return nil
+    }
+
+    /// A single page can join a tab that has room for a second.
+    func canJoin(_ tabID: UUID, with otherID: UUID) -> Bool {
+        guard tabID != otherID, let source = tab(for: tabID), let target = tab(for: otherID) else { return false }
+        return source.pages.count == 1 && !source.isMultiPage && target.pages.count < 2
     }
 
     func color(of island: Island) -> Color {
@@ -439,6 +467,38 @@ final class IslandController {
         let rows = target.tabIDs.filter { $0 != tabID }.compactMap(self.tab(for:))
         let at = min(row, rows.count)
         tabManager.placeTab(tab, after: at > 0 ? rows[at - 1] : nil, before: at < rows.count ? rows[at] : nil)
+        persist()
+        rebuild()
+    }
+
+    /// Joins `tabID` to `otherID` as its second pane, beside it: one tab holding two pages.
+    func join(_ tabID: UUID, with otherID: UUID) {
+        guard canJoin(tabID, with: otherID), let source = tab(for: tabID), let target = tab(for: otherID) else { return }
+        state.detached.remove(tabID)
+        tabManager.moveTabToLayout(source, into: target, at: .topRight)
+        persist()
+        rebuild()
+    }
+
+    /// Joins `tabID` to the current tab as a pane on `side` of the page.
+    func joinPage(_ tabID: UUID, at side: PanePosition) {
+        guard let current = currentTab, canJoin(tabID, with: current.id), let source = tab(for: tabID) else { return }
+        let existing = current.pages
+        state.detached.remove(tabID)
+        guard tabManager.moveTabToLayout(source, into: current, at: side == .topLeft ? .topLeft : .topRight) != nil else { return }
+        if side == .topLeft, let page = existing.first {
+            page.position = .topRight
+            current.layoutConfiguration?.panePositions[page.id] = .topRight
+            tabManager.scheduleSave()
+        }
+        persist()
+        rebuild()
+    }
+
+    /// A card goes back into its island, where its tab sits in the list.
+    func returnToIsland(_ tabID: UUID) {
+        guard state.detached.contains(tabID) else { return }
+        state.detached.remove(tabID)
         persist()
         rebuild()
     }

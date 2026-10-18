@@ -126,6 +126,7 @@ struct FloatingTabCard: View {
 
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(WindowState.self) private var windowState
+    @Environment(IslandController.self) private var islands
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var faviconSpace
     /// The card's frame when the current resize began; its sides opposite the handle stay put.
@@ -276,22 +277,20 @@ struct FloatingTabCard: View {
                 .allowsHitTesting(false)
         }
         .overlay(alignment: .topLeading) {
-            // A kept icon has no header, so its way back out shows on its corner on hover.
-            if isKept, showsControls {
-                keepVisibleButton
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .controlSize(.small)
+            // An icon has no header, so its way back to its island shows on its corner on hover.
+            if showsControls {
+                light(.yellow, symbol: "minus", "Back to Its Island") { islands.returnToIsland(tab.id) }
                     .background(.regularMaterial, in: Circle())
                     .offset(x: -Layout.iconBadgeOffset, y: -Layout.iconBadgeOffset)
             }
         }
     }
 
-    /// A title bar: favicon, title, and state at rest; the shape button, Keep Visible, close,
-    /// and the options join them on hover. The header is the card's drag handle.
+    /// A title bar: a window's three lights at the leading edge, then favicon, title, and
+    /// state; the options join them on hover. The header is the card's drag handle.
     private var header: some View {
         HStack(spacing: 0) {
+            lights
             cardHandle(HStack(spacing: Header.itemSpacing) {
                 favicon(side: Header.glyphBox)
                 FloatingTabTitle(tab: tab)
@@ -305,11 +304,6 @@ struct FloatingTabCard: View {
                     .padding(.leading, Header.itemSpacing)
             }
             if showsControls {
-                if !isMainPage {
-                    shapeButton
-                    keepVisibleButton
-                }
-                closeButton
                 PageActionsMenu(tab: tab, surface: .floatingCard, area: area)
                     .frame(width: Header.controlSize, height: Header.controlSize)
             }
@@ -321,14 +315,37 @@ struct FloatingTabCard: View {
         .padding(.trailing, showsControls ? Header.trailingPadding : Header.leadingPadding)
     }
 
-    /// Moves the card to the next shape in the cycle where it stands: a tab opens to its live
-    /// page, a live page folds to an icon.
-    private var shapeButton: some View {
-        let next = shape.next
-        let symbol = next == .live ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left"
-        return headerControl(next.showTitle, symbol: symbol) {
-            canvas.setFloatingShape(next, for: tab, in: area)
+    /// The three lights a window has, in the order and colors people know, a shade fainter:
+    /// red closes the tab, yellow puts the card back in its island, green opens it as the page.
+    /// Their glyphs show while the pointer is on the card.
+    private var lights: some View {
+        HStack(spacing: Header.lightSpacing) {
+            light(.red, symbol: "xmark", "Close Tab") { canvas.tabManager.requestCloseTab(tab) }
+            light(.yellow, symbol: "minus", "Back to Its Island") { islands.returnToIsland(tab.id) }
+            light(.green, symbol: "arrow.up.left.and.arrow.down.right", "Open as the Page") { islands.open(tab) }
         }
+        .padding(.trailing, Header.itemSpacing)
+    }
+
+    private func light(_ color: Color, symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(Header.lightOpacity))
+                    .overlay { Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
+                    .frame(width: Header.lightSize, height: Header.lightSize)
+                if isHovering {
+                    Image(systemName: symbol)
+                        .font(.system(size: Header.lightGlyphSize, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.55))
+                }
+            }
+            .frame(width: Header.lightTarget, height: Header.lightTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
     }
 
     // MARK: Resizing
@@ -378,29 +395,6 @@ struct FloatingTabCard: View {
             }
     }
 
-    /// Keeps the card on screen after the layer hides, or lets a kept card go.
-    private var keepVisibleButton: some View {
-        headerControl(isKept ? "Hide Preview" : "Keep Visible", symbol: isKept ? "pin.slash" : "pin") {
-            var next = placement
-            next.isPinned.toggle()
-            canvas.updateFloatingPlacement(next, for: tab)
-        }
-    }
-
-    private var closeButton: some View {
-        headerControl("Close Tab", symbol: "xmark") {
-            canvas.tabManager.requestCloseTab(tab)
-        }
-    }
-
-    private func headerControl(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: symbol, action: action)
-            .font(.system(size: Header.symbolPointSize))
-            .foregroundStyle(.secondary)
-            .frame(width: Header.controlSize, height: Header.controlSize).contentShape(Rectangle())
-            .help(title)
-            .accessibilityLabel(title)
-    }
 
     // MARK: Moving
 

@@ -52,6 +52,12 @@ nonisolated enum FloatingCardChrome {
         static let symbolPointSize: CGFloat = 13
         /// The clickable margin around a control's glyph box.
         static let controlPadding: CGFloat = 4
+        /// A window's lights: their size, spacing, target, glyph, and how faint they are drawn.
+        static let lightSize: CGFloat = 11
+        static let lightSpacing: CGFloat = 5
+        static let lightTarget: CGFloat = 16
+        static let lightGlyphSize: CGFloat = 6.5
+        static let lightOpacity: Double = 0.72
 
         /// The gap from a glyph box to the header's top and bottom edges, and to its sides.
         static var edgeGap: CGFloat {
