@@ -329,14 +329,16 @@ private struct ChipView: View {
                 dragOffset = value.translation
                 windowState.draggedChipID = tab.id
                 let point = value.location
-                if let target = islands.visibleIslands.first(where: { islands.frame(of: $0).contains(point) }) {
-                    if target.id == island.id {
-                        let local = CGPoint(x: point.x - islands.frame(of: target).minX, y: point.y - islands.frame(of: target).minY)
-                        let cell = islands.geometry(for: target).cell(at: local, in: target.layout)
-                        islands.dropCandidate = target.layout.canPlace(tab.id, at: cell, span: chip.span) ? (target.id, cell) : nil
-                    } else {
-                        islands.dropCandidate = (target.id, IslandCell(x: 0, y: 0))
-                    }
+                let home = islands.frame(of: island)
+                let geometry = islands.geometry(for: island)
+                // A chip may land one cell beyond its island's edges, which grows the island.
+                let reach = home.insetBy(dx: -(geometry.cell.width + IslandGeometry.gap), dy: -(geometry.cell.height + IslandGeometry.gap))
+                if let target = islands.visibleIslands.first(where: { $0.id != island.id && islands.frame(of: $0).contains(point) }) {
+                    islands.dropCandidate = (target.id, IslandCell(x: 0, y: 0))
+                } else if reach.contains(point) {
+                    let local = CGPoint(x: point.x - home.minX, y: point.y - home.minY)
+                    let cell = geometry.cell(at: local, in: island.layout)
+                    islands.dropCandidate = island.layout.canPlace(tab.id, at: cell, span: chip.span) ? (island.id, cell) : nil
                 } else {
                     islands.dropCandidate = nil
                 }
