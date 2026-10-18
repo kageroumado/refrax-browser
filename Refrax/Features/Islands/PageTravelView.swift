@@ -3,9 +3,9 @@ import SwiftUI
 
 /// The window's page, and the way one page replaces another.
 ///
-/// At rest the page fills the window, live. The moment the reveal key goes down the window's
-/// controls step away, the window server shows a frame of the page alone, and that frame
-/// becomes the page's image, which takes its place: a slab at 84%, with a shadow and a glass
+/// At rest the page fills the window, live. The moment the reveal key goes down the page is
+/// rendered through WebKit, which draws the page and nothing over it, and that image takes
+/// its place as the window's controls step away: a slab at 84%, with a shadow and a glass
 /// rim over the window's tinted background, the margins naming the tab in each direction.
 /// Every move while the key is held slides slabs of images, the outgoing page's snapshot and
 /// the incoming tab's stored one, with the background in the gap between them; nothing is
@@ -35,7 +35,7 @@ struct PageTravelView: View {
     /// The part of the view the window shows, in its coordinates: the page as a picture of
     /// it is drawn here, at the picture's own size, so the live page lands on it exactly.
     @State private var visible: CGRect = .zero
-    /// The wait for the frame without the window's controls, then the capture.
+    /// The page's render on its way, before its image takes its place.
     @State private var captureTask: Task<Void, Never>?
     /// The slab's lean against an edge that did not give.
     @State private var bumpOffset: CGSize = .zero
@@ -261,9 +261,9 @@ struct PageTravelView: View {
 
     // MARK: - Inspecting
 
-    /// The key went down: the window's controls step away, the window server shows the page
-    /// alone, the page is captured, and its image steps back to a slab. A slab still on its
-    /// way back just turns around.
+    /// The key went down: the page is rendered through WebKit while it stays on screen, then
+    /// its image takes its place and steps back to a slab. A slab still on its way back just
+    /// turns around.
     private func beginInspecting() {
         guard let tab = windowState.activeTab else { return }
         guard !showsSlab else {
@@ -271,12 +271,9 @@ struct PageTravelView: View {
             return
         }
         captureTask?.cancel()
-        canvas.isCapturingPage = true
         captureTask = Task(name: "Capture the page for inspecting") {
-            try? await Task.sleep(for: PageCapture.compositingDelay)
-            canvas.isCapturingPage = false
+            await islands.refreshSnapshot(of: tab)
             guard !Task.isCancelled, isInspecting, !isTraveling, !showsSlab else { return }
-            islands.captureSnapshot(of: tab)
             canvas.showsPageSlab = true
             showsSlab = true
             stepBack()
@@ -310,7 +307,6 @@ struct PageTravelView: View {
     private func endInspecting() {
         captureTask?.cancel()
         captureTask = nil
-        canvas.isCapturingPage = false
         islands.leaveEdges()
         guard showsSlab else { return }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: Layout.inspectDuration)) {

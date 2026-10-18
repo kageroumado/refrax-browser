@@ -64,5 +64,5 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     }
 
     /// The part of a row's height at its top and bottom where a drop lands beside it.
-    private static let joinBand: CGFloat = 0.3
+    private static let joinBand: CGFloat = 0.25
 }

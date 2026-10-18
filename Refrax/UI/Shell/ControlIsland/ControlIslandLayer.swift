@@ -18,9 +18,7 @@ struct ControlIslandLayer: View {
                 }
             }
         }
-        // Gone at once when it hides, so the frame the page is captured in shows the page
-        // alone; an animated removal would keep it on screen through the fade. Back with a
-        // fade once the page is live again.
+        // Gone at once when the page becomes a slab; back with a fade once it is live again.
         .animation(canvas.showsControlIsland ? .easeOut(duration: Layout.returnDuration) : nil, value: canvas.showsControlIsland)
         .coordinateSpace(name: "browserControls")
         .ignoresSafeArea()

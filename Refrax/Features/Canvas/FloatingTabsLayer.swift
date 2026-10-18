@@ -127,6 +127,7 @@ struct FloatingTabCard: View {
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(WindowState.self) private var windowState
     @Environment(IslandController.self) private var islands
+    @Environment(WebPagePool.self) private var pagePool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var faviconSpace
     /// The card's frame when the current resize began; its sides opposite the handle stay put.
@@ -196,8 +197,11 @@ struct FloatingTabCard: View {
                     header
                         .frame(height: Header.height)
                     if shape == .live {
+                        // A live page is a small window: it has the page's address bar.
+                        PageAddressField(webPage: pagePool.existingPage(for: tab.activePage))
+                            .padding(.horizontal, FloatingTabPlacement.previewInset)
                         FloatingTabPreview(tab: tab, viewportSize: area.size, isLive: showsLivePage)
-                            .frame(height: max(0, placement.frame(in: area).height - Header.height - FloatingTabPlacement.previewInset))
+                            .frame(height: max(0, placement.frame(in: area).height - Header.height - Constants.PageControls.height - FloatingTabPlacement.previewInset))
                             .clipShape(.rect(cornerRadius: FloatingCardChrome.previewCornerRadius(isKept: isKept), style: .continuous))
                             .padding([.horizontal, .bottom], FloatingTabPlacement.previewInset)
                             .transition(.opacity)

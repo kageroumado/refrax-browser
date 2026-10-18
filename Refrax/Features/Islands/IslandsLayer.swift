@@ -45,8 +45,6 @@ struct IslandsLayer: View {
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
             .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
-            // Out of the frame the page is captured in, so pinned islands stay out of its image.
-            .opacity(canvas.isCapturingPage ? 0 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "islands")
             .coordinateSpace(name: "floatingTabs")
@@ -311,12 +309,18 @@ private struct IslandTabRow: View {
         }
         .padding(.horizontal, iconsOnly ? 0 : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
-        .background(isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.08 : 0), in: shape)
+        .background(isJoinTarget ? Color.appAccentColor.opacity(0.2) : isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.08 : 0), in: shape)
         .overlay {
             if isJoinTarget {
                 shape.strokeBorder(Color.appAccentColor, lineWidth: 1.5)
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.appAccentColor)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 8)
             }
         }
+        .animation(.easeOut(duration: 0.12), value: isJoinTarget)
         .contentShape(shape)
         .offset(dragOffset)
         .zIndex(dragOffset == .zero ? 0 : 2)
