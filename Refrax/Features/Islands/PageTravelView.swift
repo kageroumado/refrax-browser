@@ -42,7 +42,8 @@ struct PageTravelView: View {
         /// The page's share of the window while the reveal key is held.
         static let inspectionScale: CGFloat = 0.84
         static let inspectDuration: TimeInterval = 0.28
-        static let slideDuration: TimeInterval = 0.32
+        static let slideDuration: TimeInterval = 0.34
+        static let labelFade: TimeInterval = 0.12
         static let crossDuration: TimeInterval = 0.4
         static let jumpDuration: TimeInterval = 0.2
         /// The background showing between two sliding slabs.
@@ -80,8 +81,10 @@ struct PageTravelView: View {
             if let shown {
                 travelingSlabs(shown)
             }
-            if isInspecting, showsSlab, !isTraveling {
+            if isInspecting, showsSlab {
                 directionLabels
+                    .opacity(isTraveling ? 0 : 1)
+                    .animation(.easeOut(duration: Layout.labelFade), value: isTraveling)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -309,7 +312,11 @@ struct PageTravelView: View {
         case .cross: Layout.crossDuration
         case .jump: Layout.jumpDuration
         }
-        withAnimation(reduceMotion ? .easeOut(duration: Layout.jumpDuration) : .easeInOut(duration: duration)) {
+        let motion: Animation = switch travel.style {
+        case .slide: .smooth(duration: duration)
+        case .cross, .jump: .easeInOut(duration: duration)
+        }
+        withAnimation(reduceMotion ? .easeOut(duration: Layout.jumpDuration) : motion) {
             progress = 1
         } completion: {
             guard shown?.id == travel.id else { return }

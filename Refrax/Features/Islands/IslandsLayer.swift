@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The islands over the page: each a glass container of chips, shown while the reveal key is
-/// held or the island is pinned, with the beams that run from the page card to a chip.
+/// held or the island is pinned.
 struct IslandsLayer: View {
     @Environment(IslandController.self) private var islands
     @Environment(TabCanvasManager.self) private var canvas
@@ -29,11 +29,6 @@ struct IslandsLayer: View {
                         .zIndex(zIndex(of: island))
                         .transition(reduceMotion ? .opacity : .scale(scale: Layout.emergeScale).combined(with: .opacity))
                 }
-                ForEach(islands.beams) { beam in
-                    IslandBeamView(beam: beam, area: bounds) {
-                        islands.finishBeam(beam.id)
-                    }
-                }
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
             // Out of the frame the page is captured in, so pinned islands stay out of its image.
@@ -59,21 +54,6 @@ struct IslandsLayer: View {
     private func zIndex(of island: Island) -> Double {
         if islands.draggedIslandID == island.id { return 2 }
         return island.layout[windowState.activeTabID ?? UUID()] != nil ? 1 : 0
-    }
-}
-
-/// A beam in an island's color, from the page card to a chip.
-private struct IslandBeamView: View {
-    let beam: IslandBeam
-    let area: CGRect
-    let onFinish: () -> Void
-
-    var body: some View {
-        let style = LightStyle.guide
-        let path = FloatingRayPath(from: beam.from, to: beam.to, in: area)
-        LightTravel(paths: [style.path(ray: path, color: beam.color)], timing: style.timing, onFinish: onFinish)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

@@ -31,14 +31,6 @@ struct PageTravel: Identifiable {
     let style: TravelStyle
 }
 
-/// A beam from the page card to a chip, in the islands layer's coordinates.
-struct IslandBeam: Identifiable, Equatable {
-    let id = UUID()
-    let from: CGRect
-    let to: CGRect
-    let color: Color.Components
-}
-
 /// One window's islands: the layout of every island built from the space's groups, the
 /// placements kept for them, the moves between pages, and the islands' own edits.
 ///
@@ -69,8 +61,8 @@ final class IslandController {
     private(set) var state = IslandState()
     /// The move under way, for the page view to animate.
     private(set) var travel: PageTravel?
-    /// The beams running now, for the layer to draw.
-    private(set) var beams: [IslandBeam] = []
+    /// A step asked for while a move is under way: it runs when the move lands.
+    @ObservationIgnored private var pendingStep: TableDirection?
     /// A chip being dragged: where it would land, if it may.
     var dropCandidate: (island: UUID, cell: IslandCell)?
     /// The island being moved, drawn over the others.
@@ -319,6 +311,10 @@ final class IslandController {
     /// Steps to the neighbor in `direction`; at the island's edge, crosses to the island that
     /// way, or pushes against nothing.
     func step(_ direction: TableDirection) {
+        guard travel == nil else {
+            pendingStep = direction
+            return
+        }
         if let tab = destination(toward: direction) {
             travel(to: tab, style: .slide(direction))
         } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.layout.tabIDs.first, let tab = tab(for: tabID) {
@@ -351,9 +347,8 @@ final class IslandController {
         }
     }
 
-    /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot and a beam
-    /// runs from the page card to the new chip. A page still live is captured first, once the
-    /// window's controls have stepped away from it.
+    /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot. A page
+    /// still live is captured first, once the window's controls have stepped away from it.
     private func travel(to tab: Tab, style: TravelStyle) {
         guard liveIsVisible, let current = windowState.activeTab else {
             start(PageTravel(outgoing: windowState.activeTab.flatMap { snapshot(for: $0.id) }, style: style), to: tab)
@@ -377,26 +372,17 @@ final class IslandController {
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
         if let island = island(holding: tab.id) {
             lastTab[island.id] = tab.id
-            beam(to: tab.id, color: color(of: island))
         }
     }
 
     /// The page view finished the move.
     func finishTravel(_ id: UUID) {
-        if travel?.id == id {
-            travel = nil
+        guard travel?.id == id else { return }
+        travel = nil
+        if let next = pendingStep {
+            pendingStep = nil
+            step(next)
         }
-    }
-
-    private func beam(to tabID: UUID, color: Color) {
-        guard let to = frame(ofChip: tabID), visibleIslands.contains(where: { $0.layout[tabID] != nil }) else { return }
-        let from = windowState.pageCardFrame
-        guard !from.isEmpty else { return }
-        beams.append(IslandBeam(from: from, to: to, color: Color.Components(color: color)))
-    }
-
-    func finishBeam(_ id: UUID) {
-        beams.removeAll { $0.id == id }
     }
 
     // MARK: - Editing islands
@@ -526,9 +512,6 @@ final class IslandController {
         }
         emergingIslandID = group.id
         rebuild()
-        if let chip = frame(ofChip: tabID), let made = island(group.id) {
-            beams.append(IslandBeam(from: frame(of: source), to: chip, color: Color.Components(color: color(of: made))))
-        }
         Task(name: "Finish an island's unfold") { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
             if self?.emergingIslandID == group.id {

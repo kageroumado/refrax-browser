@@ -14,13 +14,14 @@ struct ControlIslandLayer: View {
                 } else if canvas.showsControlIsland {
                     ControlIsland(area: CGRect(origin: .zero, size: geometry.size))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        // Gone the frame the page is captured, so the capture shows the page
-                        // alone; back with a fade once the page is live again.
-                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                        .transition(.opacity)
                 }
             }
         }
-        .animation(.easeOut(duration: Layout.returnDuration), value: canvas.showsControlIsland)
+        // Gone at once when it hides, so the frame the page is captured in shows the page
+        // alone; an animated removal would keep it on screen through the fade. Back with a
+        // fade once the page is live again.
+        .animation(canvas.showsControlIsland ? .easeOut(duration: Layout.returnDuration) : nil, value: canvas.showsControlIsland)
         .coordinateSpace(name: "browserControls")
         .ignoresSafeArea()
         .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
