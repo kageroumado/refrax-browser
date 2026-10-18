@@ -16,7 +16,8 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// The island's padding around its chips, and the footer's height.
     static let padding: CGFloat = 10
     static let footerHeight: CGFloat = 28
-    static let cornerRadius: CGFloat = 16
+    /// The Control Island's corner.
+    static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
     /// The chips' corner, concentric with the island's.
     static let chipCornerRadius: CGFloat = cornerRadius - padding
     /// The largest share of the window an island takes before it scrolls inside.

@@ -99,12 +99,10 @@ struct IslandView: View {
                 .frame(height: IslandGeometry.footerHeight)
         }
         .frame(width: frame.width, height: frame.height)
+        // The Control Island's glass: the window's tint under regular glass.
+        .background(windowState.controlIslandTint, in: shape)
         .glassEffect(.regular, in: shape)
-        .overlay {
-            shape.strokeBorder(color.opacity(0.35), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        .shadow(color: .black.opacity(0.14), radius: 16, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.layout.chips.count) tabs")
     }
@@ -248,9 +246,9 @@ private struct ChipView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isCurrent ? color.opacity(0.14) : Color.primary.opacity(0.05), in: shape)
+        .background(isCurrent ? color.opacity(0.18) : Color.primary.opacity(isHovering ? 0.08 : 0.04), in: shape)
         .overlay {
-            shape.strokeBorder(isCurrent ? color : Color.primary.opacity(isHovering ? 0.25 : 0.1), lineWidth: isCurrent ? 2 : 1)
+            shape.strokeBorder(isCurrent ? color : Color.primary.opacity(0.08), lineWidth: isCurrent ? 1.5 : 1)
         }
         .clipShape(shape)
         .opacity(isResting ? Layout.restOpacity : 1)
