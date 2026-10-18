@@ -158,6 +158,12 @@ struct UnifiedContentView: View {
                 // will trigger updates. For page add/remove, the layout grid sync handles it.
                 // This prevents redundant frame recalculation during tab switches.
                 syncNewPagesToLayoutGrid()
+                // A page joined or left this tab while it is on screen: the tab lays its
+                // panes out anew, as it would on arriving.
+                let panes = tab.layoutConfiguration?.panePositions.count ?? 0
+                if !windowState.isInLayoutMode, panes != workingConfig.panePositions.count {
+                    reinitializeForNewTab()
+                }
             }
             .onChange(of: horizontalDivider) { _, _ in
                 // Divider changed - update frames for multi-pane layouts.
