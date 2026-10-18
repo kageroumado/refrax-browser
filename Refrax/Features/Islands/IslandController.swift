@@ -302,6 +302,7 @@ final class IslandController {
             state = IslandState.decode(space.tableLayoutData)
             lastTab = [:]
         }
+        repairPanes(in: space)
         // Favorites, docked pages, and tabs floating as cards are not rows.
         let onIslands = space.mainTabs.filter {
             !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
@@ -472,6 +473,7 @@ final class IslandController {
     func join(_ tabID: UUID, with otherID: UUID) {
         guard canJoin(tabID, with: otherID), let source = tab(for: tabID), let target = tab(for: otherID) else { return }
         state.detached.remove(tabID)
+        place(target.pages, at: .topLeft)
         tabManager.moveTabToLayout(source, into: target, at: .topRight)
         persist()
         rebuild()
@@ -480,16 +482,39 @@ final class IslandController {
     /// Joins `tabID` to the current tab as a pane on `side` of the page.
     func joinPage(_ tabID: UUID, at side: PanePosition) {
         guard let current = currentTab, canJoin(tabID, with: current.id), let source = tab(for: tabID) else { return }
-        let existing = current.pages
         state.detached.remove(tabID)
-        guard tabManager.moveTabToLayout(source, into: current, at: side == .topLeft ? .topLeft : .topRight) != nil else { return }
-        if side == .topLeft, let page = existing.first {
-            page.position = .topRight
-            current.layoutConfiguration?.panePositions[page.id] = .topRight
-            tabManager.scheduleSave()
-        }
+        place(current.pages, at: side == .topLeft ? .topRight : .topLeft)
+        tabManager.moveTabToLayout(source, into: current, at: side == .topLeft ? .topLeft : .topRight)
         persist()
         rebuild()
+    }
+
+    /// Gives a tab's lone page its pane before a second joins it: a page without a position
+    /// is not laid out at all.
+    private func place(_ pages: [TabPage], at position: PanePosition) {
+        guard let page = pages.first, pages.count == 1, let tab = page.tab else { return }
+        page.position = position
+        var config = tab.layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
+        config.panePositions[page.id] = position
+        tab.layoutConfiguration = config
+    }
+
+    /// Tabs of two pages whose first page has no pane get one: left, or right when the other
+    /// page took the left.
+    private func repairPanes(in space: Space) {
+        for tab in space.mainTabs where tab.pages.count > 1 {
+            var config = tab.layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
+            let unplaced = tab.pages.filter { config.panePositions[$0.id] == nil }
+            guard !unplaced.isEmpty else { continue }
+            let taken = Set(config.panePositions.values)
+            for page in unplaced {
+                let position: PanePosition = taken.contains(.topLeft) ? .topRight : .topLeft
+                page.position = position
+                config.panePositions[page.id] = position
+            }
+            tab.layoutConfiguration = config
+            tabManager.scheduleSave()
+        }
     }
 
     /// A card goes back into its island, where its tab sits in the list.
