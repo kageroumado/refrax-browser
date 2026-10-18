@@ -1,78 +1,54 @@
 import CoreGraphics
 import Foundation
 
-/// Turns an island's cells into points: chip frames inside the island, the island's size,
-/// and how much of it the window lets it show.
+/// Turns an island's rows into points: the island's size, each row's frame, and the row a
+/// point falls on.
 ///
-/// A cell is one title chip. Icon-only islands use square cells. A preview chip spans a
-/// rectangle of cells, so its frame is that rectangle plus the gaps inside it.
+/// An island is a band and a column of rows inside the Control Island's corner. The band
+/// holds the island's color and, under the pointer, its controls; the rows are the tabs.
 nonisolated struct IslandGeometry: Equatable, Sendable {
-    /// A title cell: favicon, a short title, and room for the pointer.
-    static let titleCell = CGSize(width: 172, height: 32)
-    /// An icon cell: the favorites column's square.
-    static let iconCell = CGSize(width: 32, height: 32)
-    /// The gap between chips.
-    static let gap: CGFloat = 5
-    /// The island's padding around its chips, and the footer's height.
-    static let padding: CGFloat = 12
-    static let footerHeight: CGFloat = 30
+    static let rowHeight: CGFloat = 30
+    /// The width of an island of titles, and of one of icons alone.
+    static let titleWidth: CGFloat = 236
+    static let iconWidth: CGFloat = 46
+    static let padding: CGFloat = 8
+    /// The band above the rows: the island's color, and its controls under the pointer.
+    static let bandHeight: CGFloat = 18
     /// The Control Island's corner.
     static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
-    /// The chips' corner, concentric with the island's.
-    static let chipCornerRadius: CGFloat = cornerRadius - padding
-    /// The largest share of the window an island takes before it scrolls inside.
+    static let rowCornerRadius: CGFloat = 8
+    /// The largest share of the window's height an island takes before its rows scroll.
     static let maximumShare: CGFloat = 0.4
-    /// Preview presets, in cells of a title island: small, medium, large.
-    static let previewSpans: [IslandSpan] = [
-        IslandSpan(width: 2, height: 6), IslandSpan(width: 3, height: 9), IslandSpan(width: 4, height: 12),
-    ]
 
-    var cell: CGSize
+    var iconsOnly: Bool
 
-    init(iconsOnly: Bool) {
-        cell = iconsOnly ? Self.iconCell : Self.titleCell
+    var width: CGFloat {
+        iconsOnly ? Self.iconWidth : Self.titleWidth
     }
 
-    /// The frame of a chip's cells, relative to the island's grid origin at cell (0, 0),
-    /// before the island's padding.
-    func frame(of chip: ChipPlacement, in layout: IslandLayout) -> CGRect {
-        guard let bounds = layout.bounds else { return .zero }
-        let x = CGFloat(chip.cell.x - bounds.minX) * (cell.width + Self.gap)
-        let y = CGFloat(chip.cell.y - bounds.minY) * (cell.height + Self.gap)
-        let width = CGFloat(chip.span.width) * cell.width + CGFloat(chip.span.width - 1) * Self.gap
-        let height = CGFloat(chip.span.height) * cell.height + CGFloat(chip.span.height - 1) * Self.gap
-        return CGRect(x: x + Self.padding, y: y + Self.padding, width: width, height: height)
+    /// The height of the band, `rows` rows, and the padding, with room for one row at least.
+    func contentHeight(rows: Int) -> CGFloat {
+        Self.bandHeight + CGFloat(max(1, rows)) * Self.rowHeight + 2 * Self.padding
     }
 
-    /// The size of the whole grid with the island's padding and footer.
-    func contentSize(of layout: IslandLayout) -> CGSize {
-        guard let bounds = layout.bounds else {
-            return CGSize(width: cell.width + 2 * Self.padding, height: cell.height + 2 * Self.padding + Self.footerHeight)
-        }
-        let columns = CGFloat(bounds.maxX - bounds.minX + 1)
-        let rows = CGFloat(bounds.maxY - bounds.minY + 1)
-        return CGSize(
-            width: columns * cell.width + (columns - 1) * Self.gap + 2 * Self.padding,
-            height: rows * cell.height + (rows - 1) * Self.gap + 2 * Self.padding + Self.footerHeight,
+    /// The island's size on screen: its content, held to the window's share.
+    func size(rows: Int, in window: CGSize) -> CGSize {
+        let least = contentHeight(rows: 1)
+        return CGSize(width: width, height: min(contentHeight(rows: rows), max(least, window.height * Self.maximumShare)))
+    }
+
+    /// Row `index`'s frame in the island, before any scrolling.
+    func rowFrame(_ index: Int) -> CGRect {
+        CGRect(
+            x: Self.padding, y: Self.bandHeight + Self.padding + CGFloat(index) * Self.rowHeight,
+            width: width - 2 * Self.padding, height: Self.rowHeight,
         )
     }
 
-    /// The island's size on screen: its content, held to the window's share. Past that the
-    /// grid scrolls inside.
-    func islandSize(of layout: IslandLayout, in window: CGSize) -> CGSize {
-        let content = contentSize(of: layout)
-        return CGSize(
-            width: min(content.width, max(cell.width + 2 * Self.padding, window.width * Self.maximumShare)),
-            height: min(content.height, max(cell.height + 2 * Self.padding + Self.footerHeight, window.height * Self.maximumShare)),
-        )
-    }
-
-    /// The cell under `point`, relative to the island's grid origin, whether or not a chip
-    /// is there.
-    func cell(at point: CGPoint, in layout: IslandLayout) -> IslandCell {
-        let bounds = layout.bounds ?? (0, 0, 0, 0)
-        let x = Int(((point.x - Self.padding) / (cell.width + Self.gap)).rounded(.down))
-        let y = Int(((point.y - Self.padding) / (cell.height + Self.gap)).rounded(.down))
-        return IslandCell(x: x + bounds.minX, y: y + bounds.minY)
+    /// Where a row dropped at `point` goes among `count` rows: before the row whose top half it
+    /// is on, after the one whose bottom half, so 0 through `count`.
+    func insertion(at point: CGPoint, count: Int) -> Int {
+        let y = point.y - Self.bandHeight - Self.padding
+        return min(count, max(0, Int((y / Self.rowHeight).rounded())))
     }
 }

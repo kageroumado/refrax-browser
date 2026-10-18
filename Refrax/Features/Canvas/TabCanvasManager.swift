@@ -190,6 +190,10 @@ final class TabCanvasManager {
     @ObservationIgnored var floatingSelectionCapsuleFrame: CGRect = .zero
     /// Where each card of a moving card, group, or selection started.
     @ObservationIgnored var floatingMoveOrigins: [Tab.ID: CGPoint] = [:]
+    /// Where the pointer was at the card drag's last change, in the floating layer.
+    @ObservationIgnored var floatingDragPointer: CGPoint?
+    /// Takes a card released at a point: true when an island took it in as a row.
+    @ObservationIgnored var islandDrop: ((Tab, CGPoint) -> Bool)?
     @ObservationIgnored var floatingMoveBounds: CGRect?
 
     /// The side a dragged card docks to if it is let go now; the layer draws its silhouette.

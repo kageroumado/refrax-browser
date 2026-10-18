@@ -16,11 +16,37 @@ extension TabManager {
         space.tabs.remove(at: currentIndex)
         space.tabs.insert(tab, at: index)
         normalizePositions(in: space)
+        // The sorted lists cache by count, which a move leaves unchanged.
+        space.invalidateTabCaches()
+        tab.group?.invalidateTabCache()
         state.incrementListVersion()
         scheduleSave()
 
         // Notify extensions of tab move (within same window)
         state.extensionManager?.dispatchTabMoved(tab, fromIndex: currentIndex, oldWindow: nil)
+    }
+
+    /// Puts `tab` between `before` and `after` in its list by position, which is the order
+    /// every sorted list reads; the relationship array itself is unordered. With no room
+    /// between the two, positions are normalized first.
+    func placeTab(_ tab: Tab, after before: Tab?, before after: Tab?) {
+        guard let space = tab.space else { return }
+        let step = positioner.multiplier(forLevel: 1)
+        func bounds() -> (low: Int, high: Int) {
+            let low = before?.position ?? ((after?.position ?? step) - step)
+            let high = after?.position ?? ((before?.position ?? 0) + step)
+            return (low, high)
+        }
+        var range = bounds()
+        if range.high - range.low < 2 {
+            positioner.normalize(space: space, force: true)
+            range = bounds()
+        }
+        tab.position = positioner.positionBetween(before: range.low, after: range.high)
+        space.invalidateTabCaches()
+        tab.group?.invalidateTabCache()
+        state.incrementListVersion()
+        scheduleSave()
     }
 
     /// Sets a custom name for a tab.

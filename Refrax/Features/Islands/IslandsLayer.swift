@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The islands over the page: each a glass container of chips, shown while the reveal key is
-/// held or the island is pinned.
+/// The islands over the page: each a glass column of the group's tabs, shown while the
+/// reveal key is held or the island is pinned, and the tabs taken out of them, floating as
+/// live cards.
 struct IslandsLayer: View {
     @Environment(IslandController.self) private var islands
     @Environment(TabCanvasManager.self) private var canvas
@@ -29,14 +30,23 @@ struct IslandsLayer: View {
                         .zIndex(zIndex(of: island))
                         .transition(reduceMotion ? .opacity : .scale(scale: Layout.emergeScale).combined(with: .opacity))
                 }
+                ForEach(islands.detachedTabs.filter { $0.id != windowState.activeTabID }) { tab in
+                    let frame = canvas.floatingFrame(for: tab, in: bounds)
+                    FloatingTabCard(tab: tab, placement: canvas.floatingPlacement(for: tab), area: bounds)
+                        .frame(width: frame.width, height: frame.height)
+                        .offset(x: frame.minX, y: frame.minY)
+                        .zIndex(tab.id == canvas.focusedFloatingTabID ? 4 : 3)
+                        .transition(.opacity)
+                }
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
             // Out of the frame the page is captured in, so pinned islands stay out of its image.
             .opacity(canvas.isCapturingPage ? 0 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "islands")
+            .coordinateSpace(name: "floatingTabs")
             .onChange(of: geometry.size, initial: true) {
-                islands.updateArea(bounds.insetBy(dx: Layout.areaInset, dy: Layout.areaInset))
+                islands.updateArea(bounds.insetBy(dx: Layout.areaInset, dy: Layout.areaInset), in: bounds)
             }
         }
         .ignoresSafeArea()
@@ -53,13 +63,12 @@ struct IslandsLayer: View {
     /// The island being moved is on top; the current tab's island above the rest.
     private func zIndex(of island: Island) -> Double {
         if islands.draggedIslandID == island.id { return 2 }
-        return island.layout[windowState.activeTabID ?? UUID()] != nil ? 1 : 0
+        return island.tabIDs.contains(windowState.activeTabID ?? UUID()) ? 1 : 0
     }
 }
 
-/// One island: its chips on their grid inside glass, a silhouette where a dragged chip may
-/// land, and a footer naming it, pinning it, and holding its actions. Any of its empty glass
-/// moves it; its chips move themselves.
+/// One island: a band with its color and, under the pointer, its controls, over a column of
+/// the group's tabs as rows. Any of its empty glass moves it; its rows move themselves.
 struct IslandView: View {
     let island: Island
     let area: CGRect
@@ -82,18 +91,17 @@ struct IslandView: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
-        let content = geometry.contentSize(of: island.layout)
         let frame = islands.frame(of: island)
         VStack(spacing: 0) {
-            grid(content: content)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .clipped()
-            footer
-                .frame(height: IslandGeometry.footerHeight)
+            band
+                .frame(height: IslandGeometry.bandHeight)
+            rows
         }
-        .frame(width: frame.width, height: frame.height)
-        // The glass behind the chips takes the drag that moves the island: the open hand
-        // over any empty space says so.
+        .padding(IslandGeometry.padding)
+        .frame(width: frame.width, height: frame.height, alignment: .top)
+        .clipShape(shape)
+        // The glass behind the rows takes the drag that moves the island: the open hand over
+        // any empty space says so.
         .background {
             Color.clear
                 .contentShape(shape)
@@ -106,49 +114,45 @@ struct IslandView: View {
         .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(island.title), \(island.layout.chips.count) tabs")
+        .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
     }
 
+    /// The rows in the tab list's order; past the window's share of height they scroll.
     @ViewBuilder
-    private func grid(content: CGSize) -> some View {
-        let gridContent = ZStack(alignment: .topLeading) {
-            if let candidate = islands.dropCandidate, candidate.island == island.id {
-                let placement = ChipPlacement(cell: candidate.cell, span: draggedSpan)
-                RoundedRectangle(cornerRadius: IslandGeometry.chipCornerRadius, style: .continuous)
-                    .fill(color.opacity(0.18))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: IslandGeometry.chipCornerRadius, style: .continuous)
-                            .strokeBorder(color.opacity(0.7), lineWidth: 1)
-                    }
-                    .frame(width: geometry.frame(of: placement, in: island.layout).width, height: geometry.frame(of: placement, in: island.layout).height)
-                    .offset(x: geometry.frame(of: placement, in: island.layout).minX, y: geometry.frame(of: placement, in: island.layout).minY)
-                    .allowsHitTesting(false)
-            }
-            ForEach(island.layout.tabIDs, id: \.self) { tabID in
-                if let tab = islands.tab(for: tabID), let chip = island.layout[tabID] {
-                    let frame = geometry.frame(of: chip, in: island.layout)
-                    ChipView(tab: tab, chip: chip, island: island, area: area)
-                        .frame(width: frame.width, height: frame.height)
-                        .offset(x: frame.minX, y: frame.minY)
+    private var rows: some View {
+        let column = VStack(spacing: 0) {
+            ForEach(Array(island.tabIDs.enumerated()), id: \.element) { index, tabID in
+                if let tab = islands.tab(for: tabID) {
+                    IslandTabRow(tab: tab, island: island, area: area)
+                        .frame(height: IslandGeometry.rowHeight)
+                        .offset(y: shift(of: index, tabID: tabID))
                 }
             }
         }
-        .frame(width: content.width, height: content.height - IslandGeometry.footerHeight, alignment: .topLeading)
-        .animation(.snappy(duration: 0.24), value: island.layout)
-
-        let frame = islands.frame(of: island)
-        if content.width > frame.width + 0.5 || content.height - IslandGeometry.footerHeight > frame.height - IslandGeometry.footerHeight + 0.5 {
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                gridContent
+        .frame(maxWidth: .infinity, alignment: .top)
+        .animation(.snappy(duration: 0.2), value: islands.drop)
+        if geometry.contentHeight(rows: island.tabIDs.count) > islands.frame(of: island).height + 0.5 {
+            ScrollView(.vertical, showsIndicators: false) {
+                column
             }
         } else {
-            gridContent
+            column
+                .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
-    private var draggedSpan: IslandSpan {
-        guard let candidate = islands.dropCandidate, let tabID = windowState.draggedChipID, let chip = islands.island(candidate.island)?.layout[tabID] ?? islands.island(holding: tabID)?.layout[tabID] else { return .one }
-        return chip.span
+    /// How far a row moves while another is dragged: the rows below the lifted one close its
+    /// hole, and the rows at and past the drop row open a gap for it.
+    private func shift(of index: Int, tabID: UUID) -> CGFloat {
+        guard let dragged = islands.draggedTabID, dragged != tabID, let drop = islands.drop, drop.island == island.id else { return 0 }
+        var target = index
+        if let lifted = island.tabIDs.firstIndex(of: dragged), lifted < index {
+            target -= 1
+        }
+        if target >= drop.row {
+            target += 1
+        }
+        return CGFloat(target - index) * IslandGeometry.rowHeight
     }
 
     /// The drag that moves the island, from its origin when the drag began.
@@ -169,12 +173,12 @@ struct IslandView: View {
             }
     }
 
-    /// The island's name, its count, and, while the pointer is on the island, its pin and
-    /// actions. Double-click the name to rename a group's island.
-    private var footer: some View {
+    /// The island's color, and under the pointer its pin and actions; the name only while it
+    /// is being renamed.
+    private var band: some View {
         let showsControls = isHovered || island.placement.isPinned
-        return HStack(spacing: 7) {
-            Circle().fill(color).frame(width: 7, height: 7)
+        return HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 6, height: 6)
             if isRenaming {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
@@ -185,27 +189,14 @@ struct IslandView: View {
                     .onChange(of: nameIsFocused) { _, focused in
                         if !focused { commitRename() }
                     }
-            } else {
-                Text(island.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .onTapGesture(count: 2) {
-                        guard !island.isDefault else { return }
-                        draftName = island.title
-                        isRenaming = true
-                        nameIsFocused = true
-                    }
             }
-            Text("\(island.layout.chips.count)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
             Spacer(minLength: 0)
             if showsControls {
                 Button {
                     islands.togglePin(island.id)
                 } label: {
                     Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.tertiary))
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -224,7 +215,7 @@ struct IslandView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -235,11 +226,8 @@ struct IslandView: View {
                 .frame(width: 18, height: 18)
             }
         }
-        .padding(.horizontal, IslandGeometry.padding)
+        .padding(.horizontal, 4)
         .animation(.easeInOut(duration: 0.15), value: showsControls)
-        .contentShape(Rectangle())
-        .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
-        .gesture(moveGesture)
         .accessibilityAddTraits(.isHeader)
     }
 
@@ -250,37 +238,36 @@ struct IslandView: View {
     }
 }
 
-/// One chip: the tab's favicon and title, the favicon alone, or a live preview of the page.
-/// A click opens the page; a drag moves the chip to a cell beside another, or to another
-/// island; its menu makes a new island from it or changes its shape.
-private struct ChipView: View {
+/// One tab as a row: its favicon with the loading ring, its title, its state, and under the
+/// pointer its close. A click opens the page; a drag moves the row within its island, into
+/// another, or, let go on the page, out of its island as a live card. Its menu is the page's.
+private struct IslandTabRow: View {
     let tab: Tab
-    let chip: ChipPlacement
     let island: Island
     let area: CGRect
 
     @Environment(IslandController.self) private var islands
     @Environment(WindowState.self) private var windowState
     @Environment(TabManager.self) private var tabManager
+    @Environment(TabCanvasManager.self) private var canvas
+    @Environment(BookmarksManager.self) private var bookmarks
+    @Environment(SharingCoordinator.self) private var sharing
     @State private var dragOffset: CGSize = .zero
     @State private var isHovering = false
 
     private enum Layout {
-        static let faviconSize: CGFloat = 14
-        static let previewHeaderHeight: CGFloat = 24
-        /// Chips untouched this long step back a shade.
-        static let restAge: TimeInterval = 24 * 60 * 60
-        static let restOpacity: Double = 0.55
-        /// How far inside another island a dragged chip must be to move there.
-        static let otherIslandInset: CGFloat = 24
+        static let faviconSize: CGFloat = 16
+        static let ringSize: CGFloat = 20
+        /// How far past an island's edge a row still lands on it.
+        static let reach: CGFloat = 12
     }
 
     private var isCurrent: Bool {
         tab.id == windowState.activeTabID
     }
 
-    private var isResting: Bool {
-        !isCurrent && Date.now.timeIntervalSince(tab.lastAccessed ?? .distantPast) > Layout.restAge
+    private var iconsOnly: Bool {
+        island.placement.iconsOnly
     }
 
     private var color: Color {
@@ -288,39 +275,15 @@ private struct ChipView: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: IslandGeometry.chipCornerRadius, style: .continuous)
-        Group {
-            if chip.shape == .preview {
-                preview
-            } else {
-                titleFace
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.1 : 0.055), in: shape)
-        .clipShape(shape)
-        .opacity(isResting ? Layout.restOpacity : 1)
-        .offset(dragOffset)
-        .zIndex(dragOffset == .zero ? 0 : 2)
-        .onHover { isHovering = $0 }
-        .contentShape(shape)
-        .onTapGesture { islands.open(tab) }
-        .gesture(dragGesture)
-        .contextMenu { menu }
-        .help(tab.displayTitle)
-        .accessibilityLabel(tab.displayTitle)
-        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private var titleFace: some View {
+        let shape = RoundedRectangle(cornerRadius: IslandGeometry.rowCornerRadius, style: .continuous)
         HStack(spacing: 8) {
-            favicon
-            if !island.placement.iconsOnly {
-                Text(tab.displayTitle)
-                    .font(.callout.weight(isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
+                .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
+            if !iconsOnly {
+                FloatingTabTitle(tab: tab)
+                    .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
                 Spacer(minLength: 0)
+                TabStateSymbols(tab: tab)
                 if isHovering {
                     Button {
                         tabManager.requestCloseTab(tab)
@@ -336,98 +299,68 @@ private struct ChipView: View {
                 }
             }
         }
-        .padding(.leading, island.placement.iconsOnly ? 0 : 9)
-        .padding(.trailing, island.placement.iconsOnly ? 0 : 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: island.placement.iconsOnly ? .center : .leading)
+        .padding(.horizontal, iconsOnly ? 0 : 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
+        .background(isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.08 : 0), in: shape)
+        .contentShape(shape)
+        .offset(dragOffset)
+        .zIndex(dragOffset == .zero ? 0 : 2)
+        .onHover { isHovering = $0 }
+        .onTapGesture { islands.open(tab) }
+        .gesture(dragGesture)
+        .contextMenu { MenuTreeView(tree: menuTree) }
+        .closesOnMiddleClick(tab)
+        .help(iconsOnly ? tab.displayTitle : "")
+        .accessibilityLabel(tab.displayTitle)
+        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { islands.open(tab) }
     }
 
-    private var preview: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                favicon
-                Text(tab.displayTitle)
-                    .font(.caption)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .frame(height: Layout.previewHeaderHeight)
-            FloatingTabPreview(tab: tab, viewportSize: area.size, isLive: !isCurrent)
-                .clipShape(RoundedRectangle(cornerRadius: IslandGeometry.chipCornerRadius - 4, style: .continuous))
-                .padding([.horizontal, .bottom], 4)
-        }
+    /// The page's actions and the tab's, with a rename that edits the row's title in place
+    /// and the island this row can leave for.
+    private var menuTree: MenuTree {
+        let page = PageActions(tab: tab, windowState: windowState, tabs: tabManager, sharing: sharing)
+        let object = TabActions(
+            tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas, area: area,
+            onRename: { canvas.renamingTabID = tab.id },
+        )
+        let island = [
+            MenuAction("island.new", "New Island from Here", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
+            MenuAction("island.float", "Float as Live Page", symbol: "rectangle.on.rectangle", group: .move) {
+                islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY))
+            },
+        ]
+        return MenuComposer.compose(page.actions() + object.actions() + island, groupOrder: PageActionsMenu.groupOrder)
     }
 
-    @ViewBuilder
-    private var favicon: some View {
-        if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
-            Image(nsImage: image).resizable().scaledToFit()
-                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        } else {
-            Image(systemName: "globe")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: Layout.faviconSize, height: Layout.faviconSize)
-                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var menu: some View {
-        Button("Open") { islands.open(tab) }
-        Button("New Island from Here") { islands.makeIsland(from: tab.id) }
-        if chip.shape == .preview {
-            Button("Show as Title") { islands.setShape(.title, of: tab.id) }
-            Menu("Preview Size") {
-                Button("Small") { islands.resizePreview(tab.id, to: IslandGeometry.previewSpans[0]) }
-                Button("Medium") { islands.resizePreview(tab.id, to: IslandGeometry.previewSpans[1]) }
-                Button("Large") { islands.resizePreview(tab.id, to: IslandGeometry.previewSpans[2]) }
-            }
-        } else {
-            Button("Show Preview") { islands.setShape(.preview, span: IslandGeometry.previewSpans[1], of: tab.id) }
-        }
-        Divider()
-        Button("Close Tab") { tabManager.requestCloseTab(tab) }
-    }
-
+    /// Where the row would land while it is dragged, and what happens when it is let go.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .named("islands"))
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
             .onChanged { value in
                 dragOffset = value.translation
-                windowState.draggedChipID = tab.id
+                islands.draggedTabID = tab.id
                 let point = value.location
-                let home = islands.frame(of: island)
-                let geometry = islands.geometry(for: island)
-                // A chip may land one cell beyond its island's edges, which grows the island.
-                let reach = home.insetBy(dx: -(geometry.cell.width + IslandGeometry.gap), dy: -(geometry.cell.height + IslandGeometry.gap))
-                let local = CGPoint(x: point.x - home.minX, y: point.y - home.minY)
-                let cell = geometry.cell(at: local, in: island.layout)
-                // The chip's own island has first claim; another island takes a drop only well
-                // inside its frame, so a neighbor island never catches a chip moved one cell over.
-                if reach.contains(point), island.layout.canPlace(tab.id, at: cell, span: chip.span) {
-                    islands.dropCandidate = (island.id, cell)
-                } else if let target = islands.visibleIslands.first(where: {
-                    $0.id != island.id && islands.frame(of: $0).insetBy(dx: Layout.otherIslandInset, dy: Layout.otherIslandInset).contains(point)
-                }) {
-                    islands.dropCandidate = (target.id, IslandCell(x: 0, y: 0))
-                } else {
-                    islands.dropCandidate = nil
+                if let target = islands.visibleIslands.first(where: { islands.frame(of: $0).insetBy(dx: -Layout.reach, dy: -Layout.reach).contains(point) }) {
+                    let frame = islands.frame(of: target)
+                    let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+                    let count = target.tabIDs.filter { $0 != tab.id }.count
+                    let drop = IslandDrop(island: target.id, row: islands.geometry(for: target).insertion(at: local, count: count))
+                    if islands.drop != drop {
+                        islands.drop = drop
+                    }
+                } else if islands.drop != nil {
+                    islands.drop = nil
                 }
             }
-            .onEnded { _ in
-                if let candidate = islands.dropCandidate {
-                    if candidate.island == island.id {
-                        islands.moveChip(tab.id, to: candidate.cell)
-                    } else {
-                        islands.moveChip(tab.id, toIsland: candidate.island)
-                    }
+            .onEnded { value in
+                if let drop = islands.drop {
+                    islands.moveTab(tab.id, to: drop.row, in: drop.island)
+                } else {
+                    islands.detach(tab.id, at: value.location)
                 }
-                islands.dropCandidate = nil
-                windowState.draggedChipID = nil
-                withAnimation(.snappy(duration: 0.2)) {
-                    dragOffset = .zero
-                }
+                islands.drop = nil
+                islands.draggedTabID = nil
+                dragOffset = .zero
             }
     }
 }

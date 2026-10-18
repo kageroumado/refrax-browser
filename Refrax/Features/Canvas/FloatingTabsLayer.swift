@@ -118,7 +118,8 @@ struct FloatingTabsLayer: View {
     }
 }
 
-private struct FloatingTabCard: View {
+/// A tab as a card over the page: its icon, its title, or its live page, moved by its header.
+struct FloatingTabCard: View {
     let tab: Tab
     let placement: FloatingTabPlacement
     let area: CGRect

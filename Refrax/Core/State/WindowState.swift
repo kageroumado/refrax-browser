@@ -452,9 +452,6 @@ final class WindowState {
 
     /// The window's islands, for menus and lens commands built from the window's state.
     @ObservationIgnored weak var islandController: IslandController?
-    /// The chip being dragged between cells or islands.
-    var draggedChipID: Tab.ID?
-
     /// The empty page hosts Command Lens itself; each request refocuses that lens.
     var startPageLensRequest = 0
 

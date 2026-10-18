@@ -297,12 +297,25 @@ extension TabCanvasManager {
     /// the pointer becomes the drop target, or the window side under it the dock target.
     func dragFloatingCard(_ tab: Tab, translation: CGSize, pointer: CGPoint, in area: CGRect) {
         let moving = cardsMoved(with: tab)
+        floatingDragPointer = pointer
         moveFloatingTabs(moving, by: translation, in: area)
         updateFloatingDropTarget(at: pointer, dragging: moving, in: area)
         updateDockTarget(at: pointer, dragging: moving, in: area)
     }
 
+    /// Releases a card: onto an island it rejoins it as a row, onto a window side it docks,
+    /// otherwise it stays where it was dropped.
     func endFloatingCardDrag(_ tab: Tab) {
+        let pointer = floatingDragPointer
+        floatingDragPointer = nil
+        if let pointer, islandDrop?(tab, pointer) == true {
+            endFloatingMove()
+            floatingDropGroupID = nil
+            floatingDropBridge = nil
+            floatingDropMovingCardID = nil
+            floatingDropAttachedCardID = nil
+            return
+        }
         if dockDraggedCard(tab) {
             floatingDropGroupID = nil
             floatingDropBridge = nil

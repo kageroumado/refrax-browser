@@ -2,16 +2,22 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// One island on the window: a tab group, or the space's loose tabs, with its chips on a grid
-/// and its place on the window.
+/// One island on the window: a tab group, or the space's loose tabs, as a column of rows in
+/// the tab list's order, with its place on the window.
 struct Island: Identifiable, Equatable {
     let id: UUID
     var title: String
     var colorString: String?
-    var layout: IslandLayout
+    var tabIDs: [UUID]
     var placement: IslandPlacement
     /// The loose tabs' island, named after the space.
     var isDefault: Bool
+}
+
+/// Where a dragged row would land: an island and the row it goes before.
+struct IslandDrop: Equatable {
+    let island: UUID
+    let row: Int
 }
 
 /// How a page replaces the current one.
@@ -43,13 +49,12 @@ struct ArmedCrossing: Equatable {
     let at: Date
 }
 
-/// One window's islands: the layout of every island built from the space's groups, the
-/// placements kept for them, the moves between pages, and the islands' own edits.
+/// One window's islands: every island built from the space's groups in the tab list's order,
+/// the placements kept for them, the moves between pages, and the islands' own edits.
 ///
-/// Rebuilt from the space whenever it changes. A tab new to an island goes below the
-/// window's current chip when that chip is on the same island; a tab gone lets the chips
-/// below it move up. Only chips and island placements are stored (``IslandState``, on the
-/// space); membership and titles are the group relation.
+/// Rebuilt from the space whenever it changes. Membership, order, and titles are the tab
+/// list and the group relation; only island placements and the tabs taken out to float as
+/// cards are stored (``IslandState``, on the space).
 @MainActor
 @Observable
 final class IslandController {
@@ -61,6 +66,8 @@ final class IslandController {
         static let firstIslandOrigin = CGPoint(x: 0.1, y: 0.1)
         /// How far a new island lands from the one it came from, in window widths.
         static let newIslandOffset: Double = 0.26
+        /// Where under its top edge a card taken out of an island hangs from the pointer.
+        static let cardGrab: CGFloat = 14
     }
 
     private nonisolated struct SyncKey: Equatable, Sendable {
@@ -81,19 +88,21 @@ final class IslandController {
     private(set) var bump: EdgeBump?
     /// The edge the last push leaned on: the next push the same way crosses.
     private(set) var armedCrossing: ArmedCrossing?
-    /// A chip being dragged: where it would land, if it may.
-    var dropCandidate: (island: UUID, cell: IslandCell)?
+    /// The row being dragged, and where it would land; nowhere means it leaves as a card.
+    var draggedTabID: UUID?
+    var drop: IslandDrop?
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
     /// The island that just appeared, for its unfold.
     private(set) var emergingIslandID: UUID?
     /// The area the islands are placed in, in the layer's coordinates.
     private(set) var area: CGRect = .zero
+    /// The whole layer, where cards are placed.
+    private(set) var bounds: CGRect = .zero
     /// The page's area, for the moves that need it.
     @ObservationIgnored private(set) var viewportFrame: CGRect = .zero
     /// The last current tab of each island, where a crossing lands.
     @ObservationIgnored private var lastTab: [UUID: UUID] = [:]
-    @ObservationIgnored private var previousMembers: [UUID: Set<UUID>] = [:]
     @ObservationIgnored private var captures: [UUID: NSImage] = [:]
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
@@ -122,6 +131,7 @@ final class IslandController {
 
     func start() {
         rebuild()
+        canvas.islandDrop = { [weak self] tab, point in self?.attach(tab, at: point) ?? false }
         let windowState = windowState
         let tabManager = tabManager
         let changes = Observations {
@@ -137,6 +147,7 @@ final class IslandController {
     func stop() {
         tasks.forEach { $0.cancel() }
         tasks.removeAll()
+        canvas.islandDrop = nil
     }
 
     private func sync(_ key: SyncKey) {
@@ -165,7 +176,13 @@ final class IslandController {
     }
 
     func island(holding tabID: UUID) -> Island? {
-        islands.first { $0.layout[tabID] != nil }
+        islands.first { $0.tabIDs.contains(tabID) }
+    }
+
+    /// The tabs taken out of their islands, floating as live cards.
+    var detachedTabs: [Tab] {
+        guard !windowState.isSpaceLocked, !windowState.showsCommandLens, !canvas.isActive else { return [] }
+        return state.detached.compactMap(tab(for:)).filter { canvas.storedFloatingPlacement(for: $0)?.isDocked != true }
     }
 
     func island(_ id: UUID) -> Island? {
@@ -189,7 +206,7 @@ final class IslandController {
 
     /// An island's frame in the layer, held inside the area.
     func frame(of island: Island) -> CGRect {
-        let size = geometry(for: island).islandSize(of: island.layout, in: area.size)
+        let size = geometry(for: island).size(rows: island.tabIDs.count, in: area.size)
         let origin = CGPoint(
             x: area.minX + island.placement.x * max(0, area.width - size.width),
             y: area.minY + island.placement.y * max(0, area.height - size.height),
@@ -197,27 +214,26 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
-    /// A chip's frame in the layer.
-    func frame(ofChip tabID: UUID) -> CGRect? {
-        guard let island = island(holding: tabID), let chip = island.layout[tabID] else { return nil }
-        let islandFrame = frame(of: island)
-        return geometry(for: island).frame(of: chip, in: island.layout).offsetBy(dx: islandFrame.minX, dy: islandFrame.minY)
-    }
-
-    /// Where the islands take the pointer: every visible island.
+    /// Where the islands take the pointer: every visible island and every card.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
-        visibleIslands.map(frame(of:))
+        visibleIslands.map(frame(of:)) + detachedTabs.map { canvas.floatingHitFrame(for: $0, in: bounds) }
     }
 
     func color(of island: Island) -> Color {
         island.colorString.map(Color.resolveStoredColor) ?? .appAccentColor
     }
 
-    /// The tab a step in `direction` reaches from the current chip, within its island.
+    /// The tab a step in `direction` reaches from the current row: the row above or below
+    /// it. Left and right lead only to other islands.
     func destination(toward direction: TableDirection) -> Tab? {
         guard let current = currentTab, let island = island(holding: current.id),
-              let next = island.layout.neighbor(of: current.id, toward: direction) else { return nil }
-        return tab(for: next)
+              let index = island.tabIDs.firstIndex(of: current.id) else { return nil }
+        let next: Int? = switch direction {
+        case .up: index > 0 ? index - 1 : nil
+        case .down: index + 1 < island.tabIDs.count ? index + 1 : nil
+        case .left, .right: nil
+        }
+        return next.flatMap { tab(for: island.tabIDs[$0]) }
     }
 
     /// The island in `direction` from the current one, by their places on the window.
@@ -256,50 +272,33 @@ final class IslandController {
         if spaceID != space.id {
             spaceID = space.id
             state = IslandState.decode(space.tableLayoutData)
-            previousMembers = [:]
             lastTab = [:]
         }
-        let onIslands = space.mainTabs.filter { !$0.isFavorite && canvas.storedFloatingPlacement(for: $0)?.isDocked != true }
+        // Favorites, docked pages, and tabs floating as cards are not rows.
+        let onIslands = space.mainTabs.filter {
+            !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
+        }
         var sources: [(id: UUID, title: String, color: String?, members: [UUID], isDefault: Bool)] = [
             (space.id, space.name, nil, onIslands.filter { $0.group == nil }.map(\.id), true),
         ]
         for group in space.groups.filter({ !$0.isArchive }).sorted(by: { $0.position < $1.position }) {
-            sources.append((group.id, group.name, group.colorString, group.sortedTabs.filter { tab in onIslands.contains { $0.id == tab.id } }.map(\.id), false))
+            let members = onIslands.filter { $0.group?.id == group.id }.map(\.id)
+            sources.append((group.id, group.name, group.colorString, members, false))
         }
-        let current = windowState.activeTabID
         var changed = false
         var built: [Island] = []
         var nextOrigin = Layout.firstIslandOrigin
         for source in sources where !source.members.isEmpty || source.isDefault {
-            var layout = IslandLayout(chips: state.chips.filter { source.members.contains($0.key) })
-            let previous = previousMembers[source.id] ?? Set(layout.tabIDs)
-            for gone in previous.subtracting(source.members) where layout[gone] != nil {
-                layout = layout.removing(gone)
-            }
-            for tabID in source.members where layout[tabID] == nil {
-                let below = current.flatMap { layout[$0] != nil ? $0 : nil } ?? lastTab[source.id].flatMap { layout[$0] != nil ? $0 : nil }
-                layout = layout.placing(tabID, below: below)
-            }
-            if !layout.isConnected {
-                layout = layout.reconnected()
-            }
-            for (tabID, chip) in layout.chips where state.chips[tabID] != chip {
-                state.chips[tabID] = chip
-                changed = true
-            }
-            previousMembers[source.id] = Set(source.members)
-            var placement = state.islands[source.id] ?? IslandPlacement(x: nextOrigin.x, y: nextOrigin.y)
             if state.islands[source.id] == nil {
-                state.islands[source.id] = placement
+                state.islands[source.id] = IslandPlacement(x: nextOrigin.x, y: nextOrigin.y)
                 changed = true
             }
-            placement = state.islands[source.id]!
+            let placement = state.islands[source.id]!
             nextOrigin.x = min(0.9, placement.x + Layout.newIslandOffset)
-            built.append(Island(id: source.id, title: source.title, colorString: source.color, layout: layout, placement: placement, isDefault: source.isDefault))
+            built.append(Island(id: source.id, title: source.title, colorString: source.color, tabIDs: source.members, placement: placement, isDefault: source.isDefault))
         }
-        let present = built.flatMap(\.layout.tabIDs)
         let before = state
-        state.prune(tabs: present, islands: built.map(\.id))
+        state.prune(tabs: space.mainTabs.map(\.id), islands: built.map(\.id))
         if changed || state != before {
             persist()
         }
@@ -314,9 +313,12 @@ final class IslandController {
         tabManager.scheduleSave()
     }
 
-    func updateArea(_ area: CGRect) {
+    func updateArea(_ area: CGRect, in bounds: CGRect) {
         if self.area != area {
             self.area = area
+        }
+        if self.bounds != bounds {
+            self.bounds = bounds
         }
     }
 
@@ -336,7 +338,7 @@ final class IslandController {
         if let tab = destination(toward: direction) {
             armedCrossing = nil
             travel(to: tab, style: .slide(direction))
-        } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.layout.tabIDs.first, let tab = tab(for: tabID) {
+        } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.tabIDs.first, let tab = tab(for: tabID) {
             // The island's edge resists: the first push leans on it, the second crosses.
             if let armed = armedCrossing, armed.direction == direction, Date.now.timeIntervalSince(armed.at) < Layout.crossingWindow {
                 armedCrossing = nil
@@ -378,11 +380,8 @@ final class IslandController {
         if let here, let there, here.id != there.id {
             let direction: TableDirection = frame(of: there).midX >= frame(of: here).midX ? .right : .left
             travel(to: tab, style: .cross(direction))
-        } else if let here, let from = here.layout[current.id], let to = here.layout[tab.id] {
-            let dx = to.cell.x - from.cell.x
-            let dy = to.cell.y - from.cell.y
-            let direction: TableDirection = abs(dx) >= abs(dy) ? (dx >= 0 ? .right : .left) : (dy >= 0 ? .down : .up)
-            travel(to: tab, style: .slide(direction))
+        } else if let here, let from = here.tabIDs.firstIndex(of: current.id), let to = here.tabIDs.firstIndex(of: tab.id) {
+            travel(to: tab, style: .slide(to > from ? .down : .up))
         } else {
             travel(to: tab, style: .jump)
         }
@@ -428,26 +427,44 @@ final class IslandController {
 
     // MARK: - Editing islands
 
-    /// Moves a chip to `cell` on its island, when it may land there.
-    func moveChip(_ tabID: UUID, to cell: IslandCell) {
-        guard let index = islands.firstIndex(where: { $0.layout[tabID] != nil }) else { return }
-        let moved = islands[index].layout.moving(tabID, to: cell)
-        guard moved != islands[index].layout else { return }
-        islands[index].layout = moved
-        state.chips[tabID] = moved[tabID]
+    /// Puts `tabID` before row `row` of island `islandID`, or after its last row, moving it
+    /// between groups when the island is another one. A card dropped here becomes a row again.
+    func moveTab(_ tabID: UUID, to row: Int, in islandID: UUID) {
+        guard let tab = tab(for: tabID), let space = tab.space, let target = island(islandID) else { return }
+        let group = target.isDefault ? nil : space.groups.first { $0.id == islandID }
+        if tab.group?.id != group?.id {
+            groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
+        }
+        state.detached.remove(tabID)
+        let rows = target.tabIDs.filter { $0 != tabID }.compactMap(self.tab(for:))
+        let at = min(row, rows.count)
+        tabManager.placeTab(tab, after: at > 0 ? rows[at - 1] : nil, before: at < rows.count ? rows[at] : nil)
         persist()
+        rebuild()
     }
 
-    /// Moves a chip onto another island, below that island's last current chip.
-    func moveChip(_ tabID: UUID, toIsland islandID: UUID) {
-        guard let tab = tab(for: tabID), let space = tab.space, let target = island(islandID), target.layout[tabID] == nil else { return }
-        let group = target.isDefault ? nil : space.groups.first { $0.id == islandID }
-        if let source = islands.first(where: { $0.layout[tabID] != nil }) {
-            previousMembers[source.id]?.remove(tabID)
-            state.chips.removeValue(forKey: tabID)
-        }
-        groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
+    /// Takes `tabID` out of its island: it floats as a live card at `point`, pinned so it
+    /// stays when the reveal key is up.
+    func detach(_ tabID: UUID, at point: CGPoint) {
+        guard let tab = tab(for: tabID) else { return }
+        var placement = canvas.storedFloatingPlacement(for: tab) ?? FloatingTabPlacement.initial(index: 0, count: 1, shape: .live)
+        placement.shape = .live
+        placement.isPinned = true
+        placement.dock = nil
+        let size = placement.frame(in: bounds).size
+        placement.move(to: CGPoint(x: point.x - size.width / 2, y: point.y - Layout.cardGrab), in: bounds)
+        canvas.updateFloatingPlacement(placement, for: tab)
+        state.detached.insert(tabID)
+        persist()
         rebuild()
+    }
+
+    /// A card released at `point` over an island goes in as a row there.
+    private func attach(_ tab: Tab, at point: CGPoint) -> Bool {
+        guard state.detached.contains(tab.id), let island = visibleIslands.first(where: { frame(of: $0).contains(point) }) else { return false }
+        let local = CGPoint(x: point.x - frame(of: island).minX, y: point.y - frame(of: island).minY)
+        moveTab(tab.id, to: geometry(for: island).insertion(at: local, count: island.tabIDs.count), in: island.id)
+        return true
     }
 
     func moveIsland(_ islandID: UUID, to origin: CGPoint) {
@@ -483,29 +500,13 @@ final class IslandController {
         persist()
     }
 
-    /// Shows a chip as a preview of its page at a preset size, or as its title again.
-    func setShape(_ shape: ChipShape, span: IslandSpan = .one, region: FloatingPageRegion? = nil, of tabID: UUID) {
-        guard let index = islands.firstIndex(where: { $0.layout[tabID] != nil }) else { return }
-        let reshaped = islands[index].layout.reshaping(tabID, shape: shape, span: shape == .preview ? span : .one, region: region)
-        islands[index].layout = reshaped
-        state.chips[tabID] = reshaped[tabID]
-        persist()
-    }
-
-    /// Resizes a preview chip to `span` cells, where it fits.
-    func resizePreview(_ tabID: UUID, to span: IslandSpan) {
-        guard let island = island(holding: tabID), let chip = island.layout[tabID], chip.shape == .preview else { return }
-        setShape(.preview, span: IslandSpan(width: max(1, span.width), height: max(1, span.height)), region: chip.region, of: tabID)
-    }
-
-    /// The first place beside `source` where an island of `layout` would cover no other island:
-    /// to its right, then below, then left, stepping outward.
-    private func freePlacement(near source: Island, for layout: IslandLayout, iconsOnly: Bool) -> IslandPlacement {
-        let size = IslandGeometry(iconsOnly: iconsOnly).islandSize(of: layout, in: area.size)
+    /// The first place beside `source` where an island of `rows` rows would cover no other
+    /// island: to its right, then below, then left, stepping outward.
+    private func freePlacement(near source: Island, rows: Int, iconsOnly: Bool) -> IslandPlacement {
+        let size = IslandGeometry(iconsOnly: iconsOnly).size(rows: rows, in: area.size)
         let sourceFrame = frame(of: source)
         let others = islands.filter { $0.id != source.id }.map(frame(of:)) + [sourceFrame]
-        // A full cell of room, so either island can grow toward the other before they touch.
-        let gap = IslandGeometry.titleCell.width + IslandGeometry.gap
+        let gap = IslandGeometry.rowHeight
         var candidates: [CGPoint] = []
         for step in 0 ..< 6 {
             let shift = CGFloat(step) * (size.height + gap)
@@ -525,32 +526,13 @@ final class IslandController {
         )
     }
 
-    /// Makes a new island from `tabID` and the chips below it: a new group beside the source
-    /// island, unfolding, with the chips traveling into it.
+    /// Makes a new island from `tabID`: a new group beside the source island, unfolding.
     func makeIsland(from tabID: UUID) {
         guard let tab = tab(for: tabID), let space = tab.space, let source = island(holding: tabID) else { return }
-        let memberIDs = source.layout.subtree(below: tabID)
-        let members = memberIDs.compactMap(self.tab(for:))
         let name = "Island \(space.groups.filter { !$0.isArchive }.count + 1)"
         guard let group = try? groupManager.createGroup(in: space, name: name) else { return }
-        // The chips keep their shape, carried so the top one sits at the new island's origin.
-        var carried = IslandLayout()
-        if let top = source.layout[tabID] {
-            for member in memberIDs {
-                if var chip = source.layout[member] {
-                    chip.cell = IslandCell(x: chip.cell.x - top.cell.x, y: chip.cell.y - top.cell.y)
-                    state.chips[member] = chip
-                    carried = IslandLayout(chips: carried.chips.merging([member: chip]) { $1 })
-                }
-            }
-        }
-        var placement = source.placement
-        placement.isPinned = false
-        state.islands[group.id] = freePlacement(near: source, for: carried, iconsOnly: placement.iconsOnly)
-        for member in members {
-            previousMembers[source.id]?.remove(member.id)
-            groupManager.moveTabToGroup(member, group: group, in: space, skipReordering: true)
-        }
+        state.islands[group.id] = freePlacement(near: source, rows: 1, iconsOnly: source.placement.iconsOnly)
+        groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
         emergingIslandID = group.id
         rebuild()
         Task(name: "Finish an island's unfold") { [weak self] in
