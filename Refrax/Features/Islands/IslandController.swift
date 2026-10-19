@@ -636,17 +636,58 @@ final class IslandController {
         captures[tabID] ?? canvas.snapshots[tabID]
     }
 
-    /// Renders the page through WebKit, which draws the page alone and nothing over it, and
-    /// keeps the image in memory and on disk. The page stays on screen while it renders.
+    /// Renders the tab through WebKit, which draws each page alone and nothing over it, and
+    /// keeps the image in memory and on disk. The tab stays on screen while it renders. A tab
+    /// of several panes is one image: each pane's render at the pane's place in the window.
     @discardableResult
     func refreshSnapshot(of tab: Tab) async -> NSImage? {
-        guard let page = pagePool.existingPage(for: tab.activePage), page.contentView.bounds.width > 0,
-              let image = try? await page.snapshot(), !Task.isCancelled, tab.id == windowState.activeTabID else { return nil }
+        let pages = tab.pages.compactMap { pagePool.existingPage(for: $0) }.filter { $0.contentView.bounds.width > 0 }
+        guard !pages.isEmpty else { return nil }
+        let image: NSImage?
+        if pages.count == 1 {
+            image = try? await pages[0].snapshot()
+        } else {
+            image = await Self.composite(pages)
+        }
+        guard let image, !Task.isCancelled, tab.id == windowState.activeTabID else { return nil }
         store(image, for: tab.id)
         if tab.space?.dataStoreMode != .private, let data = image.tiffRepresentation {
             let id = tab.id
             Task(name: "Keep a page's image", priority: .utility) { await CanvasSnapshotStore.save(tiff: data, for: id) }
         }
+        return image
+    }
+
+    /// The panes' renders drawn into one image of the window's content, each where its view
+    /// is, at the window's scale.
+    private static func composite(_ pages: [WebPage]) async -> NSImage? {
+        guard let window = pages.first?.contentView.window, let content = window.contentView else { return nil }
+        var renders: [(CGRect, NSImage)] = []
+        for page in pages {
+            if let render = try? await page.snapshot() {
+                renders.append((page.contentView.convert(page.contentView.bounds, to: content), render))
+            }
+        }
+        guard !renders.isEmpty else { return nil }
+        let size = content.bounds.size
+        let scale = window.backingScaleFactor
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0,
+        ) else { return nil }
+        bitmap.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.windowBackgroundColor.setFill()
+        CGRect(origin: .zero, size: size).fill()
+        for (frame, render) in renders {
+            // The view's rect in the content view is bottom-up, as the bitmap is.
+            render.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: size)
+        image.addRepresentation(bitmap)
         return image
     }
 

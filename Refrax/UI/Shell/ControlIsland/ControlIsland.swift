@@ -147,7 +147,8 @@ struct ControlIsland: View {
         return effectivePlacement.pageBranchFrame(
             in: area,
             anchor: anchor,
-            height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37),
+            height: Layout.pageBranchHeight + (windowState.pageVisit.destination == nil ? 0 : 37)
+                + Layout.paneRowHeight * CGFloat(max(0, (windowState.focusedPage?.tab ?? windowState.activeTab)?.pages.count ?? 1) - 1),
         )
     }
     /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,

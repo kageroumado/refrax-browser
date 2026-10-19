@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The current page as one card beside the rail: its icon, title, and domain, then Reload,
 /// Favorite, Copy Address while the pointer is on the card, and the page options. Tapping the
-/// identity opens the Command Lens in the card's place with the address in it.
+/// identity opens the Command Lens in the card's place with the address in it. A split tab's
+/// other panes follow as rows under it; tapping one brings that pane to the card.
 struct ControlIslandPageBranch: View {
     let area: CGRect
     let frame: CGRect
@@ -37,6 +38,7 @@ struct ControlIslandPageBranch: View {
         /// From the last control to the card's trailing edge.
         static let trailingInset: CGFloat = 6
         static let copiedFeedback: TimeInterval = 1.5
+        static let paneFaviconSize: CGFloat = 16
     }
 
     private var tab: Tab? {
@@ -77,6 +79,12 @@ struct ControlIslandPageBranch: View {
             .overlay(alignment: .bottom) {
                 LoadingIndicatorBar(isLoading: isLoading, progress: page?.estimatedProgress ?? 0, horizontalInset: Layout.leadingInset)
             }
+            if let tab {
+                ForEach(otherPanes(of: tab)) { pane in
+                    Divider().padding(.horizontal, Layout.leadingInset)
+                    paneRow(pane, of: tab)
+                }
+            }
             if let destination = windowState.pageVisit.destination {
                 Divider().padding(.horizontal, Layout.leadingInset)
                 LookReturnRow(destination: destination, beganAt: windowState.pageVisit.beganAt)
@@ -97,6 +105,45 @@ struct ControlIslandPageBranch: View {
                 canvas.menuTabID = nil
             }
         }
+    }
+
+    /// The tab's panes other than the one the card shows, left to right.
+    private func otherPanes(of tab: Tab) -> [TabPage] {
+        guard tab.pages.count > 1 else { return [] }
+        let shown = windowState.focusedPage?.id ?? tab.activePage.id
+        return tab.pages.filter { $0.id != shown }.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }
+    }
+
+    /// Another pane of the tab: its icon, title, and domain. Tapping it brings the pane to
+    /// the card, whose identity then edits its address.
+    private func paneRow(_ pane: TabPage, of tab: Tab) -> some View {
+        Button {
+            windowState.recordInteraction(with: pane.id)
+            tabs.setActivePage(in: tab, page: pane)
+        } label: {
+            HStack(spacing: Layout.faviconGap) {
+                FaviconView(data: pane.faviconData, url: pane.url, size: Layout.paneFaviconSize)
+                    .saturation(appearsActive ? 1 : 0)
+                Text(pane.title.isEmpty ? (pane.url.safeDisplayDomain ?? "") : pane.title)
+                    .font(.system(size: Layout.domainSize, weight: .medium))
+                    .lineLimit(1)
+                Text(pane.url.safeDisplayDomain ?? "")
+                    .font(.system(size: Layout.domainSize))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Spacer(minLength: 0)
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.leading, Layout.leadingInset)
+            .padding(.trailing, Layout.leadingInset)
+            .frame(height: ControlIslandPlacement.paneRowHeight)
+            .contentShape(Rectangle())
+        }
+        .help("Show this pane on the card")
+        .accessibilityLabel("Pane: \(pane.title)")
     }
 
     private func identity(_ tab: Tab) -> some View {
