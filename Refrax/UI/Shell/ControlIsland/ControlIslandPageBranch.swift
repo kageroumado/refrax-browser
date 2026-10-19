@@ -124,10 +124,10 @@ struct ControlIslandPageBranch: View {
             HStack(spacing: Layout.faviconGap) {
                 FaviconView(data: pane.faviconData, url: pane.url, size: Layout.paneFaviconSize)
                     .saturation(appearsActive ? 1 : 0)
-                Text(pane.title.isEmpty ? (pane.url.safeDisplayDomain ?? "") : pane.title)
+                Text(pane.title.isEmpty ? pane.url.safeDisplayDomain : pane.title)
                     .font(.system(size: Layout.domainSize, weight: .medium))
                     .lineLimit(1)
-                Text(pane.url.safeDisplayDomain ?? "")
+                Text(pane.url.safeDisplayDomain)
                     .font(.system(size: Layout.domainSize))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
