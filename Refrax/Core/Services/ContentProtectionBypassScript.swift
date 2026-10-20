@@ -46,8 +46,20 @@ enum ContentProtectionBypassScript {
             'selectstart', 'contextmenu', 'copy', 'cut', 'dragstart'
         ];
 
+        // An element the page marked draggable="true" is one it drags itself: its own
+        // dragstart handler sets the drag data, or cancels the native drag to run a
+        // slider (YouTube's volume control in WebKit). Stopping that event leaves the
+        // browser's drag ghost in place of the page's drag.
+        function isPageDraggable(target) {
+            const element = target instanceof Element ? target : target && target.parentElement;
+            return !!(element && element.closest('[draggable="true"]'));
+        }
+
         neutralizedEvents.forEach(eventType => {
-            document.addEventListener(eventType, e => e.stopPropagation(), true);
+            document.addEventListener(eventType, e => {
+                if (eventType === 'dragstart' && isPageDraggable(e.target)) return;
+                e.stopPropagation();
+            }, true);
         });
 
         // Paste is neutralized only when the clipboard carries no files. A text
@@ -72,7 +84,10 @@ enum ContentProtectionBypassScript {
         function removeInlineHandlers() {
             const selector = handlerAttributes.map(attr => `[${attr}]`).join(', ');
             document.querySelectorAll(selector).forEach(el => {
-                handlerAttributes.forEach(attr => el.removeAttribute(attr));
+                handlerAttributes.forEach(attr => {
+                    if (attr === 'ondragstart' && isPageDraggable(el)) return;
+                    el.removeAttribute(attr);
+                });
             });
         }
     
