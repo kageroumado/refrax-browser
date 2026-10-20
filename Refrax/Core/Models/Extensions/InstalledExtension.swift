@@ -128,6 +128,28 @@ nonisolated struct InstalledExtension: Codable, Identifiable, Hashable, Sendable
         self.resourceBudget = nil
     }
 
+    // MARK: - Permission Grants
+
+    /// Whether any permission or match pattern was ever granted or denied.
+    ///
+    /// Through 0.35, Refrax granted permissions only to bundled extensions, so an
+    /// extension the user installed was saved with none and ran on no site.
+    var hasPermissionDecisions: Bool {
+        !grantedPermissions.isEmpty || !deniedPermissions.isEmpty
+            || !grantedMatchPatterns.isEmpty || !deniedMatchPatterns.isEmpty
+    }
+
+    /// Grants `permissions` and `matchPatterns` with no expiration, leaving the ones
+    /// already granted or denied as they are.
+    mutating func grantPermanently(permissions: some Sequence<String>, matchPatterns: some Sequence<String>) {
+        for permission in permissions where grantedPermissions[permission] == nil && deniedPermissions[permission] == nil {
+            grantedPermissions[permission] = .distantFuture
+        }
+        for pattern in matchPatterns where grantedMatchPatterns[pattern] == nil && deniedMatchPatterns[pattern] == nil {
+            grantedMatchPatterns[pattern] = .distantFuture
+        }
+    }
+
     // MARK: - Hashable
 
     func hash(into hasher: inout Hasher) {

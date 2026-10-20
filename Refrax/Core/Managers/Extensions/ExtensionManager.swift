@@ -613,6 +613,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
 
         // Enable Web Inspector for debug builds
@@ -683,6 +685,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
         // Cache the icon if available
         if let icon = extension_.icon(for: CGSize(width: 128, height: 128)) {
@@ -795,6 +799,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
         // Cache icon
         if let icon = extension_.icon(for: CGSize(width: 128, height: 128)) {
@@ -1557,6 +1563,16 @@ final class ExtensionManager {
         let webExtension = try await WKWebExtension(resourceBaseURL: folderURL)
         let context = WKWebExtensionContext(for: webExtension)
 
+        // An extension saved with no permission decisions was installed by a build that
+        // never granted it any: give it what its manifest requests, as a new install gets.
+        var extension_ = extension_
+        if !extension_.hasPermissionDecisions,
+           let index = installedExtensions.firstIndex(where: { $0.id == extension_.id }) {
+            grantRequestedPermissions(of: webExtension, to: &extension_)
+            installedExtensions[index] = extension_
+            savePersistedState()
+        }
+
         // Restore persisted permission state
         applyPersistedPermissions(to: context, from: extension_)
 
@@ -1778,6 +1794,27 @@ final class ExtensionManager {
                 "\(extension_.requestedPermissionMatchPatterns.count) match patterns for bundled extension " +
                 "'\(installedExtension.displayName)'",
             category: Logger.extensions,
+        )
+    }
+
+    /// Grants a user-installed extension the permissions and sites its manifest requests.
+    ///
+    /// Installing the extension is the user's consent, as in Firefox and Chrome. WebKit
+    /// injects content scripts only where a match pattern is granted, so without this an
+    /// extension like uBlock Origin installed from an XPI filters no page. Optional
+    /// permissions still wait for the extension to request them.
+    ///
+    /// - Parameters:
+    ///   - webExtension: The extension with the manifest's requests.
+    ///   - installedExtension: The metadata to record the grants in. Apply them to a
+    ///     context with ``applyPersistedPermissions(to:from:)``.
+    private func grantRequestedPermissions(
+        of webExtension: WKWebExtension,
+        to installedExtension: inout InstalledExtension,
+    ) {
+        installedExtension.grantPermanently(
+            permissions: webExtension.requestedPermissions.map(\.rawValue),
+            matchPatterns: webExtension.requestedPermissionMatchPatterns.map(\.string),
         )
     }
 
