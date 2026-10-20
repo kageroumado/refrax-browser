@@ -464,7 +464,7 @@ actor ContentBlockingManager {
         switch result {
         case let .success(lists):
             if !lists.isEmpty {
-                filterLists = lists
+                filterLists = FilterListSource.updatingDefaultURLs(in: lists)
             }
         case let .failure(error):
             Logger.error("Failed to load filter list state: \(error)", category: Logger.tabs)

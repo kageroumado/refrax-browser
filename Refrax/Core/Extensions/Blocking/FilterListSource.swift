@@ -13,7 +13,7 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
     let name: String
 
     /// URL to fetch the filter list from.
-    let url: URL
+    var url: URL
 
     /// Category for organization in the UI.
     var category: FilterCategory
@@ -52,6 +52,19 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
 // MARK: - Default Lists
 
 nonisolated extension FilterListSource {
+    /// `lists` with each built-in list fetched from its current default URL.
+    ///
+    /// Saved lists keep the URL they were saved with, so a built-in list whose host
+    /// moved, like EasyList Cookie leaving easylist.to, would otherwise fail every update.
+    static func updatingDefaultURLs(in lists: [FilterListSource]) -> [FilterListSource] {
+        lists.map { list in
+            guard let current = defaultLists.first(where: { $0.id == list.id }) else { return list }
+            var list = list
+            list.url = current.url
+            return list
+        }
+    }
+
     /// Default filter lists.
     ///
     /// Includes EasyList, EasyPrivacy, and uBlock's filter lists for
@@ -126,7 +139,8 @@ nonisolated extension FilterListSource {
         FilterListSource(
             id: "easylist-cookie",
             name: "EasyList Cookie",
-            url: URL.staticRequired("https://easylist.to/easylist/easylist-cookie.txt"),
+            // easylist.to no longer serves this list; uBlock Origin's assets mirror it
+            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt"),
             category: .annoyances,
             isEnabled: true,
             updateFrequency: 86_400,
