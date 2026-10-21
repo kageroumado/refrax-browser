@@ -131,6 +131,10 @@ final class ExtensionManager {
     /// Extension tab adapters, keyed by TabPage ID.
     private var tabAdapters: [TabPage.ID: RefraxExtensionTab] = [:]
 
+    /// Open tabs that extensions know about while they have no web view: tabs restored at
+    /// launch that were never shown, and tabs whose page was evicted.
+    private(set) var tabsWithoutWebView: Set<TabPage.ID> = []
+
     /// Extension window adapters, keyed by WindowState object identity.
     private var windowAdapters: [ObjectIdentifier: RefraxExtensionWindow] = [:]
 
@@ -1283,7 +1287,38 @@ final class ExtensionManager {
             let extensionTab = extensionTab(for: tabPage, pagePool: pagePool)
             guard !context.openTabs.contains(AnyHashable(extensionTab)) else { continue }
             context.didOpenTab(extensionTab)
+            if pagePool.existingPage(for: tabPage.id) == nil {
+                tabsWithoutWebView.insert(tabPage.id)
+            }
         }
+    }
+
+    /// Notes that an open tab's page went away while the tab stays open, as when the
+    /// page pool evicts it.
+    ///
+    /// - Parameter tabPage: The tab page that lost its page.
+    func pageRemoved(for tabPage: TabPage) {
+        guard tabAdapters[tabPage.id] != nil else { return }
+        tabsWithoutWebView.insert(tabPage.id)
+    }
+
+    /// Replaces a tab in its extensions with a new one just before it gets a page, when
+    /// extensions had seen it without one.
+    ///
+    /// Extensions can drop tabs that have no web view: uBlock Origin checks its tabs every
+    /// 10 minutes, and a tab that had no web view at that check gets no filters once it
+    /// loads, even after a reload, so YouTube ads play in it. Extensions get the tab as a new
+    /// one, under a new identifier, before its page loads, as with a tab the user opens.
+    ///
+    /// - Parameter tabPage: The tab page about to get its page.
+    func pageWillBeCreated(for tabPage: TabPage) {
+        guard tabsWithoutWebView.remove(tabPage.id) != nil,
+              let tab = tabPage.tab, let pagePool = state.pagePool,
+              let adapter = tabAdapters[tabPage.id] else { return }
+        let controller = controller(for: tab)
+        controller.didCloseTab(adapter, windowIsClosing: false)
+        removeTabAdapter(for: tabPage)
+        controller.didOpenTab(extensionTab(for: tabPage, pagePool: pagePool))
     }
 
     /// The controller for a tab's web views: its space's, matching the data store
@@ -1314,6 +1349,7 @@ final class ExtensionManager {
     func dispatchTabClosed(_ tab: Tab, windowClosing: Bool) {
         guard let tabPage = tab.pages.first else { return }
 
+        tabsWithoutWebView.remove(tabPage.id)
         if let adapter = tabAdapters[tabPage.id] {
             controller(for: tab).didCloseTab(adapter, windowIsClosing: windowClosing)
             removeTabAdapter(for: tabPage)
