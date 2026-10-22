@@ -45,7 +45,7 @@ import Security
 /// When the user clicks "Restart to Update":
 /// 1. Translocation guard — refuse to update a translocated (unmovable) bundle,
 ///    then ed25519 signature over the DMG bytes verified against the pinned
-///    `RefraxEDPublicKey` before mounting
+///    `RefraxEDPublicKeys` (``ReleaseKeys``) before mounting
 /// 2. Downloaded DMG mounted via `hdiutil` (no-browse, quiet, checksum verified)
 /// 3. `.app` located in mount point (symlinks skipped)
 /// 4. New `.app` copied to a unique 0700 staging directory
@@ -459,8 +459,8 @@ final class AppUpdateManager {
     /// is skipped with a warning.
     /// Verifies the ed25519 signature over the downloaded DMG bytes.
     ///
-    /// The public key ships in the **running** app's Info.plist
-    /// (`RefraxEDPublicKey`) — never one delivered with the update — so a
+    /// The public keys ship in the **running** app's Info.plist
+    /// (`RefraxEDPublicKeys`) — never ones delivered with the update — so a
     /// compromised release feed or asset store cannot forge an installable
     /// update. Strict pre-mount verification: without a valid signature the
     /// DMG is never attached.
@@ -476,11 +476,8 @@ final class AppUpdateManager {
             return
         }
 
-        guard let keyBase64 = Bundle.main.object(forInfoDictionaryKey: "RefraxEDPublicKey") as? String,
-              let keyData = Data(base64Encoded: keyBase64),
-              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData)
-        else {
-            // A release build without the pinned key cannot trust anything
+        guard let keys = ReleaseKeys.pinned() else {
+            // A release build without pinned keys cannot trust anything
             throw AppUpdateError.signatureMissing
         }
 
@@ -502,7 +499,7 @@ final class AppUpdateManager {
         }
 
         let dmgData = try Data(contentsOf: dmgPath)
-        guard publicKey.isValidSignature(signature, for: dmgData) else {
+        guard keys.isValidSignature(signature, for: dmgData) else {
             throw AppUpdateError.signatureInvalid
         }
 

@@ -112,22 +112,22 @@ struct EngineDistributionTests {
         let release = release(bytes: bytes)
         let signature = try signatureFile(for: bytes)
 
-        try EngineInstaller.verify(archive, against: release, signatureFile: signature, key: key.publicKey)
+        try EngineInstaller.verify(archive, against: release, signatureFile: signature, keys: ReleaseKeys([key.publicKey]))
 
         let otherKey = Curve25519.Signing.PrivateKey().publicKey
         #expect(throws: EngineDistributionError.signatureInvalid(archive.lastPathComponent)) {
-            try EngineInstaller.verify(archive, against: release, signatureFile: signature, key: otherKey)
+            try EngineInstaller.verify(archive, against: release, signatureFile: signature, keys: ReleaseKeys([otherKey]))
         }
         #expect(throws: EngineDistributionError.signatureMalformed) {
-            try EngineInstaller.verify(archive, against: release, signatureFile: Data("not base64".utf8), key: key.publicKey)
+            try EngineInstaller.verify(archive, against: release, signatureFile: Data("not base64".utf8), keys: ReleaseKeys([key.publicKey]))
         }
         try Data("the engine!".utf8).write(to: archive)
         #expect(throws: EngineDistributionError.sizeMismatch(expected: Int64(bytes.count), actual: Int64(bytes.count + 1))) {
-            try EngineInstaller.verify(archive, against: release, signatureFile: signature, key: key.publicKey)
+            try EngineInstaller.verify(archive, against: release, signatureFile: signature, keys: ReleaseKeys([key.publicKey]))
         }
         try Data("THE engine".utf8).write(to: archive)
         #expect(throws: EngineDistributionError.hashMismatch) {
-            try EngineInstaller.verify(archive, against: release, signatureFile: signature, key: key.publicKey)
+            try EngineInstaller.verify(archive, against: release, signatureFile: signature, keys: ReleaseKeys([key.publicKey]))
         }
     }
 
@@ -236,10 +236,10 @@ struct EngineDistributionTests {
         let data = Data(#"{"schema":1,"engines":{"website.refrax.engine.chromium":{"displayName":"Chromium","channels":{},"securityFloor":"152.0.7977.82-r2"}}}"#.utf8)
         try data.write(to: cache.appending(path: "engines.json"))
         try signatureFile(for: data).write(to: cache.appending(path: "engines.json.sig"))
-        #expect(EngineCatalog.cached(in: cache, key: key.publicKey)?.securityFloors[engine] == EngineReleaseVersion("152.0.7977.82-r2"))
-        #expect(EngineCatalog.cached(in: cache, key: Curve25519.Signing.PrivateKey().publicKey) == nil)
+        #expect(EngineCatalog.cached(in: cache, keys: ReleaseKeys([key.publicKey]))?.securityFloors[engine] == EngineReleaseVersion("152.0.7977.82-r2"))
+        #expect(EngineCatalog.cached(in: cache, keys: ReleaseKeys([Curve25519.Signing.PrivateKey().publicKey])) == nil)
         try Data(#"{"schema":1,"engines":{}}"#.utf8).write(to: cache.appending(path: "engines.json"))
-        #expect(EngineCatalog.cached(in: cache, key: key.publicKey) == nil, "a catalog edited on disk is ignored")
+        #expect(EngineCatalog.cached(in: cache, keys: ReleaseKeys([key.publicKey])) == nil, "a catalog edited on disk is ignored")
     }
 
     @Test("An engine below the security floor doesn't start; its pages render with WebKit")

@@ -32,22 +32,19 @@ nonisolated struct EngineReleaseVersion: Comparable, Hashable, Sendable, CustomS
 
 // MARK: - Signature
 
-/// The trust anchor for engine downloads: Refrax's Ed25519 release key (`RefraxEDPublicKey`, the
-/// key app updates are checked with), whose private half signs every engine release and the
+/// The trust anchor for engine downloads: Refrax's Ed25519 release keys (``ReleaseKeys``, the
+/// keys app updates are checked with), whose private halves sign every engine release and the
 /// catalog. A signature is the raw 64-byte Ed25519 signature over a file's bytes, base64, in a
 /// sibling file named `<file>.sig`. Nothing downloaded is trusted or opened before it verifies.
 nonisolated enum EngineSignature {
     /// Engine downloads come only from this repository's releases, over HTTPS.
     static let allowedPathPrefix = "/kageroumado/refrax-engines/releases/download/"
 
-    static func pinnedKey(bundle: Bundle = .main) throws -> Curve25519.Signing.PublicKey {
-        guard let base64 = bundle.object(forInfoDictionaryKey: "RefraxEDPublicKey") as? String,
-              let raw = Data(base64Encoded: base64),
-              let key = try? Curve25519.Signing.PublicKey(rawRepresentation: raw)
-        else {
+    static func pinnedKeys(bundle: Bundle = .main) throws -> ReleaseKeys {
+        guard let keys = ReleaseKeys.pinned(in: bundle) else {
             throw EngineDistributionError.keyMissing
         }
-        return key
+        return keys
     }
 
     /// The signature file covering `url`.
@@ -72,9 +69,9 @@ nonisolated enum EngineSignature {
     }
 
     static func verify(
-        _ message: some DataProtocol, signatureFile: Data, subject: String, key: Curve25519.Signing.PublicKey,
+        _ message: some DataProtocol, signatureFile: Data, subject: String, keys: ReleaseKeys,
     ) throws {
-        guard try key.isValidSignature(signature(fromFile: signatureFile), for: message) else {
+        guard try keys.isValidSignature(signature(fromFile: signatureFile), for: message) else {
             throw EngineDistributionError.signatureInvalid(subject)
         }
     }
@@ -115,15 +112,15 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
     /// Keyed by engine ID.
     let engines: [String: Engine]
 
-    /// Downloads the catalog and verifies it against the pinned key before decoding it. With a
-    /// cache directory, the verified bytes and signature are kept there for ``cached(in:key:)``.
+    /// Downloads the catalog and verifies it against the pinned keys before decoding it. With a
+    /// cache directory, the verified bytes and signature are kept there for ``cached(in:keys:)``.
     static func fetch(
-        session: URLSession = .shared, key: Curve25519.Signing.PublicKey? = nil, cachingIn cache: URL? = nil,
+        session: URLSession = .shared, keys: ReleaseKeys? = nil, cachingIn cache: URL? = nil,
     ) async throws -> EngineCatalog {
-        let key = try key ?? EngineSignature.pinnedKey()
+        let keys = try keys ?? EngineSignature.pinnedKeys()
         let data = try await download(url, session: session, limit: 1 << 20)
         let signature = try await download(EngineSignature.signatureURL(for: url), session: session, limit: 1024)
-        try EngineSignature.verify(data, signatureFile: signature, subject: url.lastPathComponent, key: key)
+        try EngineSignature.verify(data, signatureFile: signature, subject: url.lastPathComponent, keys: keys)
         let catalog = try decode(data)
         if let cache {
             do {
@@ -137,14 +134,14 @@ nonisolated struct EngineCatalog: Codable, Hashable, Sendable {
         return catalog
     }
 
-    /// The last catalog ``fetch(session:key:cachingIn:)`` verified, verified again; nil when
+    /// The last catalog ``fetch(session:keys:cachingIn:)`` verified, verified again; nil when
     /// there is none or it no longer verifies. What Refrax knows of security floors offline and
     /// before its first check.
-    static func cached(in cache: URL, key: Curve25519.Signing.PublicKey? = nil) -> EngineCatalog? {
-        guard let key = try? key ?? EngineSignature.pinnedKey(),
+    static func cached(in cache: URL, keys: ReleaseKeys? = nil) -> EngineCatalog? {
+        guard let keys = try? keys ?? EngineSignature.pinnedKeys(),
               let data = try? Data(contentsOf: cache.appending(path: cacheFileName)),
               let signature = try? Data(contentsOf: cache.appending(path: cacheFileName + ".sig")),
-              (try? EngineSignature.verify(data, signatureFile: signature, subject: cacheFileName, key: key)) != nil
+              (try? EngineSignature.verify(data, signatureFile: signature, subject: cacheFileName, keys: keys)) != nil
         else { return nil }
         return try? decode(data)
     }
