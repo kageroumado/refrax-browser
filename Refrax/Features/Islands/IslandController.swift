@@ -248,10 +248,9 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
-    /// Where the islands take the pointer: every visible island and every card on screen.
+    /// Where the islands take the pointer: every visible island.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
         visibleIslands.map(frame(of:))
-            + detachedTabs.filter { $0.id != windowState.activeTabID }.map { canvas.floatingHitFrame(for: $0, in: bounds) }
     }
 
     /// The side of the page a row dragged to `point` would join the current tab on: the

@@ -7,6 +7,8 @@ import SwiftUI
 struct PageAddressField: View {
     /// The page the field shows and drives.
     let webPage: WebPage?
+    /// What a click on the address does, where the address can be edited.
+    var onEdit: (() -> Void)? = nil
 
     @Environment(EngineRegistry.self) private var engineRegistry
 
@@ -50,7 +52,24 @@ struct PageAddressField: View {
 
     // MARK: - Domain
 
+    @ViewBuilder
     private var domain: some View {
+        if let onEdit {
+            Button(action: onEdit) {
+                domainLabel
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Address")
+            .accessibilityValue(url?.safeDisplayDomain ?? "")
+            .help("Edit address")
+        } else {
+            domainLabel
+        }
+    }
+
+    private var domainLabel: some View {
         HStack(spacing: 0) {
             if let engineID = webPage?.activeEngineID, engineID != .systemWebKit,
                let icon = engineRegistry.icon(for: engineID) {

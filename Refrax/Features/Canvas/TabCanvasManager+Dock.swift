@@ -145,25 +145,6 @@ extension TabCanvasManager {
         }
     }
 
-    /// Docks a card let go over a side's silhouette, keeping the frame it was dragged from as
-    /// its floating frame. Returns whether the card docked.
-    func dockDraggedCard(_ tab: Tab) -> Bool {
-        guard let target = dockTarget, target.tabID == tab.id else {
-            dockTarget = nil
-            return false
-        }
-        dockTarget = nil
-        let area = floatingArea
-        if let origin = floatingMoveOrigins[tab.id] {
-            var placement = floatingPlacement(for: tab)
-            placement.move(to: origin, in: area)
-            updateFloatingPlacement(placement, for: tab)
-        }
-        endFloatingMove()
-        dock(tab, to: target.edge)
-        return true
-    }
-
     // MARK: Helpers
 
     /// A floating frame for a page that has none, so undocking has somewhere to return it.

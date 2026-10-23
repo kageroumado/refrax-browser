@@ -31,7 +31,7 @@ final class ControlIslandConfiguration {
         self.avoidsPageControls = defaults?.object(forKey: Self.avoidanceKey) as? Bool ?? true
         self.restsWhenIdle = defaults?.object(forKey: Self.restKey) as? Bool ?? true
         self.tintsWithSpaceColor = defaults?.object(forKey: Self.tintKey) as? Bool ?? true
-        self.hidesAtEdge = defaults?.object(forKey: Self.edgeHidingKey) as? Bool ?? false
+        self.hidesAtEdge = defaults?.object(forKey: Self.edgeHidingKey) as? Bool ?? true
         let records = defaults?.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
         let known = records.compactMap { record in

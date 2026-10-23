@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 /// The islands over the page: each a glass column of the group's tabs, shown while the
-/// reveal key is held or the island is pinned, and the tabs taken out of them, floating as
-/// live cards.
+/// reveal key is held or the island is pinned. The tabs taken out of them are windows of
+/// their own, kept by ``TabCardPresenter``.
 struct IslandsLayer: View {
     @Environment(IslandController.self) private var islands
     @Environment(TabCanvasManager.self) private var canvas
@@ -39,14 +39,6 @@ struct IslandsLayer: View {
                 if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
                     RowPreview(tab: tab, islandFrame: islands.frame(of: island), bounds: bounds)
                         .zIndex(5)
-                        .transition(.opacity)
-                }
-                ForEach(islands.detachedTabs.filter { $0.id != windowState.activeTabID }) { tab in
-                    let frame = canvas.floatingFrame(for: tab, in: bounds)
-                    FloatingTabCard(tab: tab, placement: canvas.floatingPlacement(for: tab), area: bounds)
-                        .frame(width: frame.width, height: frame.height)
-                        .offset(x: frame.minX, y: frame.minY)
-                        .zIndex(tab.id == canvas.focusedFloatingTabID ? 4 : 3)
                         .transition(.opacity)
                 }
             }

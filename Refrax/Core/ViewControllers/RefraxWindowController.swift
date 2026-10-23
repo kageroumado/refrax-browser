@@ -46,6 +46,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     let islandController: IslandController
 
     private(set) var environment: RefraxEnvironment!
+    /// The windows of the tabs taken out of their islands.
+    private var tabCardPresenter: TabCardPresenter?
 
     // MARK: Detail Tray
 
@@ -192,6 +194,11 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         )
         windowState.islandController = islandController
         islandController.start()
+        tabCardPresenter = TabCardPresenter(
+            parent: window, windowState: windowState, islands: islandController, canvas: tabCanvasManager,
+            tabManager: appDelegate.tabManager, environment: environment,
+        )
+        tabCardPresenter?.start()
 
         setupRootView(window: window)
 
@@ -289,11 +296,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             guard let content = window.contentView else { return false }
             let local = content.convert(point, from: nil)
             let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
-            if tabCanvasManager.showsFloatingControls,
-               (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(topLeft) }) {
-                return true
-            }
-            return tabCanvasManager.floatingHitRegions(in: content.bounds).contains { $0.contains(topLeft) }
+            return tabCanvasManager.showsFloatingControls
+                && (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(topLeft) })
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in
@@ -451,6 +455,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     }
 
     func windowWillClose(_: Notification) {
+        tabCardPresenter?.stop()
         NotificationCenter.default.removeObserver(self)
         removeUndoRedoMonitor()
         cancelAllObservationTasks()

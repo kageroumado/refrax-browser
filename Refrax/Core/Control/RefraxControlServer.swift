@@ -3135,7 +3135,17 @@ final class RefraxControlServer {
             return tab
         }
 
-        // 3. 1-based index in current space
+        // 3. A prefix of the id, as the CLI prints ids; four characters or more, so a
+        // short number still reads as an index
+        if ref.count >= 4, ref.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
+            let prefix = ref.lowercased()
+            let byID = allTabs.filter { $0.id.uuidString.lowercased().hasPrefix(prefix) }
+            if !byID.isEmpty {
+                return try uniqueMatch(byID, ref: ref)
+            }
+        }
+
+        // 4. 1-based index in current space
         if let index = Int(ref) {
             let zeroIndex = index - 1
             guard zeroIndex >= 0, zeroIndex < spaceTabs.count else {
@@ -3144,7 +3154,7 @@ final class RefraxControlServer {
             return spaceTabs[zeroIndex]
         }
 
-        // 4. Prefix-based matching
+        // 5. Prefix-based matching
         if ref.lowercased().hasPrefix("title:") {
             let query = String(ref.dropFirst(6))
             let matches = allTabs.filter { $0.activePage.title.localizedCaseInsensitiveContains(query) }
@@ -3157,14 +3167,6 @@ final class RefraxControlServer {
             return try uniqueMatch(matches, ref: ref)
         }
 
-        // 5. A prefix of the id, as the CLI prints ids
-        if ref.count >= 4, ref.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
-            let prefix = ref.lowercased()
-            let byID = allTabs.filter { $0.id.uuidString.lowercased().hasPrefix(prefix) }
-            if !byID.isEmpty {
-                return try uniqueMatch(byID, ref: ref)
-            }
-        }
         // 6. Fuzzy match on title or URL
         let matches = allTabs.filter {
             $0.activePage.title.localizedCaseInsensitiveContains(ref) ||

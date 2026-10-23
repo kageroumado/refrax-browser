@@ -58,10 +58,6 @@ final class TabCanvasManager {
     var menuTabID: Tab.ID?
     /// The card whose title is being edited; it stays on screen until the edit ends.
     var renamingTabID: Tab.ID?
-    /// Where the card being moved started.
-    @ObservationIgnored var floatingMoveOrigins: [Tab.ID: CGPoint] = [:]
-    /// Where the pointer was at the card drag's last change, in the floating layer.
-    @ObservationIgnored var floatingDragPointer: CGPoint?
     /// Takes a card released at a point: true when an island took it in as a row.
     @ObservationIgnored var islandDrop: ((Tab, CGPoint) -> Bool)?
 
