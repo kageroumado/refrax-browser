@@ -447,9 +447,6 @@ final class WindowState {
     /// Frame of the Command Lens capsule in global coordinates, kept current by its overlay while the lens is up.
     var commandLensFrame: CGRect = .zero
 
-    /// Receives the tab that stopped filling the window when another took its place.
-    @ObservationIgnored var tabDisplacedHandler: ((Tab) -> Void)?
-
     /// The window's islands, for menus and lens commands built from the window's state.
     @ObservationIgnored weak var islandController: IslandController?
     /// The empty page hosts Command Lens itself; each request refocuses that lens.

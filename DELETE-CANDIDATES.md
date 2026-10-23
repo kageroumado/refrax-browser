@@ -29,3 +29,10 @@ Looks dead; scope or origin unverified.
 - **Not deleted because**: removing a stored `@Model` property is a schema change
 - **To confirm**: decide whether agent chat needs an off switch; wire it or remove it with a schema migration
 - **Found**: 2026-09-25
+
+## `Refrax/Core/Models/Tabs/TabGroup.swift:51-77`, `Refrax/Core/Models/Tabs/Space.swift:123` — desk-only group and space fields
+- **What**: `TabGroup.boardFrameData`/`boardFrame`, `boardAnchorData`/`boardAnchor`, `isMagnet`, `stackSite`, and `Space.stacksBySite`, with their CloudKit record fields in `Core/Sync/Extensions`
+- **Looks dead because**: the desk (zones, magnets, site stacks) was retired with the islands; nothing reads them now, only the model and sync code write them
+- **Not deleted because**: they are persisted `@Model` properties synced through CloudKit; removing them is a schema change
+- **To confirm**: `rg 'boardAnchor|isMagnet|stackSite|stacksBySite|TabGroup.*boardFrame' Refrax`, then remove with a schema migration
+- **Found**: 2026-10-23

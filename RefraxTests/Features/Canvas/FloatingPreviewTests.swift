@@ -155,7 +155,6 @@ struct FloatingPreviewTests {
             tabManager: environment.tabManager,
             windowState: state,
             pagePool: environment.pagePool,
-            groupManager: environment.groupManager,
         )
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
@@ -170,9 +169,8 @@ struct FloatingPreviewTests {
             window: window,
             canvas: canvas,
             floatingEligible: { true },
-            floatingContains: { _ in true }, floatingControlsContain: { _ in false },
+            floatingContains: { _ in true },
             floatingHasKeyboardFocus: { previewHasFocus },
-            isEligible: { _ in true },
         )
         canvas.revealFloatingTabs()
         let click = try #require(NSEvent.mouseEvent(
@@ -229,7 +227,6 @@ struct FloatingPreviewTests {
             tabManager: environment.tabManager,
             windowState: state,
             pagePool: environment.pagePool,
-            groupManager: environment.groupManager,
         )
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
@@ -244,9 +241,7 @@ struct FloatingPreviewTests {
             canvas: canvas,
             floatingEligible: { true },
             floatingContains: { _ in true },
-            floatingControlsContain: { _ in false },
             floatingHasKeyboardFocus: { true },
-            isEligible: { _ in true },
         )
         canvas.revealFloatingTabs()
         let key = try #require(NSEvent.keyEvent(
@@ -273,7 +268,6 @@ struct FloatingPreviewTests {
             tabManager: environment.tabManager,
             windowState: state,
             pagePool: environment.pagePool,
-            groupManager: environment.groupManager,
         )
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
@@ -288,9 +282,7 @@ struct FloatingPreviewTests {
             canvas: canvas,
             floatingEligible: { true },
             floatingContains: { _ in false },
-            floatingControlsContain: { _ in false },
             floatingHasKeyboardFocus: { false },
-            isEligible: { _ in true },
         )
         func flags(_ modifiers: NSEvent.ModifierFlags) throws -> NSEvent {
             try #require(NSEvent.keyEvent(
@@ -307,7 +299,7 @@ struct FloatingPreviewTests {
             ))
         }
 
-        _ = gestures.handle(try flags(FloatingRevealKey.current.flag))
+        _ = try gestures.handle(flags(FloatingRevealKey.current.flag))
         #expect(canvas.isMomentaryNavigation)
         for type: NSEvent.EventType in [.leftMouseDown, .leftMouseUp] {
             let click = try #require(NSEvent.mouseEvent(
@@ -325,7 +317,7 @@ struct FloatingPreviewTests {
             #expect(!forwarded.modifierFlags.contains(FloatingRevealKey.current.flag))
             #expect(canvas.isMomentaryNavigation)
         }
-        _ = gestures.handle(try flags([]))
+        _ = try gestures.handle(flags([]))
         #expect(!canvas.floatingVisibility.isHeld)
     }
 
@@ -337,7 +329,6 @@ struct FloatingPreviewTests {
             tabManager: environment.tabManager,
             windowState: state,
             pagePool: environment.pagePool,
-            groupManager: environment.groupManager,
         )
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 600, height: 400),
@@ -352,9 +343,7 @@ struct FloatingPreviewTests {
             canvas: canvas,
             floatingEligible: { true },
             floatingContains: { _ in false },
-            floatingControlsContain: { _ in false },
             floatingHasKeyboardFocus: { false },
-            isEligible: { _ in true },
         )
         canvas.revealFloatingTabs()
         let reveal = FloatingRevealKey.current.flag

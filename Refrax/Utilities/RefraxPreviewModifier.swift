@@ -133,7 +133,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             tabManager: tabManager,
             windowState: windowState,
             pagePool: pagePool,
-            groupManager: groupManager,
         )
         let floatingTourManager = FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager, defaults: nil)
         let commandLensManager = CommandLensManager(

@@ -116,15 +116,4 @@ struct ControlIslandEdgeHidingTests {
         #expect(!state.isHiddenAtEdge)
         #expect(state.hiddenEdge == nil)
     }
-
-    @Test
-    func `a card dropped on loose cards groups with the topmost under the pointer`() {
-        let cards: [(id: Int, frame: CGRect)] = [
-            (1, CGRect(x: 0, y: 0, width: 300, height: 200)),
-            (2, CGRect(x: 100, y: 100, width: 300, height: 200)),
-        ]
-        #expect(FloatingGroupLayout.cardDropTarget(at: CGPoint(x: 150, y: 150), among: cards) == 2)
-        #expect(FloatingGroupLayout.cardDropTarget(at: CGPoint(x: 50, y: 50), among: cards) == 1)
-        #expect(FloatingGroupLayout.cardDropTarget(at: CGPoint(x: 900, y: 900), among: cards) == nil)
-    }
 }

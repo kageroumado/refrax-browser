@@ -16,7 +16,6 @@ struct ControlIsland: View {
     @Environment(TabManager.self) private var tabManager
     @Environment(FloatingTourManager.self) private var tour
     @Environment(AppUpdateManager.self) private var updates
-    @Environment(TabGroupManager.self) private var groups
     @Environment(MediaControlsManager.self) private var mediaControls
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -38,13 +37,9 @@ struct ControlIsland: View {
     @State private var escapeMonitor: Any?
     @State private var avoidancePlacement: ControlIslandPlacement?
     @State private var hoverHasSettled = false
-    @State private var arrangeControlSize = CGSize.zero
     @State private var railHelp = ControlIslandRailHelp()
     @State private var railHelpSize = CGSize.zero
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
-    #if DEBUG
-        @State private var showsDeskLab = false
-    #endif
     private typealias Layout = ControlIslandPlacement
     private static let escapeKeyCode: UInt16 = 53
 
@@ -134,10 +129,9 @@ struct ControlIsland: View {
         guard isHiddenAtEdge, let edge = state.hiddenEdge else { return "Browser controls" }
         return "Controls, hidden at the \(edge.name) edge"
     }
-    /// Something beyond the rail needs it on screen: the tour, the anchored lens, the recent
-    /// list, or a page dragged from it.
+    /// Something beyond the rail needs it on screen: the tour or the anchored lens.
     private var railIsNeeded: Bool {
-        tour.isActive || tourLightsRail || windowState.showsAnchoredLens || canvas.recentIsOpen || canvas.draggedRecentTabID != nil
+        tour.isActive || tourLightsRail || windowState.showsAnchoredLens
     }
     private var opensLeft: Bool {
         effectivePlacement.opensLeft(in: area)
@@ -163,7 +157,7 @@ struct ControlIsland: View {
     /// tour points elsewhere.
     private var isResting: Bool {
         state.configuration.restsWhenIdle && (state.isQuiet || !appearsActive) && !state.isEngaged
-            && !showsPageBranch && !canvas.recentIsOpen && !showsShortcut && !tourLightsRail
+            && !showsPageBranch && !showsShortcut && !tourLightsRail
     }
 
     /// The tour points at the rail or one of its rows, which the rail lights above its glass.
@@ -185,9 +179,6 @@ struct ControlIsland: View {
     }
     private var restAnimation: Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.4)
-    }
-    private var recentFrame: CGRect {
-        effectivePlacement.pageBranchFrame(in: area, anchor: frame, height: min(320, area.height - Layout.margin * 2))
     }
     /// The help of the control under the pointer, beside the rail on the side it opens to,
     /// level with the control and inside the window. The rail is drawn above the tour, so its
@@ -228,7 +219,7 @@ struct ControlIsland: View {
                     }
                     .opacity(isHiddenAtEdge && reduceMotion ? 0 : 1)
                     .offset(x: railDisplayFrame.minX, y: railDisplayFrame.minY)
-                if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
+                if showsPageBranch, !windowState.showsAnchoredLens {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                         .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
                         .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
@@ -238,17 +229,6 @@ struct ControlIsland: View {
                         // The field opens on the card's exact frame, so the card leaves at once
                         // and the field is what remains; it returns with a fade as the field folds.
                         .transition(windowState.showsAnchoredLens ? .identity : .opacity)
-                }
-                if canvas.recentIsOpen, !isHiddenAtEdge {
-                    FloatingRecentTabs(area: area)
-                        .frame(width: recentFrame.width, height: recentFrame.height)
-                        .background(spaceTint, in: .rect(cornerRadius: 20))
-                        // A list read over pages: the material keeps page text from showing through.
-                        .background(.thickMaterial, in: .rect(cornerRadius: 20))
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
-                        .glassEffectID("recent", in: glassNamespace)
-                        .offset(x: recentFrame.minX, y: recentFrame.minY)
-                        .transition(.opacity)
                 }
                 if showsShortcut, !tour.isActive, !isHiddenAtEdge {
                     Button { canvas.toggleFloatingTabs() } label: {
@@ -264,16 +244,6 @@ struct ControlIsland: View {
                     .transition(.opacity)
                     .help("Hold \(revealKey.title) to preview adjacent pages; click to arrange tabs")
                     .accessibilityLabel("Preview adjacent pages: hold \(revealKey.title)")
-                }
-                if showsArrangeControl {
-                    arrangeControl
-                        .fixedSize()
-                        .background(spaceTint, in: Capsule())
-                        .glassEffect(.regular, in: Capsule())
-                        .glassEffectID("arrange", in: glassNamespace)
-                        .onGeometryChange(for: CGSize.self) { $0.size } action: { arrangeControlSize = $0 }
-                        .offset(x: arrangeControlFrame.minX, y: arrangeControlFrame.minY)
-                        .transition(.opacity)
                 }
                 if state.isDragging {
                     let snap = state.placement.snapped(in: area, height: height)
@@ -342,7 +312,7 @@ struct ControlIsland: View {
             }
         }
         .onChange(of: pageBranchFrame, initial: true) { windowState.pageCardFrame = pageBranchFrame }
-        .onChange(of: showsPageBranch && !canvas.recentIsOpen && !windowState.showsAnchoredLens ? pageBranchFrame : .zero, initial: true) { _, card in
+        .onChange(of: showsPageBranch && !windowState.showsAnchoredLens ? pageBranchFrame : .zero, initial: true) { _, card in
             state.pageCardFrame = card
         }
         .sheet(isPresented: $state.showsCustomization) {
@@ -353,7 +323,6 @@ struct ControlIsland: View {
         }
         .onChange(of: state.dismissalRequest) {
             focusedControl = nil
-            canvas.recentIsOpen = false
         }
         .onChange(of: state.pageFocusRequest) {
             windowState.window?.makeFirstResponder(windowState.activeWebPage?.contentView)
@@ -382,9 +351,7 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsPageBranch)
         .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: isHiddenAtEdge)
         .animation(reduceMotion ? .easeInOut(duration: 0.28) : .snappy(duration: 0.28), value: windowState.showsAnchoredLens)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: canvas.recentIsOpen)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsArrangeControl)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
         .onAppear {
@@ -521,13 +488,7 @@ struct ControlIsland: View {
                 }
             }
             .contentTransition(.symbolEffect(.replace))
-            .contextMenu {
-                Button("Unplaced Tabs (\(unplacedCount))", systemImage: "tray") { canvas.recentIsOpen.toggle() }
-                FloatingArrangeMenu()
-            }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
-        case .desk:
-            deskControl(item)
         case .spaces:
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
@@ -576,44 +537,6 @@ struct ControlIsland: View {
         canvas.dismissFloatingTabs()
         tabSwitcher.toggle()
     }
-
-    /// Desk opens the canvas; in a debug build, Option-click also offers the lab's preset boards.
-    private func deskControl(_ item: ControlIslandItem) -> some View {
-        let desk = control(item.title, symbol: TabCanvasManager.symbolName, help: item.detail) {
-            dismissTransientOverlays()
-            canvas.show()
-            #if DEBUG
-                showsDeskLab = optionIsHeld
-            #endif
-        }
-        #if DEBUG
-            return desk.popover(isPresented: $showsDeskLab, arrowEdge: opensLeft ? .leading : .trailing) { deskLab }
-        #else
-            return desk
-        #endif
-    }
-
-    #if DEBUG
-        /// The preset boards from Develop → Tab Canvas Lab, beside the Desk row.
-        private var deskLab: some View {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Tab Canvas Lab")
-                    .font(.headline)
-                ForEach(CanvasScenario.allCases, id: \.self) { scenario in
-                    Button(scenario.title) {
-                        showsDeskLab = false
-                        CanvasScenario.load(
-                            scenario, tabManager: tabManager, spaceManager: spaces, groupManager: groups,
-                            windowState: windowState, canvas: canvas,
-                        )
-                    }
-                }
-            }
-            .buttonStyle(.borderless)
-            .font(.body)
-            .padding(16)
-        }
-    #endif
 
     /// The update badge: green while the window is active and the rail awake; it opens the restart sheet.
     private func updateControl(_ item: ControlIslandItem) -> some View {
@@ -836,57 +759,9 @@ struct ControlIsland: View {
         .accessibilityValue(windowState.activeWebPage?.isLoading == true ? "Loading" : (windowState.activePage?.url.safeDisplayDomain ?? "Ready"))
     }
 
-    // MARK: Arranging and Grouping
-
-    /// Shows the arrangement control beside the tab rail when several cards are visible.
-    private var showsArrangeControl: Bool {
-        canvas.floatingVisibility.isRevealed && !canvas.recentIsOpen
-            && canvas.visibleFloatingTabs.count(where: { $0.id != windowState.activeTabID }) >= 2
-    }
-
-    /// Beside the tab control on the side the island opens to, past the shortcut capsule while
-    /// it shows; at the top center of the window while the rail is hidden or has no tab control.
-    private var arrangeControlFrame: CGRect {
-        let size = arrangeControlSize
-        let bounds = area.insetBy(dx: Layout.margin, dy: Layout.margin)
-        guard !isHiddenAtEdge, let row = state.itemFrames[.floatingTabs], !row.isEmpty else {
-            return CGRect(x: bounds.midX - size.width / 2, y: bounds.minY, width: size.width, height: size.height)
-        }
-        let beside = showsShortcut ? frame.union(shortcutFrame) : frame
-        let x = opensLeft ? beside.minX - Layout.adjacentGap - size.width : beside.maxX + Layout.adjacentGap
-        return CGRect(
-            x: min(max(bounds.minX, x), max(bounds.minX, bounds.maxX - size.width)),
-            y: min(max(bounds.minY, row.midY - size.height / 2), max(bounds.minY, bounds.maxY - size.height)),
-            width: size.width,
-            height: size.height,
-        )
-    }
-
-    private var arrangeControl: some View {
-        FloatingArrangeButton(arrowEdge: arrangeControlFrame.midY > area.midY ? .top : .bottom)
-        .buttonStyle(.plain)
-        .labelStyle(.titleAndIcon)
-        .foregroundStyle(.primary)
-        .fixedSize()
-        .help("Arrange tabs. Shift-drag to select; drag one card onto another to group.")
-        .font(.callout)
-        .padding(.horizontal, ArrangeControl.horizontalPadding)
-        .frame(height: ArrangeControl.height)
-    }
-
-    private enum ArrangeControl {
-        static let height: CGFloat = 32
-        static let horizontalPadding: CGFloat = 12
-    }
-
     private func dismissTransientOverlays() {
         windowState.closeCommandLens()
         tabSwitcher.cancel()
-    }
-
-    /// Pages other than the current one that wait without a place of their own.
-    private var unplacedCount: Int {
-        canvas.unplacedFloatingTabs.filter { $0.id != windowState.activeTabID }.count
     }
 
     private func control(_ title: String, symbol: String, enabled: Bool = true, help: String? = nil, action: @escaping () -> Void) -> some View {
@@ -931,14 +806,10 @@ struct ControlIsland: View {
     }
 
     private var interactionRegions: [CGRect] {
-        let hint = showsArrangeControl ? [arrangeControlFrame] : []
-        guard !isHiddenAtEdge else { return hint }
-        var regions = [frame] + hint
-        if showsPageBranch, !canvas.recentIsOpen, !windowState.showsAnchoredLens {
+        guard !isHiddenAtEdge else { return [] }
+        var regions = [frame]
+        if showsPageBranch, !windowState.showsAnchoredLens {
             regions.append(pageBranchFrame)
-        }
-        if canvas.recentIsOpen {
-            regions.append(recentFrame)
         }
         if showsShortcut {
             regions.append(shortcutFrame)
@@ -953,7 +824,7 @@ struct ControlIsland: View {
     private var canYield: Bool {
         guard state.configuration.avoidsPageControls, !state.isHovered, !state.isDragging,
               !state.hasKeyboardFocus, !state.isPresenting, !state.showsCustomization, !state.tabInfo.isVisible,
-              !showsPageBranch, !canvas.floatingVisibility.isRevealed, !canvas.recentIsOpen,
+              !showsPageBranch, !canvas.floatingVisibility.isRevealed,
               !windowState.showsCommandLens,
               let window = windowState.window, window.isKeyWindow, window.attachedSheet == nil,
               NSEvent.pressedMouseButtons == 0, Date().timeIntervalSince(state.lastPointerMovement) > 0.8,

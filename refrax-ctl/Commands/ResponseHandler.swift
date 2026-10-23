@@ -482,26 +482,10 @@ func printFoundElements(_ elements: [CTL.FoundElementInfo]) {
     }
 }
 
-func printCanvas(_ info: CTL.CanvasInfo) {
-    let status = info.isActive ? (info.isSettling ? "open, settling" : "open") : "closed"
-    if let floating = info.floating {
-        print("Floating tabs: \(floating.isRevealed ? "revealed" : "hidden") · \(floating.tiles.filter(\.isPinned).count) pinned previews")
-        for tile in floating.tiles where tile.isVisible {
-            print("  \(Int(tile.x)),\(Int(tile.y))  \(tile.shape.rawValue)\(tile.isPinned ? " · pinned" : "")  \(tile.title)  [\(tile.tabID)]")
-        }
-    }
-    print("Canvas: \(status) · desk \(Int(info.deskWidth))×\(Int(info.deskHeight)) · \(info.tiles.count) tiles · \(info.overlappingPairs) overlapping pairs")
-    for tile in info.tiles {
-        let marker = tile.isSelected ? "* " : "  "
-        let destination = tile.tabID == info.navigationTabID ? " →" : ""
-        let title = tile.title.isEmpty ? "(untitled)" : tile.title
-        print("\(marker)\(Int(tile.x)),\(Int(tile.y))  \(Int(tile.width))×\(Int(tile.height))  \(title)\(destination)  [\(tile.tabID)]")
-    }
-    for zone in info.zones {
-        print("zone \(zone.name): \(Int(zone.x)),\(Int(zone.y))  \(Int(zone.width))×\(Int(zone.height))  \(zone.memberCount) tiles")
-    }
-    for magnet in info.magnets {
-        print("magnet \(magnet.name): \(Int(magnet.x)),\(Int(magnet.y))  \(magnet.memberCount) tiles")
+func printCanvas(_ info: CTL.FloatingTabsInfo) {
+    print("Floating tabs: \(info.isRevealed ? "revealed" : "hidden") · \(info.tiles.filter(\.isPinned).count) pinned previews")
+    for tile in info.tiles where tile.isVisible {
+        print("  \(Int(tile.x)),\(Int(tile.y))  \(tile.shape.rawValue)\(tile.isPinned ? " · pinned" : "")  \(tile.title)  [\(tile.tabID)]")
     }
 }
 

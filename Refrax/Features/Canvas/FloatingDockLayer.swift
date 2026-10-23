@@ -194,18 +194,3 @@ private struct FloatingDockSeam: View {
             }
     }
 }
-
-/// The beams that follow pages as they dock and undock.
-struct FloatingDockBeams: View {
-    let area: CGRect
-
-    @Environment(TabCanvasManager.self) private var canvas
-
-    var body: some View {
-        ForEach(canvas.dockBeams) { beam in
-            FloatingRayView(path: FloatingRayPath(from: beam.source, to: beam.destination, in: area)) {
-                canvas.finishDockBeam(beam.id)
-            }
-        }
-    }
-}

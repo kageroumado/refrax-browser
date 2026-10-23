@@ -1,18 +1,19 @@
 import Foundation
 
-/// A direction on the shared spatial table.
+/// A direction between the islands' rows and across the window.
 nonisolated enum TableDirection: String, Codable, CaseIterable, Sendable {
     case left
     case right
     case up
     case down
 
-    var canvasDirection: CanvasNavigation.Direction {
+    /// The arrow key that steps this way, as `NSEvent.keyCode`.
+    var keyCode: UInt16 {
         switch self {
-        case .left: .left
-        case .right: .right
-        case .up: .up
-        case .down: .down
+        case .left: 123
+        case .right: 124
+        case .down: 125
+        case .up: 126
         }
     }
 

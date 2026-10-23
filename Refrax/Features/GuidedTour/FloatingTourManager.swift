@@ -239,7 +239,9 @@ final class FloatingTourManager {
     func review() {
         guard let step = currentStep, step != .done else { return }
         ensurePages(for: step)
-        if step == .revealPages { prepareTutorialPair() }
+        if step == .revealPages {
+            prepareTutorialPair()
+        }
         adoptNewPlacements()
         reviewBeams()
         if step == .visitNeighbor, let origin = entry.activeTabID, let active = windowState.activeTabID,
@@ -268,10 +270,8 @@ final class FloatingTourManager {
     private func enter(_ step: Step) {
         currentStep = step
         ensurePages(for: step)
-        if step == .revealPages { prepareTutorialPair() }
-        if step == .placePage,
-           let card = canvas.visibleFloatingTabs.first(where: { $0.id != windowState.activeTabID }) {
-            canvas.revealSpatialDestination(card.id)
+        if step == .revealPages {
+            prepareTutorialPair()
         }
         entry = Baseline(
             activeTabID: windowState.activeTabID,
@@ -323,12 +323,15 @@ final class FloatingTourManager {
         return windowState.activeSpaceTabs.filter { !$0.isArchived }.count
     }
 
+    /// Whether `candidate`, the current page, sits one step from `origin` on its island: a
+    /// row's neighbors are the rows above and below it, so the step back reaches `origin`.
     private func isAdjacent(_ candidate: Tab.ID, to origin: Tab.ID) -> Bool {
-        let ids = Set(canvas.floatingTabs.filter { !canvas.tablePlacement(for: $0).isDocked }.map(\.id))
-        return TableDirection.allCases.contains {
-            canvas.spatialNeighbor(from: origin, toward: $0, among: ids) == candidate
-        }
+        guard let islands = windowState.islandController, windowState.activeTabID == candidate else { return false }
+        return TableDirection.allCases.contains { islands.destination(toward: $0)?.id == origin }
     }
+
+    /// The space between the two practice pages' cards.
+    private static let tutorialPairGap: CGFloat = 12
 
     /// Gives the two practice pages a shared, visible path for the first wheel exercise.
     private func prepareTutorialPair() {
@@ -346,7 +349,7 @@ final class FloatingTourManager {
         var second = canvas.floatingPlacement(for: arrival)
         first.shape = .tab
         second.shape = .tab
-        let gap = FloatingArrangement.gap
+        let gap = Self.tutorialPairGap
         let width = first.size.width + gap + second.size.width
         let x = max(area.minX + 24, min(area.minX + area.width * 0.24, area.maxX - width - 24))
         let y = area.minY + area.height * 0.4

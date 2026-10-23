@@ -6,7 +6,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case navigation
     case commandLens
     case floatingTabs
-    case desk
     case spaces
     case favoriteTabs
     case reload
@@ -36,7 +35,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
-        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs,
+        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs,
         .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates,
     ]
 
@@ -48,7 +47,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "Copy Link"
         case .commandLens: "Command Lens"
         case .floatingTabs: "Floating tabs"
-        case .desk: "Desk"
         case .spaces: "Spaces"
         case .favoriteTabs: "Favorite tabs"
         case .reload: "Reload"
@@ -69,7 +67,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "link"
         case .commandLens: "sparkle.magnifyingglass"
         case .floatingTabs: "square.on.square"
-        case .desk: "rectangle.3.group"
         case .spaces: "square.stack"
         case .favoriteTabs: "star.square.on.square"
         case .reload: "arrow.clockwise"
@@ -90,7 +87,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "Copy the page address"
         case .commandLens: "Search pages, tabs, and commands · ⌘T"
         case .floatingTabs: "Arrange tabs · hold ⌥ for Recent tabs"
-        case .desk: "Organize tabs on the desk · ⌘⇧\\"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"
         case .reload: "Reload the page or stop loading · ⌘R"
@@ -109,7 +105,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     var section: Section {
         switch self {
-        case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .desk, .spaces, .favoriteTabs: .main
+        case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs: .main
         case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates: .additional
         }
     }

@@ -21,7 +21,7 @@ struct PageActionsMenuTests {
             self.env = try TabManagerTestEnvironment()
             self.space = env.makeSpace()
             self.window = env.makeActiveWindowState(with: space)
-            self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+            self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
             self.active = try env.createActiveTab(url: #require(URL(string: "https://example.com/active")), in: space, for: window)
             self.other = try env.tabManager.createTab(url: #require(URL(string: "https://example.com/other")), in: space, makeActive: false)
         }
@@ -88,23 +88,6 @@ struct PageActionsMenuTests {
         let tree = fixture.tree(for: fixture.active, surface: .floatingCard)
         #expect(!tree.ids.contains { $0.hasPrefix("tab.shape.") })
         #expect(!tree.ids.contains("tab.look"))
-    }
-
-    @Test
-    func `pinned with a selection, Group Selected Tabs joins the selection section`() throws {
-        let fixture = try Fixture()
-        var placement = fixture.canvas.floatingPlacement(for: fixture.other)
-        placement.isPinned = true
-        placement.shape = .live
-        fixture.canvas.updateFloatingPlacement(placement, for: fixture.other)
-        fixture.canvas.selectedFloatingTabIDs = [fixture.other.id, fixture.active.id]
-        let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
-        #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Dock Left",
-            "Dock Right", "——", "Deselect for Group", "Group Selected Tabs", "Group With ▸ (1)", "  example.com/active", "——",
-            "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Read", "  Duplicate Tab", "——", "Move to New Window",
-            "Open Reflected Window", "——", "Close Tab",
-        ])
     }
 
     @Test

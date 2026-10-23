@@ -14,8 +14,6 @@ struct TabsSettingsView: View {
     @State private var showAutoArchiveRulesSheet = false
     @State private var showDisableArchiveAlert = false
     @State private var showTimeLimitsSheet = false
-    @State private var impactSound = CanvasImpactSound()
-    @AppStorage("canvasImpactVolume") private var impactVolume = 0.6
     @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
 
     var body: some View {
@@ -29,18 +27,6 @@ struct TabsSettingsView: View {
                 Text("Hold \(revealKey.title) to see adjacent pages. Use the tabs button to arrange them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Play soft clicks when tabs collide", isOn: $settings.canvasImpactSounds)
-                    .highlightable(id: "tabs.canvasImpactSounds", highlightedItemId: highlightedItemId)
-                Slider(value: $impactVolume, in: 0 ... 1) { Text("Contact volume") }
-                Button("Preview Sound", systemImage: "speaker.wave.2") {
-                    impactSound.preview()
-                }
-            } header: {
-                Text("Tab Desk")
-            } footer: {
-                Text("Contact sounds follow the force and position of each collision.")
             }
 
             // MARK: - Archive

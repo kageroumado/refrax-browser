@@ -1665,8 +1665,6 @@ final class CommandLensManager {
                 NSApp.typedDelegate.localDevicesWindowController.showWindow()
             case .toggleTabCanvas:
                 (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggleFloatingTabs()
-            case let .arrange(arrangement):
-                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.arrange(arrangement)
             case .favoriteCurrentPage:
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab, let bookmarks = tabManager.bookmarksManager {
                     ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).toggleFavorite()
@@ -1723,15 +1721,6 @@ final class CommandLensManager {
             case .showOpenTabs:
                 showOpenTabs()
                 return
-            case .toggleCurrentTabGroupSelection:
-                if let tab = windowState.activeTab,
-                   let canvas = (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager {
-                    if canvas.selectedFloatingTabIDs.remove(tab.id) == nil {
-                        canvas.selectedFloatingTabIDs.insert(tab.id)
-                    }
-                }
-            case .groupSelectedTabs:
-                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.groupFloatingSelection()
             }
             closeCurrentLens()
             reset()

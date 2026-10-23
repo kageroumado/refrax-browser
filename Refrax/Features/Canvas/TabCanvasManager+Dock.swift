@@ -7,13 +7,6 @@ nonisolated struct FloatingDockTarget: Equatable, Sendable {
     let tabID: Tab.ID
 }
 
-/// A beam from where a page was to where docking or undocking took it, in the layer's coordinates.
-nonisolated struct FloatingDockBeam: Identifiable, Equatable, Sendable {
-    let id: Int
-    let source: CGRect
-    let destination: CGRect
-}
-
 // MARK: - Pages Docked to the Window's Sides
 
 extension TabCanvasManager {
@@ -73,8 +66,8 @@ extension TabCanvasManager {
 
     /// Docks `tab` to `edge`. The current page leaves the window for the column and the most
     /// recent other page takes its place; a page already on that side returns to its floating
-    /// frame. A beam runs from `source`, or from where the page shows now, to the column.
-    func dock(_ tab: Tab, to edge: FloatingDockEdge, from source: CGRect? = nil) {
+    /// frame.
+    func dock(_ tab: Tab, to edge: FloatingDockEdge) {
         let bounds = floatingArea
         let isCurrentPage = tab.id == windowState.activeTabID
         var replacement: Tab?
@@ -85,7 +78,6 @@ extension TabCanvasManager {
                 return
             }
         }
-        let source = source ?? shownFrame(of: tab, in: bounds)
         withAnimation(Self.dockAnimation) {
             if let previous = dockedTab(on: edge), previous.id != tab.id {
                 undock(previous)
@@ -93,28 +85,19 @@ extension TabCanvasManager {
             var placement = storedFloatingPlacement(for: tab).map { _ in floatingPlacement(for: tab) } ?? startingPlacement(for: tab, in: bounds)
             placement.dock = edge
             updateFloatingPlacement(placement, for: tab)
-            selectedFloatingTabIDs.remove(tab.id)
             if let replacement {
                 tabManager.setActiveTab(replacement, in: windowState)
             }
         }
-        if let column = dockColumns(in: bounds)[edge] {
-            beam(from: source, to: column)
-        }
     }
 
-    /// Returns `tab` from its column to its last floating frame, with a beam to it.
+    /// Returns `tab` from its column to its last floating frame.
     func undock(_ tab: Tab) {
-        guard let edge = storedFloatingPlacement(for: tab)?.dock else { return }
-        let bounds = floatingArea
-        let column = dockedTab(on: edge)?.id == tab.id ? dockColumns(in: bounds)[edge] : nil
+        guard storedFloatingPlacement(for: tab)?.dock != nil else { return }
         var next = floatingPlacement(for: tab)
         next.dock = nil
         withAnimation(Self.dockAnimation) {
             updateFloatingPlacement(next, for: tab)
-        }
-        if let column {
-            beam(from: column, to: floatingFrame(for: tab, in: bounds))
         }
     }
 
@@ -129,22 +112,13 @@ extension TabCanvasManager {
         dockedTab(on: edge).map(undock)
     }
 
-    /// A docked page that becomes the current page leaves its column to fill the window; a beam
-    /// runs from the column to the page card.
+    /// A docked page that becomes the current page leaves its column to fill the window.
     func releaseDockForCurrentPage() {
-        guard let tab = windowState.activeTab, let edge = storedFloatingPlacement(for: tab)?.dock else { return }
+        guard let tab = windowState.activeTab, storedFloatingPlacement(for: tab)?.dock != nil else { return }
         var placement = floatingPlacement(for: tab)
-        let bounds = floatingArea
-        let opposite = dockedTab(on: edge.opposite).map { floatingPlacement(for: $0).dockWidthFraction }
-        let column = edge == .leading
-            ? FloatingDockLayout.columns(leading: placement.dockWidthFraction, trailing: opposite, in: bounds, rail: dockRail).leading
-            : FloatingDockLayout.columns(leading: opposite, trailing: placement.dockWidthFraction, in: bounds, rail: dockRail).trailing
         placement.dock = nil
         withAnimation(Self.dockAnimation) {
             updateFloatingPlacement(placement, for: tab)
-        }
-        if let column {
-            beam(from: column, to: pageCardFrame)
         }
     }
 
@@ -165,7 +139,6 @@ extension TabCanvasManager {
         if tabs.count == 1, let tab = tabs.first, tab.id != windowState.activeTabID,
            let edge = FloatingDockLayout.snapEdge(at: pointer, in: area, rail: dockRail) {
             target = FloatingDockTarget(edge: edge, tabID: tab.id)
-            floatingDropGroupID = nil
         }
         if dockTarget != target {
             dockTarget = target
@@ -181,47 +154,17 @@ extension TabCanvasManager {
         }
         dockTarget = nil
         let area = floatingArea
-        let source = floatingFrame(for: tab, in: area)
         if let origin = floatingMoveOrigins[tab.id] {
             var placement = floatingPlacement(for: tab)
             placement.move(to: origin, in: area)
             updateFloatingPlacement(placement, for: tab)
         }
         endFloatingMove()
-        floatingDropGroupID = nil
-        dock(tab, to: target.edge, from: source)
+        dock(tab, to: target.edge)
         return true
     }
 
-    // MARK: Beams
-
-    func finishDockBeam(_ id: Int) {
-        dockBeams.removeAll { $0.id == id }
-    }
-
-    private func beam(from source: CGRect, to destination: CGRect) {
-        guard !source.isEmpty, !destination.isEmpty else { return }
-        dockBeamRevision += 1
-        dockBeams.append(FloatingDockBeam(id: dockBeamRevision, source: source, destination: destination))
-    }
-
     // MARK: Helpers
-
-    /// Where `tab` shows now: its column, the page card for the current page, or its card.
-    private func shownFrame(of tab: Tab, in bounds: CGRect) -> CGRect {
-        if let edge = storedFloatingPlacement(for: tab)?.dock, dockedTab(on: edge)?.id == tab.id, let column = dockColumns(in: bounds)[edge] {
-            return column
-        }
-        if tab.id == windowState.activeTabID {
-            return pageCardFrame
-        }
-        return floatingFrame(for: tab, in: bounds)
-    }
-
-    /// The control that stands for the current page: its card beside the rail, else the rail.
-    private var pageCardFrame: CGRect {
-        windowState.pageCardFrame.isEmpty ? dockRail ?? .zero : windowState.pageCardFrame
-    }
 
     /// A floating frame for a page that has none, so undocking has somewhere to return it.
     private func startingPlacement(for tab: Tab, in bounds: CGRect) -> FloatingTabPlacement {

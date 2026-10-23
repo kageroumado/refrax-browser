@@ -2,8 +2,8 @@ import AppKit
 import Foundation
 
 /// Menu actions on a tab as an object: Favorite and a favorite's home, its floating placement,
-/// its selection on the desk, its sound, its name and unread mark, the space and window it
-/// lives in, its duplicate, its close, and Look.
+/// its sound, its name and unread mark, the space and window it lives in, its duplicate, its
+/// close, and Look.
 ///
 /// Placement actions need the canvas and the area the card is laid out in, so they appear only
 /// on surfaces that pass both.
@@ -28,7 +28,6 @@ struct TabActions {
             actions += placementActions(canvas: canvas)
             actions += dockActions(canvas: canvas)
             actions += tableActions()
-            actions += selectionActions(canvas: canvas)
         }
         actions += favoriteActions(behaviors)
         actions += mediaActions()
@@ -181,53 +180,5 @@ struct TabActions {
             actions.append(MenuAction("tab.zoom", "Preview Zoom", symbol: "plus.magnifyingglass", group: .preview, children: zoomLevels + [wholePage]))
         }
         return actions
-    }
-
-    private func selectionActions(canvas: TabCanvasManager) -> [MenuAction] {
-        var actions: [MenuAction] = []
-        if !tab.isFavorite, tab.space?.id == windowState.activeSpaceID {
-            let isSelected = canvas.selectedFloatingTabIDs.contains(tab.id)
-            actions.append(MenuAction("tab.select", isSelected ? "Deselect for Group" : "Select for Group", symbol: "checkmark.circle", group: .move) {
-                if isSelected {
-                    canvas.selectedFloatingTabIDs.remove(tab.id)
-                } else {
-                    canvas.selectedFloatingTabIDs.insert(tab.id)
-                }
-            })
-            if canvas.selectedFloatingTabIDs.count > 1 {
-                actions.append(MenuAction("tab.groupSelection", "Group Selected Tabs", symbol: "rectangle.3.group", group: .move) { canvas.groupFloatingSelection() })
-            }
-            actions += groupWithActions(canvas: canvas)
-        }
-        return actions
-    }
-
-    /// The most loose tabs Group With lists, most recent first, so the submenu stays short.
-    private static let groupWithTabLimit = 10
-
-    /// Group With ▸ lists this space's groups, which the tab joins, and its other loose tabs,
-    /// each of which forms a new group with it: grouping without a drag.
-    private func groupWithActions(canvas: TabCanvasManager) -> [MenuAction] {
-        guard let space = tab.space else { return [] }
-        let groups = space.groups
-            .filter { !$0.isArchive && $0.id != tab.group?.id && canvas.displaysAsGroup($0) }
-            .sorted { $0.createdAt < $1.createdAt }
-            .map { group in
-                MenuAction("tab.groupWith.group.\(group.id)", group.name, symbol: "rectangle.3.group", group: .move) {
-                    canvas.addToFloatingGroup([tab], group: group)
-                }
-            }
-        let loose = space.mainTabs
-            .filter { $0.id != tab.id && $0.group == nil && !$0.isFavorite && !$0.isArchived }
-            .sorted { ($0.lastAccessed ?? $0.createdAt) > ($1.lastAccessed ?? $1.createdAt) }
-            .prefix(Self.groupWithTabLimit)
-            .map { other in
-                MenuAction("tab.groupWith.tab.\(other.id)", other.displayTitle, group: .tab) {
-                    canvas.groupFloatingCard(other, with: [tab])
-                }
-            }
-        let targets = groups + loose
-        guard !targets.isEmpty else { return [] }
-        return [MenuAction("tab.groupWith", "Group With", symbol: "rectangle.stack.badge.plus", group: .move, children: targets)]
     }
 }

@@ -167,13 +167,6 @@ extension FeatureFlagDefinition {
 
     static let browser: [FeatureFlagDefinition] = [
         FeatureFlagDefinition(
-            key: "app.canvasImpactSounds",
-            name: "Tab Collision Sounds",
-            description: "Play soft clicks when tabs touch on the desk.",
-            category: .browser,
-            defaultValue: false,
-        ),
-        FeatureFlagDefinition(
             key: "app.floatingTabs.regionsEnabled",
             name: "Floating Tab Regions",
             description: "Offer Keep Part Visible and Preview Zoom in a page's actions menu, so a floating preview can show one region of its page.",

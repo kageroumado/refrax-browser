@@ -115,7 +115,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             tabManager: appDelegate.tabManager,
             windowState: windowState,
             pagePool: appDelegate.pagePool,
-            groupManager: appDelegate.groupManager,
         )
         self.islandController = IslandController(
             windowState: windowState,
@@ -200,7 +199,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupBackgroundView(contentView: contentView)
         setupDetailTrayContainer(contentView: contentView)
         setupFloatingTabsLayer(contentView: contentView)
-        setupTabCanvasLayer(contentView: contentView)
         setupCanvasPageGestures(window: window)
         setupOverlayView(contentView: contentView)
         setupControlIslandLayer(contentView: contentView)
@@ -282,25 +280,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         ])
     }
 
-    /// The tab canvas covers the whole window, above the floating layer and below Command Lens.
-    private func setupTabCanvasLayer(contentView: NSView) {
-        let canvasView = TransparentHostingView(rootView: TabCanvasLayer().refraxEnvironment(environment)) { [unowned self] in
-            !tabCanvasManager.isActive
-        }
-        // The layer follows the window's size and must never set it: by default a
-        // hosting view pins the window to its content, which is empty while closed.
-        canvasView.sizingOptions = []
-        contentView.addSubview(canvasView)
-        canvasView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            canvasView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            canvasView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            canvasView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            canvasView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
-    }
-
-    /// Page gestures reach the canvas only over a page at its normal size, with no lens up.
+    /// The reveal key and its scroll reach the floating layer with no lens up and no sheet.
     private func setupCanvasPageGestures(window: NSWindow) {
         canvasPageGestures = CanvasPageGestures(window: window, canvas: tabCanvasManager, floatingEligible: { [unowned self] in
             !windowState.showsCommandLens && !windowState.isSpaceLocked
@@ -314,24 +294,13 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 return true
             }
             return tabCanvasManager.floatingHitRegions(in: content.bounds).contains { $0.contains(topLeft) }
-        }, floatingControlsContain: { [unowned self] point in
-            guard let content = window.contentView, tabCanvasManager.showsFloatingControls else { return false }
-            let local = content.convert(point, from: nil)
-            let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
-            return (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains { $0.contains(topLeft) }
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in
                 guard let page = environment.pagePool.existingPage(for: tab.activePage), page.isInFloatingPreview else { return false }
                 return focused === page.contentView || focused.isDescendant(of: page.contentView)
             }
-        }) { [unowned self] point in
-            guard !windowState.showsCommandLens,
-                  tabCanvasManager.isLivePageAtNormalSize,
-                  let pageFrame = tabCanvasManager.currentLivePageFrame()
-            else { return false }
-            return pageFrame.contains(point)
-        }
+        })
         canvasPageGestures?.islands = islandController
         canvasPageGestures?.islandInput = IslandInput(islands: islandController)
     }

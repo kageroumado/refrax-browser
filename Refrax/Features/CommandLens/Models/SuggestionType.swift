@@ -100,10 +100,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     /// Open the Local Devices window.
     case openLocalDevices
 
-    /// Show or hide the tab canvas in this window.
+    /// Show or hide the floating tabs in this window.
     case toggleTabCanvas
-    /// Arrange the floating tabs of this window's space.
-    case arrange(FloatingArrangement)
     case favoriteCurrentPage
     case returnFromLook
     case keepPartVisible
@@ -133,10 +131,6 @@ nonisolated enum AppAction: Hashable, Sendable {
     case openAppearanceSettings
     /// List this space's open tabs in the lens.
     case showOpenTabs
-    /// Add the current page to the tabs selected for a group, or take it out.
-    case toggleCurrentTabGroupSelection
-    /// Put the selected tabs in a new group.
-    case groupSelectedTabs
 }
 
 /// Scope of a setting (global or per-site).
