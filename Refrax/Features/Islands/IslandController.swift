@@ -97,6 +97,10 @@ final class IslandController {
     var drop: IslandDrop?
     /// The side of the page a dragged row would join the current tab on, as a pane.
     var sideDrop: PanePosition?
+    /// Rows chosen with ⇧ or ⌘, on one island, for actions on several tabs at once.
+    private(set) var selectedTabIDs: Set<UUID> = []
+    /// The row the pointer has rested on, whose page shows as a preview beside its island.
+    var previewedTabID: UUID?
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
     /// The island that just appeared, for its unfold.
@@ -397,6 +401,85 @@ final class IslandController {
         armedCrossing = nil
     }
 
+    // MARK: - Selecting rows
+
+    /// ⌘ toggles a row in the selection; ⇧ extends it from the last chosen row through this
+    /// one on the same island; a plain choice is the row alone.
+    func select(_ tabID: UUID, extending: Bool, toggling: Bool) {
+        guard let island = island(holding: tabID) else { return }
+        let onIsland = selectedTabIDs.filter { island.tabIDs.contains($0) }
+        if toggling {
+            selectedTabIDs = onIsland.symmetricDifference([tabID])
+        } else if extending, let anchor = onIsland.compactMap({ island.tabIDs.firstIndex(of: $0) }).min(),
+                  let end = island.tabIDs.firstIndex(of: tabID) {
+            selectedTabIDs = Set(island.tabIDs[min(anchor, end) ... max(anchor, end)])
+        } else {
+            selectedTabIDs = [tabID]
+        }
+    }
+
+    func clearSelection() {
+        if !selectedTabIDs.isEmpty {
+            selectedTabIDs = []
+        }
+    }
+
+    /// The tabs an action on `tabID`'s row applies to: the selection when the row is in it,
+    /// else the row alone.
+    func actionTabs(for tabID: UUID) -> [Tab] {
+        guard selectedTabIDs.contains(tabID), let island = island(holding: tabID) else { return tab(for: tabID).map { [$0] } ?? [] }
+        return island.tabIDs.filter { selectedTabIDs.contains($0) }.compactMap(tab(for:))
+    }
+
+    // MARK: - Acting on rows
+
+    /// Closes every other tab of `tabID`'s island.
+    func closeOthers(than tabID: UUID) {
+        guard let island = island(holding: tabID) else { return }
+        tabManager.requestCloseTabs(island.tabIDs.filter { $0 != tabID }.compactMap(tab(for:)))
+    }
+
+    /// Closes the rows above (`below == false`) or below `tabID` on its island.
+    func close(below: Bool, of tabID: UUID) {
+        guard let island = island(holding: tabID), let index = island.tabIDs.firstIndex(of: tabID) else { return }
+        let ids = below ? Array(island.tabIDs[(index + 1)...]) : Array(island.tabIDs[..<index])
+        tabManager.requestCloseTabs(ids.compactMap(tab(for:)))
+    }
+
+    /// Archives `tabs`, which the archive keeps and the islands let go.
+    func archive(_ tabs: [Tab]) {
+        guard !tabs.isEmpty else { return }
+        _ = tabManager.archiveManager.archiveBatch(tabs)
+    }
+
+    /// Takes `tabID` out of its group: it goes to the loose tabs' island.
+    func removeFromIsland(_ tabID: UUID) {
+        guard let tab = tab(for: tabID), let space = tab.space, tab.group != nil else { return }
+        groupManager.moveTabToGroup(tab, group: nil, in: space, skipReordering: true)
+        rebuild()
+    }
+
+    // MARK: - Acting on islands
+
+    func setColor(_ color: GroupColor, of islandID: UUID) {
+        guard let group = windowState.activeSpace?.groups.first(where: { $0.id == islandID }) else { return }
+        groupManager.updateGroupColor(group, to: color.rawValue)
+        rebuild()
+    }
+
+    func closeAll(in islandID: UUID) {
+        guard let island = island(islandID) else { return }
+        tabManager.requestCloseTabs(island.tabIDs.compactMap(tab(for:)))
+    }
+
+    /// Removes the group; its tabs go to the loose tabs' island.
+    func dissolve(_ islandID: UUID) {
+        guard let space = windowState.activeSpace, let group = space.groups.first(where: { $0.id == islandID }) else { return }
+        state.islands.removeValue(forKey: islandID)
+        groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
+        rebuild()
+    }
+
     /// Opens `tab` from its chip: a slide when it is a neighbor, a crossing from another
     /// island, a fade otherwise.
     func open(_ tab: Tab) {
@@ -434,6 +517,7 @@ final class IslandController {
     }
 
     private func start(_ move: PageTravel, to tab: Tab) {
+        clearSelection()
         travel = move
         activatedHere = tab.id
         tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
@@ -616,11 +700,20 @@ final class IslandController {
 
     /// Makes a new island from `tabID`: a new group beside the source island, unfolding.
     func makeIsland(from tabID: UUID) {
-        guard let tab = tab(for: tabID), let space = tab.space, let source = island(holding: tabID) else { return }
+        makeIsland(from: actionTabs(for: tabID).map(\.id))
+    }
+
+    /// Makes a new island from `tabIDs`, in their order, beside the island the first came from.
+    func makeIsland(from tabIDs: [UUID]) {
+        let members = tabIDs.compactMap(tab(for:))
+        guard let first = members.first, let space = first.space, let source = island(holding: first.id) else { return }
         let name = "Island \(space.groups.filter { !$0.isArchive }.count + 1)"
         guard let group = try? groupManager.createGroup(in: space, name: name) else { return }
-        state.islands[group.id] = freePlacement(near: source, rows: 1, iconsOnly: source.placement.iconsOnly)
-        groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
+        state.islands[group.id] = freePlacement(near: source, rows: members.count, iconsOnly: source.placement.iconsOnly)
+        for member in members {
+            groupManager.moveTabToGroup(member, group: group, in: space, skipReordering: true)
+        }
+        clearSelection()
         emergingIslandID = group.id
         rebuild()
         Task(name: "Finish an island's unfold") { [weak self] in

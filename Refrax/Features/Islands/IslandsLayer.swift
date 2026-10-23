@@ -34,6 +34,11 @@ struct IslandsLayer: View {
                     SideDropZone(side: side, bounds: bounds)
                         .transition(.opacity)
                 }
+                if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
+                    RowPreview(tab: tab, islandFrame: islands.frame(of: island), bounds: bounds)
+                        .zIndex(5)
+                        .transition(.opacity)
+                }
                 ForEach(islands.detachedTabs.filter { $0.id != windowState.activeTabID }) { tab in
                     let frame = canvas.floatingFrame(for: tab, in: bounds)
                     FloatingTabCard(tab: tab, placement: canvas.floatingPlacement(for: tab), area: bounds)
@@ -45,6 +50,7 @@ struct IslandsLayer: View {
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: islands.visibleIslands.map(\.id))
             .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
+            .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "islands")
             .coordinateSpace(name: "floatingTabs")
@@ -226,6 +232,20 @@ struct IslandView: View {
                             isRenaming = true
                             nameIsFocused = true
                         }
+                        Picker("Color", selection: Binding(
+                            get: { GroupColor(rawValue: island.colorString ?? "") ?? .steel },
+                            set: { islands.setColor($0, of: island.id) },
+                        )) {
+                            ForEach(GroupColor.allCases, id: \.self) { color in
+                                Label(color.rawValue, systemImage: "circle.fill").tint(color.color).tag(color)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Divider()
+                    Button("Close All Tabs in Island") { islands.closeAll(in: island.id) }
+                    if !island.isDefault {
+                        Button("Dissolve Island") { islands.dissolve(island.id) }
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -272,6 +292,7 @@ private struct IslandTabRow: View {
     private enum Layout {
         static let faviconSize: CGFloat = 16
         static let paneFaviconSize: CGFloat = 12
+        static let previewDelay: Duration = .milliseconds(650)
         static let ringSize: CGFloat = 20
         /// How far past an island's edge a row still lands on it.
         static let reach: CGFloat = 12
@@ -292,6 +313,17 @@ private struct IslandTabRow: View {
     /// Another row is held over this one: it would join this tab as a second pane.
     private var isJoinTarget: Bool {
         islands.drop?.joins == tab.id
+    }
+
+    private var isSelected: Bool {
+        islands.selectedTabIDs.contains(tab.id)
+    }
+
+    private var rowFill: Color {
+        if isJoinTarget { return Color.appAccentColor.opacity(0.2) }
+        if isSelected { return Color.appAccentColor.opacity(0.16) }
+        if isCurrent { return color.opacity(0.28) }
+        return Color.primary.opacity(isHovering ? 0.08 : 0)
     }
 
     var body: some View {
@@ -320,7 +352,7 @@ private struct IslandTabRow: View {
         }
         .padding(.horizontal, iconsOnly ? 0 : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
-        .background(isJoinTarget ? Color.appAccentColor.opacity(0.2) : isCurrent ? color.opacity(0.28) : Color.primary.opacity(isHovering ? 0.08 : 0), in: shape)
+        .background(rowFill, in: shape)
         .overlay {
             if isJoinTarget {
                 shape.strokeBorder(Color.appAccentColor, lineWidth: 1.5)
@@ -335,8 +367,29 @@ private struct IslandTabRow: View {
         .contentShape(shape)
         .offset(dragOffset)
         .zIndex(dragOffset == .zero ? 0 : 2)
-        .onHover { isHovering = $0 }
-        .onTapGesture { islands.open(tab) }
+        .onHover { hovering in
+            isHovering = hovering
+            if !hovering, islands.previewedTabID == tab.id {
+                islands.previewedTabID = nil
+            }
+        }
+        // The page shows beside the island once the pointer has rested on the row.
+        .task(id: isHovering) {
+            guard isHovering else { return }
+            try? await Task.sleep(for: Layout.previewDelay)
+            guard !Task.isCancelled, isHovering, islands.draggedTabID == nil else { return }
+            islands.requestStoredSnapshot(for: tab)
+            islands.previewedTabID = tab.id
+        }
+        .onTapGesture {
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.command) || flags.contains(.shift) {
+                islands.select(tab.id, extending: flags.contains(.shift), toggling: flags.contains(.command))
+            } else {
+                islands.clearSelection()
+                islands.open(tab)
+            }
+        }
         .gesture(dragGesture)
         .contextMenu { MenuTreeView(tree: menuTree) }
         .closesOnMiddleClick(tab)
@@ -372,13 +425,66 @@ private struct IslandTabRow: View {
             tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas, area: area,
             onRename: { canvas.renamingTabID = tab.id },
         )
-        let island = [
+        let chosen = islands.actionTabs(for: tab.id)
+        if chosen.count > 1 {
+            return MenuComposer.compose(selectionActions(chosen), groupOrder: PageActionsMenu.groupOrder)
+        }
+        return MenuComposer.compose(page.actions() + object.actions() + islandActions, groupOrder: PageActionsMenu.groupOrder)
+    }
+
+    /// What a row can do within its island: make an island, float, move, leave, close around it.
+    private var islandActions: [MenuAction] {
+        var actions = [
             MenuAction("island.new", "New Island from Here", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
             MenuAction("island.float", "Float as Live Page", symbol: "rectangle.on.rectangle", group: .move) {
                 islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY))
             },
         ]
-        return MenuComposer.compose(page.actions() + object.actions() + island, groupOrder: PageActionsMenu.groupOrder)
+        let others = islands.islands.filter { $0.id != island.id }
+        if !others.isEmpty {
+            actions.append(MenuAction("island.moveTo", "Move to Island", symbol: "arrow.right.square", group: .move, children: others.map { other in
+                MenuAction("island.moveTo.\(other.id)", other.title, symbol: "circle.fill", group: .move) {
+                    islands.moveTab(tab.id, to: Int.max, in: other.id)
+                }
+            }))
+        }
+        if !island.isDefault {
+            actions.append(MenuAction("island.leave", "Remove from Island", symbol: "minus.square", group: .move) { islands.removeFromIsland(tab.id) })
+        }
+        if tabManager.state.settings.archiveEnabled {
+            actions.append(MenuAction("island.archive", "Archive Tab", symbol: "archivebox", group: .close) { islands.archive([tab]) })
+        }
+        actions.append(MenuAction("island.closeOthers", "Close Other Tabs in Island", symbol: "xmark.rectangle", group: .close) { islands.closeOthers(than: tab.id) })
+        actions.append(MenuAction("island.closeAbove", "Close Tabs Above", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tab.id) })
+        actions.append(MenuAction("island.closeBelow", "Close Tabs Below", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tab.id) })
+        return actions
+    }
+
+    /// What several chosen rows can do together.
+    private func selectionActions(_ chosen: [Tab]) -> [MenuAction] {
+        let n = chosen.count
+        var actions = [
+            MenuAction("island.selection.new", "New Island from \(n) Tabs", symbol: "plus.rectangle.on.rectangle", group: .move) {
+                islands.makeIsland(from: chosen.map(\.id))
+            },
+        ]
+        if let current = tab.space {
+            let targets = tabManager.spaceManager.spaces.filter { $0.id != current.id }.map { space in
+                MenuAction("island.selection.space.\(space.id)", space.name, symbol: space.isEmoji ? nil : space.iconName, group: .move) {
+                    Task(name: "Move tabs to space") { await tabManager.moveTabsUnlocking(chosen, to: space, confirmingIn: windowState) }
+                }
+            }
+            if !targets.isEmpty {
+                actions.append(MenuAction("island.selection.space", "Move \(n) Tabs to Space", symbol: "square.stack.3d.up", group: .move, children: targets))
+            }
+        }
+        if tabManager.state.settings.archiveEnabled {
+            actions.append(MenuAction("island.selection.archive", "Archive \(n) Tabs", symbol: "archivebox", group: .close) { islands.archive(chosen) })
+        }
+        actions.append(MenuAction("island.selection.close", "Close \(n) Tabs", symbol: "xmark", group: .close, isDestructive: true) {
+            tabManager.requestCloseTabs(chosen)
+        })
+        return actions
     }
 
     /// Where the row would land while it is dragged, and what happens when it is let go.
@@ -431,6 +537,57 @@ private struct IslandTabRow: View {
                 islands.draggedTabID = nil
                 dragOffset = .zero
             }
+    }
+}
+
+/// A row's page beside its island while the pointer rests on the row: the newest render of
+/// it, with its title, on the side with room.
+private struct RowPreview: View {
+    let tab: Tab
+    let islandFrame: CGRect
+    let bounds: CGRect
+
+    @Environment(IslandController.self) private var islands
+
+    private enum Layout {
+        static let size = CGSize(width: 240, height: 150)
+        static let gap: CGFloat = 10
+        static let padding: CGFloat = 6
+        static let cornerRadius: CGFloat = 14
+    }
+
+    var body: some View {
+        let width = Layout.size.width + 2 * Layout.padding
+        let height = Layout.size.height + 2 * Layout.padding + 22
+        let right = islandFrame.maxX + Layout.gap
+        let x = right + width <= bounds.maxX ? right : islandFrame.minX - Layout.gap - width
+        let y = min(max(bounds.minY, islandFrame.minY), bounds.maxY - height)
+        let shape = RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+        VStack(spacing: 4) {
+            Group {
+                if let image = islands.snapshot(for: tab.id) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    PagePlaceholder(tab: tab)
+                }
+            }
+            .frame(width: Layout.size.width, height: Layout.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: Layout.cornerRadius - Layout.padding, style: .continuous))
+            Text(tab.displayTitle)
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+        }
+        .padding(Layout.padding)
+        .glassEffect(.regular, in: shape)
+        .shadow(color: .black.opacity(0.14), radius: 12, y: 6)
+        .frame(width: width, height: height)
+        .offset(x: x, y: y)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
