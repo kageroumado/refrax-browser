@@ -35,14 +35,14 @@ nonisolated enum EngineInstaller {
         into enginesDirectory: URL,
         replacingRunningEngine isRunning: Bool,
         session: URLSession = .shared,
-        key: Curve25519.Signing.PublicKey? = nil,
+        keys: ReleaseKeys? = nil,
         checkCode: CodeCheck = { try $0.verifySignature() },
         stage: @escaping @Sendable (Stage) -> Void = { _ in },
     ) async throws -> Outcome {
         guard EngineSignature.isAllowedDownloadURL(release.url) else {
             throw EngineDistributionError.urlNotAllowed(release.url)
         }
-        let key = try key ?? EngineSignature.pinnedKey()
+        let keys = try keys ?? EngineSignature.pinnedKeys()
         let staging = try makeStaging()
         defer { try? FileManager.default.removeItem(at: staging) }
 
@@ -56,7 +56,7 @@ nonisolated enum EngineInstaller {
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw EngineDistributionError.http(signatureURL, http.statusCode)
         }
-        try verify(archive, against: release, signatureFile: signature, key: key)
+        try verify(archive, against: release, signatureFile: signature, keys: keys)
 
         stage(.installing)
         let bundle = try unpack(archive, in: staging, expecting: release, engine: id)
@@ -67,7 +67,7 @@ nonisolated enum EngineInstaller {
     /// Size, hash and signature, in that order: the cheap checks refuse a wrong file before the
     /// signature is computed over hundreds of megabytes.
     static func verify(
-        _ archive: URL, against release: EngineCatalog.Release, signatureFile: Data, key: Curve25519.Signing.PublicKey,
+        _ archive: URL, against release: EngineCatalog.Release, signatureFile: Data, keys: ReleaseKeys,
     ) throws {
         let size = try (FileManager.default.attributesOfItem(atPath: archive.path(percentEncoded: false))[.size] as? NSNumber)?.int64Value ?? -1
         guard size == release.sizeBytes else {
@@ -78,7 +78,7 @@ nonisolated enum EngineInstaller {
         guard digest == release.sha256.lowercased() else {
             throw EngineDistributionError.hashMismatch
         }
-        try EngineSignature.verify(bytes, signatureFile: signatureFile, subject: archive.lastPathComponent, key: key)
+        try EngineSignature.verify(bytes, signatureFile: signatureFile, subject: archive.lastPathComponent, keys: keys)
     }
 
     /// Extracts the zip and returns its one `.engine`, once it is the engine and release the

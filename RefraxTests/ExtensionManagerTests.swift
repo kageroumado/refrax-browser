@@ -38,6 +38,46 @@ struct InstalledExtensionModelTests {
         #expect(ext.disabledOnDomains.isEmpty)
     }
 
+    @Test("An extension saved with no grants or denials has no permission decisions")
+    func noPermissionDecisions() {
+        var ext = InstalledExtension(
+            uniqueIdentifier: "ublock",
+            source: .xpiFile(URL(fileURLWithPath: "/tmp/ublock.xpi")),
+            displayName: "uBlock Origin",
+            version: "1.72.2",
+            manifestVersion: 2,
+        )
+        #expect(!ext.hasPermissionDecisions)
+
+        ext.deniedMatchPatterns["https://example.com/*"] = .distantFuture
+        #expect(ext.hasPermissionDecisions)
+    }
+
+    @Test("Granting requested permissions keeps earlier denials and grants")
+    func grantPermanentlyKeepsDecisions() {
+        var ext = InstalledExtension(
+            uniqueIdentifier: "ublock",
+            source: .xpiFile(URL(fileURLWithPath: "/tmp/ublock.xpi")),
+            displayName: "uBlock Origin",
+            version: "1.72.2",
+            manifestVersion: 2,
+        )
+        let grantedUntil = Date(timeIntervalSinceReferenceDate: 1_000_000_000)
+        ext.grantedPermissions["storage"] = grantedUntil
+        ext.deniedPermissions["tabs"] = .distantFuture
+        ext.deniedMatchPatterns["https://bank.example/*"] = .distantFuture
+
+        ext.grantPermanently(
+            permissions: ["storage", "tabs", "webRequest"],
+            matchPatterns: ["<all_urls>", "https://bank.example/*"],
+        )
+
+        #expect(ext.grantedPermissions == ["storage": grantedUntil, "webRequest": .distantFuture])
+        #expect(ext.grantedMatchPatterns == ["<all_urls>": .distantFuture])
+        #expect(ext.deniedPermissions.keys.contains("tabs"))
+        #expect(ext.deniedMatchPatterns.keys.contains("https://bank.example/*"))
+    }
+
     @Test("Equality based on ID")
     func equalityBasedOnID() {
         let ext1 = InstalledExtension(

@@ -131,6 +131,10 @@ final class ExtensionManager {
     /// Extension tab adapters, keyed by TabPage ID.
     private var tabAdapters: [TabPage.ID: RefraxExtensionTab] = [:]
 
+    /// Open tabs that extensions know about while they have no web view: tabs restored at
+    /// launch that were never shown, and tabs whose page was evicted.
+    private(set) var tabsWithoutWebView: Set<TabPage.ID> = []
+
     /// Extension window adapters, keyed by WindowState object identity.
     private var windowAdapters: [ObjectIdentifier: RefraxExtensionWindow] = [:]
 
@@ -609,6 +613,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
@@ -678,6 +684,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
         // Cache the icon if available
         if let icon = extension_.icon(for: CGSize(width: 128, height: 128)) {
@@ -789,6 +797,8 @@ final class ExtensionManager {
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
         installedExtension = updateFromContext(installedExtension, context: context)
+        grantRequestedPermissions(of: extension_, to: &installedExtension)
+        applyPersistedPermissions(to: context, from: installedExtension)
 
         // Cache icon
         if let icon = extension_.icon(for: CGSize(width: 128, height: 128)) {
@@ -1270,7 +1280,38 @@ final class ExtensionManager {
             let extensionTab = extensionTab(for: tabPage, pagePool: pagePool)
             guard !context.openTabs.contains(AnyHashable(extensionTab)) else { continue }
             context.didOpenTab(extensionTab)
+            if pagePool.existingPage(for: tabPage.id) == nil {
+                tabsWithoutWebView.insert(tabPage.id)
+            }
         }
+    }
+
+    /// Notes that an open tab's page went away while the tab stays open, as when the
+    /// page pool evicts it.
+    ///
+    /// - Parameter tabPage: The tab page that lost its page.
+    func pageRemoved(for tabPage: TabPage) {
+        guard tabAdapters[tabPage.id] != nil else { return }
+        tabsWithoutWebView.insert(tabPage.id)
+    }
+
+    /// Replaces a tab in its extensions with a new one just before it gets a page, when
+    /// extensions had seen it without one.
+    ///
+    /// Extensions can drop tabs that have no web view: uBlock Origin checks its tabs every
+    /// 10 minutes, and a tab that had no web view at that check gets no filters once it
+    /// loads, even after a reload, so YouTube ads play in it. Extensions get the tab as a new
+    /// one, under a new identifier, before its page loads, as with a tab the user opens.
+    ///
+    /// - Parameter tabPage: The tab page about to get its page.
+    func pageWillBeCreated(for tabPage: TabPage) {
+        guard tabsWithoutWebView.remove(tabPage.id) != nil,
+              let tab = tabPage.tab, let pagePool = state.pagePool,
+              let adapter = tabAdapters[tabPage.id] else { return }
+        let controller = controller(for: tab)
+        controller.didCloseTab(adapter, windowIsClosing: false)
+        removeTabAdapter(for: tabPage)
+        controller.didOpenTab(extensionTab(for: tabPage, pagePool: pagePool))
     }
 
     /// The controller for a tab's web views: its space's, matching the data store
@@ -1301,6 +1342,7 @@ final class ExtensionManager {
     func dispatchTabClosed(_ tab: Tab, windowClosing: Bool) {
         guard let tabPage = tab.pages.first else { return }
 
+        tabsWithoutWebView.remove(tabPage.id)
         if let adapter = tabAdapters[tabPage.id] {
             controller(for: tab).didCloseTab(adapter, windowIsClosing: windowClosing)
             removeTabAdapter(for: tabPage)
@@ -1551,6 +1593,16 @@ final class ExtensionManager {
         let webExtension = try await WKWebExtension(resourceBaseURL: folderURL)
         let context = WKWebExtensionContext(for: webExtension)
 
+        // An extension saved with no permission decisions was installed by a build that
+        // never granted it any: give it what its manifest requests, as a new install gets.
+        var extension_ = extension_
+        if !extension_.hasPermissionDecisions,
+           let index = installedExtensions.firstIndex(where: { $0.id == extension_.id }) {
+            grantRequestedPermissions(of: webExtension, to: &extension_)
+            installedExtensions[index] = extension_
+            savePersistedState()
+        }
+
         // Restore persisted permission state
         applyPersistedPermissions(to: context, from: extension_)
 
@@ -1771,6 +1823,27 @@ final class ExtensionManager {
                 "\(extension_.requestedPermissionMatchPatterns.count) match patterns for bundled extension " +
                 "'\(installedExtension.displayName)'",
             category: Logger.extensions,
+        )
+    }
+
+    /// Grants a user-installed extension the permissions and sites its manifest requests.
+    ///
+    /// Installing the extension is the user's consent, as in Firefox and Chrome. WebKit
+    /// injects content scripts only where a match pattern is granted, so without this an
+    /// extension like uBlock Origin installed from an XPI filters no page. Optional
+    /// permissions still wait for the extension to request them.
+    ///
+    /// - Parameters:
+    ///   - webExtension: The extension with the manifest's requests.
+    ///   - installedExtension: The metadata to record the grants in. Apply them to a
+    ///     context with ``applyPersistedPermissions(to:from:)``.
+    private func grantRequestedPermissions(
+        of webExtension: WKWebExtension,
+        to installedExtension: inout InstalledExtension,
+    ) {
+        installedExtension.grantPermanently(
+            permissions: webExtension.requestedPermissions.map(\.rawValue),
+            matchPatterns: webExtension.requestedPermissionMatchPatterns.map(\.string),
         )
     }
 

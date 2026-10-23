@@ -276,6 +276,7 @@ final class WebPagePool {
             Logger.warning("Creating page without parent tab for: \(tabPage.title)", category: Logger.tabs)
         }
 
+        extensionManager?.pageWillBeCreated(for: tabPage)
         let configuration = configuration(for: tabPage)
         let (page, navigationDecider) = if let extensionContext = extensionManager?.extensionContext(for: tabPage.url) {
             buildExtensionPage(for: tabPage, configuration: configuration, context: extensionContext)
@@ -584,6 +585,7 @@ final class WebPagePool {
         navigationDeciders.removeValue(forKey: tabPage.id)
         terminationHandler.clearHistory(for: tabPage.id)
         page.onSessionEnding()
+        extensionManager?.pageRemoved(for: tabPage)
         pagesVersion += 1
         Logger.debug("Removed page for: \(tabPage.title)", category: Logger.tabs)
     }
@@ -756,6 +758,7 @@ final class WebPagePool {
             let page = scored.page
             page.onSessionEnding()
             _activePages.removeValue(forKey: page.tabPage.id)
+            extensionManager?.pageRemoved(for: page.tabPage)
             navigationDeciders.removeValue(forKey: page.tabPage.id)
             evictedCount += 1
 
@@ -801,6 +804,7 @@ final class WebPagePool {
             page.onSessionEnding()
             navigationDeciders.removeValue(forKey: pageID)
             terminationHandler.clearHistory(for: pageID)
+            extensionManager?.pageRemoved(for: page.tabPage)
         }
 
         _activePages = _activePages.filter { protectedPageIDs.contains($0.key) }
@@ -931,6 +935,7 @@ final class WebPagePool {
             let page = scored.page
             page.onSessionEnding()
             _activePages.removeValue(forKey: page.tabPage.id)
+            extensionManager?.pageRemoved(for: page.tabPage)
             navigationDeciders.removeValue(forKey: page.tabPage.id)
             evictedCount += 1
 
@@ -995,6 +1000,7 @@ final class WebPagePool {
             let page = scored.page
             page.onSessionEnding()
             _activePages.removeValue(forKey: page.tabPage.id)
+            extensionManager?.pageRemoved(for: page.tabPage)
             navigationDeciders.removeValue(forKey: page.tabPage.id)
             evictedAny = true
 

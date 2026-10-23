@@ -23,12 +23,18 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
-    <!-- ed25519 public key pinning update-DMG signatures. Updates are
-         refused unless the release's .dmg.sig asset verifies against this
-         key in the running app; the private key lives only in the publish
-         pipeline. -->
-    <key>RefraxEDPublicKey</key>
-    <string>PZpeAoItKlJVbxk8kQTIe0Q4WikXTOP1jKSaZEch9NI=</string>
+    <!-- ed25519 public keys pinning update-DMG and engine signatures
+         (ReleaseKeys). Updates are refused unless the release's .dmg.sig
+         asset verifies against one of these keys in the running app; the
+         private keys live only in the publish pipeline. Newest first: the
+         2026-10 key signs releases after 0.36.0; the first key signed
+         releases through 0.36.0 and engines, and leaves this list once
+         installs carry the 2026-10 key. -->
+    <key>RefraxEDPublicKeys</key>
+    <array>
+        <string>TGknB8k6iJu+iFdB57Fj+2wmldlbCAMYyrUcq5IOHKg=</string>
+        <string>PZpeAoItKlJVbxk8kQTIe0Q4WikXTOP1jKSaZEch9NI=</string>
+    </array>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

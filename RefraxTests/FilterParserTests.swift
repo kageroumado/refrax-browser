@@ -321,3 +321,37 @@ struct WebKitRuleCompilerCosmeticTests {
         #expect(unlessDomain.contains("*example.com"))
     }
 }
+
+@Suite("FilterListSource saved lists", .tags(.filterParser))
+struct FilterListSourceSavedListTests {
+    @Test("A saved built-in list takes its current default URL and keeps its state")
+    func builtInListTakesDefaultURL() throws {
+        var saved = try #require(FilterListSource.defaultLists.first { $0.id == "easylist-cookie" })
+        saved.url = URL.staticRequired("https://easylist.to/easylist/easylist-cookie.txt")
+        saved.isEnabled = false
+        saved.ruleCount = 42
+
+        let updated = try #require(FilterListSource.updatingDefaultURLs(in: [saved]).first)
+
+        #expect(updated.url.absoluteString == "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt")
+        #expect(updated.isEnabled == false)
+        #expect(updated.ruleCount == 42)
+    }
+
+    @Test("A custom list keeps its URL")
+    func customListKeepsURL() {
+        let custom = FilterListSource(
+            id: "custom-1234abcd",
+            name: "Mine",
+            url: URL.staticRequired("https://example.com/list.txt"),
+            category: .custom,
+            isEnabled: true,
+            updateFrequency: 86_400,
+            lastUpdated: nil,
+            ruleCount: nil,
+            chunkCount: nil,
+        )
+
+        #expect(FilterListSource.updatingDefaultURLs(in: [custom]) == [custom])
+    }
+}
