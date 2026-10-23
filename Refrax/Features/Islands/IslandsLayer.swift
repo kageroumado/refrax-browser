@@ -178,17 +178,17 @@ struct IslandView: View {
         }
     }
 
-    /// A row under the last that opens a new tab in this island, with the lens up on it.
+    /// A row under the last that opens the Command Lens; a page it opens goes to this island.
     private var newTabRow: some View {
         Button {
             islands.addTab(to: island.id)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "plus")
+                Image(systemName: "sparkle.magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
                     .frame(width: 16, height: 16)
                 if !island.placement.iconsOnly {
-                    Text("New Tab")
+                    Text("Command Lens")
                         .font(.callout)
                 }
             }
@@ -200,7 +200,7 @@ struct IslandView: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
-        .help("New tab in \(island.title)")
+        .help("Command Lens · a page it opens goes to \(island.title)")
     }
 
     /// The drag that moves the island, from its origin when the drag began.

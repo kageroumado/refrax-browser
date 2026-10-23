@@ -230,13 +230,14 @@ struct PageTravelView: View {
                     DirectionLabel(
                         direction: direction, text: label.text, crosses: label.crosses,
                         isArmed: label.crosses && islands.armedCrossing?.direction == direction,
-                    )
+                    ) {
+                        islands.step(direction)
+                    }
                     .position(Self.labelPosition(for: direction, on: slab))
                 }
             }
         }
         .frame(width: size.width, height: size.height)
-        .allowsHitTesting(false)
         .transition(.opacity)
     }
 
@@ -462,11 +463,13 @@ private struct TravelMotion: ViewModifier {
 
 /// The name of the tab a direction leads to, with its chevron; an island's name when the
 /// direction crosses to it, lit once its edge has been pushed and the next push will cross.
+/// A click goes that way, as a scroll would.
 private struct DirectionLabel: View {
     let direction: TableDirection
     let text: String
     let crosses: Bool
     let isArmed: Bool
+    let action: () -> Void
 
     private var symbol: String {
         switch direction {
@@ -478,24 +481,29 @@ private struct DirectionLabel: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            if direction == .left || direction == .up {
-                Image(systemName: symbol)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if direction == .left || direction == .up {
+                    Image(systemName: symbol)
+                }
+                Text(text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if direction == .right || direction == .down {
+                    Image(systemName: symbol)
+                }
             }
-            Text(text)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if direction == .right || direction == .down {
-                Image(systemName: symbol)
-            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(isArmed ? AnyShapeStyle(Color.appAccentColor) : crosses ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Capsule())
         }
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(isArmed ? AnyShapeStyle(Color.appAccentColor) : crosses ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .glassEffect(.regular, in: Capsule())
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Capsule())
         .animation(.easeOut(duration: 0.15), value: isArmed)
         .frame(maxWidth: direction == .left || direction == .right ? 220 : 420)
+        .help(crosses ? "Cross to \(text)" : "Go \(direction.rawValue) to \(text)")
         .accessibilityLabel("\(direction.rawValue): \(text)")
     }
 }

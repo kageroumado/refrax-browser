@@ -451,7 +451,11 @@ struct ControlIsland: View {
     private func itemControl(_ item: ControlIslandItem) -> some View {
         switch item {
         case .windowControls:
-            ControlIslandWindowButtons().frame(height: Layout.rowHeight * 3)
+            // The lights rest with the glass: gray and faint while the rail is clear.
+            ControlIslandWindowButtons()
+                .frame(height: Layout.rowHeight * 3)
+                .saturation(isResting ? 0 : 1)
+                .opacity(isResting ? Layout.restingLightsOpacity : 1)
         case .navigation:
             navigationControls
         case .page:

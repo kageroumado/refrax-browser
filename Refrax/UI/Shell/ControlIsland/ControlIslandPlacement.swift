@@ -14,6 +14,8 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let contentWidth = railWidth - horizontalInset * 2
     static let sectionGap: CGFloat = 12
     static let cornerRadius: CGFloat = 24
+    /// The window's lights while the rail rests: gray, and this faint.
+    static let restingLightsOpacity: Double = 0.45
     static let maximumVisibleSpaces = 4
     static let spaceRowHeight = contentWidth
     static let pageIconSize: CGFloat = 18

@@ -279,11 +279,12 @@ final class IslandController {
         island.colorString.map(Color.resolveStoredColor) ?? .secondary
     }
 
-    /// Opens the lens for a new tab that will go to the end of `islandID`.
+    /// Opens the Command Lens; a page it opens goes to the end of `islandID`. The lens opens
+    /// on its own, since an anchored lens edits the current page's address instead.
     func addTab(to islandID: UUID) {
         guard let island = island(islandID) else { return }
         windowState.newTabIsland = WindowState.NewTabIsland(groupID: island.isDefault ? nil : island.id)
-        windowState.openCommandLens(prefill: "", anchor: frame(of: island))
+        windowState.openCommandLens()
     }
 
     /// The tab a step in `direction` reaches from the current row: the row above or below
