@@ -646,6 +646,9 @@ final class IslandController {
         placement.shape = .live
         placement.isPinned = true
         placement.dock = nil
+        // A card starts at the live shape's own size, whatever size the tab's last card had.
+        placement.previewWidth = nil
+        placement.previewHeight = nil
         let size = placement.frame(in: bounds).size
         placement.move(to: CGPoint(x: point.x - size.width / 2, y: point.y - Layout.cardGrab), in: bounds)
         canvas.updateFloatingPlacement(placement, for: tab)
