@@ -7,6 +7,16 @@ nonisolated enum TableDirection: String, Codable, CaseIterable, Sendable {
     case up
     case down
 
+    /// The way back.
+    var opposite: TableDirection {
+        switch self {
+        case .left: .right
+        case .right: .left
+        case .up: .down
+        case .down: .up
+        }
+    }
+
     /// The arrow key that steps this way, as `NSEvent.keyCode`.
     var keyCode: UInt16 {
         switch self {

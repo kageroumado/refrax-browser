@@ -6,25 +6,6 @@ import Testing
 @MainActor
 struct FloatingWorkspaceTests {
     @Test
-    func `private placements stay in the window while reveal remains stable`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        space.dataStoreMode = .private
-        let window = env.makeActiveWindowState(with: space)
-        let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank")), in: space, makeActive: false)
-        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
-        canvas.toggleFloatingTabs()
-        #expect(canvas.visibleFloatingTabs.contains(where: { $0.id == tab.id }))
-        var moved = canvas.floatingPlacement(for: tab)
-        moved.x = 0.7
-        canvas.updateFloatingPlacement(moved, for: tab)
-        canvas.dismissFloatingTabs()
-        canvas.toggleFloatingTabs()
-        #expect(canvas.floatingPlacement(for: tab) == moved)
-        #expect(tab.floatingPlacement == nil)
-    }
-
-    @Test
     func `window reading state restores valid pages and excludes private space selections`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
@@ -45,26 +26,6 @@ struct FloatingWorkspaceTests {
         #expect(restored.activeTabID(for: other.id) == reference.id)
         env.tabManager.closeTab(source)
         #expect(restored.restoreReadingState(saved) == nil)
-    }
-
-    @Test
-    func `each revealed window retains its own placement`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        let first = env.makeActiveWindowState(with: space)
-        let second = env.makeActiveWindowState(with: space)
-        let tab = try env.tabManager.createTab(url: #require(URL(string: "about:blank")), in: space, makeActive: false)
-        tab.floatingPlacement = .initial(index: 0)
-        let a = TabCanvasManager(tabManager: env.tabManager, windowState: first, pagePool: env.pagePool)
-        let b = TabCanvasManager(tabManager: env.tabManager, windowState: second, pagePool: env.pagePool)
-        a.toggleFloatingTabs()
-        b.toggleFloatingTabs()
-        let before = b.floatingPlacement(for: tab)
-        var moved = a.floatingPlacement(for: tab)
-        moved.x = 0.7
-        a.updateFloatingPlacement(moved, for: tab)
-        #expect(b.floatingPlacement(for: tab) == before)
-        #expect(a.floatingPlacement(for: tab) == moved)
     }
 
     @Test

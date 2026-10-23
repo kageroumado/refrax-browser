@@ -16,8 +16,8 @@ final class FloatingTourManager {
         case openSecondPage
         case revealPages
         case visitNeighbor
-        case placePage
-        case keepVisible
+        case floatPage
+        case pinIsland
         case pageCard
         case movePanel
         case done
@@ -29,7 +29,7 @@ final class FloatingTourManager {
         var requiredPageCount: Int {
             switch self {
             case .openPage, .openSecondPage, .done: 0
-            case .revealPages, .visitNeighbor, .placePage, .keepVisible: 2
+            case .revealPages, .visitNeighbor, .floatPage, .pinIsland: 2
             case .pageCard, .movePanel: 1
             }
         }
@@ -94,13 +94,16 @@ final class FloatingTourManager {
     @ObservationIgnored private var litBeams: Set<TourBeam.Kind> = []
     @ObservationIgnored private var observation: Task<Void, Never>?
     /// Pages kept visible during the Keep Visible step: the tour let go of them when it ends.
-    @ObservationIgnored private var tourPinnedTabIDs: Set<Tab.ID> = []
+    @ObservationIgnored private var tourPinnedIslandIDs: Set<UUID> = []
     @ObservationIgnored private var keyMonitor: Any?
 
     /// What the window looked like when the current step began.
     private struct Baseline {
         var activeTabID: Tab.ID?
-        var placements: [Tab.ID: FloatingTabPlacement] = [:]
+        /// The tabs floating as cards when the step began.
+        var detached: Set<Tab.ID> = []
+        /// The islands pinned when the step began.
+        var pinnedIslands: Set<UUID> = []
         var islandPlacement = ControlIslandPlacement()
     }
 
@@ -223,13 +226,11 @@ final class FloatingTourManager {
 
     /// Lets go of the pages kept visible only to complete the Keep Visible step.
     private func unpinTourPages() {
-        let ids = tourPinnedTabIDs
-        tourPinnedTabIDs = []
-        for tab in canvas.floatingTabs where ids.contains(tab.id) {
-            var placement = canvas.floatingPlacement(for: tab)
-            guard placement.isPinned else { continue }
-            placement.isPinned = false
-            canvas.updateFloatingPlacement(placement, for: tab)
+        let ids = tourPinnedIslandIDs
+        tourPinnedIslandIDs = []
+        guard let islands = windowState.islandController else { return }
+        for island in islands.islands where ids.contains(island.id) && island.placement.isPinned {
+            islands.togglePin(island.id)
         }
     }
 
@@ -242,7 +243,6 @@ final class FloatingTourManager {
         if step == .revealPages {
             prepareTutorialPair()
         }
-        adoptNewPlacements()
         reviewBeams()
         if step == .visitNeighbor, let origin = entry.activeTabID, let active = windowState.activeTabID,
            active != origin, isAdjacent(active, to: origin) {
@@ -259,10 +259,8 @@ final class FloatingTourManager {
 
     private func advance() {
         guard let step = currentStep, let next = Step(rawValue: step.rawValue + 1) else { return }
-        if step == .keepVisible {
-            tourPinnedTabIDs.formUnion(windowState.floatingPlacements.compactMap { id, placement in
-                placement.isPinned && entry.placements[id]?.isPinned != true ? id : nil
-            })
+        if step == .pinIsland {
+            tourPinnedIslandIDs.formUnion(pinnedIslands.subtracting(entry.pinnedIslands))
         }
         enter(next)
     }
@@ -275,7 +273,8 @@ final class FloatingTourManager {
         }
         entry = Baseline(
             activeTabID: windowState.activeTabID,
-            placements: windowState.floatingPlacements,
+            detached: windowState.islandController?.state.detached ?? [],
+            pinnedIslands: pinnedIslands,
             islandPlacement: windowState.controlIsland.placement,
         )
         visitedNeighbor = false
@@ -293,15 +292,10 @@ final class FloatingTourManager {
             canvas.floatingVisibility.isHeld || canvas.floatingVisibility.isLatched
         case .visitNeighbor:
             windowState.activeTabID == entry.activeTabID && visitedNeighbor
-        case .placePage:
-            windowState.floatingPlacements.contains { id, placement in
-                guard let before = entry.placements[id] else { return false }
-                return before.x != placement.x || before.y != placement.y
-            }
-        case .keepVisible:
-            windowState.floatingPlacements.contains { id, placement in
-                placement.isPinned && entry.placements[id]?.isPinned != true
-            }
+        case .floatPage:
+            !(windowState.islandController?.state.detached ?? []).subtracting(entry.detached).isEmpty
+        case .pinIsland:
+            !pinnedIslands.subtracting(entry.pinnedIslands).isEmpty
         case .pageCard:
             windowState.controlIsland.tabInfo.isVisible || windowState.controlIsland.showsAddress
         case .movePanel:
@@ -312,10 +306,15 @@ final class FloatingTourManager {
     }
 
     /// A page placed after the step began is measured from where it first appeared.
-    private func adoptNewPlacements() {
-        for (id, placement) in windowState.floatingPlacements where entry.placements[id] == nil {
-            entry.placements[id] = placement
-        }
+    /// The islands pinned now.
+    private var pinnedIslands: Set<UUID> {
+        Set(windowState.islandController?.islands.filter(\.placement.isPinned).map(\.id) ?? [])
+    }
+
+    /// Whether islands are up to be worked on: latched or pinned, since a held key leaves no
+    /// hand free to drag a row or click a pin.
+    private var islandsShown: Bool {
+        !canvas.isMomentaryNavigation && !(windowState.islandController?.visibleIslands.isEmpty ?? true)
     }
 
     private var pageCount: Int {
@@ -331,32 +330,14 @@ final class FloatingTourManager {
     }
 
     /// The space between the two practice pages' cards.
-    private static let tutorialPairGap: CGFloat = 12
-
-    /// Gives the two practice pages a shared, visible path for the first wheel exercise.
+    /// Notes the two practice pages once they are both open; as the space's only two tabs they
+    /// are the two rows of one island, so the first wheel exercise steps between them.
     private func prepareTutorialPair() {
         let tabs = windowState.activeSpaceTabs.filter { !$0.isArchived }
         guard tabs.count == 2,
-              let draft = tabs.first(where: { $0.activePage.url == FloatingTabsTutorial.Page.tripDraft.url }),
-              let arrival = tabs.first(where: { $0.activePage.url == FloatingTabsTutorial.Page.arrivalDetails.url }),
-              draft.group?.id == arrival.group?.id else { return }
-        let ids: Set<Tab.ID> = [draft.id, arrival.id]
-        guard ids != preparedTutorialIDs else { return }
-        preparedTutorialIDs = ids
-
-        let area = canvas.floatingArea
-        var first = canvas.floatingPlacement(for: draft)
-        var second = canvas.floatingPlacement(for: arrival)
-        first.shape = .tab
-        second.shape = .tab
-        let gap = Self.tutorialPairGap
-        let width = first.size.width + gap + second.size.width
-        let x = max(area.minX + 24, min(area.minX + area.width * 0.24, area.maxX - width - 24))
-        let y = area.minY + area.height * 0.4
-        first.tableOrigin = CGPoint(x: x, y: y)
-        second.tableOrigin = CGPoint(x: x + first.size.width + gap, y: y)
-        canvas.updateFloatingPlacement(first, for: draft)
-        canvas.updateFloatingPlacement(second, for: arrival)
+              tabs.contains(where: { $0.activePage.url == FloatingTabsTutorial.Page.tripDraft.url }),
+              tabs.contains(where: { $0.activePage.url == FloatingTabsTutorial.Page.arrivalDetails.url }) else { return }
+        preparedTutorialIDs = Set(tabs.map(\.id))
     }
 
     /// Opens the two tutorial pages when a step needs pages to show and the space has too few.
@@ -382,7 +363,7 @@ final class FloatingTourManager {
         case .openPage: windowState.activeTab == nil ? nil : .commandLens
         case .openSecondPage: .commandLens
         case .revealPages, .visitNeighbor: .floatingTabs
-        case .placePage, .keepVisible: canvas.visibleFloatingTabs.isEmpty ? .floatingTabs : nil
+        case .floatPage, .pinIsland: islandsShown ? nil : .floatingTabs
         case .pageCard: .page
         case .movePanel, .done, nil: nil
         }
@@ -431,10 +412,9 @@ final class FloatingTourManager {
             return row(.commandLens)
         case .revealPages, .visitNeighbor:
             return row(.floatingTabs)
-        case .placePage, .keepVisible:
-            let cards = canvas.visibleFloatingTabs.filter { $0.id != windowState.activeTabID }
-                .map { FloatingTourLayout.spotlight(around: canvas.floatingFrame(for: $0, in: bounds), of: .floatingCard) }
-            return cards.isEmpty ? row(.floatingTabs) : cards
+        case .floatPage, .pinIsland:
+            guard let islands = windowState.islandController, islandsShown else { return row(.floatingTabs) }
+            return islands.visibleIslands.map { FloatingTourLayout.spotlight(around: islands.frame(of: $0), of: .island) }
         case .pageCard:
             return row(.page) + (pageCardSpotlight.map { [$0] } ?? [])
         case .movePanel:
@@ -545,17 +525,17 @@ extension FloatingTourManager.Step {
         var revealKey: FloatingRevealKey
         var hasPage: Bool
         var lensIsOpen: Bool
-        var cardsVisible: Bool
+        var islandsVisible: Bool
     }
 
     var title: String {
         switch self {
         case .openPage: "Open a page"
         case .openSecondPage: "Open a second page"
-        case .revealPages: "See both pages"
-        case .visitNeighbor: "Visit and return"
-        case .placePage: "Place a page"
-        case .keepVisible: "Keep a page in view"
+        case .revealPages: "See your islands"
+        case .visitNeighbor: "Step down and back"
+        case .floatPage: "Float a page"
+        case .pinIsland: "Keep an island"
         case .pageCard: "The current page"
         case .movePanel: "Move the panel"
         case .done: "That's the essentials"
@@ -568,8 +548,8 @@ extension FloatingTourManager.Step {
         case .openSecondPage: "plus.square.on.square"
         case .revealPages: "square.on.square"
         case .visitNeighbor: "arrow.left.arrow.right"
-        case .placePage: "hand.draw"
-        case .keepVisible: "pin"
+        case .floatPage: "rectangle.on.rectangle"
+        case .pinIsland: "pin"
         case .pageCard: "globe"
         case .movePanel: "slider.horizontal.3"
         case .done: "checkmark.seal"
@@ -587,17 +567,17 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph) to see the next page at its edge. The Desk button shows the whole table."
+            return "Hold \(context.revealKey.glyph) to see your tabs as islands over the page. The tabs button on the panel keeps them up."
         case .visitNeighbor:
-            return "Hold \(context.revealKey.glyph). Scroll toward the highlighted page at the edge, then reverse to return."
-        case .placePage:
-            return context.cardsVisible
-                ? "Drag a page's title to a spot you'll remember. It stays there."
-                : "Click the tabs button on the panel, then drag a page's title to a spot you'll remember."
-        case .keepVisible:
-            return context.cardsVisible
-                ? "Click a page's pin, or choose Keep Visible from its actions menu. It stays after you release."
-                : "Click the tabs button on the panel, then pin a page to keep it visible."
+            return "Hold \(context.revealKey.glyph) and scroll down: the page below slides in. Scroll up to come back."
+        case .floatPage:
+            return context.islandsVisible
+                ? "Drag a row out of its island onto the page. It floats there as a live page; its yellow light sends it back."
+                : "Click the tabs button on the panel, then drag a row out of its island onto the page."
+        case .pinIsland:
+            return context.islandsVisible
+                ? "Click an island's pin, at the end of its band. The island stays after you release \(context.revealKey.glyph)."
+                : "Click the tabs button on the panel, then pin an island so it stays."
         case .pageCard:
             return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."
         case .movePanel:

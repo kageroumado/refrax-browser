@@ -163,6 +163,11 @@ final class IslandController {
         })
     }
 
+    /// Rebuilds the islands from the space now, ahead of the observation that follows changes.
+    func refresh() {
+        rebuild()
+    }
+
     func stop() {
         tasks.forEach { $0.cancel() }
         tasks.removeAll()

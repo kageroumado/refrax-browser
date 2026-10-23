@@ -22,12 +22,15 @@ struct FloatingTourTests {
             self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
             self.table = IslandController(windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool)
             window.islandController = table
+            table.start()
             self.defaults = try #require(UserDefaults(suiteName: "FloatingTourTests.\(UUID())"))
             self.tour = FloatingTourManager(windowState: window, canvas: canvas, tabManager: env.tabManager, defaults: defaults)
         }
 
         func openPage(_ fragment: String) throws -> Tab {
-            try env.createActiveTab(url: #require(URL(string: "about:blank#\(fragment)")), in: space, for: window)
+            let tab = try env.createActiveTab(url: #require(URL(string: "about:blank#\(fragment)")), in: space, for: window)
+            table.refresh()
+            return tab
         }
 
         /// The window's lens, with the tour's provider in place.
@@ -55,22 +58,18 @@ struct FloatingTourTests {
             }
         }
 
-        /// Gives tabs a place of their own, as the window does when a page is displaced.
-        func placeTabs(_ tabs: [Tab]) {
-            for (index, tab) in tabs.enumerated() {
-                canvas.updateFloatingPlacement(.init(x: 0.2 + 0.3 * Double(index), y: 0.3, shape: .tab, isPinned: false), for: tab)
+        /// Steps the page the way the wheel would, and lands the move the page view would animate.
+        func step(_ direction: TableDirection) {
+            table.step(direction)
+            if let travel = table.travel {
+                table.finishTravel(travel.id)
             }
         }
 
-        func placeAdjacent(_ first: Tab, _ second: Tab) {
-            var left = canvas.floatingPlacement(for: first)
-            var right = canvas.floatingPlacement(for: second)
-            left.shape = .tab
-            right.shape = .tab
-            left.tableOrigin = CGPoint(x: 200, y: 300)
-            right.tableOrigin = CGPoint(x: 200 + left.size.width + 12, y: 300)
-            canvas.updateFloatingPlacement(left, for: first)
-            canvas.updateFloatingPlacement(right, for: second)
+        /// The direction from the current page to `tab`, its neighbor on the island.
+        func neighbor(_ tab: Tab) -> TableDirection {
+            table.refresh()
+            return table.destination(toward: .up)?.id == tab.id ? .up : .down
         }
 
         /// Starts the tour and performs each step's action until `step` is current.
@@ -81,22 +80,19 @@ struct FloatingTourTests {
             tour.review()
             guard step.rawValue > FloatingTourManager.Step.openSecondPage.rawValue else { return }
             let second = try openPage("second")
-            placeTabs([first, second])
             tour.review()
             guard step.rawValue > FloatingTourManager.Step.revealPages.rawValue else { return }
             canvas.revealFloatingTabs()
             tour.review()
             guard step.rawValue > FloatingTourManager.Step.visitNeighbor.rawValue else { return }
             tour.skipStep()
-            guard step.rawValue > FloatingTourManager.Step.placePage.rawValue else { return }
-            var moved = canvas.floatingPlacement(for: first)
-            moved.x = 0.7
-            canvas.updateFloatingPlacement(moved, for: first)
+            guard step.rawValue > FloatingTourManager.Step.floatPage.rawValue else { return }
+            table.detach(second.id, at: CGPoint(x: 400, y: 300))
             tour.review()
-            guard step.rawValue > FloatingTourManager.Step.keepVisible.rawValue else { return }
-            var kept = canvas.floatingPlacement(for: second)
-            kept.isPinned = true
-            canvas.updateFloatingPlacement(kept, for: second)
+            guard step.rawValue > FloatingTourManager.Step.pinIsland.rawValue else { return }
+            if let island = table.island(holding: first.id) {
+                table.togglePin(island.id)
+            }
             tour.review()
             guard step.rawValue > FloatingTourManager.Step.pageCard.rawValue else { return }
             canvas.releaseFloatingTabs()
@@ -162,6 +158,7 @@ struct FloatingTourTests {
         case .rail: 24
         case .pageCard: 22
         case .floatingCard: 12
+        case .island: 24
         case .lens: 26
         }
         #expect(kind.cornerRadius == expected)
@@ -192,7 +189,6 @@ struct FloatingTourTests {
         #expect(tour.passThroughRegions(in: bounds) == [row(.commandLens).rect])
 
         let second = try stage.openPage("second")
-        stage.placeTabs([first, second])
         tour.review()
         #expect(tour.currentStep == .revealPages)
         #expect(tour.spotlights(in: bounds) == [row(.floatingTabs)])
@@ -202,14 +198,16 @@ struct FloatingTourTests {
         tour.review()
         #expect(tour.currentStep == .visitNeighbor)
         tour.skipStep()
+        // Held, the islands take no drag: the float step lights the tabs button. Latched, it
+        // lights the islands.
         #expect(tour.spotlights(in: bounds) == [row(.floatingTabs)])
         #expect(tour.highlightedItem == .floatingTabs)
         stage.canvas.releaseFloatingTabs()
         stage.canvas.toggleFloatingTabs()
-        let cards = tour.spotlights(in: bounds)
-        #expect(cards.count == stage.canvas.visibleFloatingTabs.filter { $0.id != stage.window.activeTabID }.count)
-        #expect(!cards.isEmpty)
-        #expect(cards.allSatisfy { $0.cornerRadius == 20 })
+        let lit = tour.spotlights(in: bounds)
+        #expect(lit.count == stage.table.visibleIslands.count)
+        #expect(!lit.isEmpty)
+        #expect(lit.allSatisfy { $0.cornerRadius == 32 })
         #expect(tour.highlightedItem == nil)
         tour.endTour()
     }
@@ -319,33 +317,31 @@ struct FloatingTourTests {
         #expect(tour.currentStep == .visitNeighbor)
         stage.canvas.revealFloatingTabs()
 
-        stage.placeAdjacent(first, second)
-        #expect(stage.table.destination(toward: .left)?.id == first.id)
-        stage.table.step(.left)
+        let toward = stage.neighbor(first)
+        #expect(stage.table.destination(toward: toward)?.id == first.id)
+        stage.step(toward)
         tour.review()
         #expect(tour.currentStep == .visitNeighbor)
-        stage.table.step(.right)
+        stage.step(toward.opposite)
         tour.review()
-        #expect(tour.currentStep == .placePage)
+        #expect(tour.currentStep == .floatPage)
 
-        // Pinning belongs to a later step; it does not count as placing.
-        var pinned = stage.canvas.floatingPlacement(for: first)
-        pinned.isPinned = true
-        stage.canvas.updateFloatingPlacement(pinned, for: first)
+        // Pinning belongs to a later step; it does not count as floating a page.
+        let loose = try #require(stage.table.island(holding: first.id))
+        stage.table.togglePin(loose.id)
         tour.review()
-        #expect(tour.currentStep == .placePage)
-        var moved = stage.canvas.floatingPlacement(for: first)
-        moved.x = 0.7
-        stage.canvas.updateFloatingPlacement(moved, for: first)
+        #expect(tour.currentStep == .floatPage)
+        stage.table.detach(second.id, at: CGPoint(x: 400, y: 300))
         tour.review()
-        #expect(tour.currentStep == .keepVisible)
+        #expect(tour.currentStep == .pinIsland)
 
         // A pin from before the step began does not complete it; a new pin does.
         tour.review()
-        #expect(tour.currentStep == .keepVisible)
-        var kept = stage.canvas.floatingPlacement(for: second)
-        kept.isPinned = true
-        stage.canvas.updateFloatingPlacement(kept, for: second)
+        #expect(tour.currentStep == .pinIsland)
+        stage.table.makeIsland(from: first.id)
+        let made = try #require(stage.table.island(holding: first.id))
+        #expect(made.id != loose.id)
+        stage.table.togglePin(made.id)
         tour.review()
         #expect(tour.currentStep == .pageCard)
 
@@ -370,9 +366,8 @@ struct FloatingTourTests {
 
         tour.finish()
         #expect(!tour.isActive)
-        // The page kept visible for the Keep Visible step lets go; a pin from before it stays.
-        #expect(stage.canvas.floatingPlacement(for: second).isPinned == false)
-        #expect(stage.canvas.floatingPlacement(for: first).isPinned)
+        // The island pinned for the Keep an Island step lets go.
+        #expect(stage.table.island(made.id)?.placement.isPinned == false)
         #expect(stage.defaults.bool(forKey: FloatingTourManager.hintsDismissedKey))
         #expect(stage.defaults.string(forKey: FloatingTourManager.outcomeKey) == FloatingTourManager.Outcome.completed.rawValue)
     }
@@ -387,22 +382,23 @@ struct FloatingTourTests {
         let arrival = try stage.env.createActiveTab(url: FloatingTabsTutorial.Page.arrivalDetails.url, in: stage.space, for: stage.window)
         tour.review()
         #expect(tour.currentStep == .revealPages)
-        #expect(stage.table.destination(toward: .left)?.id == draft.id)
+        let toward = stage.neighbor(draft)
+        #expect(stage.table.destination(toward: toward)?.id == draft.id)
 
         stage.canvas.revealFloatingTabs()
         tour.review()
         #expect(tour.currentStep == .visitNeighbor)
         try await Task.sleep(for: .milliseconds(30))
-        stage.table.step(.left)
+        stage.step(toward)
         try await Task.sleep(for: .milliseconds(30))
         #expect(stage.window.activeTabID == draft.id)
         #expect(tour.currentStep == .visitNeighbor)
-        stage.table.step(.right)
-        for _ in 0 ..< 25 where tour.currentStep != .placePage {
+        stage.step(toward.opposite)
+        for _ in 0 ..< 25 where tour.currentStep != .floatPage {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(stage.window.activeTabID == arrival.id)
-        #expect(tour.currentStep == .placePage)
+        #expect(tour.currentStep == .floatPage)
         tour.endTour()
     }
 
@@ -427,21 +423,21 @@ struct FloatingTourTests {
     @Test
     func `placement guidance opens the card layer after adjacent navigation`() throws {
         let stage = try Stage()
-        try stage.advance(to: .placePage)
+        try stage.advance(to: .floatPage)
         stage.reportRail()
         #expect(stage.canvas.isMomentaryNavigation)
         let tabsButton = try #require(Stage.rows[.floatingTabs])
         #expect(stage.tour.spotlights(in: CGRect(x: 0, y: 0, width: 1_200, height: 800)) == [
             FloatingTourLayout.spotlight(around: tabsButton, of: .railRow),
         ])
-        let navigating = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, cardsVisible: false)
-        #expect(FloatingTourManager.Step.placePage.instruction(in: navigating).contains("Click the tabs button"))
+        let navigating = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, islandsVisible: false)
+        #expect(FloatingTourManager.Step.floatPage.instruction(in: navigating).contains("Click the tabs button"))
 
         stage.canvas.releaseFloatingTabs()
         stage.canvas.toggleFloatingTabs()
         #expect(!stage.canvas.isMomentaryNavigation)
-        let arranging = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, cardsVisible: true)
-        #expect(FloatingTourManager.Step.placePage.instruction(in: arranging).contains("Drag a page's title"))
+        let arranging = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, islandsVisible: true)
+        #expect(FloatingTourManager.Step.floatPage.instruction(in: arranging).contains("Drag a row"))
         stage.tour.endTour()
     }
 

@@ -165,7 +165,7 @@ struct FloatingTourOverlay: View {
             revealKey: revealKey,
             hasPage: windowState.activeTab != nil,
             lensIsOpen: windowState.showsCommandLens,
-            cardsVisible: canvas.floatingVisibility.isRevealed && !canvas.isMomentaryNavigation,
+            islandsVisible: !canvas.isMomentaryNavigation && !(windowState.islandController?.visibleIslands.isEmpty ?? true),
         )
     }
 

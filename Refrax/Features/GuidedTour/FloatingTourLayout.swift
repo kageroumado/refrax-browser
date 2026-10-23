@@ -17,6 +17,8 @@ nonisolated enum FloatingTourTarget: CaseIterable, Sendable {
     case pageCard
     /// A floating tab card.
     case floatingCard
+    /// An island of tabs.
+    case island
     /// Command Lens, inline on the empty page or over the page.
     case lens
 
@@ -26,6 +28,7 @@ nonisolated enum FloatingTourTarget: CaseIterable, Sendable {
         case .rail: ControlIslandPlacement.cornerRadius
         case .pageCard: ControlIslandPlacement.pageBranchHeight / 2
         case .floatingCard: CanvasTileLayout.slabCornerRadius
+        case .island: IslandGeometry.cornerRadius
         case .lens: CommandLensView.Layout.cornerRadius
         }
     }
