@@ -759,12 +759,13 @@ final class IslandController {
         return true
     }
 
-    /// Islands keep clear of one another: an island over another moves below it, or beside it
-    /// when there is no room below. The island being moved, or the current tab's, stays put.
+    /// Islands keep clear of one another, shown or not, so none comes up under another: an
+    /// island over another moves below it, or beside it when there is no room below. The
+    /// island being moved, or the current tab's, stays put.
     func resolveOverlaps(keeping keptID: UUID? = nil) {
         guard draggedIslandID == nil, !area.isEmpty else { return }
         let kept = keptID ?? currentTab.flatMap { island(holding: $0.id)?.id }
-        let visible = visibleIslands.sorted { ($0.id == kept ? 0 : 1, $0.placement.y) < ($1.id == kept ? 0 : 1, $1.placement.y) }
+        let visible = islands.sorted { ($0.id == kept ? 0 : 1, $0.placement.y) < ($1.id == kept ? 0 : 1, $1.placement.y) }
         var frames = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, frame(of: $0)) })
         let gap = Layout.islandGap
         for _ in 0 ..< 4 {
