@@ -27,7 +27,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let pageBranchWidth: CGFloat = 416
     static let pageBranchHeight: CGFloat = 44
     /// A row under the page card for each other pane of a split tab.
-    static let paneRowHeight: CGFloat = 30
+    static let paneRowHeight: CGFloat = 32
     static let adjacentGap: CGFloat = 8
     static let magnetDistance: CGFloat = 24
     /// A pointer must rest on the rail this long before the page card unfolds.

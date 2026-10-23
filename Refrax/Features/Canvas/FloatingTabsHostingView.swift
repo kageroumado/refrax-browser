@@ -9,6 +9,32 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     var onSecondaryPointerDown: ((CGPoint, NSEvent) -> Bool)?
     var controlState: (() -> ControlIslandState?)?
     private var pointerMonitor: Any?
+    private var pointerTrackingArea: NSTrackingArea?
+
+    // The pointer's travel reaches the controls through a tracking area, so a rail hidden at
+    // the window's edge comes back whichever app is active, and the pointer's exit past that
+    // edge counts as reaching it.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTrackingArea {
+            removeTrackingArea(pointerTrackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+        )
+        addTrackingArea(area)
+        pointerTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -18,13 +44,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
         pointerMonitor = nil
         guard window != nil else { return }
         window?.acceptsMouseMovedEvents = true
-        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
+        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
             guard let self, event.window === window else { return event }
             let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
-            if event.type == .mouseMoved {
-                controlState?()?.pointerMoved?(point)
-                return event
-            }
             if event.type == .leftMouseDown {
                 onPointerDown?(point)
             }

@@ -121,7 +121,9 @@ struct ControlIslandPageBranch: View {
             windowState.recordInteraction(with: pane.id)
             tabs.setActivePage(in: tab, page: pane)
         } label: {
-            HStack(spacing: Layout.faviconGap) {
+            // The pane's icon is centered under the card's, and its text starts where the title does.
+            let iconInset = (Layout.faviconSize - Layout.paneFaviconSize) / 2
+            HStack(spacing: Layout.faviconGap + iconInset) {
                 FaviconView(data: pane.faviconData, url: pane.url, size: Layout.paneFaviconSize)
                     .saturation(appearsActive ? 1 : 0)
                 Text(pane.title.isEmpty ? pane.url.safeDisplayDomain : pane.title)
@@ -137,7 +139,7 @@ struct ControlIslandPageBranch: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.leading, Layout.leadingInset)
+            .padding(.leading, Layout.leadingInset + iconInset)
             .padding(.trailing, Layout.leadingInset)
             .frame(height: ControlIslandPlacement.paneRowHeight)
             .contentShape(Rectangle())

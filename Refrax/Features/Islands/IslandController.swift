@@ -67,6 +67,12 @@ final class IslandController {
         static let captureCoalescing: TimeInterval = 2
         /// How long after a push against an edge a second push crosses it.
         static let crossingWindow: TimeInterval = 1.5
+        /// The island's controls, outside it: a capsule this tall, at least this wide, this far off.
+        static let controlsHeight: CGFloat = 28
+        static let controlsMinWidth: CGFloat = 180
+        static let controlsGap: CGFloat = 6
+        /// How long the controls stay after the pointer leaves the island, so they can be reached.
+        static let controlsGrace: Duration = .milliseconds(350)
         /// Where the first island of a space goes, normalized to the window.
         static let firstIslandOrigin = CGPoint(x: 0.1, y: 0.1)
         /// How far a new island lands from the one it came from, in window widths.
@@ -113,6 +119,11 @@ final class IslandController {
     }
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
+    /// The island under the pointer, or the one the pointer just left; its controls show.
+    private(set) var hoveredIslandID: UUID?
+    /// The island whose controls are in use (a rename, its menu), so they stay while the pointer is away.
+    private(set) var heldControlsIslandID: UUID?
+    @ObservationIgnored private var hoverClearTask: Task<Void, Never>?
     /// The island that just appeared, for its unfold.
     private(set) var emergingIslandID: UUID?
     /// The area the islands are placed in, in the layer's coordinates.
@@ -248,9 +259,62 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
-    /// Where the islands take the pointer: every visible island.
+    /// Where the islands take the pointer: every visible island, and the controls of the one
+    /// under the pointer.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
-        visibleIslands.map(frame(of:))
+        visibleIslands.map(frame(of:)) + (controlsIsland.map { [controlsFrame(for: $0, in: bounds)] } ?? [])
+    }
+
+    // MARK: - Controls Beside an Island
+
+    /// The island whose controls show: the one in use, else the one under the pointer.
+    var controlsIsland: Island? {
+        guard draggedIslandID == nil, let id = heldControlsIslandID ?? hoveredIslandID else { return nil }
+        return visibleIslands.first { $0.id == id }
+    }
+
+    /// The pointer entered or left an island, or its controls. Leaving keeps the controls for a
+    /// grace, long enough to cross the gap to them.
+    func setHovered(_ islandID: UUID, _ hovered: Bool) {
+        hoverClearTask?.cancel()
+        hoverClearTask = nil
+        if hovered {
+            hoveredIslandID = islandID
+            return
+        }
+        hoverClearTask = Task(name: "Let an island's controls go") { [weak self] in
+            try? await Task.sleep(for: Layout.controlsGrace)
+            guard let self, !Task.isCancelled, hoveredIslandID == islandID else { return }
+            hoveredIslandID = nil
+        }
+    }
+
+    /// Keeps an island's controls while they are in use, whatever the pointer does.
+    func holdControls(_ islandID: UUID, _ held: Bool) {
+        if held {
+            heldControlsIslandID = islandID
+        } else if heldControlsIslandID == islandID {
+            heldControlsIslandID = nil
+        }
+    }
+
+    /// Where an island's controls go: a capsule centered over the island above it, else below,
+    /// else beside it on the side with room.
+    func controlsFrame(for island: Island, in bounds: CGRect) -> CGRect {
+        let frame = frame(of: island)
+        let size = CGSize(width: min(max(frame.width, Layout.controlsMinWidth), bounds.width), height: Layout.controlsHeight)
+        let gap = Layout.controlsGap
+        let x = min(max(bounds.minX, frame.midX - size.width / 2), bounds.maxX - size.width)
+        if frame.minY - gap - size.height >= bounds.minY {
+            return CGRect(x: x, y: frame.minY - gap - size.height, width: size.width, height: size.height)
+        }
+        if frame.maxY + gap + size.height <= bounds.maxY {
+            return CGRect(x: x, y: frame.maxY + gap, width: size.width, height: size.height)
+        }
+        if frame.maxX + gap + size.width <= bounds.maxX {
+            return CGRect(x: frame.maxX + gap, y: frame.minY, width: size.width, height: size.height)
+        }
+        return CGRect(x: max(bounds.minX, frame.minX - gap - size.width), y: frame.minY, width: size.width, height: size.height)
     }
 
     /// The side of the page a row dragged to `point` would join the current tab on: the

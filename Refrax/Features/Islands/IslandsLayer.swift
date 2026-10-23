@@ -33,6 +33,15 @@ struct IslandsLayer: View {
                         .zIndex(zIndex(of: island))
                         .transition(reduceMotion ? .opacity : .scale(scale: Layout.emergeScale).combined(with: .opacity))
                 }
+                if let island = islands.controlsIsland {
+                    let frame = islands.controlsFrame(for: island, in: bounds)
+                    IslandControls(island: island, frame: frame)
+                        .frame(width: frame.width, height: frame.height)
+                        .offset(x: frame.minX, y: frame.minY)
+                        .zIndex(3)
+                        .transition(.opacity)
+                        .id(island.id)
+                }
                 if let side = islands.sideDrop {
                     SideDropZone(side: side, bounds: bounds)
                         .transition(.opacity)
@@ -73,8 +82,9 @@ struct IslandsLayer: View {
     }
 }
 
-/// One island: a band with its color and, under the pointer, its controls, over a column of
-/// the group's tabs as rows. Any of its empty glass moves it; its rows move themselves.
+/// One island: a column of the group's tabs as rows under the Command Lens row. Any of its
+/// empty glass moves it; its rows move themselves. Its name and controls float beside it
+/// while the pointer is on it (``IslandControls``).
 struct IslandView: View {
     let island: Island
     let area: CGRect
@@ -82,10 +92,6 @@ struct IslandView: View {
     @Environment(IslandController.self) private var islands
     @Environment(WindowState.self) private var windowState
     @State private var dragStart: CGPoint?
-    @State private var isHovered = false
-    @State private var isRenaming = false
-    @State private var draftName = ""
-    @FocusState private var nameIsFocused: Bool
 
     private var geometry: IslandGeometry {
         islands.geometry(for: island)
@@ -98,12 +104,8 @@ struct IslandView: View {
     var body: some View {
         let shape = WindowCorner.concentric
         let frame = islands.frame(of: island)
-        VStack(spacing: 0) {
-            band
-                .frame(height: IslandGeometry.bandHeight)
-            rows
-        }
-        .padding(IslandGeometry.padding)
+        rows
+            .padding(IslandGeometry.padding)
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(shape)
         // The glass behind the rows takes the drag that moves the island: the open hand over
@@ -122,7 +124,7 @@ struct IslandView: View {
         .background {
             shape.fill(.black.opacity(0.12)).blur(radius: 18).offset(y: 8)
         }
-        .onHover { isHovered = $0 }
+        .onHover { islands.setHovered(island.id, $0) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
         .accessibilityIdentifier("island-\(island.id.uuidString)")
@@ -155,8 +157,8 @@ struct IslandView: View {
         if geometry.contentHeight(rows: island.tabIDs.count) > islands.frame(of: island).height + 0.5 {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    list
                     newTabRow
+                    list
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
             }
@@ -165,14 +167,14 @@ struct IslandView: View {
             }
         } else {
             VStack(spacing: 0) {
-                list
                 newTabRow
+                list
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
-    /// A row under the last that opens the Command Lens; a page it opens goes to this island.
+    /// The first row, which opens the Command Lens; a page it opens goes to this island.
     private var newTabRow: some View {
         Button {
             islands.addTab(to: island.id)
@@ -217,71 +219,64 @@ struct IslandView: View {
     }
 
     /// The island's color and name, and under the pointer its pin and actions.
-    /// The band is the island's title bar, in the language of a card window's: the name in
-    /// a glass capsule at the center, the controls at the trailing edge while the pointer is
-    /// over the island.
-    private var band: some View {
-        let showsControls = isHovered
-        return Group {
-            if island.placement.iconsOnly {
-                ZStack {
-                    titleCapsule.opacity(showsControls ? 0 : 1)
-                    menuButton.opacity(showsControls ? 1 : 0)
-                }
-            } else {
-                CenteredMiddleLayout {
-                    Color.clear.frame(width: Band.controlsWidth)
-                    titleCapsule
-                    HStack(spacing: Band.controlSpacing) {
-                        pinButton
-                        menuButton
-                    }
-                    .frame(width: Band.controlsWidth, alignment: .trailing)
-                    .opacity(showsControls ? 1 : 0)
-                }
-            }
-        }
-        .padding(.horizontal, Band.horizontalPadding)
-        .animation(.easeInOut(duration: 0.15), value: showsControls)
-        .accessibilityAddTraits(.isHeader)
-    }
+}
 
-    private enum Band {
-        static let capsuleHeight: CGFloat = 22
-        static let capsulePadding: CGFloat = 10
+/// An island's name and controls, floating beside it while the pointer is on the island: its
+/// color and name at the leading end, which a double-click renames, the pin and the menu at
+/// the trailing end. Glass over the page, never over the island's glass.
+private struct IslandControls: View {
+    let island: Island
+    let frame: CGRect
+
+    @Environment(IslandController.self) private var islands
+    @Environment(WindowState.self) private var windowState
+    @State private var isRenaming = false
+    @State private var draftName = ""
+    @FocusState private var nameIsFocused: Bool
+
+    private enum Layout {
+        static let horizontalPadding: CGFloat = 10
         static let dotSize: CGFloat = 8
-        static let controlSize: CGFloat = 20
+        static let controlSize: CGFloat = 22
         static let controlSpacing: CGFloat = 2
-        static var controlsWidth: CGFloat { controlSize * 2 + controlSpacing }
-        static let horizontalPadding: CGFloat = 2
     }
 
-    /// The island's color and name, in the capsule a card window's address sits in. A
-    /// double-click on the name renames the island.
-    private var titleCapsule: some View {
+    private var color: Color {
+        islands.color(of: island)
+    }
+
+    var body: some View {
         HStack(spacing: 6) {
-            Circle().fill(color).frame(width: Band.dotSize, height: Band.dotSize)
+            Circle().fill(color).frame(width: Layout.dotSize, height: Layout.dotSize)
             if isRenaming {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
                     .font(.caption.weight(.semibold))
                     .focused($nameIsFocused)
                     .onSubmit { commitRename() }
-                    .onExitCommand { isRenaming = false }
+                    .onExitCommand { endRename() }
                     .onChange(of: nameIsFocused) { _, focused in
                         if !focused { commitRename() }
                     }
-            } else if !island.placement.iconsOnly {
+            } else {
                 Text(island.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary.opacity(0.8))
+                    .foregroundStyle(.primary.opacity(0.85))
                     .lineLimit(1)
                     .onTapGesture(count: 2) { beginRename() }
             }
+            Spacer(minLength: 8)
+            pinButton
+            menuButton
         }
-        .padding(.horizontal, island.placement.iconsOnly ? (Band.capsuleHeight - Band.dotSize) / 2 : Band.capsulePadding)
-        .frame(height: Band.capsuleHeight)
+        .padding(.leading, Layout.horizontalPadding)
+        .padding(.trailing, (Layout.horizontalPadding - Layout.controlSpacing) / 2)
+        .frame(width: frame.width, height: frame.height)
         .glassEffect(.regular, in: .capsule)
+        .onHover { islands.setHovered(island.id, $0) }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("\(island.title) controls")
     }
 
     private var pinButton: some View {
@@ -289,52 +284,70 @@ struct IslandView: View {
             islands.togglePin(island.id)
         } label: {
             Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.secondary))
-                .frame(width: Band.controlSize, height: Band.controlSize)
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
         .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
+        .accessibilityLabel(island.placement.isPinned ? "Unpin island" : "Pin island")
     }
 
     private var menuButton: some View {
-        Menu {
-            Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
-            if !island.isDefault {
-                Button("Rename…") { beginRename() }
-                Picker("Color", selection: Binding(
-                    get: { GroupColor(rawValue: island.colorString ?? "") ?? .steel },
-                    set: { islands.setColor($0, of: island.id) },
-                )) {
-                    ForEach(GroupColor.allCases, id: \.self) { color in
-                        Label(color.rawValue, systemImage: "circle.fill").tint(color.color).tag(color)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-            if !island.placement.isPinned {
-                Button("Keep Visible") { islands.togglePin(island.id) }
-            }
-            Divider()
-            Button("Close All Tabs in Island") { islands.closeAll(in: island.id) }
-            if !island.isDefault {
-                Button("Dissolve Island") { islands.dissolve(island.id) }
-            }
+        Button {
+            showMenu()
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: Band.controlSize, height: Band.controlSize)
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .pointerStyle(.default)
-        .frame(width: Band.controlSize, height: Band.controlSize)
         .help("Island options")
         .accessibilityLabel("Island options")
+    }
+
+    /// The island's menu, an AppKit menu under the controls: the controls stay while it tracks.
+    private func showMenu() {
+        guard let content = windowState.window?.contentView else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        func add(_ title: String, to menu: NSMenu, state: NSControl.StateValue = .off, _ execute: @escaping @MainActor () -> Void) {
+            let target = MenuActionTarget(execute)
+            let item = NSMenuItem(title: title, action: #selector(MenuActionTarget.performAction(_:)), keyEquivalent: "")
+            item.target = target
+            item.representedObject = target
+            item.state = state
+            menu.addItem(item)
+        }
+        let id = island.id
+        add(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only", to: menu) { islands.toggleIconsOnly(id) }
+        add(island.placement.isPinned ? "Let Go When ⌃ Is Up" : "Keep Visible", to: menu) { islands.togglePin(id) }
+        if !island.isDefault {
+            add("Rename…", to: menu) { beginRename() }
+            let colors = NSMenu(title: "Color")
+            let current = GroupColor(rawValue: island.colorString ?? "")
+            for color in GroupColor.allCases {
+                add(color.rawValue, to: colors, state: color == current ? .on : .off) { islands.setColor(color, of: id) }
+            }
+            let colorItem = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+            colorItem.submenu = colors
+            menu.addItem(colorItem)
+        }
+        menu.addItem(.separator())
+        add("Close All Tabs in Island", to: menu) { islands.closeAll(in: id) }
+        if !island.isDefault {
+            add("Dissolve Island", to: menu) { islands.dissolve(id) }
+        }
+        // The layer is top-down; the content view is not.
+        let point = NSPoint(x: frame.minX, y: content.bounds.height - frame.maxY)
+        islands.holdControls(id, true)
+        menu.popUp(positioning: nil, at: point, in: content)
+        islands.holdControls(id, false)
     }
 
     private func beginRename() {
@@ -342,12 +355,18 @@ struct IslandView: View {
         draftName = island.title
         isRenaming = true
         nameIsFocused = true
+        islands.holdControls(island.id, true)
     }
 
     private func commitRename() {
         guard isRenaming else { return }
-        isRenaming = false
         islands.rename(island.id, to: draftName)
+        endRename()
+    }
+
+    private func endRename() {
+        isRenaming = false
+        islands.holdControls(island.id, false)
     }
 }
 

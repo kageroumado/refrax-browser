@@ -132,7 +132,7 @@ final class ControlIslandState {
 
     func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
         lastPointerMovement = now
-        let reachedEdge = isHiddenAtEdge && revealStrip.contains(point)
+        let reachedEdge = isHiddenAtEdge && reachesRevealStrip(point)
         if reachedEdge {
             revealAtEdge(.pointer, now: now)
         }
@@ -148,6 +148,13 @@ final class ControlIslandState {
             scheduleEdgeHide()
         }
         return phase
+    }
+
+    /// Whether `point` is on the reveal strip or past it beyond the window's edge: a pointer
+    /// that leaves the window across that edge reaches the strip whatever its speed.
+    private func reachesRevealStrip(_ point: CGPoint) -> Bool {
+        guard let edge = hiddenEdge, !revealStrip.isEmpty, point.y >= revealStrip.minY, point.y <= revealStrip.maxY else { return false }
+        return edge == .left ? point.x <= revealStrip.maxX : point.x >= revealStrip.minX
     }
 
     // MARK: Hiding at the Edge
