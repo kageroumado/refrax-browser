@@ -1852,13 +1852,17 @@ final class CommandLensManager {
         closeCurrentLens()
     }
 
+    /// A new tab goes after the active one in its group, or to the end of the island that
+    /// asked for it.
     private func createNearbyTab(url: URL, makeActive: Bool) {
+        let island = windowState.newTabIsland
+        windowState.newTabIsland = nil
         tabManager.createTab(
             url: url,
-            groupID: windowState.activeTab?.groupID,
+            groupID: island.map(\.groupID) ?? windowState.activeTab?.groupID,
             makeActive: makeActive,
             loadImmediately: true,
-            insertionStrategy: .afterActive,
+            insertionStrategy: island == nil ? .afterActive : .append,
         )
     }
 

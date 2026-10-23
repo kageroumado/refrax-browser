@@ -26,9 +26,9 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
         iconsOnly ? Self.iconWidth : Self.titleWidth
     }
 
-    /// The height of the band, `rows` rows, and the padding, with room for one row at least.
+    /// The height of the band, `rows` rows, the new-tab row, and the padding.
     func contentHeight(rows: Int) -> CGFloat {
-        Self.bandHeight + CGFloat(max(1, rows)) * Self.rowHeight + 2 * Self.padding
+        Self.bandHeight + CGFloat(rows + 1) * Self.rowHeight + 2 * Self.padding
     }
 
     /// The island's size on screen: its content, held to the window's share.

@@ -455,6 +455,14 @@ final class WindowState {
     /// The empty page hosts Command Lens itself; each request refocuses that lens.
     var startPageLensRequest = 0
 
+    /// Where the next tab the lens opens goes: the end of an island, when an island asked.
+    var newTabIsland: NewTabIsland?
+
+    nonisolated struct NewTabIsland: Equatable, Sendable {
+        /// The group, or `nil` for the loose tabs.
+        let groupID: UUID?
+    }
+
     // MARK: - Floating Layer State
 
     let controlIsland = ControlIslandState()

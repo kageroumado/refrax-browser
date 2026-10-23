@@ -137,6 +137,7 @@ struct IslandView: View {
                         .offset(y: shift(of: index, tabID: tabID))
                 }
             }
+            newTabRow
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .animation(.snappy(duration: 0.2), value: islands.drop)
@@ -151,6 +152,31 @@ struct IslandView: View {
             column
                 .frame(maxHeight: .infinity, alignment: .top)
         }
+    }
+
+    /// A row under the last that opens a new tab in this island, with the lens up on it.
+    private var newTabRow: some View {
+        Button {
+            islands.addTab(to: island.id)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 16, height: 16)
+                if !island.placement.iconsOnly {
+                    Text("New Tab")
+                        .font(.callout)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, island.placement.iconsOnly ? 0 : 8)
+            .frame(maxWidth: .infinity, alignment: island.placement.iconsOnly ? .center : .leading)
+            .frame(height: IslandGeometry.rowHeight)
+            .contentShape(RoundedRectangle(cornerRadius: IslandGeometry.rowCornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.default)
+        .help("New tab in \(island.title)")
     }
 
     /// How far a row moves while another is dragged: the rows below the lifted one close its
@@ -325,7 +351,8 @@ private struct IslandTabRow: View {
     private var rowFill: Color {
         if isJoinTarget { return Color.appAccentColor.opacity(0.2) }
         if isSelected { return Color.appAccentColor.opacity(0.16) }
-        if isCurrent { return color.opacity(0.28) }
+        // The current row is a shade of the ink, which reads on any tint the window has.
+        if isCurrent { return Color.primary.opacity(0.14) }
         return Color.primary.opacity(isHovering ? 0.08 : 0)
     }
 

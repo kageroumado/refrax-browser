@@ -258,8 +258,16 @@ final class IslandController {
         return source.pages.count == 1 && !source.isMultiPage && target.pages.count < 2
     }
 
+    /// A group's color; the loose tabs' island is gray, so it reads as the one without a group.
     func color(of island: Island) -> Color {
-        island.colorString.map(Color.resolveStoredColor) ?? .appAccentColor
+        island.colorString.map(Color.resolveStoredColor) ?? .secondary
+    }
+
+    /// Opens the lens for a new tab that will go to the end of `islandID`.
+    func addTab(to islandID: UUID) {
+        guard let island = island(islandID) else { return }
+        windowState.newTabIsland = WindowState.NewTabIsland(groupID: island.isDefault ? nil : island.id)
+        windowState.openCommandLens(prefill: "", anchor: frame(of: island))
     }
 
     /// The tab a step in `direction` reaches from the current row: the row above or below
@@ -319,7 +327,7 @@ final class IslandController {
             !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
         }
         var sources: [(id: UUID, title: String, color: String?, members: [UUID], isDefault: Bool)] = [
-            (space.id, space.name, nil, onIslands.filter { $0.group == nil }.map(\.id), true),
+            (space.id, "Tabs", nil, onIslands.filter { $0.group == nil }.map(\.id), true),
         ]
         for group in space.groups.filter({ !$0.isArchive }).sorted(by: { $0.position < $1.position }) {
             let members = onIslands.filter { $0.group?.id == group.id }.map(\.id)
