@@ -209,8 +209,8 @@ struct ControlIsland: View {
                 controls
                     .frame(width: frame.width, height: frame.height)
                     .environment(\.controlIslandIsResting, isResting)
-                    .background(spaceTint.opacity(isResting ? 0 : 1), in: .rect(cornerRadius: Layout.cornerRadius))
-                    .glassEffect(glass, in: .rect(cornerRadius: Layout.cornerRadius))
+                    .background(spaceTint.opacity(isResting ? 0 : 1), in: WindowCorner.concentric)
+                    .glassEffect(glass, in: WindowCorner.concentric)
                     .glassEffectID("rail", in: glassNamespace)
                     .overlay {
                         if tour.highlightsRail {
@@ -249,8 +249,9 @@ struct ControlIsland: View {
                     let snap = state.placement.snapped(in: area, height: height)
                     if snap != state.placement {
                         let target = snap.railFrame(in: area, height: height)
-                        RoundedRectangle(cornerRadius: Layout.cornerRadius)
-                            .strokeBorder(.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        WindowCorner.concentric
+                            .stroke(.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            .padding(0.5)
                             .frame(width: target.width, height: target.height)
                             .offset(x: target.minX, y: target.minY)
                             .allowsHitTesting(false)
@@ -596,8 +597,9 @@ struct ControlIsland: View {
 
     /// The whole rail lit for the tour, along its own corner.
     private var railHighlight: some View {
-        RoundedRectangle(cornerRadius: Layout.cornerRadius)
-            .strokeBorder(Color.appAccentColor, lineWidth: Layout.highlightLineWidth)
+        WindowCorner.concentric
+            .stroke(Color.appAccentColor, lineWidth: Layout.highlightLineWidth)
+            .padding(Layout.highlightLineWidth / 2)
             .shadow(color: Color.appAccentColor.opacity(Layout.highlightGlowOpacity), radius: Layout.highlightGlowRadius)
             .transition(.opacity)
             .allowsHitTesting(false)

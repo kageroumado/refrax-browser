@@ -376,7 +376,7 @@ private struct SlabChrome: ViewModifier, Animatable {
     }
 
     private enum Layout {
-        static let cornerRadius: CGFloat = 16
+        static let cornerRadius = WindowCorner.radius
         static let shadowRadius: CGFloat = 22
         static let shadowOffset: CGFloat = 8
         static let shadowOpacity: Double = 0.22

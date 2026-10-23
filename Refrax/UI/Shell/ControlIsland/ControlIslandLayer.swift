@@ -21,6 +21,7 @@ struct ControlIslandLayer: View {
         // Gone at once when the page becomes a slab; back with a fade once it is live again.
         .animation(canvas.showsControlIsland ? .easeOut(duration: Layout.returnDuration) : nil, value: canvas.showsControlIsland)
         .coordinateSpace(name: "browserControls")
+        .windowContainerShape()
         .ignoresSafeArea()
         .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
     }

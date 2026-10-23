@@ -20,7 +20,8 @@ struct IslandsLayer: View {
     var body: some View {
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
-            // One container for every glass sibling: islands, cards, previews, and labels.
+            // One container for every glass sibling: islands, previews, and labels; their
+            // corners are concentric with the window's.
             GlassEffectContainer {
             ZStack(alignment: .topLeading) {
                 FloatingDockLayer(area: bounds)
@@ -53,6 +54,7 @@ struct IslandsLayer: View {
                 islands.updateArea(bounds.insetBy(dx: Layout.areaInset, dy: Layout.areaInset), in: bounds)
             }
         }
+        .windowContainerShape()
         .ignoresSafeArea()
         .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
         .onChange(of: windowState.activeSpaceID) { canvas.floatingSpaceChanged() }
@@ -94,7 +96,7 @@ struct IslandView: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+        let shape = WindowCorner.concentric
         let frame = islands.frame(of: island)
         VStack(spacing: 0) {
             band
@@ -640,7 +642,7 @@ private struct RowPreview: View {
         static let size = CGSize(width: 240, height: 150)
         static let gap: CGFloat = 10
         static let padding: CGFloat = 6
-        static let cornerRadius: CGFloat = 14
+        static let cornerRadius = WindowCorner.radius
     }
 
     var body: some View {
@@ -693,11 +695,12 @@ private struct SideDropZone: View {
         let width = bounds.width * IslandController.Layout.sideZoneShare
         let zone = CGRect(x: side == .topLeft ? bounds.minX : bounds.maxX - width, y: bounds.minY, width: width, height: bounds.height)
             .insetBy(dx: Layout.inset, dy: Layout.inset)
-        RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+        WindowCorner.concentric
             .fill(Color.appAccentColor.opacity(0.14))
             .overlay {
-                RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.appAccentColor.opacity(0.5), lineWidth: 1)
+                WindowCorner.concentric
+                    .stroke(Color.appAccentColor.opacity(0.5), lineWidth: 1)
+                    .padding(0.5)
             }
             .overlay {
                 VStack(spacing: 8) {

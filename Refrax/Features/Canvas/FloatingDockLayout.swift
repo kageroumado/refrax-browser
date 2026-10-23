@@ -38,7 +38,7 @@ nonisolated enum FloatingDockLayout {
     /// The space between a column and the window's edges, and between a column and the page.
     static let margin: CGFloat = 8
     /// The corner radius of a Refrax window.
-    static let windowCornerRadius: CGFloat = 26
+    static let windowCornerRadius = WindowCorner.radius
     /// The column's radius, concentric with the window's corner.
     static let cornerRadius = windowCornerRadius - margin
     /// A dragged card docks when the pointer comes this close to a window side.
