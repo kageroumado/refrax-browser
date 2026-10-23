@@ -101,6 +101,13 @@ final class IslandController {
     private(set) var selectedTabIDs: Set<UUID> = []
     /// The row the pointer has rested on, whose page shows as a preview beside its island.
     var previewedTabID: UUID?
+    /// How far each island's rows are scrolled, so a drop lands on the row under the pointer.
+    @ObservationIgnored var scrollOffsets: [UUID: CGFloat] = [:]
+
+    /// A point in an island's frame, moved into its rows' unscrolled coordinates.
+    func rowPoint(_ local: CGPoint, in island: Island) -> CGPoint {
+        CGPoint(x: local.x, y: local.y + (scrollOffsets[island.id] ?? 0))
+    }
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
     /// The island that just appeared, for its unfold.
@@ -629,7 +636,7 @@ final class IslandController {
     /// A card released at `point` over an island goes in as a row there.
     private func attach(_ tab: Tab, at point: CGPoint) -> Bool {
         guard state.detached.contains(tab.id), let island = visibleIslands.first(where: { frame(of: $0).contains(point) }) else { return false }
-        let local = CGPoint(x: point.x - frame(of: island).minX, y: point.y - frame(of: island).minY)
+        let local = rowPoint(CGPoint(x: point.x - frame(of: island).minX, y: point.y - frame(of: island).minY), in: island)
         let geometry = geometry(for: island)
         if let hit = geometry.joinedRow(at: local, count: island.tabIDs.count), canJoin(tab.id, with: island.tabIDs[hit]) {
             join(tab.id, with: island.tabIDs[hit])

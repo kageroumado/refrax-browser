@@ -144,6 +144,9 @@ struct IslandView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 column
             }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
+                islands.scrollOffsets[island.id] = offset
+            }
         } else {
             column
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -496,7 +499,7 @@ private struct IslandTabRow: View {
                 let point = value.location
                 if let target = islands.visibleIslands.first(where: { islands.frame(of: $0).insetBy(dx: -Layout.reach, dy: -Layout.reach).contains(point) }) {
                     let frame = islands.frame(of: target)
-                    let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+                    let local = islands.rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: target)
                     let geometry = islands.geometry(for: target)
                     let count = target.tabIDs.filter { $0 != tab.id }.count
                     var drop = IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count))
