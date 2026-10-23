@@ -211,8 +211,8 @@ private struct IslandControls: View {
         static let horizontalPadding: CGFloat = 10
         /// The name reads above the rows' titles: larger than a tab's title, and semibold.
         static let titleSize: CGFloat = 14
-        static let controlSize: CGFloat = 22
-        static let controlSpacing: CGFloat = 2
+        static let controlSize: CGFloat = 24
+        static let controlSpacing: CGFloat = 4
     }
 
     /// Where the menu button is, in the layer, so its menu hangs from it.
@@ -224,7 +224,7 @@ private struct IslandControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if isRenaming {
+            if isRenaming || islands.renameRequest == island.id {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
                     .font(.system(size: Layout.titleSize, weight: .semibold))
@@ -253,6 +253,12 @@ private struct IslandControls: View {
         .glassEffect(.regular, in: .capsule)
         .coordinateSpace(name: "islandControls")
         .onHover { islands.setHovered(island.id, $0) }
+        .onChange(of: islands.renameRequest, initial: true) { _, requested in
+            if requested == island.id {
+                islands.renameRequest = nil
+                beginRename()
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
         .accessibilityLabel("\(island.title) controls")
@@ -270,7 +276,7 @@ private struct IslandControls: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
-        .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
+        .help(island.placement.isPinned ? "Unpin island" : "Pin island")
         .accessibilityLabel(island.placement.isPinned ? "Unpin island" : "Pin island")
     }
 
@@ -287,7 +293,7 @@ private struct IslandControls: View {
         .buttonStyle(.plain)
         .pointerStyle(.default)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("islandControls")) } action: { menuButtonFrame = $0 }
-        .help("Island options")
+        .help("Show island options")
         .accessibilityLabel("Island options")
     }
 
@@ -304,7 +310,7 @@ private struct IslandControls: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
-        .help("New tab in \(island.title) · opens the Command Lens")
+        .help("New tab in \(island.title)")
         .accessibilityLabel("New tab in \(island.title)")
     }
 
@@ -323,7 +329,7 @@ private struct IslandControls: View {
         }
         let id = island.id
         add(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only", to: menu) { islands.toggleIconsOnly(id) }
-        add(island.placement.isPinned ? "Let Go When ⌃ Is Up" : "Keep Visible", to: menu) { islands.togglePin(id) }
+        add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
         if !island.isDefault {
             add("Rename…", to: menu) { beginRename() }
             let colors = NSMenu(title: "Color")
@@ -338,7 +344,7 @@ private struct IslandControls: View {
         menu.addItem(.separator())
         add("Close All Tabs in Island", to: menu) { islands.closeAll(in: id) }
         if !island.isDefault {
-            add("Dissolve Island", to: menu) { islands.dissolve(id) }
+            add("Ungroup Island", to: menu) { islands.dissolve(id) }
         }
         // The menu hangs from the button, its trailing edges aligned. The layer is top-down;
         // the content view is not.
@@ -399,7 +405,10 @@ private struct IslandTabRow: View, Equatable {
 
     private enum Layout {
         static let faviconSize: CGFloat = 16
+        /// A split tab's panes, side by side in the icon's slot.
         static let paneFaviconSize: CGFloat = 12
+        static let paneGap: CGFloat = 2
+        static let closeSize: CGFloat = 20
         static let previewDelay: Duration = .milliseconds(650)
         static let ringSize: CGFloat = 20
         /// How far past an island's edge a row still lands on it.
@@ -458,8 +467,8 @@ private struct IslandTabRow: View, Equatable {
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
                 if tab.pages.count > 1 {
                     Image(systemName: "rectangle.split.2x1")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                         .help("\(tab.pages.count) pages side by side")
                 }
                 Spacer(minLength: 0)
@@ -471,7 +480,7 @@ private struct IslandTabRow: View, Equatable {
                         Image(systemName: "xmark")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 16, height: 16)
+                            .frame(width: Layout.closeSize, height: Layout.closeSize)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -530,8 +539,8 @@ private struct IslandTabRow: View, Equatable {
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { islands.open(tab) }
         .accessibilityAction(named: "Close") { tabManager.requestCloseTab(tab) }
-        .accessibilityAction(named: "Float as Live Page") { islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY)) }
-        .accessibilityAction(named: "New Island from Here") { islands.makeIsland(from: tab.id) }
+        .accessibilityAction(named: "Open as Card") { islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY)) }
+        .accessibilityAction(named: "New Island with This Tab") { islands.makeIsland(from: tab.id) }
         .accessibilityAction(named: "Move Up") { moveRow(by: -1) }
         .accessibilityAction(named: "Move Down") { moveRow(by: 1) }
         .accessibilityAction(named: "Join with Row Above") { joinNeighbor(offset: -1) }
@@ -555,14 +564,17 @@ private struct IslandTabRow: View, Equatable {
     /// The tab's page as its favicon with the loading ring; a tab of two pages shows both,
     /// the two panes side by side in small.
     @ViewBuilder
+    /// The row's icon, in the one slot every row keeps: a split tab's two panes share it.
     private var pages: some View {
         if tab.pages.count > 1 {
-            HStack(spacing: 2) {
+            HStack(spacing: Layout.paneGap) {
                 ForEach(tab.pages.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }.prefix(2)) { page in
                     FaviconView(data: page.faviconData, url: page.url, size: Layout.paneFaviconSize)
+                        .frame(width: (Layout.faviconSize - Layout.paneGap) / 2, height: Layout.faviconSize)
+                        .clipped()
                 }
             }
-            .frame(width: Layout.faviconSize + Layout.paneFaviconSize + 2, height: Layout.faviconSize)
+            .frame(width: Layout.faviconSize, height: Layout.faviconSize)
             .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
         } else {
             FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
@@ -588,8 +600,8 @@ private struct IslandTabRow: View, Equatable {
     /// What a row can do within its island: make an island, float, move, leave, close around it.
     private var islandActions: [MenuAction] {
         var actions = [
-            MenuAction("island.new", "New Island from Here", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
-            MenuAction("island.float", "Float as Live Page", symbol: "rectangle.on.rectangle", group: .move) {
+            MenuAction("island.new", "New Island with This Tab", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
+            MenuAction("island.float", "Open as Card", symbol: "rectangle.on.rectangle", group: .move) {
                 islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY))
             },
         ]

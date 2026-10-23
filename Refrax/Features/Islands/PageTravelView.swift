@@ -263,7 +263,7 @@ struct PageTravelView: View {
             return (tab.displayTitle, false)
         }
         if let island = islands.island(toward: direction) {
-            return ("\(island.title) island", true)
+            return (island.title, true)
         }
         return nil
     }
@@ -498,8 +498,8 @@ private struct DirectionLabel: View {
                     Image(systemName: symbol)
                 }
             }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(isArmed ? AnyShapeStyle(Color.appAccentColor) : crosses ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .font(.body.weight(.medium))
+            .foregroundStyle(isArmed ? AnyShapeStyle(Color.appAccentColor) : AnyShapeStyle(.primary))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .contentShape(Capsule())
@@ -508,7 +508,7 @@ private struct DirectionLabel: View {
         .glassEffect(.regular.interactive(), in: Capsule())
         .animation(.easeOut(duration: 0.15), value: isArmed)
         .frame(maxWidth: direction == .left || direction == .right ? 220 : 420)
-        .help(crosses ? "Cross to \(text)" : "Go \(direction.rawValue) to \(text)")
+        .help(crosses ? "Cross to \(text)" : "Step \(direction.rawValue) to \(text)")
         .accessibilityLabel("\(direction.rawValue): \(text)")
     }
 }

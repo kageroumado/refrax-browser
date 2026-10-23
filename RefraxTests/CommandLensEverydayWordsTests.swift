@@ -229,7 +229,7 @@ struct TabLayoutMenuTests {
         let titles = item.submenu?.items.filter { !$0.isSeparatorItem }.map(\.title) ?? []
 
         #expect(item.title == "Islands")
-        #expect(titles == ["Tab Left", "Tab Right", "Tab Above", "Tab Below", "New Island from Here"])
+        #expect(titles == ["Tab Left", "Tab Right", "Tab Above", "Tab Below", "New Island with This Tab"])
     }
 
     @Test

@@ -237,13 +237,13 @@ struct ControlIsland: View {
                             .frame(width: shortcutFrame.width, height: shortcutFrame.height)
                             .contentShape(Rectangle())
                     }
-                    .background(spaceTint, in: .rect(cornerRadius: 7))
-                    .glassEffect(.regular, in: .rect(cornerRadius: 7))
+                    .background(spaceTint, in: .capsule)
+                    .glassEffect(.regular, in: .capsule)
                     .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
                     .transition(.opacity)
                     .help("Hold \(revealKey.title) for a glance at your islands; click to keep them up")
-                    .accessibilityLabel("Preview adjacent pages: hold \(revealKey.title)")
+                    .accessibilityLabel("Show islands: hold \(revealKey.title)")
                 }
                 if state.showsEdgeFlap, let edge = state.hiddenEdge {
                     let flap = CGRect(

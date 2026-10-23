@@ -533,7 +533,7 @@ extension FloatingTourManager.Step {
         case .floatPage: "Float a page"
         case .pinIsland: "Keep an island"
         case .pageCard: "The current page"
-        case .movePanel: "Move the panel"
+        case .movePanel: "Move the controls"
         case .done: "That's the essentials"
         }
     }
@@ -563,21 +563,21 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph) to see your tabs as islands over the page. The tabs button on the panel keeps them up."
+            return "Hold \(context.revealKey.glyph) to see your tabs as islands over the page. The islands button on the controls keeps them up."
         case .visitNeighbor:
             return "Hold \(context.revealKey.glyph) and scroll down: the page below slides in. Scroll up to come back."
         case .floatPage:
             return context.islandsVisible
                 ? "Drag a row out of its island onto the page. It floats there as a live page; its yellow light sends it back."
-                : "Click the tabs button on the panel, then drag a row out of its island onto the page."
+                : "Click the islands button on the controls, then drag a row out of its island onto the page."
         case .pinIsland:
             return context.islandsVisible
                 ? "Hover an island and click the pin in the capsule beside it. The island stays after you release \(context.revealKey.glyph)."
-                : "Click the tabs button on the panel, then pin an island so it stays."
+                : "Click the islands button on the controls, then pin an island so it stays."
         case .pageCard:
-            return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."
+            return "Hover the page's icon on the controls for its card: title, address, reload, favorite, and actions."
         case .movePanel:
-            return "Drag the panel's grip, under the spaces, somewhere else. It rests while you work and wakes as you approach."
+            return "Drag the controls' grip, under the spaces, somewhere else. They rest while you work and wake as you approach."
         case .done:
             return "The rest is in Command Lens. Type what you want."
         }

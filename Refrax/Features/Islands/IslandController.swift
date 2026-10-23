@@ -125,6 +125,8 @@ final class IslandController {
     private(set) var hoveredIslandID: UUID?
     /// The island whose controls are in use (a rename, its menu), so they stay while the pointer is away.
     private(set) var heldControlsIslandID: UUID?
+    /// A new island's name, open for editing in its controls as soon as they show.
+    var renameRequest: UUID?
     @ObservationIgnored private var hoverClearTask: Task<Void, Never>?
     /// The island that just appeared, for its unfold.
     private(set) var emergingIslandID: UUID?
@@ -417,7 +419,7 @@ final class IslandController {
         }
         var changed = false
         var built: [Island] = []
-        var nextOrigin = Layout.firstIslandOrigin
+        var nextOrigin = firstIslandOrigin
         // The loose tabs' island folds away while every tab is in a group.
         for source in sources where !source.members.isEmpty {
             if state.islands[source.id] == nil {
@@ -478,7 +480,7 @@ final class IslandController {
                 travel(to: tab, style: .cross(direction))
             } else {
                 armedCrossing = ArmedCrossing(direction: direction, at: .now)
-                pushEdge(direction, toast: "Once more to go to \(island.title).")
+                pushEdge(direction, toast: "Once more to go to \(island.title)")
             }
         } else {
             armedCrossing = nil
@@ -759,30 +761,64 @@ final class IslandController {
         return true
     }
 
-    /// Islands keep clear of one another, shown or not, so none comes up under another: an
-    /// island over another moves below it, or beside it when there is no room below. The
-    /// island being moved, or the current tab's, stays put.
+    /// Where a first island goes: right of the rail when the rail is on the left, else the
+    /// area's top-left corner.
+    private var firstIslandOrigin: CGPoint {
+        let rail = windowState.controlIsland.railFrame
+        guard !rail.isEmpty, !area.isEmpty, rail.midX < area.midX else { return Layout.firstIslandOrigin }
+        return CGPoint(x: min(0.9, (rail.maxX + Layout.islandGap - area.minX) / max(1, area.width)), y: Layout.firstIslandOrigin.y)
+    }
+
+    /// What islands keep clear of besides one another: the rail and the page card, when shown.
+    private var obstacles: [CGRect] {
+        let rail = windowState.controlIsland.hiddenEdge == nil ? windowState.controlIsland.railFrame : .zero
+        return [rail, windowState.controlIsland.pageCardFrame].filter { !$0.isEmpty }
+    }
+
+    /// Islands keep clear of one another, shown or not, so none comes up under another, and
+    /// of the rail and the page card: an island over another moves below it, or beside it when
+    /// there is no room below. The island being moved, or the current tab's, stays put.
     func resolveOverlaps(keeping keptID: UUID? = nil) {
         guard draggedIslandID == nil, !area.isEmpty else { return }
         let kept = keptID ?? currentTab.flatMap { island(holding: $0.id)?.id }
         let visible = islands.sorted { ($0.id == kept ? 0 : 1, $0.placement.y) < ($1.id == kept ? 0 : 1, $1.placement.y) }
         var frames = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, frame(of: $0)) })
         let gap = Layout.islandGap
+        let fixed = obstacles
+        /// Moves `b` out from under `a`: below it, else beside it. Returns nil when nothing fits.
+        func cleared(_ b: CGRect, of a: CGRect) -> CGRect? {
+            var b = b
+            if a.maxY + gap + b.height <= area.maxY {
+                b.origin.y = a.maxY + gap
+            } else if a.maxX + gap + b.width <= area.maxX {
+                b.origin.x = a.maxX + gap
+            } else if a.minX - gap - b.width >= area.minX {
+                b.origin.x = a.minX - gap - b.width
+            } else {
+                return nil
+            }
+            return b
+        }
         for _ in 0 ..< 4 {
             var moved = false
             for (i, upper) in visible.enumerated() {
-                for lower in visible[(i + 1)...] {
-                    guard let a = frames[upper.id], var b = frames[lower.id], a.intersects(b) else { continue }
-                    if a.maxY + gap + b.height <= area.maxY {
-                        b.origin.y = a.maxY + gap
-                    } else if a.maxX + gap + b.width <= area.maxX {
-                        b.origin.x = a.maxX + gap
-                    } else if a.minX - gap - b.width >= area.minX {
-                        b.origin.x = a.minX - gap - b.width
+                for obstacle in fixed {
+                    guard let b = frames[upper.id], b.intersects(obstacle) else { continue }
+                    // Beside the rail first: an island under the rail is wanted to its right.
+                    var next = b
+                    if obstacle.maxX + gap + b.width <= area.maxX {
+                        next.origin.x = obstacle.maxX + gap
+                    } else if let below = cleared(b, of: obstacle) {
+                        next = below
                     } else {
                         continue
                     }
-                    frames[lower.id] = b
+                    frames[upper.id] = next
+                    moved = true
+                }
+                for lower in visible[(i + 1)...] {
+                    guard let a = frames[upper.id], let b = frames[lower.id], a.intersects(b), let next = cleared(b, of: a) else { continue }
+                    frames[lower.id] = next
                     moved = true
                 }
             }
@@ -854,7 +890,7 @@ final class IslandController {
     func makeIsland(from tabIDs: [UUID]) {
         let members = tabIDs.compactMap(tab(for:))
         guard let first = members.first, let space = first.space, let source = island(holding: first.id) else { return }
-        let name = "Island \(space.groups.filter { !$0.isArchive }.count + 1)"
+        let name = first.activePage.url.safeDisplayDomain.isEmpty ? first.displayTitle : first.activePage.url.safeDisplayDomain
         guard let group = try? groupManager.createGroup(in: space, name: name) else { return }
         state.islands[group.id] = freePlacement(near: source, rows: members.count, iconsOnly: source.placement.iconsOnly)
         for member in members {
@@ -863,6 +899,8 @@ final class IslandController {
         clearSelection()
         emergingIslandID = group.id
         rebuild()
+        holdControls(group.id, true)
+        renameRequest = group.id
         Task(name: "Finish an island's unfold") { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
             if self?.emergingIslandID == group.id {
