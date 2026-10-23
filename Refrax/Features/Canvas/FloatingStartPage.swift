@@ -11,6 +11,7 @@ struct FloatingStartPage: View {
     @Environment(WindowState.self) private var windowState
     @Environment(UndoRedoManager.self) private var undoRedo
     @Environment(TabCanvasManager.self) private var canvas
+    @Environment(IslandController.self) private var islands
     @Environment(TabManager.self) private var tabs
     @Environment(FloatingTourManager.self) private var tour
     @Environment(CommandLensManager.self) private var lens
@@ -229,7 +230,7 @@ struct FloatingStartPage: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: Layout.outlineCornerRadius)
                         .fill(.regularMaterial)
-                    if let image = canvas.snapshots[tab.id] {
+                    if let image = islands.snapshot(for: tab.id) {
                         Image(nsImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)

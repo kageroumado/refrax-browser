@@ -3,9 +3,8 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// On-disk cache of tab canvas snapshots, one JPEG per tab.
-///
-/// A tile survives relaunch and page eviction because its last capture is here.
+/// On-disk cache of page renders, one JPEG per tab, so a slab or a card has a picture of a
+/// page across relaunch and eviction.
 /// Files are named by tab id under `Canvas/Snapshots` in app storage.
 nonisolated enum CanvasSnapshotStore {
     private static let directory: URL = Directories.appStorage
@@ -16,20 +15,6 @@ nonisolated enum CanvasSnapshotStore {
 
     private static func url(for tabID: UUID) -> URL {
         directory.appendingPathComponent("\(tabID.uuidString).jpg")
-    }
-
-    /// Writes the snapshot for a tab, replacing any previous one.
-    ///
-    /// Takes the TIFF bytes rather than the image so encoding can leave the main actor.
-    static func save(tiff: Data, for tabID: UUID) async {
-        let target = url(for: tabID)
-        await Task.detached(priority: .utility) {
-            guard let representation = NSBitmapImageRep(data: tiff),
-                  let jpeg = representation.representation(using: .jpeg, properties: [.compressionFactor: compressionFactor])
-            else { return }
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try? jpeg.write(to: target, options: .atomic)
-        }.value
     }
 
     /// Writes a render for a tab from its image, encoding off the main actor: the image is

@@ -97,23 +97,10 @@ final class TabCanvasManager {
         return floatingFrame(for: tab, in: area).insetBy(dx: -outset, dy: -outset)
     }
 
+    /// The cards on screen: the tabs taken out of their islands, other than the window's page.
     var visibleFloatingTabs: [Tab] {
         guard regionSelection == nil, !windowState.isSpaceLocked, !windowState.showsCommandLens else { return [] }
-        let liveBand = floatingArea.insetBy(dx: -floatingArea.width, dy: -floatingArea.height)
-        return floatingTabs.filter { tab in
-            if tab.id != retainedInputTabID, tab.id != renamingTabID, tab.id != menuTabID,
-               !floatingFrame(for: tab, in: floatingArea).intersects(liveBand) {
-                return false
-            }
-            // A docked page shows in its column, never as a card.
-            if storedFloatingPlacement(for: tab)?.isDocked == true {
-                return false
-            }
-            return (floatingVisibility.isRevealed && !isMomentaryNavigation && storedFloatingPlacement(for: tab) != nil)
-                || (floatingPlacement(for: tab).isPinned && tab.id != windowState.activeTabID) || tab.id == retainedInputTabID
-                || (windowState.controlIsland.tabInfo.isMenuPresented && tab.id == menuTabID)
-                || tab.id == renamingTabID
-        }
+        return (windowState.islandController?.detachedTabs ?? []).filter { $0.id != windowState.activeTabID }
     }
 
     /// The shape a card starts in: a live page for a tab saved as a preview, a tab otherwise.
@@ -132,10 +119,14 @@ final class TabCanvasManager {
         return placement
     }
 
-    func updateFloatingPlacement(_ placement: FloatingTabPlacement, for tab: Tab) {
+    /// Keeps a card's placement. While a drag is under way only the window's copy changes,
+    /// which is what the layer draws; the tab and the store take the placement when the drag
+    /// ends, through `persisting`.
+    func updateFloatingPlacement(_ placement: FloatingTabPlacement, for tab: Tab, persisting: Bool = true) {
         var stored = placement
         stored.tableOrigin = placement.frame(in: floatingArea).origin
         windowState.floatingPlacements[tab.id] = stored
+        guard persisting else { return }
         windowState.window?.invalidateRestorableState()
         if tab.space?.dataStoreMode != .private {
             tab.floatingPlacement = stored
@@ -169,7 +160,6 @@ final class TabCanvasManager {
         floatingVisibility.hold()
         windowState.controlIsland.tabInfo.hold()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
-        refreshFloatingSnapshots()
     }
 
     func releaseFloatingTabs() {
@@ -233,9 +223,6 @@ final class TabCanvasManager {
         guard !windowState.isSpaceLocked else { return }
         floatingVisibility.toggle()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
-        if floatingVisibility.isRevealed {
-            refreshFloatingSnapshots()
-        }
     }
 
     func openFloatingTab(_ tab: Tab) {
@@ -251,72 +238,9 @@ final class TabCanvasManager {
         focusedFloatingTabID = tab.id
     }
 
-    // MARK: - Snapshots
-
-    /// Snapshot of each tab's page.
-    private(set) var snapshots: [Tab.ID: NSImage] = [:]
-
-    @ObservationIgnored
-    private var floatingSnapshotTask: Task<Void, Never>?
-
-    @ObservationIgnored
-    private var activationTask: Task<Void, Never>?
-
-    @ObservationIgnored
-    private var previousActiveTabID: Tab.ID?
-
-    private func refreshFloatingSnapshots() {
-        floatingSnapshotTask?.cancel()
-        let currentTabs = floatingTabs
-        floatingSnapshotTask = Task(name: "Floating tab snapshots") { [weak self] in
-            for tab in currentTabs {
-                guard !Task.isCancelled, let self else { return }
-                if tab.space?.dataStoreMode != .private, snapshots[tab.id] == nil,
-                   let data = await CanvasSnapshotStore.load(for: tab.id), let image = NSImage(data: data) {
-                    snapshots[tab.id] = image
-                }
-                guard !Task.isCancelled else { return }
-                await refreshSnapshot(for: tab)
-            }
-        }
-    }
-
-    /// Captures a tab's page as it is switched away from, so its card shows what was last seen.
-    private func startObservingActivation() {
-        let getActiveTabID = { [weak windowState] in windowState?.activeTabID }
-        let changes = Observations { getActiveTabID() }
-
-        activationTask = Task { [weak self] in
-            for await activeTabID in changes {
-                guard let self else { return }
-                if let previous = previousActiveTabID, previous != activeTabID,
-                   let tab = tabManager.state.tab(for: previous) {
-                    await refreshSnapshot(for: tab)
-                }
-                previousActiveTabID = activeTabID
-            }
-        }
-    }
-
-    func refreshSnapshot(for tab: Tab) async {
-        guard let page = pagePool.existingPage(for: tab.activePage) else { return }
-        let bounds = page.contentView.bounds
-        guard bounds.width > 0, bounds.height > 0,
-              let captured = try? await page.snapshot(), !Task.isCancelled,
-              let image = captured.scaled(toWidth: CGFloat(Layout.snapshotWidth)) else { return }
-        snapshots[tab.id] = image
-        if tab.space?.dataStoreMode != .private, let tiff = image.tiffRepresentation {
-            await CanvasSnapshotStore.save(tiff: tiff, for: tab.id)
-        }
-    }
-
-    // MARK: - Constants
-
     enum Layout {
         /// Stands in for the window while a placement is chosen before the window has a size.
         static let nominalFloatingArea = CGRect(x: 0, y: 0, width: 1_280, height: 800)
-        /// Width of the snapshot image; the card is scaled from this.
-        static let snapshotWidth = 800
     }
 
     // MARK: - Initialization
@@ -325,11 +249,8 @@ final class TabCanvasManager {
         self.tabManager = tabManager
         self.windowState = windowState
         self.pagePool = pagePool
-        startObservingActivation()
     }
 
     isolated deinit {
-        activationTask?.cancel()
-        floatingSnapshotTask?.cancel()
     }
 }

@@ -116,9 +116,26 @@ final class Tab {
         }
     }
 
-    /// Serialized ``BoardFrame``: where this tab's tile sits on the tab canvas.
-    /// `nil` until the tab has been placed on the board.
-    var boardFrameData: Data?
+    /// Serialized ``BoardFrame``: the tab's card placement and the board fields kept with it.
+    /// `nil` until the tab has had a card.
+    var boardFrameData: Data? {
+        didSet {
+            cachedBoard = nil
+            cachedBoardData = nil
+        }
+    }
+
+    /// The board decoded once per value of its data: the layer reads a placement per event.
+    @Transient private var cachedBoard: BoardFrame?
+    @Transient private var cachedBoardData: Data?
+
+    private var board: BoardFrame? {
+        if cachedBoardData != boardFrameData || cachedBoard == nil {
+            cachedBoard = BoardFrame.value(boardFrameData)
+            cachedBoardData = boardFrameData
+        }
+        return cachedBoard
+    }
 
     /// The tab's preview rectangle. Compact presentation keeps its center and remembers this size.
     var boardFrame: CGRect? {
@@ -134,7 +151,7 @@ final class Tab {
 
     /// Position, presentation, and keep-visible choice for the floating tab layer.
     var floatingPlacement: FloatingTabPlacement? {
-        get { BoardFrame.value(boardFrameData)?.floating }
+        get { board?.floating }
         set { boardFrameData = BoardFrame.updating(frame: boardFrame, isCompact: boardIsCompact, floating: newValue) }
     }
 

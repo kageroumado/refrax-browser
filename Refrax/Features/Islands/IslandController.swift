@@ -61,7 +61,10 @@ struct ArmedCrossing: Equatable {
 @Observable
 final class IslandController {
     enum Layout {
-        static let snapshotLimit = 16
+        /// Full-window renders kept in memory: the current page, the last few, the neighbors.
+        static let snapshotLimit = 6
+        /// A render landed this recently stands for the next one asked for by a load's end.
+        static let captureCoalescing: TimeInterval = 2
         /// How long after a push against an edge a second push crosses it.
         static let crossingWindow: TimeInterval = 1.5
         /// Where the first island of a space goes, normalized to the window.
@@ -121,6 +124,7 @@ final class IslandController {
     /// The last current tab of each island, where a crossing lands.
     @ObservationIgnored private var lastTab: [UUID: UUID] = [:]
     @ObservationIgnored private var captures: [UUID: NSImage] = [:]
+    @ObservationIgnored private var capturedAt: [UUID: Date] = [:]
     /// Counts stored renders, so a view showing one is told when a newer one arrives.
     private var captureVersion = 0
     @ObservationIgnored private var captureOrder: [UUID] = []
@@ -678,6 +682,10 @@ final class IslandController {
         islands[index].placement.x = (x - area.minX) / max(1, area.width)
         islands[index].placement.y = (y - area.minY) / max(1, area.height)
         state.islands[islandID] = islands[index].placement
+    }
+
+    /// The move is over: the island's place is kept.
+    func endIslandMove() {
         persist()
     }
 
@@ -759,14 +767,17 @@ final class IslandController {
 
     func snapshot(for tabID: UUID) -> NSImage? {
         _ = captureVersion
-        return captures[tabID] ?? canvas.snapshots[tabID]
+        return captures[tabID]
     }
 
     /// Renders the tab through WebKit, which draws each page alone and nothing over it, and
     /// keeps the image in memory and on disk. The tab stays on screen while it renders. A tab
     /// of several panes is one image: each pane's render at the pane's place in the window.
     @discardableResult
-    func refreshSnapshot(of tab: Tab) async -> NSImage? {
+    func refreshSnapshot(of tab: Tab, force: Bool = true) async -> NSImage? {
+        if !force, let at = capturedAt[tab.id], Date.now.timeIntervalSince(at) < Layout.captureCoalescing {
+            return captures[tab.id]
+        }
         let pages = tab.pages.compactMap { pagePool.existingPage(for: $0) }.filter { $0.contentView.bounds.width > 0 }
         guard !pages.isEmpty else { return nil }
         let image: NSImage? = if pages.count == 1 {
@@ -832,6 +843,7 @@ final class IslandController {
 
     private func store(_ image: NSImage, for tabID: UUID) {
         captures[tabID] = image
+        capturedAt[tabID] = .now
         captureVersion += 1
         captureOrder.removeAll { $0 == tabID }
         captureOrder.append(tabID)

@@ -109,7 +109,11 @@ struct FloatingTabCard: View {
                 resizeHandles
             }
         }
-        .shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y)
+        // The shadow is a blurred shape under the card, so a change on the card never
+        // re-renders the card for its shadow.
+        .background {
+            outline.fill(.black.opacity(shadow.opacity)).blur(radius: shadow.radius).offset(y: shadow.y)
+        }
         .opacity(isOutsideWindow ? Layout.leavingOpacity : 1)
         .onHover { isHovering = $0 }
         .task(id: isHovering) {
@@ -134,15 +138,9 @@ struct FloatingTabCard: View {
     /// The favicon, one object across shapes: it travels between the icon's center and the
     /// header's leading edge as the shape changes.
     private func favicon(side: CGFloat) -> some View {
-        Group {
-            if let data = tab.activePage.faviconData, let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFit()
-            } else {
-                Image(systemName: "globe").resizable().scaledToFit()
-            }
-        }
-        .frame(width: side, height: side)
-        .modifier(FaviconTravel(id: tab.id, namespace: faviconSpace, isEnabled: !reduceMotion))
+        FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: side)
+            .frame(width: side, height: side)
+            .modifier(FaviconTravel(id: tab.id, namespace: faviconSpace, isEnabled: !reduceMotion))
     }
 
     /// The icon shape: the favicon alone, its state as a badge on the top-trailing corner,
@@ -320,7 +318,7 @@ struct FloatingTabCard: View {
         let isOutside = FloatingTearOff.isTornOff(pointer: pointer, from: window.frame)
         if tearOff == nil, isOutside, let origin = canvas.floatingMoveOrigins[tab.id] {
             tearOff = FloatingTearOffGhost(
-                tab: tab, snapshot: canvas.snapshots[tab.id], placement: placement,
+                tab: tab, snapshot: islands.snapshot(for: tab.id), placement: placement,
                 size: placement.frame(in: area).size, grab: CGPoint(x: start.x - origin.x, y: start.y - origin.y),
             )
         }

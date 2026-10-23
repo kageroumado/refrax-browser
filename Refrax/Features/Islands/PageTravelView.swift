@@ -167,7 +167,7 @@ struct PageTravelView: View {
                 guard showsLive, !arriving, pagePool.existingPage(for: tab.activePage)?.isLoading == false else { return }
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
-                await islands.refreshSnapshot(of: tab)
+                await islands.refreshSnapshot(of: tab, force: false)
             }
     }
 

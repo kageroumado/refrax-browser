@@ -20,6 +20,8 @@ struct IslandsLayer: View {
     var body: some View {
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
+            // One container for every glass sibling: islands, cards, previews, and labels.
+            GlassEffectContainer {
             ZStack(alignment: .topLeading) {
                 FloatingDockLayer(area: bounds)
                 ForEach(islands.visibleIslands) { island in
@@ -54,6 +56,7 @@ struct IslandsLayer: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .coordinateSpace(name: "islands")
             .coordinateSpace(name: "floatingTabs")
+            }
             .onChange(of: geometry.size, initial: true) {
                 islands.updateArea(bounds.insetBy(dx: Layout.areaInset, dy: Layout.areaInset), in: bounds)
             }
@@ -120,7 +123,11 @@ struct IslandView: View {
         // The Control Island's glass: the window's tint under regular glass.
         .background(windowState.controlIslandTint, in: shape)
         .glassEffect(.regular, in: shape)
-        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        // A blurred shape under the glass is the shadow: a row's hover never re-renders the
+        // island for it.
+        .background {
+            shape.fill(.black.opacity(0.12)).blur(radius: 18).offset(y: 8)
+        }
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
@@ -141,31 +148,33 @@ struct IslandView: View {
         islands.moveIsland(island.id, to: CGPoint(x: origin.x + dx, y: origin.y + dy))
     }
 
-    /// The rows in the tab list's order; past the window's share of height they scroll.
+    /// The rows in the tab list's order; past the window's share of height they scroll, and
+    /// then only the rows in view are built.
     @ViewBuilder
     private var rows: some View {
-        let column = VStack(spacing: 0) {
-            ForEach(Array(island.tabIDs.enumerated()), id: \.element) { index, tabID in
-                if let tab = islands.tab(for: tabID) {
-                    IslandTabRow(tab: tab, island: island, area: area)
-                        .frame(height: IslandGeometry.rowHeight)
-                        .offset(y: shift(of: index, tabID: tabID))
-                }
+        let list = ForEach(Array(island.tabIDs.enumerated()), id: \.element) { index, tabID in
+            if let tab = islands.tab(for: tabID) {
+                IslandTabRow(tab: tab, island: island, index: index, area: area)
+                    .frame(height: IslandGeometry.rowHeight)
             }
-            newTabRow
         }
-        .frame(maxWidth: .infinity, alignment: .top)
-        .animation(.snappy(duration: 0.2), value: islands.drop)
         if geometry.contentHeight(rows: island.tabIDs.count) > islands.frame(of: island).height + 0.5 {
             ScrollView(.vertical, showsIndicators: false) {
-                column
+                LazyVStack(spacing: 0) {
+                    list
+                    newTabRow
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
                 islands.scrollOffsets[island.id] = offset
             }
         } else {
-            column
-                .frame(maxHeight: .infinity, alignment: .top)
+            VStack(spacing: 0) {
+                list
+                newTabRow
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -194,20 +203,6 @@ struct IslandView: View {
         .help("New tab in \(island.title)")
     }
 
-    /// How far a row moves while another is dragged: the rows below the lifted one close its
-    /// hole, and the rows at and past the drop row open a gap for it.
-    private func shift(of index: Int, tabID: UUID) -> CGFloat {
-        guard let dragged = islands.draggedTabID, dragged != tabID, let drop = islands.drop, drop.island == island.id, drop.joins == nil else { return 0 }
-        var target = index
-        if let lifted = island.tabIDs.firstIndex(of: dragged), lifted < index {
-            target -= 1
-        }
-        if target >= drop.row {
-            target += 1
-        }
-        return CGFloat(target - index) * IslandGeometry.rowHeight
-    }
-
     /// The drag that moves the island, from its origin when the drag began.
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .named("islands"))
@@ -223,6 +218,7 @@ struct IslandView: View {
             .onEnded { _ in
                 dragStart = nil
                 islands.draggedIslandID = nil
+                islands.endIslandMove()
             }
     }
 
@@ -319,10 +315,20 @@ struct IslandView: View {
 /// One tab as a row: its favicon with the loading ring, its title, its state, and under the
 /// pointer its close. A click opens the page; a drag moves the row within its island, into
 /// another, or, let go on the page, out of its island as a live card. Its menu is the page's.
-private struct IslandTabRow: View {
+private struct IslandTabRow: View, Equatable {
     let tab: Tab
     let island: Island
+    /// The row's place in the island, for the gap a drag opens.
+    let index: Int
     let area: CGRect
+
+    /// The row re-renders only when what it draws from its inputs has changed: the island
+    /// moving under a drag leaves every row alone.
+    static func == (lhs: IslandTabRow, rhs: IslandTabRow) -> Bool {
+        lhs.tab.id == rhs.tab.id && lhs.island.id == rhs.island.id && lhs.index == rhs.index
+            && lhs.island.placement.iconsOnly == rhs.island.placement.iconsOnly && lhs.island.tabIDs == rhs.island.tabIDs
+            && lhs.island.colorString == rhs.island.colorString && lhs.area == rhs.area
+    }
 
     @Environment(IslandController.self) private var islands
     @Environment(WindowState.self) private var windowState
@@ -361,6 +367,20 @@ private struct IslandTabRow: View {
 
     private var isSelected: Bool {
         islands.selectedTabIDs.contains(tab.id)
+    }
+
+    /// How far the row moves while another is dragged: the rows below the lifted one close
+    /// its hole, and the rows at and past the drop row open a gap for it.
+    private var shift: CGFloat {
+        guard let dragged = islands.draggedTabID, dragged != tab.id, let drop = islands.drop, drop.island == island.id, drop.joins == nil else { return 0 }
+        var target = index
+        if let lifted = island.tabIDs.firstIndex(of: dragged), lifted < index {
+            target -= 1
+        }
+        if target >= drop.row {
+            target += 1
+        }
+        return CGFloat(target - index) * IslandGeometry.rowHeight
     }
 
     private var rowFill: Color {
@@ -404,6 +424,8 @@ private struct IslandTabRow: View {
         .padding(.horizontal, iconsOnly ? 0 : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
         .background(rowFill, in: shape)
+        .offset(y: shift)
+        .animation(.snappy(duration: 0.2), value: islands.drop)
         .overlay {
             if isJoinTarget {
                 shape.strokeBorder(Color.appAccentColor, lineWidth: 1.5)

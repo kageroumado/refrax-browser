@@ -12,10 +12,16 @@ extension TabCanvasManager {
         guard let origin = floatingMoveOrigins[tab.id] else { return }
         var placement = floatingPlacement(for: tab)
         placement.move(to: CGPoint(x: origin.x + translation.width, y: origin.y + translation.height), in: area)
-        updateFloatingPlacement(placement, for: tab)
+        updateFloatingPlacement(placement, for: tab, persisting: false)
     }
 
+    /// The move is over: where the cards came to rest is kept.
     func endFloatingMove() {
+        for id in floatingMoveOrigins.keys {
+            if let tab = tabManager.state.tab(for: id), let placement = windowState.floatingPlacements[id] {
+                updateFloatingPlacement(placement, for: tab)
+            }
+        }
         floatingMoveOrigins = [:]
         endFloatingManipulation()
     }
