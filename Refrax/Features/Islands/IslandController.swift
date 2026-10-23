@@ -121,6 +121,8 @@ final class IslandController {
     /// The last current tab of each island, where a crossing lands.
     @ObservationIgnored private var lastTab: [UUID: UUID] = [:]
     @ObservationIgnored private var captures: [UUID: NSImage] = [:]
+    /// Counts stored renders, so a view showing one is told when a newer one arrives.
+    private var captureVersion = 0
     @ObservationIgnored private var captureOrder: [UUID] = []
     @ObservationIgnored private var capturing: Set<UUID> = []
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
@@ -742,7 +744,8 @@ final class IslandController {
     // MARK: - Snapshots
 
     func snapshot(for tabID: UUID) -> NSImage? {
-        captures[tabID] ?? canvas.snapshots[tabID]
+        _ = captureVersion
+        return captures[tabID] ?? canvas.snapshots[tabID]
     }
 
     /// Renders the tab through WebKit, which draws each page alone and nothing over it, and
@@ -816,6 +819,7 @@ final class IslandController {
 
     private func store(_ image: NSImage, for tabID: UUID) {
         captures[tabID] = image
+        captureVersion += 1
         captureOrder.removeAll { $0 == tabID }
         captureOrder.append(tabID)
         while captureOrder.count > Layout.snapshotLimit {
