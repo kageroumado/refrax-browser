@@ -686,9 +686,13 @@ private struct SideDropZone: View {
                     .strokeBorder(Color.appAccentColor.opacity(0.5), lineWidth: 1)
             }
             .overlay {
-                Image(systemName: side == .topLeft ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled")
-                    .font(.system(size: Layout.symbolSize, weight: .regular))
-                    .foregroundStyle(Color.appAccentColor)
+                VStack(spacing: 8) {
+                    Image(systemName: side == .topLeft ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled")
+                        .font(.system(size: Layout.symbolSize, weight: .regular))
+                    Text("Open beside the page")
+                        .font(.callout.weight(.medium))
+                }
+                .foregroundStyle(Color.appAccentColor)
             }
             .frame(width: zone.width, height: zone.height)
             .offset(x: zone.minX, y: zone.minY)
