@@ -1,123 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Keeps the webpage interactive between the floating cards.
-final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
-    var hitRegions: () -> [CGRect] = { [] }
-    var onPointerDown: ((CGPoint) -> Void)?
-    /// A right-click at a point; returns whether it was handled, which keeps it from the page.
-    var onSecondaryPointerDown: ((CGPoint, NSEvent) -> Bool)?
-    var controlState: (() -> ControlIslandState?)?
-    private var pointerMonitor: Any?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if let pointerMonitor {
-            NSEvent.removeMonitor(pointerMonitor)
-        }
-        pointerMonitor = nil
-        guard window != nil else { return }
-        window?.acceptsMouseMovedEvents = true
-        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
-            guard let self, event.window === window else { return event }
-            let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
-            if event.type == .mouseMoved {
-                controlState?()?.pointerMoved?(point)
-                return event
-            }
-            if event.type == .leftMouseDown {
-                onPointerDown?(point)
-            }
-            if event.type == .rightMouseDown, onSecondaryPointerDown?(point, event) == true {
-                return nil
-            }
-            guard let state = controlState?(),
-                  !state.isPresenting, !state.hitRegions.isEmpty else { return event }
-            state.dismissIfOutside(point)
-            return event
-        }
-    }
-
-    isolated deinit {
-        if let pointerMonitor {
-            NSEvent.removeMonitor(pointerMonitor)
-        }
-    }
-
-    private func topLeadingPoint(_ point: CGPoint) -> CGPoint {
-        CGPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y)
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = topLeadingPoint(convert(point, from: superview))
-        guard hitRegions().contains(where: { $0.contains(local) }) else { return nil }
-        return super.hitTest(point)
-    }
-}
-
-/// Instant access to placed tabs, with live pinned pages beside the main page.
-struct FloatingTabsLayer: View {
-    @Environment(TabCanvasManager.self) private var canvas
-    @Environment(WindowState.self) private var windowState
-    @Environment(BrowserSettings.self) private var settings
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        GeometryReader { geometry in
-            let bounds = CGRect(origin: .zero, size: geometry.size)
-            ZStack(alignment: .topLeading) {
-                FloatingDockLayer(area: bounds)
-                if canvas.floatingVisibility.isRevealed && !canvas.isMomentaryNavigation {
-                    FloatingLassoSurface(area: bounds)
-                    ForEach(canvas.flattenedFloatingGroupItems(in: bounds)) { item in
-                        FloatingTabGroup(item: item, area: bounds)
-                    }
-                }
-                ForEach(canvas.visibleFloatingTabs.filter { $0.id != windowState.activeTabID }) { tab in
-                    let placement = canvas.floatingPlacement(for: tab)
-                    let frame = canvas.floatingFrame(for: tab, in: bounds)
-                    let fold = canvas.foldOrigin(for: tab, in: bounds)
-                    FloatingTabCard(tab: tab, placement: placement, area: bounds)
-                        .frame(width: frame.width, height: frame.height)
-                        .offset(x: frame.minX, y: frame.minY)
-                        .zIndex(tab.id == canvas.focusedFloatingTabID ? 1 : 0)
-                        .transition(.fold(toward: fold.map { CGSize(width: $0.x - frame.minX, height: $0.y - frame.minY) }))
-                }
-                FloatingCardGroupTarget(area: bounds)
-                FloatingSelectionCapsule(area: bounds)
-                if let request = canvas.rayRequest, let tab = canvas.floatingTabs.first(where: { $0.id == request.tabID }) {
-                    FloatingRayView(path: FloatingRayPath(from: request.source, to: canvas.floatingFrame(for: tab, in: bounds), in: bounds)) {
-                        canvas.finishRay(request.revision)
-                    }
-                    .id(request.revision)
-                }
-                FloatingDockBeams(area: bounds)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .coordinateSpace(name: "floatingTabs")
-            .dropDestination(for: FloatingTabDrag.self) { items, point in
-                guard let item = items.first, let tab = canvas.floatingTabs.first(where: { $0.id == item.id }) else { return false }
-                var placement = canvas.floatingPlacement(for: tab)
-                placement.move(to: point, in: bounds)
-                canvas.updateFloatingPlacement(placement, for: tab)
-                canvas.joinGroup(at: point, tabs: [tab], in: bounds)
-                canvas.draggedRecentTabID = nil
-                canvas.recentIsOpen = false
-                return true
-            }
-        }
-        .ignoresSafeArea()
-        .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
-        .onChange(of: windowState.activeSpaceID) { canvas.floatingSpaceChanged() }
-        .onChange(of: windowState.isSpaceLocked) { canvas.dismissFloatingTabs() }
-        .onChange(of: windowState.showsCommandLens) { _, shown in
-            if shown {
-                canvas.dismissFloatingTabs()
-            }
-        }
-    }
-}
-
 /// A tab as a card over the page: its icon, its title, or its live page, moved by its header.
 struct FloatingTabCard: View {
     let tab: Tab
@@ -182,8 +65,7 @@ struct FloatingTabCard: View {
         wantsLive || hasInput || isKept || canvas.retainedInputTabID == tab.id || placement.region != nil
     }
     private var isHighlighted: Bool {
-        canvas.selectedFloatingTabIDs.contains(tab.id) || hasInput
-            || (tab.id == canvas.focusedFloatingTabID && canvas.floatingVisibility.isRevealed)
+        hasInput || (tab.id == canvas.focusedFloatingTabID && canvas.floatingVisibility.isRevealed)
     }
 
     var body: some View {
@@ -399,25 +281,13 @@ struct FloatingTabCard: View {
             }
     }
 
-
     // MARK: Moving
 
-    /// Makes `content` the card's handle: a click opens the card, a Shift-click toggles its
-    /// selection, and a drag moves it.
+    /// Makes `content` the card's handle: a click opens the card, and a drag moves it.
     private func cardHandle(_ content: some View) -> some View {
         content
             .contentShape(Rectangle())
-            .onTapGesture {
-                if NSEvent.modifierFlags.contains(.shift) {
-                    if canvas.selectedFloatingTabIDs.contains(tab.id) {
-                        canvas.selectedFloatingTabIDs.remove(tab.id)
-                    } else {
-                        canvas.selectedFloatingTabIDs.insert(tab.id)
-                    }
-                } else {
-                    canvas.openFloatingTab(tab)
-                }
-            }
+            .onTapGesture { canvas.openFloatingTab(tab) }
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named("floatingTabs"))
                 .onChanged { value in
                     canvas.dragFloatingCard(tab, translation: value.translation, pointer: value.location, in: area)
@@ -472,9 +342,8 @@ struct FloatingTabCard: View {
             canvas.tearOffFloatingCard(tab, at: NSEvent.mouseLocation, grabFraction: ghost.grabFraction, in: area)
             return
         }
-        let moved = canvas.cardsMoved(with: tab)
         canvas.endFloatingCardDrag(tab)
-        canvas.keepClearOfRail(moved, in: area)
+        canvas.keepClearOfRail([tab], in: area)
     }
 
     private func moveBy(dx: CGFloat, dy: CGFloat) {

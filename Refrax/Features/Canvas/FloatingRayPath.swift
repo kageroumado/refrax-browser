@@ -1,16 +1,6 @@
 import CoreGraphics
 import Foundation
 
-/// A request for the floating layer to point at the tab that just left the window.
-///
-/// `source` is in window coordinates with a top-left origin, the frame of whatever
-/// displaced the page: the Command Lens capsule, the page card, or the rail.
-nonisolated struct FloatingRayRequest: Equatable, Sendable {
-    let source: CGRect
-    let tabID: Tab.ID
-    let revision: Int
-}
-
 /// The route a ray takes from the control that displaced a page to the page's new
 /// place in the floating layer: one straight run to a pane of glass just outside
 /// the destination, one bend as it enters, and a short run to the destination's edge.

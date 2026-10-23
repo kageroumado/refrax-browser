@@ -128,10 +128,10 @@ private struct FloatingTearOffCard: View {
 // MARK: - Cards Leaving the Window
 
 extension TabCanvasManager {
-    /// Whether a header drag on `tab` can tear it off into a window of its own: one card, a tab
-    /// of a space, not a favorite.
+    /// Whether a header drag on `tab` can tear it off into a window of its own: a tab of a
+    /// space, not a favorite.
     func canTearOff(_ tab: Tab) -> Bool {
-        !tab.isFavorite && !tab.isArchived && tab.space != nil && cardsMoved(with: tab).count == 1
+        !tab.isFavorite && !tab.isArchived && tab.space != nil
     }
 
     /// Ends a header drag released outside the window: the card goes back to where the drag
@@ -143,7 +143,6 @@ extension TabCanvasManager {
             updateFloatingPlacement(placement, for: tab)
         }
         endFloatingMove()
-        floatingDropGroupID = nil
         guard let window = tabManager.moveTabToNewWindow(tab, from: windowState)?.window else { return }
         let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? window.screen ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }

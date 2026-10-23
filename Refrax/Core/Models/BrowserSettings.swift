@@ -625,12 +625,6 @@ final class BrowserSettings {
 
     // MARK: - Feature Flags
 
-    /// Soft contact sounds when tabs collide on the desk.
-    var canvasImpactSounds: Bool {
-        get { isFeatureFlagEnabled("app.canvasImpactSounds", default: false) }
-        set { setFeatureFlag("app.canvasImpactSounds", enabled: newValue) }
-    }
-
     /// Keep Part Visible and Preview Zoom in a page's actions menu.
     var floatingTabRegionsEnabled: Bool {
         get { isFeatureFlagEnabled(Self.floatingTabRegionsFlagKey, default: false) }

@@ -108,37 +108,16 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
-        // Tab Canvas
-        let canvasTerms = [
-            "canvas", "tab canvas", "desk", "all tabs", "show all tabs", "tab overview",
-            "overview", "board", "spatial", "zoom out", "see all tabs",
+        // Floating tabs
+        let floatingTerms = [
+            "floating tabs", "all tabs", "show all tabs", "tab overview", "overview", "islands", "see all tabs",
         ]
-        if FuzzyMatcher.match(query: query, against: canvasTerms) >= FuzzyMatcher.minimumMatchScore {
+        if FuzzyMatcher.match(query: query, against: floatingTerms) >= FuzzyMatcher.minimumMatchScore {
             results.append(CommandLensSuggestion(
                 type: .appAction(.toggleTabCanvas),
-                text: "Tab Canvas",
-                description: "Every tab of this space on one desk  ⌘⇧\\",
-                iconName: TabCanvasManager.symbolName,
-                groupHeader: nil,
-                isRemovable: false,
-                keywordAction: nil,
-                url: nil,
-            ))
-        }
-
-        // Arrange the floating tabs
-        let arrangements: [(String, FloatingArrangement, String)] = [
-            ("arrange grid tidy tabs lay out columns", .grid, "Every card in columns from the island's side"),
-            ("stack by site stacks domain sweep tabs", .stacksBySite, "One stack per site, named by the site"),
-            ("stack by group stacks fold groups", .stacksByGroup, "Every group folded to its header"),
-        ]
-        for (terms, arrangement, description) in arrangements
-            where FuzzyMatcher.match(query: query, against: [terms, arrangement.commandTitle.lowercased()]) >= FuzzyMatcher.minimumMatchScore {
-            results.append(CommandLensSuggestion(
-                type: .appAction(.arrange(arrangement)),
-                text: arrangement.commandTitle,
-                description: description,
-                iconName: arrangement.symbol,
+                text: "Floating Tabs",
+                description: "The tabs of this space as islands over the page",
+                iconName: ControlIslandItem.floatingTabs.symbol,
                 groupHeader: nil,
                 isRemovable: false,
                 keywordAction: nil,

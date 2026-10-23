@@ -102,18 +102,15 @@ refrax-ctl group icon ID ICON
 refrax-ctl group collapse ID                   # Toggle collapsed state
 ```
 
-## Tab Canvas
+## Floating Tabs
 
-Works with Refrax in the background. Positions are desk points, origin top-left;
-commands that change the desk wait for tiles to come to rest, then print the state.
+Works with Refrax in the background. Positions are window points, origin top-left.
 
 ```bash
-refrax-ctl canvas show [--json]                # Open the canvas, print tiles
-refrax-ctl canvas hide
-refrax-ctl canvas state [--json]               # Tiles, zones, magnets, overlappingPairs
-refrax-ctl canvas drag TAB --to X,Y [--duration S] [--fling]   # As the pointer would; pushes what it meets
-refrax-ctl canvas drag TAB --to=-400,300 --fling              # Negative X needs --to=; off the edge closes the tab
-refrax-ctl canvas lab grid|overlap|zone|topics|crowd|unplaced          # Debug builds: fresh space in a preset layout
+refrax-ctl canvas state [--json]               # Whether the layer is revealed, and every tab's card
+refrax-ctl canvas floating show|hide|hold|release                       # Reveal the layer, dismiss it, or hold and release the reveal key
+refrax-ctl canvas floating pin|unpin --tab TAB                          # Keep a card visible when the reveal key is up, or stop
+refrax-ctl canvas floating move --tab TAB --to X,Y                      # Place a card's top-left corner
 refrax-ctl canvas floating dock-left|dock-right|undock --tab TAB       # Dock a page to a window side at full height, or return it
 refrax-ctl canvas floating shape --tab TAB icon|tab|live             # Favicon icon, favicon + title tab, or live page
 refrax-ctl canvas floating resize --tab TAB --width W --height H     # From the bottom-right corner; the shape follows the size

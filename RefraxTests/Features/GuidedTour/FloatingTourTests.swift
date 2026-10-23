@@ -19,7 +19,7 @@ struct FloatingTourTests {
             self.env = try TabManagerTestEnvironment()
             self.space = env.makeSpace()
             self.window = env.makeActiveWindowState(with: space)
-            self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+            self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
             self.table = IslandController(windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool)
             window.islandController = table
             self.defaults = try #require(UserDefaults(suiteName: "FloatingTourTests.\(UUID())"))
@@ -68,7 +68,7 @@ struct FloatingTourTests {
             left.shape = .tab
             right.shape = .tab
             left.tableOrigin = CGPoint(x: 200, y: 300)
-            right.tableOrigin = CGPoint(x: 200 + left.size.width + FloatingArrangement.gap, y: 300)
+            right.tableOrigin = CGPoint(x: 200 + left.size.width + 12, y: 300)
             canvas.updateFloatingPlacement(left, for: first)
             canvas.updateFloatingPlacement(right, for: second)
         }
@@ -388,7 +388,6 @@ struct FloatingTourTests {
         tour.review()
         #expect(tour.currentStep == .revealPages)
         #expect(stage.table.destination(toward: .left)?.id == draft.id)
-        #expect(stage.canvas.spatialNeighbor(from: draft.id, toward: .right, among: [draft.id, arrival.id]) == arrival.id)
 
         stage.canvas.revealFloatingTabs()
         tour.review()
@@ -399,7 +398,7 @@ struct FloatingTourTests {
         #expect(stage.window.activeTabID == draft.id)
         #expect(tour.currentStep == .visitNeighbor)
         stage.table.step(.right)
-        for _ in 0..<25 where tour.currentStep != .placePage {
+        for _ in 0 ..< 25 where tour.currentStep != .placePage {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(stage.window.activeTabID == arrival.id)
@@ -432,7 +431,7 @@ struct FloatingTourTests {
         stage.reportRail()
         #expect(stage.canvas.isMomentaryNavigation)
         let tabsButton = try #require(Stage.rows[.floatingTabs])
-        #expect(stage.tour.spotlights(in: CGRect(x: 0, y: 0, width: 1200, height: 800)) == [
+        #expect(stage.tour.spotlights(in: CGRect(x: 0, y: 0, width: 1_200, height: 800)) == [
             FloatingTourLayout.spotlight(around: tabsButton, of: .railRow),
         ])
         let navigating = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, cardsVisible: false)

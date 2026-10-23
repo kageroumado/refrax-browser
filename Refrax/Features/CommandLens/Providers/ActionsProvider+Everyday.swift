@@ -91,7 +91,6 @@ extension ActionsProvider {
             icon: "rectangle.on.rectangle",
             terms: ["tabs", "open tabs", "how many tabs", "how many", "list tabs", "all open tabs", "count tabs", "pages"],
         ))
-        actions += groupActions()
         return actions
     }
 
@@ -99,34 +98,5 @@ extension ActionsProvider {
     private var openTabsDescription: String {
         let count = windowState?.activeSpace?.tabs.filter { !$0.isArchived }.count ?? 0
         return "\(count) \(count == 1 ? "tab" : "tabs") in this space"
-    }
-
-    /// Group Selected Tabs once two or more are selected; otherwise select the current page for
-    /// a group, or take it out of the selection.
-    private func groupActions() -> [EverydayAction] {
-        guard let windowState, let tab = windowState.activeTab, !tab.isFavorite,
-              tab.space?.id == windowState.activeSpaceID,
-              let canvas = (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager else { return [] }
-        let terms = ["group", "group tabs", "group these", "make a group", "new group", "select for group"]
-        var actions: [EverydayAction] = []
-        let selected = canvas.selectedFloatingTabIDs
-        if selected.count > 1 {
-            actions.append(EverydayAction(
-                action: .groupSelectedTabs,
-                title: "Group Selected Tabs",
-                description: "\(selected.count) tabs",
-                icon: "rectangle.3.group",
-                terms: terms + ["group selected", "group selection"],
-            ))
-        }
-        let isSelected = selected.contains(tab.id)
-        actions.append(EverydayAction(
-            action: .toggleCurrentTabGroupSelection,
-            title: isSelected ? "Deselect for Group" : "Select for Group",
-            description: isSelected ? "Current page" : "Current page; select another, then Group Selected Tabs",
-            icon: "checkmark.circle",
-            terms: terms + ["select", "deselect"],
-        ))
-        return actions
     }
 }

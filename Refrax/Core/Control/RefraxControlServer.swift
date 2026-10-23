@@ -260,19 +260,11 @@ final class RefraxControlServer {
             try await handlePageVideoViewer(params)
         case let .pagePiP(params):
             try await handlePagePiP(params)
-        // Tab Canvas
+        // Floating tabs
         case let .floatingTabs(params):
             try handleFloatingTabs(params)
-        case .canvasShow:
-            try await handleCanvasShow()
-        case .canvasHide:
-            try await handleCanvasHide()
         case .canvasState:
-            try canvasStateResponse()
-        case let .canvasDrag(params):
-            try await handleCanvasDrag(params)
-        case let .canvasLab(params):
-            try await handleCanvasLab(params)
+            try floatingStateResponse()
         // Tier 1E: Visual Agent Features
         case let .visualHighlight(params):
             try await handleVisualHighlight(params)
@@ -2425,7 +2417,7 @@ final class RefraxControlServer {
 
     // MARK: - Tier 2F: Developer Tools
 
-    // MARK: - Tab Canvas
+    // MARK: - Floating Tabs
 
     private func canvasManager() throws -> TabCanvasManager {
         guard let controller = windowManager.activeWindowController else {
@@ -2473,7 +2465,7 @@ final class RefraxControlServer {
                     throw ControlError.invalidParams("Shape requires icon, tab, or live")
                 }
                 canvas.setFloatingShape(shape, for: tab, in: bounds)
-                return try canvasStateResponse()
+                return try floatingStateResponse()
             case .move:
                 guard let x = params.x, let y = params.y, x.isFinite, y.isFinite else {
                     throw ControlError.invalidParams("Move requires finite x and y coordinates")
@@ -2489,140 +2481,14 @@ final class RefraxControlServer {
             }
             canvas.updateFloatingPlacement(placement, for: tab)
         }
-        return try canvasStateResponse()
+        return try floatingStateResponse()
     }
 
-    private func handleCanvasShow() async throws -> ControlResponse {
+    private func floatingStateResponse() throws -> ControlResponse {
         let canvas = try canvasManager()
-        canvas.show()
-        // Tiles placed on open may overlap; the board pushes them apart first.
-        _ = await canvas.waitUntilSettled()
-        return try canvasStateResponse()
-    }
-
-    private func handleCanvasHide() async throws -> ControlResponse {
-        let canvas = try canvasManager()
-        canvas.close()
-        // The board zooms back into the tab before the canvas goes away.
-        let deadline = ContinuousClock.now + .seconds(3)
-        while canvas.isActive, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return .ok(canvas.isActive ? "Canvas still closing" : "Canvas closed")
-    }
-
-    private func handleCanvasDrag(_ params: ControlRequest.CanvasDragParams) async throws -> ControlResponse {
-        let canvas = try canvasManager()
-        guard canvas.isActive else {
-            throw ControlError.invalidParams("The canvas is not open; run `refrax-ctl canvas show` first")
-        }
-        let tab = try resolveTabRef(params.tab)
-        guard canvas.tileFrames[tab.id] != nil else {
-            throw ControlError.invalidParams("Tab \(tab.id) has no tile on this canvas")
-        }
-        let settled = await canvas.performDrag(
-            tab.id,
-            to: CGPoint(x: params.x, y: params.y),
-            duration: params.duration ?? Self.canvasDragDuration,
-            fling: params.fling ?? false,
-        )
-        guard settled else {
-            throw ControlError.timeout("The desk was still moving 10 s after the drag")
-        }
-        return try canvasStateResponse()
-    }
-
-    private static let canvasDragDuration: TimeInterval = 0.6
-
-    private func handleCanvasLab(_ params: ControlRequest.CanvasLabParams) async throws -> ControlResponse {
-        #if DEBUG
-            guard let controller = windowManager.activeWindowController,
-                  let scenario = CanvasScenario(rawValue: params.scenario.lowercased())
-            else {
-                let names = CanvasScenario.allCases.map(\.rawValue).joined(separator: ", ")
-                throw ControlError.invalidParams("Unknown scenario '\(params.scenario)'. Scenarios: \(names)")
-            }
-            let appDelegate = NSApplication.shared.typedDelegate
-            CanvasScenario.load(
-                scenario,
-                tabManager: appDelegate.tabManager,
-                spaceManager: appDelegate.spaceManager,
-                groupManager: appDelegate.groupManager,
-                windowState: controller.windowState,
-                canvas: controller.tabCanvasManager,
-            )
-            // The scenario opens the canvas once its pages have had a moment to render.
-            let deadline = ContinuousClock.now + .seconds(5)
-            while !controller.tabCanvasManager.isActive, ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-            _ = await controller.tabCanvasManager.waitUntilSettled()
-            return try canvasStateResponse()
-        #else
-            throw ControlError.invalidParams("Canvas lab scenarios exist only in debug builds")
-        #endif
-    }
-
-    private func canvasStateResponse() throws -> ControlResponse {
-        let canvas = try canvasManager()
-        let tiles = canvas.tabs.compactMap { tab -> CTL.CanvasTileInfo? in
-            guard let frame = canvas.tileFrames[tab.id] else { return nil }
-            return CTL.CanvasTileInfo(
-                tabID: tab.id.uuidString,
-                title: tab.displayTitle,
-                x: frame.minX,
-                y: frame.minY,
-                width: frame.width,
-                height: frame.height,
-                groupID: tab.group?.id.uuidString,
-                isSelected: canvas.selectedTabIDs.contains(tab.id),
-                isCompact: canvas.tablePlacement(for: tab).shape != .live,
-            )
-        }
-        let zones = canvas.zones.map { zone in
-            CTL.CanvasZoneInfo(
-                id: zone.id.uuidString,
-                name: zone.name,
-                x: zone.frame.minX,
-                y: zone.frame.minY,
-                width: zone.frame.width,
-                height: zone.frame.height,
-                memberCount: zone.memberTabIDs.count,
-            )
-        }
-        let magnets = canvas.magnets.map { magnet in
-            CTL.CanvasMagnetInfo(
-                id: magnet.id.uuidString,
-                name: magnet.name,
-                x: magnet.anchor.x,
-                y: magnet.anchor.y,
-                memberCount: magnet.memberTabIDs.count,
-            )
-        }
-        #if DEBUG
-            let scenarios = CanvasScenario.allCases.map(\.rawValue)
-        #else
-            let scenarios: [String] = []
-        #endif
-        return .canvas(CTL.CanvasInfo(
-            isActive: canvas.isActive,
-            navigationTabID: canvas.navigationTabID?.uuidString,
-            isSettling: canvas.isSettling,
-            deskWidth: canvas.deskSize.width,
-            deskHeight: canvas.deskSize.height,
-            tiles: tiles,
-            zones: zones,
-            magnets: magnets,
-            overlappingPairs: canvas.overlappingPairCount,
-            scenarios: scenarios,
-            floating: floatingState(canvas),
-        ))
-    }
-
-    private func floatingState(_ canvas: TabCanvasManager) -> CTL.FloatingTabsInfo {
         let bounds = windowManager.activeWindowController?.window?.contentView?.bounds ?? .zero
         let visible = Set(canvas.visibleFloatingTabs.map(\.id))
-        return .init(isRevealed: canvas.floatingVisibility.isRevealed, tiles: canvas.floatingTabs.map { tab in
+        return .canvas(.init(isRevealed: canvas.floatingVisibility.isRevealed, tiles: canvas.floatingTabs.map { tab in
             let placement = canvas.floatingPlacement(for: tab)
             let frame = placement.frame(in: bounds)
             return .init(
@@ -2636,7 +2502,7 @@ final class RefraxControlServer {
                 isPinned: placement.isPinned,
                 isVisible: visible.contains(tab.id),
             )
-        })
+        }))
     }
 
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {

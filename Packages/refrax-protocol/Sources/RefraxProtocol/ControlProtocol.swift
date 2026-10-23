@@ -7,7 +7,7 @@ public enum ControlProtocolVersion: Int, Codable, Sendable {
     case v1 = 1
     /// Spaces by name, space data modes, space-scoped fetch, and the cookie store.
     case v2 = 2
-    /// The tab canvas: show, hide, state, scripted drags, and lab scenarios.
+    /// The floating tabs: reveal, placement, shape, docking, and their state.
     case v3 = 3
 
     public static let current: Self = .v3
@@ -102,13 +102,9 @@ public enum ControlRequest: Sendable {
     case pageVideoViewer(PageVideoViewerParams)
     case pagePiP(PagePiPParams)
 
-    // Tab Canvas
+    // Floating tabs
     case floatingTabs(FloatingTabsParams)
-    case canvasShow
-    case canvasHide
     case canvasState
-    case canvasDrag(CanvasDragParams)
-    case canvasLab(CanvasLabParams)
 
     // Tier 1E: Visual Agent Features
     case visualHighlight(VisualHighlightParams)
@@ -718,35 +714,6 @@ public extension ControlRequest {
             self.width = width
             self.height = height
             self.shape = shape
-        }
-    }
-
-    struct CanvasDragParams: Codable, Sendable {
-        /// Tab ref (ID, index, title, URL, active/first/last/next/prev).
-        public var tab: String
-        /// Where the tile's top-left corner ends up, in desk points.
-        public var x: Double
-        public var y: Double
-        /// Seconds the drag takes; the path eases in and out.
-        public var duration: Double?
-        /// Let go while still moving, so the tile keeps its speed and slides on.
-        public var fling: Bool?
-
-        public init(tab: String, x: Double, y: Double, duration: Double? = nil, fling: Bool? = nil) {
-            self.tab = tab
-            self.x = x
-            self.y = y
-            self.duration = duration
-            self.fling = fling
-        }
-    }
-
-    struct CanvasLabParams: Codable, Sendable {
-        /// Scenario name, such as `grid`, `overlap`, `zone`, `topics`, or `crowd`.
-        public var scenario: String
-
-        public init(scenario: String) {
-            self.scenario = scenario
         }
     }
 
@@ -1525,13 +1492,9 @@ extension ControlRequest: Codable {
         case pageVideoViewer
         case pagePiP
 
-        // Tab Canvas
+        // Floating tabs
         case floatingTabs
-        case canvasShow
-        case canvasHide
         case canvasState
-        case canvasDrag
-        case canvasLab
 
         // Tier 1E
         case visualHighlight
@@ -1711,13 +1674,9 @@ extension ControlRequest: Codable {
         case .pageSource: self = try .pageSource(OptionalTabIDParams(from: decoder))
         case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
         case .pagePiP: self = try .pagePiP(PagePiPParams(from: decoder))
-        // Tab Canvas
+        // Floating tabs
         case .floatingTabs: self = try .floatingTabs(FloatingTabsParams(from: decoder))
-        case .canvasShow: self = .canvasShow
-        case .canvasHide: self = .canvasHide
         case .canvasState: self = .canvasState
-        case .canvasDrag: self = try .canvasDrag(CanvasDragParams(from: decoder))
-        case .canvasLab: self = try .canvasLab(CanvasLabParams(from: decoder))
         // Tier 1E
         case .visualHighlight: self = try .visualHighlight(VisualHighlightParams(from: decoder))
         case .visualCursor: self = try .visualCursor(VisualCursorParams(from: decoder))
@@ -1988,22 +1947,12 @@ extension ControlRequest: Codable {
         case let .pagePiP(params):
             try container.encode("pagePiP", forKey: .type)
             try params.encode(to: encoder)
-        // Tab Canvas
+        // Floating tabs
         case let .floatingTabs(params):
             try container.encode("floatingTabs", forKey: .type)
             try params.encode(to: encoder)
-        case .canvasShow:
-            try container.encode("canvasShow", forKey: .type)
-        case .canvasHide:
-            try container.encode("canvasHide", forKey: .type)
         case .canvasState:
             try container.encode("canvasState", forKey: .type)
-        case let .canvasDrag(params):
-            try container.encode("canvasDrag", forKey: .type)
-            try params.encode(to: encoder)
-        case let .canvasLab(params):
-            try container.encode("canvasLab", forKey: .type)
-            try params.encode(to: encoder)
         // Tier 1E
         case let .visualHighlight(params):
             try container.encode("visualHighlight", forKey: .type)
@@ -2218,7 +2167,7 @@ public enum ControlResponse: Sendable {
     case execResult(CTL.ExecResultInfo)
     case ping(CTL.PingInfo)
     case humanRequested(CTL.HumanRequestInfo)
-    case canvas(CTL.CanvasInfo)
+    case canvas(CTL.FloatingTabsInfo)
 }
 
 // MARK: - Response Data Types
@@ -2604,52 +2553,7 @@ public enum CTL {
         }
     }
 
-    /// The tab canvas of a window: its desk, tiles, zones, and magnets.
-    public struct CanvasInfo: Codable, Sendable {
-        public let isActive: Bool
-        /// The tile outlined as the keyboard or peek destination.
-        public let navigationTabID: String?
-        /// Tiles are still moving; positions are where they were last at rest.
-        public let isSettling: Bool
-        public let deskWidth: Double
-        public let deskHeight: Double
-        public let tiles: [CanvasTileInfo]
-        public let floating: FloatingTabsInfo?
-        public let zones: [CanvasZoneInfo]
-        public let magnets: [CanvasMagnetInfo]
-        /// Pairs of tiles whose collision boxes (tile, title strip, and gap) overlap.
-        /// Zero once the desk has settled.
-        public let overlappingPairs: Int
-        /// Lab scenarios this build can load; empty in release builds.
-        public let scenarios: [String]
-
-        public init(
-            isActive: Bool,
-            navigationTabID: String?,
-            isSettling: Bool,
-            deskWidth: Double,
-            deskHeight: Double,
-            tiles: [CanvasTileInfo],
-            zones: [CanvasZoneInfo],
-            magnets: [CanvasMagnetInfo],
-            overlappingPairs: Int,
-            scenarios: [String],
-            floating: FloatingTabsInfo? = nil,
-        ) {
-            self.isActive = isActive
-            self.navigationTabID = navigationTabID
-            self.isSettling = isSettling
-            self.deskWidth = deskWidth
-            self.deskHeight = deskHeight
-            self.tiles = tiles
-            self.zones = zones
-            self.magnets = magnets
-            self.overlappingPairs = overlappingPairs
-            self.scenarios = scenarios
-            self.floating = floating
-        }
-    }
-
+    /// The floating tabs of a window: whether the layer is revealed, and every tab's card.
     public struct FloatingTabsInfo: Codable, Sendable {
         public let isRevealed: Bool
         public let tiles: [FloatingTileInfo]
@@ -2689,66 +2593,6 @@ public enum CTL {
             self.shape = shape
             self.isPinned = isPinned
             self.isVisible = isVisible
-        }
-    }
-
-    public struct CanvasTileInfo: Codable, Sendable {
-        public let tabID: String
-        public let title: String
-        public let x: Double
-        public let y: Double
-        public let width: Double
-        public let height: Double
-        public let groupID: String?
-        public let isSelected: Bool
-        public let isCompact: Bool
-
-        public init(tabID: String, title: String, x: Double, y: Double, width: Double, height: Double, groupID: String?, isSelected: Bool, isCompact: Bool) {
-            self.tabID = tabID
-            self.title = title
-            self.x = x
-            self.y = y
-            self.width = width
-            self.height = height
-            self.groupID = groupID
-            self.isSelected = isSelected
-            self.isCompact = isCompact
-        }
-    }
-
-    public struct CanvasZoneInfo: Codable, Sendable {
-        public let id: String
-        public let name: String
-        public let x: Double
-        public let y: Double
-        public let width: Double
-        public let height: Double
-        public let memberCount: Int
-
-        public init(id: String, name: String, x: Double, y: Double, width: Double, height: Double, memberCount: Int) {
-            self.id = id
-            self.name = name
-            self.x = x
-            self.y = y
-            self.width = width
-            self.height = height
-            self.memberCount = memberCount
-        }
-    }
-
-    public struct CanvasMagnetInfo: Codable, Sendable {
-        public let id: String
-        public let name: String
-        public let x: Double
-        public let y: Double
-        public let memberCount: Int
-
-        public init(id: String, name: String, x: Double, y: Double, memberCount: Int) {
-            self.id = id
-            self.name = name
-            self.x = x
-            self.y = y
-            self.memberCount = memberCount
         }
     }
 
@@ -2941,7 +2785,7 @@ extension ControlResponse: Codable {
         case .humanRequested:
             self = try .humanRequested(c.decode(CTL.HumanRequestInfo.self, forKey: .data))
         case .canvas:
-            self = try .canvas(c.decode(CTL.CanvasInfo.self, forKey: .data))
+            self = try .canvas(c.decode(CTL.FloatingTabsInfo.self, forKey: .data))
         }
     }
 

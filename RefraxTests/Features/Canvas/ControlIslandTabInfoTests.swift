@@ -131,7 +131,7 @@ struct ControlIslandTabInfoTests {
         #expect(favorite.activePage.url.absoluteString == "about:blank#current-tab")
         #expect(favorite.floatingPlacement == originalPlacement)
         #expect(otherWindow.activeTabID == otherTab.id)
-        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: cardWindow, pagePool: env.pagePool, groupManager: env.groupManager)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: cardWindow, pagePool: env.pagePool)
         #expect(canvas.floatingTabs.contains(where: { $0.id == favorite.id }))
 
         ControlIslandTabActions(tab: favorite, windowState: cardWindow, tabs: env.tabManager, bookmarks: env.bookmarksManager).toggleFavorite()
@@ -164,7 +164,7 @@ struct ControlIslandTabInfoTests {
     func `floating reveal and deactivation share the card lifetime`() throws {
         let env = try TabManagerTestEnvironment()
         let window = env.makeActiveWindowState(with: env.makeSpace())
-        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool, groupManager: env.groupManager)
+        let canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
         canvas.revealFloatingTabs()
         #expect(window.controlIsland.tabInfo.isHeld)
         canvas.releaseFloatingTabs()

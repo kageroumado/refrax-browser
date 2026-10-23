@@ -192,7 +192,7 @@ final class IslandController {
 
     /// The tabs taken out of their islands, floating as live cards.
     var detachedTabs: [Tab] {
-        guard !windowState.isSpaceLocked, !windowState.showsCommandLens, !canvas.isActive else { return [] }
+        guard !windowState.isSpaceLocked, !windowState.showsCommandLens else { return [] }
         return state.detached.compactMap(tab(for:)).filter { canvas.storedFloatingPlacement(for: $0)?.isDocked != true }
     }
 
@@ -207,7 +207,7 @@ final class IslandController {
 
     /// The islands on screen now.
     var visibleIslands: [Island] {
-        guard !windowState.isSpaceLocked, !windowState.showsCommandLens, !canvas.isActive else { return [] }
+        guard !windowState.isSpaceLocked, !windowState.showsCommandLens else { return [] }
         return islands.filter { isRevealed || $0.placement.isPinned || $0.id == emergingIslandID }
     }
 
@@ -236,8 +236,12 @@ final class IslandController {
     func sideZone(at point: CGPoint, dragging tabID: UUID) -> PanePosition? {
         guard let current = currentTab, canJoin(tabID, with: current.id) else { return nil }
         let width = bounds.width * Layout.sideZoneShare
-        if point.x < bounds.minX + width { return .topLeft }
-        if point.x > bounds.maxX - width { return .topRight }
+        if point.x < bounds.minX + width {
+            return .topLeft
+        }
+        if point.x > bounds.maxX - width {
+            return .topRight
+        }
         return nil
     }
 
@@ -401,7 +405,7 @@ final class IslandController {
     /// island, a fade otherwise.
     func open(_ tab: Tab) {
         guard let current = currentTab else {
-            tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
+            tabManager.setActiveTab(tab, in: windowState)
             return
         }
         guard current.id != tab.id else { return }
@@ -436,7 +440,7 @@ final class IslandController {
     private func start(_ move: PageTravel, to tab: Tab) {
         travel = move
         activatedHere = tab.id
-        tabManager.setActiveTab(tab, in: windowState, displacingPrevious: false)
+        tabManager.setActiveTab(tab, in: windowState)
         if let island = island(holding: tab.id) {
             lastTab[island.id] = tab.id
         }
@@ -644,11 +648,10 @@ final class IslandController {
     func refreshSnapshot(of tab: Tab) async -> NSImage? {
         let pages = tab.pages.compactMap { pagePool.existingPage(for: $0) }.filter { $0.contentView.bounds.width > 0 }
         guard !pages.isEmpty else { return nil }
-        let image: NSImage?
-        if pages.count == 1 {
-            image = try? await pages[0].snapshot()
+        let image: NSImage? = if pages.count == 1 {
+            try? await pages[0].snapshot()
         } else {
-            image = await Self.composite(pages)
+            await Self.composite(pages)
         }
         guard let image, !Task.isCancelled, tab.id == windowState.activeTabID else { return nil }
         store(image, for: tab.id)
