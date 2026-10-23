@@ -4,7 +4,6 @@ import Foundation
 nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable {
     case windowControls
     case navigation
-    case commandLens
     case floatingTabs
     case spaces
     case favoriteTabs
@@ -35,7 +34,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
-        .windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs,
+        .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs,
         .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates,
     ]
 
@@ -45,7 +44,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .navigation: "Back and Forward"
         case .page: "Current page"
         case .copyLink: "Copy Link"
-        case .commandLens: "Command Lens"
         case .floatingTabs: "Floating tabs"
         case .spaces: "Spaces"
         case .favoriteTabs: "Favorite tabs"
@@ -65,7 +63,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .navigation: "chevron.left.forwardslash.chevron.right"
         case .page: "globe"
         case .copyLink: "link"
-        case .commandLens: "sparkle.magnifyingglass"
         case .floatingTabs: "square.on.square"
         case .spaces: "square.stack"
         case .favoriteTabs: "star.square.on.square"
@@ -85,7 +82,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .navigation: "One row; Forward appears when available · ⌥-click shows history"
         case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
         case .copyLink: "Copy the page address"
-        case .commandLens: "Search pages, tabs, and commands · ⌘T"
         case .floatingTabs: "Arrange tabs · hold ⌥ for Recent tabs"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"
@@ -105,7 +101,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     var section: Section {
         switch self {
-        case .windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs: .main
+        case .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs: .main
         case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates: .additional
         }
     }

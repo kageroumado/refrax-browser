@@ -29,10 +29,12 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
         controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
     }
 
     override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
         controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
     }
 

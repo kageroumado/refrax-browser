@@ -701,6 +701,9 @@ final class WindowState {
         }
         webViewsShouldIgnoreAllEvents = true
         commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor, source: source)
+        if anchor == nil, prefill == nil, newTabIsland == nil, let tab = activeTab, let island = islandController?.island(holding: tab.id) {
+            showToast("A page opens in \(island.title), beside this tab.", duration: .seconds(2))
+        }
     }
 
     /// ⌘L: the lens beside the page card with the page's address in it, selected.

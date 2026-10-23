@@ -2606,7 +2606,7 @@ final class RefraxControlServer {
             let target = try island(params.island)
             guard let x = params.x, let y = params.y else { throw ControlError.invalidParams("--to X,Y is required") }
             islands.moveIsland(target.id, to: CGPoint(x: x, y: y))
-            islands.endIslandMove()
+            islands.endIslandMove(keeping: target.id)
         }
         islands.refresh()
         return islandsStateResponse(islands, canvas: canvas, bounds: bounds)

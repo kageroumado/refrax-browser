@@ -5,7 +5,6 @@ import CoreGraphics
 nonisolated struct TourBeam: Equatable, Sendable {
     /// Which control and which opened thing the beam joins.
     enum Kind: Hashable, Sendable {
-        case lensButtonToLens
         case pageIconToCard
     }
 

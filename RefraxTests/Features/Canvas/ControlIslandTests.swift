@@ -172,14 +172,14 @@ struct ControlIslandTests {
     @Test @MainActor
     func `the default rail keeps Now Playing and the update badge`() {
         let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
-        #expect(visible == [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs, .nowPlaying, .updates])
+        #expect(visible == [.windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs, .nowPlaying, .updates])
         #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0.isConditional })
         #expect(ControlIslandItem.allCases.filter(\.isConditional) == [.nowPlaying, .updates])
     }
 
     @Test @MainActor
     func `Now Playing costs no height while nothing plays and one row with its divider while something does`() {
-        let main: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces]
+        let main: [ControlIslandItem] = [.windowControls, .navigation, .page, .floatingTabs, .spaces]
         let silent = ControlIslandPlacement.railHeight(items: main, spaceCount: 2, favoriteCount: 0)
         let playing = ControlIslandPlacement.railHeight(items: main + [.nowPlaying], spaceCount: 2, favoriteCount: 0)
         let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
@@ -193,10 +193,10 @@ struct ControlIslandTests {
 
     @Test
     func `the space picker and favorites share a plain gap and the grip closes the rail`() {
-        let layout = ControlIslandRailLayout(visibleItems: [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces, .favoriteTabs])
+        let layout = ControlIslandRailLayout(visibleItems: [.windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs])
         #expect(layout.elements == [
             .row(.windowControls), .line(before: .navigation),
-            .row(.navigation), .row(.page), .row(.commandLens), .row(.floatingTabs),
+            .row(.navigation), .row(.page), .row(.floatingTabs),
             .line(before: .spaces), .row(.spaces), .gap(before: .favoriteTabs), .row(.favoriteTabs), .grip,
         ])
     }
@@ -214,8 +214,8 @@ struct ControlIslandTests {
 
     @Test
     func `the grip closes the rail whatever the rows and a section break is one line`() {
-        #expect(ControlIslandRailLayout(visibleItems: [.navigation, .commandLens, .history]).elements
-            == [.row(.navigation), .row(.commandLens), .line(before: .history), .row(.history), .grip])
+        #expect(ControlIslandRailLayout(visibleItems: [.navigation, .page, .history]).elements
+            == [.row(.navigation), .row(.page), .line(before: .history), .row(.history), .grip])
         #expect(ControlIslandRailLayout(visibleItems: [.navigation, .favoriteTabs, .history]).elements
             == [.row(.navigation), .line(before: .favoriteTabs), .row(.favoriteTabs), .line(before: .history), .row(.history), .grip])
         #expect(ControlIslandRailLayout(visibleItems: [.history, .settings]).elements == [.row(.history), .row(.settings), .grip])
@@ -225,9 +225,9 @@ struct ControlIslandTests {
 
     @Test @MainActor
     func `the rail's height counts every row and every gap, and is the same at rest and awake`() {
-        let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .commandLens, .floatingTabs, .spaces]
+        let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .floatingTabs, .spaces]
         let height = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0)
-        let rows = ControlIslandPlacement.rowHeight * 7
+        let rows = ControlIslandPlacement.rowHeight * 6
         let gaps = ControlIslandPlacement.sectionGap * 2
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
         let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height

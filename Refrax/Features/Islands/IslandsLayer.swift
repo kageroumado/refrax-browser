@@ -82,9 +82,9 @@ struct IslandsLayer: View {
     }
 }
 
-/// One island: a column of the group's tabs as rows under the Command Lens row. Any of its
-/// empty glass moves it; its rows move themselves. Its name and controls float beside it
-/// while the pointer is on it (``IslandControls``).
+/// One island: a column of the group's tabs as rows. Any of its empty glass moves it; its
+/// rows move themselves. Its name and controls float beside it while the pointer is on it
+/// (``IslandControls``).
 struct IslandView: View {
     let island: Island
     let area: CGRect
@@ -157,7 +157,6 @@ struct IslandView: View {
         if geometry.contentHeight(rows: island.tabIDs.count) > islands.frame(of: island).height + 0.5 {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    newTabRow
                     list
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
@@ -167,36 +166,10 @@ struct IslandView: View {
             }
         } else {
             VStack(spacing: 0) {
-                newTabRow
                 list
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-    }
-
-    /// The first row, which opens the Command Lens; a page it opens goes to this island.
-    private var newTabRow: some View {
-        Button {
-            islands.addTab(to: island.id)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkle.magnifyingglass")
-                    .font(.system(size: 11, weight: .medium))
-                    .frame(width: 16, height: 16)
-                if !island.placement.iconsOnly {
-                    Text("Command Lens")
-                        .font(.callout)
-                }
-            }
-            .foregroundStyle(.primary.opacity(0.7))
-            .padding(.horizontal, island.placement.iconsOnly ? 0 : 8)
-            .frame(maxWidth: .infinity, alignment: island.placement.iconsOnly ? .center : .leading)
-            .frame(height: IslandGeometry.rowHeight)
-            .contentShape(RoundedRectangle(cornerRadius: IslandGeometry.rowCornerRadius, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.default)
-        .help("Command Lens · a page it opens goes to \(island.title)")
     }
 
     /// The drag that moves the island, from its origin when the drag began.
@@ -214,7 +187,7 @@ struct IslandView: View {
             .onEnded { _ in
                 dragStart = nil
                 islands.draggedIslandID = nil
-                islands.endIslandMove()
+                islands.endIslandMove(keeping: island.id)
             }
     }
 
@@ -236,10 +209,14 @@ private struct IslandControls: View {
 
     private enum Layout {
         static let horizontalPadding: CGFloat = 10
-        static let dotSize: CGFloat = 8
+        /// The name reads above the rows' titles: larger than a tab's title, and semibold.
+        static let titleSize: CGFloat = 14
         static let controlSize: CGFloat = 22
         static let controlSpacing: CGFloat = 2
     }
+
+    /// Where the menu button is, in the layer, so its menu hangs from it.
+    @State private var menuButtonFrame: CGRect = .zero
 
     private var color: Color {
         islands.color(of: island)
@@ -247,11 +224,10 @@ private struct IslandControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Circle().fill(color).frame(width: Layout.dotSize, height: Layout.dotSize)
             if isRenaming {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: Layout.titleSize, weight: .semibold))
                     .focused($nameIsFocused)
                     .onSubmit { commitRename() }
                     .onExitCommand { endRename() }
@@ -260,19 +236,22 @@ private struct IslandControls: View {
                     }
             } else {
                 Text(island.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary.opacity(0.85))
+                    .font(.system(size: Layout.titleSize, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .onTapGesture(count: 2) { beginRename() }
             }
             Spacer(minLength: 8)
             pinButton
             menuButton
+            newTabButton
         }
         .padding(.leading, Layout.horizontalPadding)
         .padding(.trailing, (Layout.horizontalPadding - Layout.controlSpacing) / 2)
         .frame(width: frame.width, height: frame.height)
+        .background(windowState.controlIslandTint, in: .capsule)
         .glassEffect(.regular, in: .capsule)
+        .coordinateSpace(name: "islandControls")
         .onHover { islands.setHovered(island.id, $0) }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
@@ -307,8 +286,26 @@ private struct IslandControls: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("islandControls")) } action: { menuButtonFrame = $0 }
         .help("Island options")
         .accessibilityLabel("Island options")
+    }
+
+    /// The most frequent action, at the end: a page opened from here is a new tab in this island.
+    private var newTabButton: some View {
+        Button {
+            islands.addTab(to: island.id)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.primary)
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.default)
+        .help("New tab in \(island.title) · opens the Command Lens")
+        .accessibilityLabel("New tab in \(island.title)")
     }
 
     /// The island's menu, an AppKit menu under the controls: the controls stay while it tracks.
@@ -343,8 +340,10 @@ private struct IslandControls: View {
         if !island.isDefault {
             add("Dissolve Island", to: menu) { islands.dissolve(id) }
         }
-        // The layer is top-down; the content view is not.
-        let point = NSPoint(x: frame.minX, y: content.bounds.height - frame.maxY)
+        // The menu hangs from the button, its trailing edges aligned. The layer is top-down;
+        // the content view is not.
+        let button = menuButtonFrame.offsetBy(dx: frame.minX, dy: frame.minY)
+        let point = NSPoint(x: button.maxX - menu.size.width, y: content.bounds.height - button.maxY - 2)
         islands.holdControls(id, true)
         menu.popUp(positioning: nil, at: point, in: content)
         islands.holdControls(id, false)
@@ -392,6 +391,7 @@ private struct IslandTabRow: View, Equatable {
     @Environment(WindowState.self) private var windowState
     @Environment(TabManager.self) private var tabManager
     @Environment(TabCanvasManager.self) private var canvas
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(BookmarksManager.self) private var bookmarks
     @Environment(SharingCoordinator.self) private var sharing
     @State private var dragOffset: CGSize = .zero
@@ -444,8 +444,8 @@ private struct IslandTabRow: View, Equatable {
     private var rowFill: Color {
         if isJoinTarget { return Color.appAccentColor.opacity(0.2) }
         if isSelected { return Color.appAccentColor.opacity(0.16) }
-        // The current row is a shade of the ink, which reads on any tint the window has.
-        if isCurrent { return Color.primary.opacity(0.14) }
+        // The current row is white, a lit surface on the glass, in any tint the window has.
+        if isCurrent { return Color.white.opacity(colorScheme == .dark ? 0.16 : 0.7) }
         return Color.primary.opacity(isHovering ? 0.08 : 0)
     }
 
@@ -454,7 +454,7 @@ private struct IslandTabRow: View, Equatable {
         HStack(spacing: 8) {
             pages
             if !iconsOnly {
-                FloatingTabTitle(tab: tab)
+                FloatingTabTitle(tab: tab, weight: isCurrent ? .semibold : .regular)
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
                 if tab.pages.count > 1 {
                     Image(systemName: "rectangle.split.2x1")

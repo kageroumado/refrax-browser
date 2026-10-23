@@ -272,7 +272,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
                 tabCanvasManager.dismissFloatingTabs()
             }
         }
-        floatingView.onSecondaryPointerDown = { _, _ in false }
+        floatingView.onSecondaryPointerDown = { [weak islandController] point, _ in
+            islandController?.clickDirectionLabel(at: point) ?? false
+        }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
             guard let floatingView, let tabCanvasManager, let islandController else { return [] }
             return islandController.hitRegions(in: floatingView.bounds) + tabCanvasManager.dockHitRegions(in: floatingView.bounds)

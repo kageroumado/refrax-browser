@@ -4,6 +4,8 @@ import SwiftUI
 /// keeps the name, Escape leaves it, and an empty name goes back to the page's title.
 struct FloatingTabTitle: View {
     let tab: Tab
+    /// The title's weight; an island's current row is the bold one.
+    var weight: Font.Weight = .medium
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabs
     @State private var draft = ""
@@ -21,7 +23,7 @@ struct FloatingTabTitle: View {
         if isRenaming {
             TextField("Tab Name", text: $draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: Layout.fontSize, weight: .medium))
+                .font(.system(size: Layout.fontSize, weight: weight))
                 .focused($isFocused)
                 .onAppear {
                     draft = tab.displayTitle
@@ -37,7 +39,7 @@ struct FloatingTabTitle: View {
                 .accessibilityLabel("Name of \(tab.displayTitle)")
         } else {
             Text(tab.displayTitle)
-                .font(.system(size: Layout.fontSize, weight: .medium))
+                .font(.system(size: Layout.fontSize, weight: weight))
                 .lineLimit(1)
                 .onTapGesture(count: 2) { canvas.renamingTabID = tab.id }
                 .accessibilityAction(named: "Rename") { canvas.renamingTabID = tab.id }

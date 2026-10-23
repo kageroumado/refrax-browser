@@ -360,8 +360,7 @@ final class FloatingTourManager {
     /// The rail row the current step points at, when the step has one.
     private var railItem: ControlIslandItem? {
         switch currentStep {
-        case .openPage: windowState.activeTab == nil ? nil : .commandLens
-        case .openSecondPage: .commandLens
+        case .openPage, .openSecondPage: nil
         case .revealPages, .visitNeighbor: .floatingTabs
         case .floatPage, .pinIsland: islandsShown ? nil : .floatingTabs
         case .pageCard: .page
@@ -407,9 +406,9 @@ final class FloatingTourManager {
             if windowState.activeTab == nil {
                 return startPageLensFrame.isEmpty ? [] : [FloatingTourLayout.spotlight(around: startPageLensFrame, of: .lens)]
             }
-            return row(.commandLens)
+            return []
         case .openSecondPage:
-            return row(.commandLens)
+            return []
         case .revealPages, .visitNeighbor:
             return row(.floatingTabs)
         case .floatPage, .pinIsland:
@@ -455,9 +454,6 @@ final class FloatingTourManager {
         guard isActive else { return [] }
         let island = windowState.controlIsland
         var beams: [TourBeam] = []
-        if let lens = openLensFrame, let button = island.itemFrames[.commandLens], !button.isEmpty {
-            beams.append(TourBeam(kind: .lensButtonToLens, from: button, to: lens, revision: beamRevision))
-        }
         if currentStep == .pageCard, let row = island.itemFrames[.page], !row.isEmpty, let card = pageCardSpotlight {
             beams.append(TourBeam(kind: .pageIconToCard, from: row, to: card.rect.insetBy(dx: FloatingTourLayout.spotlightPadding, dy: FloatingTourLayout.spotlightPadding), revision: beamRevision))
         }
@@ -576,7 +572,7 @@ extension FloatingTourManager.Step {
                 : "Click the tabs button on the panel, then drag a row out of its island onto the page."
         case .pinIsland:
             return context.islandsVisible
-                ? "Click an island's pin, at the end of its band. The island stays after you release \(context.revealKey.glyph)."
+                ? "Hover an island and click the pin in the capsule beside it. The island stays after you release \(context.revealKey.glyph)."
                 : "Click the tabs button on the panel, then pin an island so it stays."
         case .pageCard:
             return "Hover the page's icon on the panel for its card: title, address, reload, favorite, and actions."

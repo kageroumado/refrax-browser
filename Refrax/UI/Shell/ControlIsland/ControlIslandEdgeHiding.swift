@@ -21,6 +21,9 @@ nonisolated extension ControlIslandPlacement {
     static let revealStripWidth: CGFloat = 6
     /// How far past the rail's ends the strip reaches.
     static let revealStripOverhang: CGFloat = 40
+    /// The flap that marks where a hidden rail is: a sliver of glass on the edge, at the rail's height.
+    static let flapWidth: CGFloat = 6
+    static let flapHeight: CGFloat = 64
     /// How far past the window edge a hidden rail sits, so its glass shadow leaves with it.
     static let hiddenShadowClearance: CGFloat = 32
 

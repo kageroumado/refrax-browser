@@ -245,6 +245,24 @@ struct ControlIsland: View {
                     .help("Hold \(revealKey.title) for a glance at your islands; click to keep them up")
                     .accessibilityLabel("Preview adjacent pages: hold \(revealKey.title)")
                 }
+                if state.showsEdgeFlap, let edge = state.hiddenEdge {
+                    let flap = CGRect(
+                        x: edge == .left ? area.minX : area.maxX - Layout.flapWidth,
+                        y: min(max(area.minY, frame.midY - Layout.flapHeight / 2), area.maxY - Layout.flapHeight),
+                        width: Layout.flapWidth, height: Layout.flapHeight,
+                    )
+                    let shape = UnevenRoundedRectangle(
+                        topLeadingRadius: edge == .left ? 0 : Layout.flapWidth, bottomLeadingRadius: edge == .left ? 0 : Layout.flapWidth,
+                        bottomTrailingRadius: edge == .left ? Layout.flapWidth : 0, topTrailingRadius: edge == .left ? Layout.flapWidth : 0,
+                    )
+                    shape.fill(spaceTint)
+                        .glassEffect(.regular, in: shape)
+                        .frame(width: flap.width, height: flap.height)
+                        .offset(x: flap.minX, y: flap.minY)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
                 if state.isDragging {
                     let snap = state.placement.snapped(in: area, height: height)
                     if snap != state.placement {
@@ -269,6 +287,7 @@ struct ControlIsland: View {
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
         .onChange(of: isHiddenAtEdge ? .zero : frame, initial: true) { _, frame in state.railFrame = frame }
         .onChange(of: revealStrip, initial: true) { _, strip in state.revealStrip = strip }
+        .onChange(of: area, initial: true) { _, area in state.areaBounds = area }
         .onChange(of: railIsNeeded, initial: true) { _, needed in state.setNeededOnScreen(needed) }
         .onChange(of: windowState.showsCommandLens) { _, shown in
             if shown {
@@ -466,15 +485,6 @@ struct ControlIsland: View {
                 guard let tab = windowState.activeTab else { return }
                 ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).copyLink()
                 windowState.showToast("Address copied")
-            }
-        case .commandLens:
-            control(item.title, symbol: item.symbol, help: "Command Lens · ⌘T") {
-                tabSwitcher.cancel()
-                if windowState.showsCommandLens {
-                    windowState.closeCommandLens()
-                } else {
-                    windowState.openCommandLens(source: state.itemFrames[.commandLens])
-                }
             }
         case .floatingTabs:
             let showsRecent = optionIsDown

@@ -67,10 +67,9 @@ struct FloatingStartPage: View {
     var body: some View {
         let island = windowState.controlIsland
         let bounds = windowBounds
-        let railLensFrame = island.itemFrames[.commandLens] ?? .zero
         let places = outlines(in: bounds, railFrame: island.railFrame)
         let layout = PrismLayout(
-            railLensFrame: railLensFrame,
+            railLensFrame: .zero,
             railFrame: island.railFrame,
             lensFrame: lensCapsule,
             pageFrames: places.map(\.frame),
@@ -88,7 +87,7 @@ struct FloatingStartPage: View {
             }
             column
             if showHints {
-                railNote(beside: railLensFrame.isEmpty ? island.railFrame : railLensFrame, in: bounds)
+                railNote(beside: island.railFrame, in: bounds)
                 if let last = places.last, last.isPlaceholder {
                     placesNote(below: last)
                 }

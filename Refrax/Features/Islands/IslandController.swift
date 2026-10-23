@@ -28,8 +28,6 @@ nonisolated enum TravelStyle: Sendable {
     case slide(TableDirection)
     /// Another island: the page shrinks toward its island and the next grows out of the other.
     case cross(TableDirection)
-    /// A chip chosen directly: a short fade.
-    case jump
 }
 
 /// One page replacing another, for ``PageTravelView`` to animate.
@@ -67,6 +65,8 @@ final class IslandController {
         static let captureCoalescing: TimeInterval = 2
         /// How long after a push against an edge a second push crosses it.
         static let crossingWindow: TimeInterval = 1.5
+        /// The least space between two islands once one is let go over another.
+        static let islandGap: CGFloat = 8
         /// The island's controls, outside it: a capsule this tall, at least this wide, this far off.
         static let controlsHeight: CGFloat = 28
         static let controlsMinWidth: CGFloat = 180
@@ -119,6 +119,8 @@ final class IslandController {
     }
     /// The island being moved, drawn over the others.
     var draggedIslandID: UUID?
+    /// Where each direction label sits while the key is held, in the window's content.
+    @ObservationIgnored var directionLabelFrames: [TableDirection: CGRect] = [:]
     /// The island under the pointer, or the one the pointer just left; its controls show.
     private(set) var hoveredIslandID: UUID?
     /// The island whose controls are in use (a rename, its menu), so they stay while the pointer is away.
@@ -434,6 +436,7 @@ final class IslandController {
         }
         if built != islands {
             islands = built
+            resolveOverlaps()
         }
     }
 
@@ -578,21 +581,15 @@ final class IslandController {
 
     /// Opens `tab` from its chip: a slide when it is a neighbor, a crossing from another
     /// island, a fade otherwise.
+    /// A row chosen directly: the page switches at once. Only a step moves, because only a
+    /// step is a movement.
     func open(_ tab: Tab) {
-        guard let current = currentTab else {
-            tabManager.setActiveTab(tab, in: windowState)
-            return
-        }
-        guard current.id != tab.id else { return }
-        let here = island(holding: current.id)
-        let there = island(holding: tab.id)
-        if let here, let there, here.id != there.id {
-            let direction: TableDirection = frame(of: there).midX >= frame(of: here).midX ? .right : .left
-            travel(to: tab, style: .cross(direction))
-        } else if let here, let from = here.tabIDs.firstIndex(of: current.id), let to = here.tabIDs.firstIndex(of: tab.id) {
-            travel(to: tab, style: .slide(to > from ? .down : .up))
-        } else {
-            travel(to: tab, style: .jump)
+        guard currentTab?.id != tab.id else { return }
+        clearSelection()
+        activatedHere = tab.id
+        tabManager.setActiveTab(tab, in: windowState)
+        if let island = island(holding: tab.id) {
+            lastTab[island.id] = tab.id
         }
     }
 
@@ -748,9 +745,55 @@ final class IslandController {
         state.islands[islandID] = islands[index].placement
     }
 
-    /// The move is over: the island's place is kept.
-    func endIslandMove() {
+    /// The move is over: the island's place is kept, and the others keep clear of it.
+    func endIslandMove(keeping islandID: UUID? = nil) {
+        resolveOverlaps(keeping: islandID)
         persist()
+    }
+
+    /// A secondary click at `point`, which a click with the reveal key down is: on a direction
+    /// label it steps that way. Returns whether a label took it.
+    func clickDirectionLabel(at point: CGPoint) -> Bool {
+        guard canvas.isMomentaryNavigation, let direction = directionLabelFrames.first(where: { $0.value.contains(point) })?.key else { return false }
+        step(direction)
+        return true
+    }
+
+    /// Islands keep clear of one another: an island over another moves below it, or beside it
+    /// when there is no room below. The island being moved, or the current tab's, stays put.
+    func resolveOverlaps(keeping keptID: UUID? = nil) {
+        guard draggedIslandID == nil, !area.isEmpty else { return }
+        let kept = keptID ?? currentTab.flatMap { island(holding: $0.id)?.id }
+        let visible = visibleIslands.sorted { ($0.id == kept ? 0 : 1, $0.placement.y) < ($1.id == kept ? 0 : 1, $1.placement.y) }
+        var frames = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, frame(of: $0)) })
+        let gap = Layout.islandGap
+        for _ in 0 ..< 4 {
+            var moved = false
+            for (i, upper) in visible.enumerated() {
+                for lower in visible[(i + 1)...] {
+                    guard let a = frames[upper.id], var b = frames[lower.id], a.intersects(b) else { continue }
+                    if a.maxY + gap + b.height <= area.maxY {
+                        b.origin.y = a.maxY + gap
+                    } else if a.maxX + gap + b.width <= area.maxX {
+                        b.origin.x = a.maxX + gap
+                    } else if a.minX - gap - b.width >= area.minX {
+                        b.origin.x = a.minX - gap - b.width
+                    } else {
+                        continue
+                    }
+                    frames[lower.id] = b
+                    moved = true
+                }
+            }
+            if !moved { break }
+        }
+        for island in visible {
+            guard let frame = frames[island.id], frame != self.frame(of: island),
+                  let index = islands.firstIndex(where: { $0.id == island.id }) else { continue }
+            islands[index].placement.x = (frame.minX - area.minX) / max(1, area.width)
+            islands[index].placement.y = (frame.minY - area.minY) / max(1, area.height)
+            state.islands[island.id] = islands[index].placement
+        }
     }
 
     /// Renames a group's island; the space's own island carries the space's name.

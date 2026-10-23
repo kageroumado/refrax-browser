@@ -47,7 +47,6 @@ struct FloatingTourTests {
         static let rail = CGRect(x: 12, y: 200, width: 48, height: 400)
         static let rows: [ControlIslandItem: CGRect] = [
             .page: CGRect(x: 16, y: 304, width: 40, height: 32),
-            .commandLens: CGRect(x: 16, y: 336, width: 40, height: 32),
             .floatingTabs: CGRect(x: 16, y: 368, width: 40, height: 32),
         ]
 
@@ -183,10 +182,10 @@ struct FloatingTourTests {
         let first = try stage.openPage("first")
         tour.review()
         #expect(tour.currentStep == .openSecondPage)
-        #expect(tour.spotlights(in: bounds) == [row(.commandLens)])
-        #expect(tour.spotlights(in: bounds).map(\.cornerRadius) == [24])
-        #expect(tour.highlightedItem == .commandLens)
-        #expect(tour.passThroughRegions(in: bounds) == [row(.commandLens).rect])
+        // ⌘T opens the lens from anywhere; until it is up, nothing on the rail is lit.
+        #expect(tour.spotlights(in: bounds).isEmpty)
+        #expect(tour.highlightedItem == nil)
+        #expect(tour.passThroughRegions(in: bounds).isEmpty)
 
         let second = try stage.openPage("second")
         tour.review()
@@ -248,8 +247,7 @@ struct FloatingTourTests {
         let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
         stage.reportRail()
         try stage.advance(to: .openSecondPage)
-        let row = try FloatingTourLayout.spotlight(around: #require(Stage.rows[.commandLens]), of: .railRow)
-        #expect(tour.spotlights(in: bounds) == [row])
+        #expect(tour.spotlights(in: bounds).isEmpty)
         #expect(tour.beamRequests.isEmpty)
 
         let lensFrame = CGRect(x: 480, y: 180, width: 640, height: 300)
@@ -262,25 +260,21 @@ struct FloatingTourTests {
         #expect(lens.cornerRadius == 34)
         #expect(tour.instructionAnchor(in: bounds) == lens.rect)
         #expect(tour.passThroughRegions(in: bounds).isEmpty)
-        #expect(tour.highlightedItem == .commandLens)
+        #expect(tour.highlightedItem == nil)
         #expect(tour.dimsPage)
-        let beam = try #require(tour.beamRequests.first)
-        #expect(beam.kind == .lensButtonToLens)
-        #expect(beam.from == Stage.rows[.commandLens]!)
-        #expect(beam.to == lensFrame)
-        #expect(beam.revision == 1)
+        #expect(tour.beamRequests.isEmpty)
 
         stage.window.closeCommandLens()
         tour.review()
-        #expect(tour.spotlights(in: bounds) == [row])
+        #expect(tour.spotlights(in: bounds).isEmpty)
         #expect(tour.beamRequests.isEmpty)
-        #expect(tour.passThroughRegions(in: bounds) == [row.rect])
+        #expect(tour.passThroughRegions(in: bounds).isEmpty)
 
-        // Opening the lens again lights the beam again once the overlay reports its frame.
+        // Opening the lens again lights the lens again once the overlay reports its frame.
         stage.window.openCommandLens()
         stage.window.commandLensFrame = lensFrame
         tour.review()
-        #expect(tour.beamRequests.first?.revision == 2)
+        #expect(tour.beamRequests.isEmpty)
         #expect(tour.currentStep == .openSecondPage)
         tour.endTour()
     }

@@ -97,9 +97,8 @@ struct ControlIslandRailHelpLabel: View {
     let text: String
 
     private enum Layout {
-        static let horizontalPadding: CGFloat = 8
+        static let horizontalPadding: CGFloat = 10
         static let verticalPadding: CGFloat = 4
-        static let cornerRadius: CGFloat = 7
     }
 
     var body: some View {
@@ -110,9 +109,9 @@ struct ControlIslandRailHelpLabel: View {
             .fixedSize()
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
-            .background(.regularMaterial, in: .rect(cornerRadius: Layout.cornerRadius))
+            .background(.regularMaterial, in: .capsule)
             .overlay {
-                RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                Capsule()
                     .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
             }
             .allowsHitTesting(false)

@@ -47,7 +47,8 @@ struct PageTravelView: View {
         static let slideDuration: TimeInterval = 0.34
         static let labelFade: TimeInterval = 0.12
         static let crossDuration: TimeInterval = 0.4
-        static let jumpDuration: TimeInterval = 0.2
+        /// A move under Reduce Motion: a short fade.
+        static let reducedDuration: TimeInterval = 0.2
         /// The background showing between two sliding slabs.
         static let gap: CGFloat = 28
         /// How far the slab leans against an edge.
@@ -93,6 +94,7 @@ struct PageTravelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(name: "pageTravel")
         .clipped()
         .background {
             WindowVisibleRectReader { rect in
@@ -233,6 +235,12 @@ struct PageTravelView: View {
                     ) {
                         islands.step(direction)
                     }
+                    // The label's frame in the window's content: a click with the reveal key
+                    // down is a secondary click, which the layer's monitor sends here by frame.
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("pageTravel")) } action: { labelFrame in
+                        islands.directionLabelFrames[direction] = labelFrame.offsetBy(dx: -visible.minX, dy: -visible.minY)
+                    }
+                    .onDisappear { islands.directionLabelFrames[direction] = nil }
                     .position(Self.labelPosition(for: direction, on: slab))
                 }
             }
@@ -336,13 +344,12 @@ struct PageTravelView: View {
         let duration: TimeInterval = switch travel.style {
         case .slide: Layout.slideDuration
         case .cross: Layout.crossDuration
-        case .jump: Layout.jumpDuration
         }
         let motion: Animation = switch travel.style {
         case .slide: .smooth(duration: duration)
-        case .cross, .jump: .easeInOut(duration: duration)
+        case .cross: .easeInOut(duration: duration)
         }
-        withAnimation(reduceMotion ? .easeOut(duration: Layout.jumpDuration) : motion) {
+        withAnimation(reduceMotion ? .easeOut(duration: Layout.reducedDuration) : motion) {
             progress = 1
         } completion: {
             guard shown?.id == travel.id else { return }
@@ -445,8 +452,6 @@ private struct TravelMotion: ViewModifier {
         case .cross:
             let scale = incoming ? Layout.crossScale + (1 - Layout.crossScale) * progress : 1 - (1 - Layout.crossScale) * progress
             content.scaleEffect(scale).opacity(incoming ? progress : 1 - progress)
-        case .jump:
-            content.opacity(incoming ? progress : 1 - progress)
         }
     }
 
