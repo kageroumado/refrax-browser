@@ -218,10 +218,10 @@ struct IslandView: View {
 
     /// The island's color and name, and under the pointer its pin and actions.
     /// The band is the island's title bar, in the language of a card window's: the name in
-    /// a glass capsule at the center, the controls at the trailing edge once the pointer is
-    /// over the island or the island is pinned.
+    /// a glass capsule at the center, the controls at the trailing edge while the pointer is
+    /// over the island.
     private var band: some View {
-        let showsControls = isHovered || island.placement.isPinned
+        let showsControls = isHovered
         return Group {
             if island.placement.iconsOnly {
                 ZStack {

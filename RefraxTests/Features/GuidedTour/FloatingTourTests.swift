@@ -155,10 +155,10 @@ struct FloatingTourTests {
         #expect(spot.rect == target.insetBy(dx: -Self.padding, dy: -Self.padding))
         let expected: CGFloat = switch kind {
         case .railRow: 16
-        case .rail: 24
+        case .rail: 16
         case .pageCard: 22
         case .floatingCard: 12
-        case .island: 24
+        case .island: 16
         case .lens: 26
         }
         #expect(kind.cornerRadius == expected)
@@ -207,7 +207,7 @@ struct FloatingTourTests {
         let lit = tour.spotlights(in: bounds)
         #expect(lit.count == stage.table.visibleIslands.count)
         #expect(!lit.isEmpty)
-        #expect(lit.allSatisfy { $0.cornerRadius == 32 })
+        #expect(lit.allSatisfy { $0.cornerRadius == WindowCorner.radius + FloatingTourLayout.spotlightPadding })
         #expect(tour.highlightedItem == nil)
         tour.endTour()
     }

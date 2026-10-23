@@ -240,13 +240,13 @@ struct ControlIslandTests {
     func `the grip's bottom inset grows by the corner sag at its ends`() {
         let half = ControlIslandPlacement.gripSize.width / 2
         let railSag = ControlIslandPlacement.cornerSag(radius: ControlIslandPlacement.cornerRadius, offset: half)
-        #expect(abs(railSag - 1.37) < 0.05)
+        #expect(abs(railSag - 2.14) < 0.05)
         #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 0) == 0)
         #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 20) == 20)
         let underSpaces = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
         let underRow = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
-        #expect(abs(underSpaces - 9.04) < 0.05)
-        #expect(abs(underRow - 7.37) < 0.05)
+        #expect(abs(underSpaces - 10.66) < 0.05)
+        #expect(abs(underRow - 8.14) < 0.05)
         #expect(underSpaces > underRow)
     }
 
