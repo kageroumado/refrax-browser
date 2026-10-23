@@ -221,19 +221,15 @@ struct MoveToSpaceConfirmationTests {
 @MainActor
 struct TabLayoutMenuTests {
     @Test
-    func `The tab layout menu says tab and page`() throws {
+    func `The islands menu names the four steps and the new island`() throws {
         let env = try TabManagerTestEnvironment()
         let menuBar = MenuBarManager(windowManager: env.windowManager, undoRedoManager: UndoRedoManager())
 
         let item = menuBar.createTableMenuItem()
         let titles = item.submenu?.items.filter { !$0.isSeparatorItem }.map(\.title) ?? []
 
-        #expect(item.title == "Tab Layout")
-        #expect(titles == [
-            "Focus Tab Left", "Focus Tab Right", "Tab Above", "Tab Below",
-            "Move Tab Left", "Move Tab Right", "Move Tab Up", "Move Tab Down",
-            "Cycle Tab Width", "Fill Width", "Start a Row Below",
-        ])
+        #expect(item.title == "Islands")
+        #expect(titles == ["Tab Left", "Tab Right", "Tab Above", "Tab Below", "New Island from Here"])
     }
 
     @Test
