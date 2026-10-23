@@ -217,22 +217,50 @@ struct IslandView: View {
     }
 
     /// The island's color and name, and under the pointer its pin and actions.
+    /// The band is the island's title bar, in the language of a card window's: the name in
+    /// a glass capsule at the center, the controls at the trailing edge once the pointer is
+    /// over the island or the island is pinned.
     private var band: some View {
         let showsControls = isHovered || island.placement.isPinned
-        return HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            if !isRenaming, !island.placement.iconsOnly {
-                Text(island.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary.opacity(0.8))
-                    .lineLimit(1)
-                    .onTapGesture(count: 2) {
-                        guard !island.isDefault else { return }
-                        draftName = island.title
-                        isRenaming = true
-                        nameIsFocused = true
+        return Group {
+            if island.placement.iconsOnly {
+                ZStack {
+                    titleCapsule.opacity(showsControls ? 0 : 1)
+                    menuButton.opacity(showsControls ? 1 : 0)
+                }
+            } else {
+                CenteredMiddleLayout {
+                    Color.clear.frame(width: Band.controlsWidth)
+                    titleCapsule
+                    HStack(spacing: Band.controlSpacing) {
+                        pinButton
+                        menuButton
                     }
+                    .frame(width: Band.controlsWidth, alignment: .trailing)
+                    .opacity(showsControls ? 1 : 0)
+                }
             }
+        }
+        .padding(.horizontal, Band.horizontalPadding)
+        .animation(.easeInOut(duration: 0.15), value: showsControls)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private enum Band {
+        static let capsuleHeight: CGFloat = 22
+        static let capsulePadding: CGFloat = 10
+        static let dotSize: CGFloat = 8
+        static let controlSize: CGFloat = 20
+        static let controlSpacing: CGFloat = 2
+        static var controlsWidth: CGFloat { controlSize * 2 + controlSpacing }
+        static let horizontalPadding: CGFloat = 2
+    }
+
+    /// The island's color and name, in the capsule a card window's address sits in. A
+    /// double-click on the name renames the island.
+    private var titleCapsule: some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: Band.dotSize, height: Band.dotSize)
             if isRenaming {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
@@ -243,60 +271,77 @@ struct IslandView: View {
                     .onChange(of: nameIsFocused) { _, focused in
                         if !focused { commitRename() }
                     }
-            }
-            Spacer(minLength: 0)
-            if showsControls {
-                Button {
-                    islands.togglePin(island.id)
-                } label: {
-                    Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 10))
-                        .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.tertiary))
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointerStyle(.default)
-                .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
-                Menu {
-                    Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
-                    if !island.isDefault {
-                        Button("Rename…") {
-                            draftName = island.title
-                            isRenaming = true
-                            nameIsFocused = true
-                        }
-                        Picker("Color", selection: Binding(
-                            get: { GroupColor(rawValue: island.colorString ?? "") ?? .steel },
-                            set: { islands.setColor($0, of: island.id) },
-                        )) {
-                            ForEach(GroupColor.allCases, id: \.self) { color in
-                                Label(color.rawValue, systemImage: "circle.fill").tint(color.color).tag(color)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    Divider()
-                    Button("Close All Tabs in Island") { islands.closeAll(in: island.id) }
-                    if !island.isDefault {
-                        Button("Dissolve Island") { islands.dissolve(island.id) }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .pointerStyle(.default)
-                .frame(width: 18, height: 18)
+            } else if !island.placement.iconsOnly {
+                Text(island.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .lineLimit(1)
+                    .onTapGesture(count: 2) { beginRename() }
             }
         }
-        .padding(.horizontal, 4)
-        .animation(.easeInOut(duration: 0.15), value: showsControls)
-        .accessibilityAddTraits(.isHeader)
+        .padding(.horizontal, island.placement.iconsOnly ? (Band.capsuleHeight - Band.dotSize) / 2 : Band.capsulePadding)
+        .frame(height: Band.capsuleHeight)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private var pinButton: some View {
+        Button {
+            islands.togglePin(island.id)
+        } label: {
+            Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.secondary))
+                .frame(width: Band.controlSize, height: Band.controlSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.default)
+        .help(island.placement.isPinned ? "Let the island go when ⌃ is up" : "Keep the island visible")
+    }
+
+    private var menuButton: some View {
+        Menu {
+            Button(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only") { islands.toggleIconsOnly(island.id) }
+            if !island.isDefault {
+                Button("Rename…") { beginRename() }
+                Picker("Color", selection: Binding(
+                    get: { GroupColor(rawValue: island.colorString ?? "") ?? .steel },
+                    set: { islands.setColor($0, of: island.id) },
+                )) {
+                    ForEach(GroupColor.allCases, id: \.self) { color in
+                        Label(color.rawValue, systemImage: "circle.fill").tint(color.color).tag(color)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            if !island.placement.isPinned {
+                Button("Keep Visible") { islands.togglePin(island.id) }
+            }
+            Divider()
+            Button("Close All Tabs in Island") { islands.closeAll(in: island.id) }
+            if !island.isDefault {
+                Button("Dissolve Island") { islands.dissolve(island.id) }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Band.controlSize, height: Band.controlSize)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .pointerStyle(.default)
+        .frame(width: Band.controlSize, height: Band.controlSize)
+        .help("Island options")
+        .accessibilityLabel("Island options")
+    }
+
+    private func beginRename() {
+        guard !island.isDefault else { return }
+        draftName = island.title
+        isRenaming = true
+        nameIsFocused = true
     }
 
     private func commitRename() {

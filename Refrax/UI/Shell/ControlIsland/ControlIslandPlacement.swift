@@ -6,8 +6,12 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     var x: Double = 0
     var y: Double = 0.2
 
+    /// The rail's distance from the window's edge, and from its own edge to a window light:
+    /// the rail is exactly one light wide inside two margins.
     static let margin: CGFloat = 12
-    static let railWidth: CGFloat = 48
+    /// The diameter of a window light's artwork.
+    static let lightDiameter: CGFloat = 12
+    static let railWidth = margin * 2 + lightDiameter
     static let rowHeight: CGFloat = 32
     static let contentInset: CGFloat = 8
     static let horizontalInset: CGFloat = 4

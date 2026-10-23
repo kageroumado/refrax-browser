@@ -13,7 +13,7 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     static let iconWidth: CGFloat = 46
     static let padding: CGFloat = 8
     /// The band above the rows: the island's color, and its controls under the pointer.
-    static let bandHeight: CGFloat = 18
+    static let bandHeight: CGFloat = 26
     /// The Control Island's corner.
     static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
     static let rowCornerRadius: CGFloat = 8
