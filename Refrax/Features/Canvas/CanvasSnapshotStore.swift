@@ -1,5 +1,7 @@
 import AppKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// On-disk cache of tab canvas snapshots, one JPEG per tab.
 ///
@@ -27,6 +29,20 @@ nonisolated enum CanvasSnapshotStore {
             else { return }
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try? jpeg.write(to: target, options: .atomic)
+        }.value
+    }
+
+    /// Writes a render for a tab from its image, encoding off the main actor: the image is
+    /// handed over as it is, with no copy of its pixels made first.
+    static func save(image: CGImage, for tabID: UUID) async {
+        let target = url(for: tabID)
+        await Task.detached(priority: .utility) {
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return }
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: compressionFactor] as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else { return }
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? (data as Data).write(to: target, options: .atomic)
         }.value
     }
 

@@ -760,9 +760,9 @@ final class IslandController {
         }
         guard let image, !Task.isCancelled, tab.id == windowState.activeTabID else { return nil }
         store(image, for: tab.id)
-        if tab.space?.dataStoreMode != .private, let data = image.tiffRepresentation {
+        if tab.space?.dataStoreMode != .private, let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
             let id = tab.id
-            Task(name: "Keep a page's image", priority: .utility) { await CanvasSnapshotStore.save(tiff: data, for: id) }
+            Task(name: "Keep a page's image", priority: .utility) { await CanvasSnapshotStore.save(image: cgImage, for: id) }
         }
         return image
     }

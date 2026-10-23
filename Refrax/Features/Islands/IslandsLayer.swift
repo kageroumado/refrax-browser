@@ -124,6 +124,21 @@ struct IslandView: View {
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
+        .accessibilityIdentifier("island-\(island.id.uuidString)")
+        .accessibilityAction(named: island.placement.isPinned ? "Unpin" : "Pin") { islands.togglePin(island.id) }
+        .accessibilityAction(named: "Move left") { nudge(dx: -Layout.nudge, dy: 0) }
+        .accessibilityAction(named: "Move right") { nudge(dx: Layout.nudge, dy: 0) }
+        .accessibilityAction(named: "Move up") { nudge(dx: 0, dy: -Layout.nudge) }
+        .accessibilityAction(named: "Move down") { nudge(dx: 0, dy: Layout.nudge) }
+    }
+
+    private enum Layout {
+        static let nudge: CGFloat = 40
+    }
+
+    private func nudge(dx: CGFloat, dy: CGFloat) {
+        let origin = islands.frame(of: island).origin
+        islands.moveIsland(island.id, to: CGPoint(x: origin.x + dx, y: origin.y + dy))
     }
 
     /// The rows in the tab list's order; past the window's share of height they scroll.
@@ -425,8 +440,30 @@ private struct IslandTabRow: View {
         .closesOnMiddleClick(tab)
         .help(iconsOnly ? tab.displayTitle : "")
         .accessibilityLabel(tab.displayTitle)
+        .accessibilityIdentifier("island-row-\(tab.id.uuidString)")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { islands.open(tab) }
+        .accessibilityAction(named: "Close") { tabManager.requestCloseTab(tab) }
+        .accessibilityAction(named: "Float as Live Page") { islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY)) }
+        .accessibilityAction(named: "New Island from Here") { islands.makeIsland(from: tab.id) }
+        .accessibilityAction(named: "Move Up") { moveRow(by: -1) }
+        .accessibilityAction(named: "Move Down") { moveRow(by: 1) }
+        .accessibilityAction(named: "Join with Row Above") { joinNeighbor(offset: -1) }
+        .accessibilityAction(named: "Select") { islands.select(tab.id, extending: false, toggling: true) }
+    }
+
+    /// Moves the row one place up or down its island.
+    private func moveRow(by offset: Int) {
+        guard let index = island.tabIDs.firstIndex(of: tab.id) else { return }
+        // Rows are counted without this one: down goes after the next row, up before the previous.
+        let rows = island.tabIDs.count - 1
+        islands.moveTab(tab.id, to: offset > 0 ? min(index + 1, rows) : max(0, index - 1), in: island.id)
+    }
+
+    /// Joins this row's tab to its neighbor's as a pane.
+    private func joinNeighbor(offset: Int) {
+        guard let index = island.tabIDs.firstIndex(of: tab.id), island.tabIDs.indices.contains(index + offset) else { return }
+        islands.join(tab.id, with: island.tabIDs[index + offset])
     }
 
     /// The tab's page as its favicon with the loading ring; a tab of two pages shows both,
