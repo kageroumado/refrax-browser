@@ -71,8 +71,7 @@ final class CanvasPageGestures {
             let keyHeld = FloatingRevealKey.current.matchesHold(event.modifierFlags.intersection([.control, .option, .command]))
             if islandInput.route(
                 event,
-                canStart: floatingEligible() && !canvas.floatingVisibility.isManipulating
-                    && !floatingContains(event.locationInWindow),
+                canStart: floatingEligible() && !floatingContains(event.locationInWindow),
             ) {
                 return nil
             }

@@ -79,13 +79,6 @@ struct FloatingCardShapeTests {
         #expect(FloatingCardShape.live.fitted(CGSize(width: CGFloat.nan, height: .infinity)) == Layout.liveNaturalSize)
     }
 
-    @Test
-    func `The header cycles icon, tab, live page`() {
-        #expect(FloatingCardShape.icon.next == .tab)
-        #expect(FloatingCardShape.tab.next == .live)
-        #expect(FloatingCardShape.live.next == .icon)
-    }
-
     // MARK: Resize math
 
     @Test
@@ -127,29 +120,6 @@ struct FloatingCardShapeTests {
             minimum: FloatingCardShape.tab.minimumSize, within: area,
         )
         #expect(cramped.width == Layout.tabMinimumWidth)
-    }
-
-    @Test(arguments: FloatingResizeHandle.allCases)
-    func `Every handle's zone straddles the card's edge`(handle: FloatingResizeHandle) {
-        let size = CGSize(width: 300, height: 200)
-        let zone = handle.hitFrame(in: size, thickness: Layout.resizeEdgeThickness, corner: Layout.resizeCornerSide)
-        let card = CGRect(origin: .zero, size: size)
-        #expect(zone.intersects(card))
-        #expect(!card.contains(zone))
-        #expect(card.insetBy(dx: -Layout.resizeOutset, dy: -Layout.resizeOutset).contains(zone))
-    }
-
-    @Test
-    func `Edge zones stop where the corner zones begin`() {
-        let size = CGSize(width: 44, height: 44)
-        let zones = FloatingResizeHandle.allCases.map {
-            $0.hitFrame(in: size, thickness: Layout.resizeEdgeThickness, corner: Layout.resizeCornerSide)
-        }
-        for (index, zone) in zones.enumerated() {
-            for other in zones[(index + 1)...] {
-                #expect(zone.intersection(other).isEmpty)
-            }
-        }
     }
 
     // MARK: Placement

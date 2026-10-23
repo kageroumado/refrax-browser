@@ -2,10 +2,9 @@
 nonisolated struct FloatingTabVisibility: Equatable {
     private(set) var isHeld = false
     private(set) var isLatched = false
-    private(set) var isManipulating = false
 
     var isRevealed: Bool {
-        isHeld || isLatched || isManipulating
+        isHeld || isLatched
     }
 
     mutating func hold() {
@@ -20,17 +19,5 @@ nonisolated struct FloatingTabVisibility: Equatable {
     mutating func dismiss() {
         isHeld = false
         isLatched = false
-        isManipulating = false
-    }
-
-    mutating func beginManipulation() {
-        isManipulating = true
-    }
-    mutating func endManipulation() {
-        isManipulating = false
-    }
-
-    func shows(isPinned: Bool) -> Bool {
-        isRevealed || isPinned
     }
 }

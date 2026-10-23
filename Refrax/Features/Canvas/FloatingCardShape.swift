@@ -18,8 +18,6 @@ nonisolated enum FloatingCardShape: String, Codable, CaseIterable, Sendable {
     enum Layout {
         /// The icon's side; the icon never changes size.
         static let iconSide: CGFloat = 44
-        /// The favicon's side inside the icon.
-        static let iconFaviconSize: CGFloat = 24
 
         static let tabHeight: CGFloat = FloatingTabPlacement.headerHeight
         static let tabMinimumWidth: CGFloat = 120
@@ -39,19 +37,8 @@ nonisolated enum FloatingCardShape: String, Codable, CaseIterable, Sendable {
         /// narrower than ``tabToIconWidth``.
         static let liveToTabHeight: CGFloat = 80
 
-        /// The resize band along each edge, centered on it.
-        static let resizeEdgeThickness: CGFloat = 8
-        /// The resize square at each corner, centered on it.
-        static let resizeCornerSide: CGFloat = 12
-        /// How far past the card's edge its resize zones reach.
-        static var resizeOutset: CGFloat {
-            max(resizeEdgeThickness, resizeCornerSide) / 2
-        }
-
         /// The shape change: a 0.2 s spring with no bounce, moving frame and radius together.
         static let shapeSpring = Animation.spring(duration: 0.2, bounce: 0)
-        /// The shape change under Reduce Motion: the frame jumps and the content fades.
-        static let reducedMotionFade = Animation.easeInOut(duration: 0.1)
     }
 
     /// The shape a card in `self` takes when its size is dragged to `proposed`.
@@ -114,15 +101,6 @@ nonisolated enum FloatingCardShape: String, Codable, CaseIterable, Sendable {
         )
     }
 
-    /// The shape after this one in the header's cycle: icon, tab, live page, and around.
-    var next: Self {
-        switch self {
-        case .icon: .tab
-        case .tab: .live
-        case .live: .icon
-        }
-    }
-
     /// The verb that turns a card into this shape.
     var showTitle: String {
         switch self {
@@ -172,10 +150,6 @@ nonisolated enum FloatingResizeHandle: CaseIterable, Sendable {
         }
     }
 
-    var isCorner: Bool {
-        horizontal != 0 && vertical != 0
-    }
-
     /// The size the pointer asks for: `start` grown by `translation` on the handle's sides,
     /// never below zero.
     func proposedSize(from start: CGSize, translation: CGSize) -> CGSize {
@@ -199,36 +173,5 @@ nonisolated enum FloatingResizeHandle: CaseIterable, Sendable {
             width: width,
             height: height,
         )
-    }
-
-    /// The window-style resize pointer for this handle.
-    var pointerPosition: FrameResizePosition {
-        switch self {
-        case .topLeading: .topLeading
-        case .top: .top
-        case .topTrailing: .topTrailing
-        case .trailing: .trailing
-        case .bottomTrailing: .bottomTrailing
-        case .bottom: .bottom
-        case .bottomLeading: .bottomLeading
-        case .leading: .leading
-        }
-    }
-
-    /// The handle's hit zone in a card of `size`, in the card's coordinates: a band `thickness`
-    /// wide centered on an edge, or a `corner`-sided square centered on a corner. Edge bands
-    /// stop where the corner squares begin.
-    func hitFrame(in size: CGSize, thickness: CGFloat, corner: CGFloat) -> CGRect {
-        let band = isCorner ? corner : thickness
-        func span(_ side: CGFloat, length: CGFloat) -> (origin: CGFloat, extent: CGFloat) {
-            switch side {
-            case ..<0: (-band / 2, band)
-            case 0: (corner / 2, max(0, length - corner))
-            default: (length - band / 2, band)
-            }
-        }
-        let x = span(horizontal, length: size.width)
-        let y = span(vertical, length: size.height)
-        return CGRect(x: x.origin, y: y.origin, width: x.extent, height: y.extent)
     }
 }

@@ -301,28 +301,6 @@ struct ControlIslandTests {
         }
     }
 
-    @Test
-    func `releasing control during a drag keeps the tab until the drop`() {
-        var visibility = FloatingTabVisibility()
-        visibility.hold()
-        visibility.beginManipulation()
-        visibility.release()
-        #expect(visibility.shows(isPinned: false))
-        visibility.endManipulation()
-        #expect(!visibility.shows(isPinned: false))
-        #expect(visibility.shows(isPinned: true))
-    }
-
-    @Test
-    func `escape clears a held drag and latch`() {
-        var visibility = FloatingTabVisibility()
-        visibility.toggle()
-        visibility.hold()
-        visibility.beginManipulation()
-        visibility.dismiss()
-        #expect(!visibility.isRevealed)
-    }
-
     @Test @MainActor
     func `a retired preview host cannot resize or detach a promoted page`() throws {
         let environment = try ConcurrencyTestEnvironment()
