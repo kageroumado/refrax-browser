@@ -425,7 +425,7 @@ struct FloatingTourTests {
             FloatingTourLayout.spotlight(around: tabsButton, of: .railRow),
         ])
         let navigating = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, islandsVisible: false)
-        #expect(FloatingTourManager.Step.floatPage.instruction(in: navigating).contains("Click the tabs button"))
+        #expect(FloatingTourManager.Step.floatPage.instruction(in: navigating).contains("Click the islands button"))
 
         stage.canvas.releaseFloatingTabs()
         stage.canvas.toggleFloatingTabs()
