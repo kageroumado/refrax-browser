@@ -254,7 +254,7 @@ struct PageTravelView: View {
             return (tab.displayTitle, false)
         }
         if let island = islands.island(toward: direction) {
-            return (island.title, true)
+            return ("\(island.title) island", true)
         }
         return nil
     }

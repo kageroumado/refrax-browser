@@ -183,7 +183,7 @@ struct IslandView: View {
                         .font(.callout)
                 }
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary.opacity(0.7))
             .padding(.horizontal, island.placement.iconsOnly ? 0 : 8)
             .frame(maxWidth: .infinity, alignment: island.placement.iconsOnly ? .center : .leading)
             .frame(height: IslandGeometry.rowHeight)
@@ -230,11 +230,11 @@ struct IslandView: View {
     private var band: some View {
         let showsControls = isHovered || island.placement.isPinned
         return HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 6, height: 6)
+            Circle().fill(color).frame(width: 8, height: 8)
             if !isRenaming, !island.placement.iconsOnly {
                 Text(island.title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary.opacity(0.8))
                     .lineLimit(1)
                     .onTapGesture(count: 2) {
                         guard !island.isDefault else { return }
@@ -378,6 +378,12 @@ private struct IslandTabRow: View {
             if !iconsOnly {
                 FloatingTabTitle(tab: tab)
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
+                if tab.pages.count > 1 {
+                    Image(systemName: "rectangle.split.2x1")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .help("\(tab.pages.count) pages side by side")
+                }
                 Spacer(minLength: 0)
                 TabStateSymbols(tab: tab)
                 if isHovering {

@@ -32,13 +32,13 @@ final class TabCanvasManager {
         !windowState.isSpaceLocked
     }
 
-    /// The page is shown as its image, a slab over the window's background. The control rail
-    /// belongs to the live page and steps away with it.
+    /// The page is shown as its image, a slab over the window's background.
     var showsPageSlab = false
 
-    /// The control rail shows over the live page.
+    /// The control rail shows whenever the floating controls do: it is the window's chrome and
+    /// stays through a slab, which it never hides.
     var showsControlIsland: Bool {
-        showsFloatingControls && !showsPageSlab
+        showsFloatingControls
     }
 
     /// The floating layer appears while Control is held or its toolbar button is on.
