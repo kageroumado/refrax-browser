@@ -176,12 +176,23 @@ struct IslandView: View {
             }
     }
 
-    /// The island's color, and under the pointer its pin and actions; the name only while it
-    /// is being renamed.
+    /// The island's color and name, and under the pointer its pin and actions.
     private var band: some View {
         let showsControls = isHovered || island.placement.isPinned
         return HStack(spacing: 6) {
             Circle().fill(color).frame(width: 6, height: 6)
+            if !isRenaming, !island.placement.iconsOnly {
+                Text(island.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .onTapGesture(count: 2) {
+                        guard !island.isDefault else { return }
+                        draftName = island.title
+                        isRenaming = true
+                        nameIsFocused = true
+                    }
+            }
             if isRenaming {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)

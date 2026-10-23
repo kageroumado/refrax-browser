@@ -404,7 +404,8 @@ extension TabManager {
               let window = windowSync.findWindowState(for: space),
               window.activeTabID(for: space.id) == tab.id,
               let table = window.islandController else { return nil }
-        for direction in [TableDirection.left, .right, .up, .down] {
+        // The row below takes over, as in every tab strip; then the row above.
+        for direction in [TableDirection.down, .up, .right, .left] {
             if let neighbor = table.destination(toward: direction) {
                 return neighbor.id
             }

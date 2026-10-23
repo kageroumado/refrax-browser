@@ -317,7 +317,8 @@ final class IslandController {
         var changed = false
         var built: [Island] = []
         var nextOrigin = Layout.firstIslandOrigin
-        for source in sources where !source.members.isEmpty || source.isDefault {
+        // The loose tabs' island folds away while every tab is in a group.
+        for source in sources where !source.members.isEmpty {
             if state.islands[source.id] == nil {
                 state.islands[source.id] = IslandPlacement(x: nextOrigin.x, y: nextOrigin.y)
                 changed = true
