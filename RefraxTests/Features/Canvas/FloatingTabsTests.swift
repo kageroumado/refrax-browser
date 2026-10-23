@@ -16,13 +16,12 @@ struct FloatingTabsTests {
     }
 
     @Test
-    func `releasing control keeps only pinned previews`() {
+    func `releasing control ends the reveal`() {
         var state = FloatingTabVisibility()
         state.hold()
-        #expect(state.shows(isPinned: false))
+        #expect(state.isRevealed)
         state.release()
-        #expect(state.shows(isPinned: false) == false)
-        #expect(state.shows(isPinned: true))
+        #expect(state.isRevealed == false)
     }
 
     @Test
@@ -34,7 +33,6 @@ struct FloatingTabsTests {
         #expect(state.isRevealed)
         state.dismiss()
         #expect(state.isRevealed == false)
-        #expect(state.shows(isPinned: true))
     }
 
     @Test(arguments: FloatingCardShape.allCases)

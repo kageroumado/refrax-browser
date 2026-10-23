@@ -46,7 +46,7 @@ final class TabCanvasManager {
 
     /// A held reveal key previews adjacent pages while the reading page stays in place.
     var isMomentaryNavigation: Bool {
-        floatingVisibility.isHeld && !floatingVisibility.isLatched && !floatingVisibility.isManipulating
+        floatingVisibility.isHeld && !floatingVisibility.isLatched
     }
 
     private(set) var focusedFloatingTabID: Tab.ID?
@@ -54,7 +54,6 @@ final class TabCanvasManager {
     var regionSelection: FloatingRegionSelection?
     @ObservationIgnored var regionSelectionTask: Task<Void, Never>?
     var verifiedRegionPages: [TabPage.ID: UUID] = [:]
-    var retainedInputTabID: Tab.ID?
     var menuTabID: Tab.ID?
     /// The card whose title is being edited; it stays on screen until the edit ends.
     var renamingTabID: Tab.ID?
@@ -85,12 +84,6 @@ final class TabCanvasManager {
     func floatingFrame(for tab: Tab, in area: CGRect) -> CGRect {
         let placement = floatingPlacement(for: tab)
         return placement.frame(in: area)
-    }
-
-    /// The card's frame and the outer half of its resize zones: where the pointer reaches it.
-    func floatingHitFrame(for tab: Tab, in area: CGRect) -> CGRect {
-        let outset = FloatingCardShape.Layout.resizeOutset
-        return floatingFrame(for: tab, in: area).insetBy(dx: -outset, dy: -outset)
     }
 
     /// The cards on screen: the tabs taken out of their islands, other than the window's page.
@@ -143,7 +136,7 @@ final class TabCanvasManager {
     }
 
     /// The motion of a shape change: frame and radius together on a spring with no bounce.
-    /// Under Reduce Motion the frame changes at once and the card's content fades.
+    /// Under Reduce Motion the frame changes at once.
     static var shapeAnimation: Animation? {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : FloatingCardShape.Layout.shapeSpring
     }
@@ -152,33 +145,19 @@ final class TabCanvasManager {
 
     func revealFloatingTabs() {
         guard !windowState.isSpaceLocked else { return }
-        UserDefaults.standard.set(true, forKey: "floatingTabs.hasRecalledPlacement")
         floatingVisibility.hold()
         windowState.controlIsland.tabInfo.hold()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
     }
 
     func releaseFloatingTabs() {
-        if let page = windowState.focusedWebPage, page.isInFloatingPreview,
-           let responder = windowState.window?.firstResponder as? NSView,
-           responder === page.contentView || responder.isDescendant(of: page.contentView) {
-            retainedInputTabID = page.tabPage.tab?.id
-        }
         floatingVisibility.release()
         windowState.controlIsland.tabInfo.release()
     }
 
     func dismissFloatingTabs() {
-        retainedInputTabID = nil
         floatingVisibility.dismiss()
         windowState.controlIsland.tabInfo.dismiss()
-    }
-
-    /// Keeps the layer up once the reveal key is let go, for work that takes typing.
-    func latchFloatingTabs() {
-        if !floatingVisibility.isLatched {
-            floatingVisibility.toggle()
-        }
     }
 
     var spaceToReveal: Space.ID?
@@ -190,20 +169,6 @@ final class TabCanvasManager {
         if shouldReveal {
             toggleFloatingTabs()
         }
-    }
-
-    func confirmFloatingPlacement() {
-        guard !UserDefaults.standard.bool(forKey: "floatingTabs.hasRecalledPlacement") else { return }
-        UserDefaults.standard.set(true, forKey: "floatingTabs.hasRecalledPlacement")
-        windowState.showToast("Hold \(FloatingRevealKey.current.title) to find it here again.")
-    }
-
-    func beginFloatingManipulation() {
-        floatingVisibility.beginManipulation()
-    }
-
-    func endFloatingManipulation() {
-        floatingVisibility.endManipulation()
     }
 
     func openFocusedFloatingTab() {
@@ -245,8 +210,5 @@ final class TabCanvasManager {
         self.tabManager = tabManager
         self.windowState = windowState
         self.pagePool = pagePool
-    }
-
-    isolated deinit {
     }
 }

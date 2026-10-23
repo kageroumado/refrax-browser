@@ -93,12 +93,6 @@ extension TabCanvasManager {
         }
     }
 
-    func finishPreviewInteraction() {
-        retainedInputTabID = nil
-        windowState.focusedPageID = windowState.activePageID
-        windowState.window?.makeFirstResponder(windowState.activeWebPage?.contentView)
-    }
-
     func lookAtFloatingTab(_ tab: Tab) {
         dismissFloatingTabs()
         tabManager.look(at: tab, in: windowState)
