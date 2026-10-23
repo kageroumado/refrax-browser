@@ -113,6 +113,24 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         printHumanRequest(info)
     case let .canvas(info):
         printCanvas(info)
+    case let .islands(info):
+        printIslands(info)
+    }
+}
+
+func printIslands(_ info: CTL.IslandsInfo) {
+    let reveal = info.isHeld ? "held" : info.isRevealed ? "up" : "down"
+    print("Islands: \(reveal) · \(info.islands.count) islands · \(info.cards.count) cards")
+    for island in info.islands {
+        let marks = [island.isPinned ? "pinned" : nil, island.isVisible ? nil : "hidden"].compactMap(\.self).joined(separator: " · ")
+        print("  \(island.title) [\(island.id.prefix(8))]  \(Int(island.x)),\(Int(island.y)) \(Int(island.width))×\(Int(island.height))\(marks.isEmpty ? "" : "  " + marks)")
+        for (index, row) in island.rows.enumerated() {
+            let panes = row.pageCount > 1 ? " · \(row.pageCount) panes" : ""
+            print("    \(index)\(row.isCurrent ? " ▸" : "  ") \(row.title)\(panes)  [\(row.tabID.prefix(8))]")
+        }
+    }
+    for card in info.cards {
+        print("  card \(Int(card.x)),\(Int(card.y)) \(Int(card.width))×\(Int(card.height))  \(card.title)  [\(card.tabID.prefix(8))]")
     }
 }
 

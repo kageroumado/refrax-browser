@@ -85,7 +85,6 @@ struct FloatingStartPage: View {
             ForEach(places) { place in
                 outline(place)
             }
-            .opacity(canvas.floatingVisibility.isRevealed ? 0 : 1)
             column
             if showHints {
                 railNote(beside: railLensFrame.isEmpty ? island.railFrame : railLensFrame, in: bounds)

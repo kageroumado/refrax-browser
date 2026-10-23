@@ -265,6 +265,8 @@ final class RefraxControlServer {
             try handleFloatingTabs(params)
         case .canvasState:
             try floatingStateResponse()
+        case let .islands(params):
+            try await handleIslands(params)
         // Tier 1E: Visual Agent Features
         case let .visualHighlight(params):
             try await handleVisualHighlight(params)
@@ -2505,6 +2507,140 @@ final class RefraxControlServer {
         }))
     }
 
+    // MARK: - Islands
+
+    private func islandController() throws -> IslandController {
+        guard let controller = windowManager.activeWindowController else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return controller.islandController
+    }
+
+    /// An island by its id, a prefix of it, or its title; "tabs" is the loose tabs' island.
+    private func resolveIslandRef(_ ref: String, in islands: IslandController) throws -> Island {
+        let needle = ref.lowercased()
+        if let island = islands.islands.first(where: { $0.id.uuidString.lowercased().hasPrefix(needle) }) {
+            return island
+        }
+        if needle == "tabs", let island = islands.islands.first(where: \.isDefault) {
+            return island
+        }
+        if let island = islands.islands.first(where: { $0.title.lowercased().contains(needle) }) {
+            return island
+        }
+        throw ControlError.invalidParams("No island matches '\(ref)'; islands: \(islands.islands.map { "\($0.title) [\($0.id.uuidString.prefix(8))]" }.joined(separator: ", "))")
+    }
+
+    private func direction(_ ref: String?) throws -> TableDirection {
+        guard let ref, let direction = TableDirection(rawValue: ref.lowercased()) else {
+            throw ControlError.invalidParams("Direction must be up, down, left, or right")
+        }
+        return direction
+    }
+
+    /// Waits for a move the page view animates to land, up to two seconds.
+    private func settleTravel(_ islands: IslandController) async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while islands.travel != nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    private func handleIslands(_ params: ControlRequest.IslandsParams) async throws -> ControlResponse {
+        let islands = try islandController()
+        let canvas = try canvasManager()
+        let bounds = windowManager.activeWindowController?.window?.contentView?.bounds ?? .zero
+        func tab(_ ref: String?) throws -> Tab {
+            guard let ref else { throw ControlError.invalidParams("--tab is required") }
+            return try resolveTabRef(ref)
+        }
+        func island(_ ref: String?) throws -> Island {
+            guard let ref else { throw ControlError.invalidParams("--island is required") }
+            return try resolveIslandRef(ref, in: islands)
+        }
+        switch params.action {
+        case .state:
+            break
+        case .show:
+            if !canvas.floatingVisibility.isLatched {
+                canvas.toggleFloatingTabs()
+            }
+        case .hide:
+            canvas.dismissFloatingTabs()
+        case .hold:
+            canvas.revealFloatingTabs()
+        case .release:
+            canvas.releaseFloatingTabs()
+        case .step:
+            islands.step(try direction(params.direction))
+            await settleTravel(islands)
+        case .open:
+            islands.open(try tab(params.tab))
+            await settleTravel(islands)
+        case .moveRow:
+            let target = try island(params.island)
+            islands.moveTab(try tab(params.tab).id, to: params.row ?? Int.max, in: target.id)
+        case .detach:
+            let point = CGPoint(x: params.x ?? bounds.midX, y: params.y ?? bounds.midY)
+            islands.detach(try tab(params.tab).id, at: point)
+        case .join:
+            guard let other = params.other else { throw ControlError.invalidParams("--with is required") }
+            let source = try tab(params.tab)
+            let target = try resolveTabRef(other)
+            guard islands.canJoin(source.id, with: target.id) else {
+                throw ControlError.invalidParams("These two cannot join: one must be a single page and the other have room for a second")
+            }
+            islands.join(source.id, with: target.id)
+        case .joinPage:
+            let side = try direction(params.direction)
+            guard side == .left || side == .right else { throw ControlError.invalidParams("Direction must be left or right") }
+            islands.joinPage(try tab(params.tab).id, at: side == .left ? .topLeft : .topRight)
+        case .pin, .unpin:
+            let target = try island(params.island)
+            if target.placement.isPinned != (params.action == .pin) {
+                islands.togglePin(target.id)
+            }
+        case .newIsland:
+            islands.makeIsland(from: try tab(params.tab).id)
+        case .move:
+            let target = try island(params.island)
+            guard let x = params.x, let y = params.y else { throw ControlError.invalidParams("--to X,Y is required") }
+            islands.moveIsland(target.id, to: CGPoint(x: x, y: y))
+        }
+        islands.refresh()
+        return islandsStateResponse(islands, canvas: canvas, bounds: bounds)
+    }
+
+    private func islandsStateResponse(_ islands: IslandController, canvas: TabCanvasManager, bounds: CGRect) -> ControlResponse {
+        let current = islands.currentTab?.id
+        let visible = Set(islands.visibleIslands.map(\.id))
+        return .islands(.init(
+            isRevealed: canvas.floatingVisibility.isRevealed,
+            isHeld: canvas.floatingVisibility.isHeld,
+            currentTabID: current?.uuidString,
+            islands: islands.islands.map { island in
+                let frame = islands.frame(of: island)
+                return .init(
+                    id: island.id.uuidString, title: island.title, isDefault: island.isDefault,
+                    isPinned: island.placement.isPinned, isVisible: visible.contains(island.id),
+                    x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
+                    rows: island.tabIDs.compactMap { id in
+                        islands.tab(for: id).map { .init(tabID: id.uuidString, title: $0.displayTitle, isCurrent: id == current, pageCount: $0.pages.count) }
+                    },
+                )
+            },
+            cards: islands.detachedTabs.map { tab in
+                let placement = canvas.floatingPlacement(for: tab)
+                let frame = placement.frame(in: bounds)
+                return .init(
+                    tabID: tab.id.uuidString, title: tab.displayTitle, x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
+                    shape: ControlRequest.FloatingTabsParams.Shape(rawValue: placement.shape.rawValue) ?? .live,
+                    isPinned: placement.isPinned, isVisible: tab.id != current,
+                )
+            },
+        ))
+    }
+
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
         let action = params.action?.lowercased() ?? "toggle"
@@ -3021,7 +3157,15 @@ final class RefraxControlServer {
             return try uniqueMatch(matches, ref: ref)
         }
 
-        // 5. Fuzzy match on title or URL
+        // 5. A prefix of the id, as the CLI prints ids
+        if ref.count >= 4, ref.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
+            let prefix = ref.lowercased()
+            let byID = allTabs.filter { $0.id.uuidString.lowercased().hasPrefix(prefix) }
+            if !byID.isEmpty {
+                return try uniqueMatch(byID, ref: ref)
+            }
+        }
+        // 6. Fuzzy match on title or URL
         let matches = allTabs.filter {
             $0.activePage.title.localizedCaseInsensitiveContains(ref) ||
                 $0.activePage.url.absoluteString.localizedCaseInsensitiveContains(ref)

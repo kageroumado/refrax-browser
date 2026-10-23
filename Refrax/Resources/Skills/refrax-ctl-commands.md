@@ -116,6 +116,27 @@ refrax-ctl canvas floating shape --tab TAB icon|tab|live             # Favicon i
 refrax-ctl canvas floating resize --tab TAB --width W --height H     # From the bottom-right corner; the shape follows the size
 ```
 
+## Islands
+
+The tabs of the front window's space as floating lists over the page: one island per tab group, plus one named "Tabs" for the tabs in no group. Every action prints the islands' state afterwards. An island is named by its id, a prefix of it, its title, or `tabs`; a tab as everywhere else (id, a prefix of it, or part of its title or address).
+
+```bash
+refrax-ctl islands state [--json]                     # Every island with its rows (▸ marks the current page) and every card
+refrax-ctl islands show|hide                          # Keep the islands up, as the rail's tabs button does; take them down
+refrax-ctl islands hold|release                       # Hold the reveal key (the page becomes a slab); let it go
+refrax-ctl islands step up|down|left|right            # One wheel notch: the row above or below, or the island on that side
+refrax-ctl islands open --tab TAB                     # Open a row's page
+refrax-ctl islands move-row --tab TAB --island I [--row N]   # Put a row before row N of an island (the end when left out); a card goes back in
+refrax-ctl islands detach --tab TAB [--to X,Y]        # Take a row out as a live card at a point (the page's center when left out)
+refrax-ctl islands join --tab TAB --with OTHER        # One tab of two panes: TAB joins OTHER beside it
+refrax-ctl islands join-page --tab TAB left|right     # TAB joins the current page as a pane on that side
+refrax-ctl islands pin|unpin --island I               # Keep an island up when the reveal key is up, or stop
+refrax-ctl islands new-island --tab TAB               # A new island (group) from a row
+refrax-ctl islands move --island I --to X,Y           # Put an island's top-left corner at a point
+```
+
+The page shown is never a card: a detached tab that becomes the page returns to its island.
+
 ## Space Operations
 
 ```bash

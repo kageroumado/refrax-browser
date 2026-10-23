@@ -232,7 +232,7 @@ struct ControlIsland: View {
                 }
                 if showsShortcut, !tour.isActive, !isHiddenAtEdge {
                     Button { canvas.toggleFloatingTabs() } label: {
-                        Text("hold \(revealKey.glyph)").font(.system(size: 12, weight: .medium))
+                        Text("Hold \(revealKey.glyph)").font(.system(size: 12, weight: .medium))
                             .padding(.horizontal, 8)
                             .frame(width: shortcutFrame.width, height: shortcutFrame.height)
                             .contentShape(Rectangle())
@@ -242,7 +242,7 @@ struct ControlIsland: View {
                     .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
                     .transition(.opacity)
-                    .help("Hold \(revealKey.title) to preview adjacent pages; click to arrange tabs")
+                    .help("Hold \(revealKey.title) for a glance at your islands; click to keep them up")
                     .accessibilityLabel("Preview adjacent pages: hold \(revealKey.title)")
                 }
                 if state.isDragging {
@@ -477,7 +477,7 @@ struct ControlIsland: View {
                 showsRecent ? "Recent tabs" : item.title,
                 symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
                 enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
-                help: showsRecent ? "Recent tabs · ⌃Tab" : "Arrange \(canvas.floatingTabs.count) tabs · hold \(revealKey.glyph) to preview adjacent pages · ⌥ for recent tabs",
+                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show your islands · hold \(revealKey.glyph) for a glance · ⌥ for recent tabs",
             ) {
                 if optionIsHeld {
                     showRecentTabs()

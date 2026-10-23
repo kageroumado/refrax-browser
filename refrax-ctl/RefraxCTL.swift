@@ -51,6 +51,7 @@ struct RefraxCTL: AsyncParsableCommand {
             UICommand.self,
             GroupCommand.self,
             CanvasCommand.self,
+            IslandsCommand.self,
             PageCommand.self,
             BookmarkCommand.self,
             HistoryCommand.self,

@@ -105,6 +105,8 @@ public enum ControlRequest: Sendable {
     // Floating tabs
     case floatingTabs(FloatingTabsParams)
     case canvasState
+    /// The islands: their state, the reveal, steps between pages, and every edit a drag makes.
+    case islands(IslandsParams)
 
     // Tier 1E: Visual Agent Features
     case visualHighlight(VisualHighlightParams)
@@ -667,6 +669,61 @@ public extension ControlRequest {
             self.action = action
             self.tabID = tabID
             self.pageID = pageID
+        }
+    }
+
+    /// What to do with the islands. Every action answers with the islands' state.
+    struct IslandsParams: Codable, Sendable {
+        public enum Action: String, Codable, Sendable {
+            /// The islands, their rows, and the cards.
+            case state
+            /// Keep the islands up, as the rail's tabs button does; take them down.
+            case show
+            case hide
+            /// Hold the reveal key; let it go.
+            case hold
+            case release
+            /// Step to the page in `direction`, as a wheel notch does.
+            case step
+            /// Open `tab` from its row.
+            case open
+            /// Put `tab` before row `row` of `island`; a card goes back in as a row.
+            case moveRow = "move-row"
+            /// Take `tab` out of its island as a live card, at `x`,`y` or the page's center.
+            case detach
+            /// Join `tab` to `other` as its second pane.
+            case join
+            /// Join `tab` to the current page on `direction` left or right, as a pane.
+            case joinPage = "join-page"
+            case pin
+            case unpin
+            /// A new island from `tab`.
+            case newIsland = "new-island"
+            /// Move `island` so its top-left corner is at `x`,`y`.
+            case move
+        }
+
+        public let action: Action
+        public let tab: String?
+        public let other: String?
+        public let island: String?
+        public let row: Int?
+        public let direction: String?
+        public let x: Double?
+        public let y: Double?
+
+        public init(
+            action: Action, tab: String? = nil, other: String? = nil, island: String? = nil, row: Int? = nil,
+            direction: String? = nil, x: Double? = nil, y: Double? = nil,
+        ) {
+            self.action = action
+            self.tab = tab
+            self.other = other
+            self.island = island
+            self.row = row
+            self.direction = direction
+            self.x = x
+            self.y = y
         }
     }
 
@@ -1495,6 +1552,7 @@ extension ControlRequest: Codable {
         // Floating tabs
         case floatingTabs
         case canvasState
+        case islands
 
         // Tier 1E
         case visualHighlight
@@ -1677,6 +1735,7 @@ extension ControlRequest: Codable {
         // Floating tabs
         case .floatingTabs: self = try .floatingTabs(FloatingTabsParams(from: decoder))
         case .canvasState: self = .canvasState
+        case .islands: self = try .islands(IslandsParams(from: decoder))
         // Tier 1E
         case .visualHighlight: self = try .visualHighlight(VisualHighlightParams(from: decoder))
         case .visualCursor: self = try .visualCursor(VisualCursorParams(from: decoder))
@@ -1953,6 +2012,9 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case .canvasState:
             try container.encode("canvasState", forKey: .type)
+        case let .islands(params):
+            try container.encode("islands", forKey: .type)
+            try params.encode(to: encoder)
         // Tier 1E
         case let .visualHighlight(params):
             try container.encode("visualHighlight", forKey: .type)
@@ -2168,6 +2230,7 @@ public enum ControlResponse: Sendable {
     case ping(CTL.PingInfo)
     case humanRequested(CTL.HumanRequestInfo)
     case canvas(CTL.FloatingTabsInfo)
+    case islands(CTL.IslandsInfo)
 }
 
 // MARK: - Response Data Types
@@ -2563,6 +2626,60 @@ public enum CTL {
         }
     }
 
+    /// The islands of the front window: each with its rows, and the tabs floating as cards.
+    public struct IslandsInfo: Codable, Sendable {
+        public let isRevealed: Bool
+        public let isHeld: Bool
+        public let currentTabID: String?
+        public let islands: [IslandInfo]
+        public let cards: [FloatingTileInfo]
+        public init(isRevealed: Bool, isHeld: Bool, currentTabID: String?, islands: [IslandInfo], cards: [FloatingTileInfo]) {
+            self.isRevealed = isRevealed
+            self.isHeld = isHeld
+            self.currentTabID = currentTabID
+            self.islands = islands
+            self.cards = cards
+        }
+    }
+
+    public struct IslandInfo: Codable, Sendable {
+        public let id: String
+        public let title: String
+        public let isDefault: Bool
+        public let isPinned: Bool
+        public let isVisible: Bool
+        public let x: Double
+        public let y: Double
+        public let width: Double
+        public let height: Double
+        public let rows: [IslandRowInfo]
+        public init(id: String, title: String, isDefault: Bool, isPinned: Bool, isVisible: Bool, x: Double, y: Double, width: Double, height: Double, rows: [IslandRowInfo]) {
+            self.id = id
+            self.title = title
+            self.isDefault = isDefault
+            self.isPinned = isPinned
+            self.isVisible = isVisible
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.rows = rows
+        }
+    }
+
+    public struct IslandRowInfo: Codable, Sendable {
+        public let tabID: String
+        public let title: String
+        public let isCurrent: Bool
+        public let pageCount: Int
+        public init(tabID: String, title: String, isCurrent: Bool, pageCount: Int) {
+            self.tabID = tabID
+            self.title = title
+            self.isCurrent = isCurrent
+            self.pageCount = pageCount
+        }
+    }
+
     public struct FloatingTileInfo: Codable, Sendable {
         public let tabID: String
         public let title: String
@@ -2715,6 +2832,7 @@ extension ControlResponse: Codable {
         case ping
         case humanRequested = "human_requested"
         case canvas
+        case islands
     }
 
     private struct TypeContainer: Decodable {
@@ -2786,6 +2904,8 @@ extension ControlResponse: Codable {
             self = try .humanRequested(c.decode(CTL.HumanRequestInfo.self, forKey: .data))
         case .canvas:
             self = try .canvas(c.decode(CTL.FloatingTabsInfo.self, forKey: .data))
+        case .islands:
+            self = try .islands(c.decode(CTL.IslandsInfo.self, forKey: .data))
         }
     }
 
@@ -2882,6 +3002,9 @@ extension ControlResponse: Codable {
             try container.encode(info, forKey: .data)
         case let .canvas(info):
             try container.encode("canvas", forKey: .type)
+            try container.encode(info, forKey: .data)
+        case let .islands(info):
+            try container.encode("islands", forKey: .type)
             try container.encode(info, forKey: .data)
         }
     }

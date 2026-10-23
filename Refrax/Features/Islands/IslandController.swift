@@ -233,12 +233,13 @@ final class IslandController {
         IslandGeometry(iconsOnly: island.placement.iconsOnly)
     }
 
-    /// An island's frame in the layer, held inside the area.
+    /// An island's frame in the layer: its corner where it was put, as a share of the area, held
+    /// inside the area. The corner stays put as the island grows or shrinks.
     func frame(of island: Island) -> CGRect {
         let size = geometry(for: island).size(rows: island.tabIDs.count, in: area.size)
         let origin = CGPoint(
-            x: area.minX + island.placement.x * max(0, area.width - size.width),
-            y: area.minY + island.placement.y * max(0, area.height - size.height),
+            x: min(max(area.minX, area.minX + island.placement.x * area.width), max(area.minX, area.maxX - size.width)),
+            y: min(max(area.minY, area.minY + island.placement.y * area.height), max(area.minY, area.maxY - size.height)),
         )
         return CGRect(origin: origin, size: size)
     }
@@ -358,7 +359,8 @@ final class IslandController {
             built.append(Island(id: source.id, title: source.title, colorString: source.color, tabIDs: source.members, placement: placement, isDefault: source.isDefault))
         }
         let before = state
-        state.prune(tabs: space.mainTabs.map(\.id), islands: built.map(\.id))
+        // An island that is empty for a while keeps its place; only a group that is gone loses it.
+        state.prune(tabs: space.mainTabs.map(\.id), islands: space.groups.map(\.id) + [space.id])
         if changed || state != before {
             persist()
         }
@@ -668,10 +670,10 @@ final class IslandController {
     func moveIsland(_ islandID: UUID, to origin: CGPoint) {
         guard let index = islands.firstIndex(where: { $0.id == islandID }) else { return }
         let size = frame(of: islands[index]).size
-        let x = (origin.x - area.minX) / max(1, area.width - size.width)
-        let y = (origin.y - area.minY) / max(1, area.height - size.height)
-        islands[index].placement.x = min(1, max(0, x))
-        islands[index].placement.y = min(1, max(0, y))
+        let x = min(max(area.minX, origin.x), max(area.minX, area.maxX - size.width))
+        let y = min(max(area.minY, origin.y), max(area.minY, area.maxY - size.height))
+        islands[index].placement.x = (x - area.minX) / max(1, area.width)
+        islands[index].placement.y = (y - area.minY) / max(1, area.height)
         state.islands[islandID] = islands[index].placement
         persist()
     }
@@ -717,8 +719,8 @@ final class IslandController {
             return area.contains(frame) && !others.contains { $0.intersects(frame) }
         } ?? CGPoint(x: sourceFrame.maxX + gap, y: sourceFrame.minY)
         return IslandPlacement(
-            x: min(1, max(0, (chosen.x - area.minX) / max(1, area.width - size.width))),
-            y: min(1, max(0, (chosen.y - area.minY) / max(1, area.height - size.height))),
+            x: min(1, max(0, (chosen.x - area.minX) / max(1, area.width))),
+            y: min(1, max(0, (chosen.y - area.minY) / max(1, area.height))),
             isPinned: false,
             iconsOnly: iconsOnly,
         )
