@@ -20,15 +20,12 @@ final class TabCardWindow: FloatingPageWindow {
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.fullScreenAuxiliary, .transient]
-        // One light, red, which closes the tab, since closing the window does; a child window
-        // neither minimizes nor zooms, so those two are not there.
-        standardWindowButton(.closeButton)?.target = self
-        standardWindowButton(.closeButton)?.action = #selector(closeTab)
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
+        // No lights: the card closes from the gray button in its toolbar, the Finder preview's
+        // way; a child window neither minimizes nor zooms.
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            standardWindowButton(kind)?.isHidden = true
+        }
     }
-
-    @objc private func closeTab() { onClose() }
 
     override func performClose(_: Any?) {
         onClose()
@@ -133,6 +130,7 @@ final class TabCardPresenter {
         let content = TabCardContent(
             tab: tab, page: page,
             onEditAddress: { [weak self] in self?.editAddress(of: tab, in: window) },
+            onClose: { [weak self] in self?.tabManager.requestCloseTab(tab) },
             onReturn: { [weak self] in self?.islands.returnToIsland(tab.id) },
             onOpen: { [weak self] in self?.islands.open(tab) },
         )
@@ -292,6 +290,7 @@ private struct TabCardContent: View {
     let tab: Tab
     let page: WebPage
     let onEditAddress: () -> Void
+    let onClose: () -> Void
     let onReturn: () -> Void
     let onOpen: () -> Void
 
@@ -299,11 +298,9 @@ private struct TabCardContent: View {
 
     private enum Layout {
         static let toolbarHeight: CGFloat = 40
-        /// Room for the window's one light at the leading edge of the toolbar: its margin, the
-        /// light, and the same margin again.
-        static let lightsWidth: CGFloat = 36
-        /// The address field's own inset, matched on the trailing side of the two verbs.
-        static let trailingInset: CGFloat = 8
+        /// The address field's own inset, on both sides of the toolbar.
+        static let edgeInset: CGFloat = 8
+        static let closeSize: CGFloat = 16
     }
 
     var body: some View {
@@ -313,11 +310,12 @@ private struct TabCardContent: View {
                 .webViewAutomaticallyAdjustsContentInsets(false)
                 .webViewTopContentInset(Layout.toolbarHeight)
             HStack(spacing: 0) {
-                Spacer().frame(width: Layout.lightsWidth)
+                closeButton
+                    .padding(.leading, Layout.edgeInset)
                 PageAddressField(webPage: page, onEdit: onEditAddress)
                 verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
                 verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
-                    .padding(.trailing, Layout.trailingInset)
+                    .padding(.trailing, Layout.edgeInset)
             }
             .frame(height: Layout.toolbarHeight)
             .frame(maxWidth: .infinity)
@@ -326,6 +324,20 @@ private struct TabCardContent: View {
             .ignoresSafeArea()
         }
         .frame(minWidth: TabCardWindow.minimumSize.width, minHeight: TabCardWindow.minimumSize.height)
+    }
+
+    /// The gray close of a Finder preview: it closes the tab, as closing the window does.
+    private var closeButton: some View {
+        Button(action: onClose) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: Layout.closeSize, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Constants.PageControls.buttonWidth, height: Constants.PageControls.buttonHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Close tab")
+        .accessibilityLabel("Close tab")
     }
 
     /// A verb in the address field's own control style, the reload button's.

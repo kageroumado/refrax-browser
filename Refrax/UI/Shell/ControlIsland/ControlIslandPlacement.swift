@@ -14,7 +14,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let railWidth = margin * 2 + lightDiameter
     static let rowHeight: CGFloat = 32
     /// The window's lights, one under another, as far apart as the system sets them side by side.
-    static let lightPitch: CGFloat = 20
+    static let lightPitch: CGFloat = 22
     static let contentInset: CGFloat = 8
     static let horizontalInset: CGFloat = 4
     static let contentWidth = railWidth - horizontalInset * 2
