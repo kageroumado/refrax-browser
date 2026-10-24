@@ -277,14 +277,15 @@ struct ControlIslandTests {
         window.isReleasedWhenClosed = false
         defer { window.close() }
         let group = ControlIslandWindowButtonGroup()
-        group.frame = CGRect(x: 0, y: 0, width: 40, height: 96)
+        let pitch = ControlIslandPlacement.lightPitch
+        group.frame = CGRect(x: 0, y: 0, width: 40, height: pitch * 3)
         window.contentView?.addSubview(group)
         group.layoutSubtreeIfNeeded()
         #expect(group.buttons.count == 3)
         for button in group.buttons {
             #expect(button.frame.width == 40)
-            #expect(button.frame.height == 32)
-            for offset in [CGPoint(x: 1, y: 1), CGPoint(x: 39, y: 31)] {
+            #expect(button.frame.height == pitch)
+            for offset in [CGPoint(x: 1, y: 1), CGPoint(x: 39, y: pitch - 1)] {
                 let point = CGPoint(x: button.frame.minX + offset.x, y: button.frame.minY + offset.y)
                 #expect(group.hitTest(group.convert(point, to: group.superview)) === button)
             }
