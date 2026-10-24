@@ -129,8 +129,9 @@ final class IslandWindowPresenter {
         }
         islands.islandWindows[id] = nil
         let window = entry.window
-        let finish = {
-            self.parent.removeChildWindow(window)
+        let parent = parent
+        let finish = { @MainActor in
+            parent.removeChildWindow(window)
             window.orderOut(nil)
             window.contentViewController = nil
         }
@@ -138,7 +139,7 @@ final class IslandWindowPresenter {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = Layout.fade
                 window.animator().alphaValue = 0
-            }, completionHandler: finish)
+            }, completionHandler: { MainActor.assumeIsolated(finish) })
         } else {
             finish()
         }
