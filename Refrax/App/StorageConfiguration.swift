@@ -13,7 +13,9 @@ enum StorageMode: Sendable {
 extension CommandLine {
     /// Parsed command-line arguments for Refrax.
     struct Arguments: Sendable {
-        /// Forces in-memory storage regardless of other settings.
+        /// Forces in-memory storage regardless of other settings: `--in-memory`, or running
+        /// as the unit-test host, which must never open (or try to migrate) the debug app's
+        /// store — a store written by another branch's schema hangs the test runner.
         let forceInMemory: Bool
 
         /// User requested help output.
@@ -22,6 +24,7 @@ extension CommandLine {
         init() {
             let args = Set(CommandLine.arguments.dropFirst())
             self.forceInMemory = args.contains("--in-memory")
+                || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             self.showHelp = args.contains("--help") || args.contains("-h")
         }
     }
