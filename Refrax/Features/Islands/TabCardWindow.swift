@@ -150,7 +150,9 @@ final class TabCardPresenter {
             onOpen: { [weak self] in self?.islands.open(tab) },
         )
         .refraxEnvironment(environment)
-        window.contentViewController = NSHostingController(rootView: content)
+        let hosting = FirstMouseHostingView(rootView: content)
+        hosting.sizingOptions = []
+        window.contentView = hosting
         window.setFrame(frame(for: tab), display: false)
         var card = Card(window: window, tab: tab)
         let center = NotificationCenter.default
@@ -172,7 +174,7 @@ final class TabCardPresenter {
             NotificationCenter.default.removeObserver(observer)
         }
         parent.removeChildWindow(card.window)
-        card.window.contentViewController = nil
+        card.window.contentView = nil
         card.window.orderOut(nil)
     }
 

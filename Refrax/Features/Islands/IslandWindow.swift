@@ -21,6 +21,14 @@ final class IslandWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
+/// A hosting view that takes the first click: a card or an island that is not the key window
+/// acts on the click that makes it key, as a title bar's controls do.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+        true
+    }
+}
+
 /// Keeps one window per island on screen, where the island's frame says, and writes a window
 /// the person drags back into the island's placement.
 @MainActor
@@ -104,9 +112,9 @@ final class IslandWindowPresenter {
 
     private func open(_ island: Island) -> Entry {
         let window = IslandWindow()
-        let controller = NSHostingController(rootView: IslandWindowContent(islandID: island.id).refraxEnvironment(environment))
-        controller.sizingOptions = []
-        window.contentViewController = controller
+        let content = FirstMouseHostingView(rootView: IslandWindowContent(islandID: island.id).refraxEnvironment(environment))
+        content.sizingOptions = []
+        window.contentView = content
         window.setFrame(screenFrame(for: islands.windowFrame(of: island)), display: false)
         window.alphaValue = 0
         var entry = Entry(window: window)
@@ -133,7 +141,7 @@ final class IslandWindowPresenter {
         let finish = { @MainActor in
             parent.removeChildWindow(window)
             window.orderOut(nil)
-            window.contentViewController = nil
+            window.contentView = nil
         }
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
