@@ -14,7 +14,7 @@ struct TabsSettingsView: View {
     @State private var showAutoArchiveRulesSheet = false
     @State private var showDisableArchiveAlert = false
     @State private var showTimeLimitsSheet = false
-    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
+    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.default
 
     var body: some View {
         @Bindable var settings = settings

@@ -46,17 +46,9 @@ final class ControlIslandState {
     @ObservationIgnored private var lastNearPointer = Date()
     @ObservationIgnored private var pointerIsNear = false
     @ObservationIgnored private var edgeHideTask: Task<Void, Never>?
-    /// A hidden rail's flap: a mark at its edge, shown once the pointer has rested near any
-    /// window edge, so the rail can be found without a search along the edges.
-    private(set) var showsEdgeFlap = false
-    @ObservationIgnored private var flapTask: Task<Void, Never>?
-    /// The window's content, in its own coordinates, for the flap's edge zone.
+    /// The window's content, in its own coordinates, for the flap's reach.
     @ObservationIgnored var areaBounds: CGRect = .zero
-    /// The pointer counts as at an edge within this distance of any window edge.
-    static let edgeZone: CGFloat = 40
-    /// How long the pointer rests at an edge before the flap shows.
-    static let flapDelay: Duration = .milliseconds(500)
-    /// A pointer this close to the flap's edge, at its height, brings the rail back.
+    /// A pointer this close to the hidden rail's edge, at the flap's height, brings the rail back.
     static let flapReach: CGFloat = 120
 
     @ObservationIgnored private let defaults: UserDefaults?
@@ -145,10 +137,8 @@ final class ControlIslandState {
     func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
         lastPointerMovement = now
         let reachedEdge = isHiddenAtEdge && reachesRevealStrip(point)
-        if reachedEdge {
+        if reachedEdge || reachesFlap(point) {
             revealAtEdge(.pointer, now: now)
-        } else {
-            trackEdgeFlap(point)
         }
         let phase = hoverPath.phase(at: point, regions: hitRegions, now: now)
         let reach = isQuiet ? Self.nearDistance : Self.farDistance
@@ -171,43 +161,13 @@ final class ControlIslandState {
         return edge == .left ? point.x <= revealStrip.maxX : point.x >= revealStrip.minX
     }
 
-    /// The pointer resting near any window edge shows the flap; the pointer then coming to the
-    /// flap's edge at its height brings the rail back; the pointer leaving the edges takes the
-    /// flap away.
-    private func trackEdgeFlap(_ point: CGPoint) {
-        guard isHiddenAtEdge, let edge = hiddenEdge, !areaBounds.isEmpty else {
-            hideEdgeFlap()
-            return
-        }
-        let bounds = areaBounds
-        let nearAnEdge = point.x - bounds.minX <= Self.edgeZone || bounds.maxX - point.x <= Self.edgeZone
-            || point.y - bounds.minY <= Self.edgeZone || bounds.maxY - point.y <= Self.edgeZone
-        if showsEdgeFlap {
-            let edgeX = edge == .left ? bounds.minX : bounds.maxX
-            if abs(point.x - edgeX) <= Self.flapReach, point.y >= revealStrip.minY, point.y <= revealStrip.maxY {
-                hideEdgeFlap()
-                revealAtEdge(.pointer)
-            } else if !nearAnEdge {
-                hideEdgeFlap()
-            }
-            return
-        }
-        flapTask?.cancel()
-        flapTask = nil
-        guard nearAnEdge else { return }
-        flapTask = Task(name: "Show the rail's flap") { [weak self] in
-            try? await Task.sleep(for: Self.flapDelay)
-            guard let self, !Task.isCancelled, isHiddenAtEdge else { return }
-            showsEdgeFlap = true
-        }
-    }
-
-    private func hideEdgeFlap() {
-        flapTask?.cancel()
-        flapTask = nil
-        if showsEdgeFlap {
-            showsEdgeFlap = false
-        }
+    /// Whether `point` has come to the flap: within reach of the hidden edge, at the strip's
+    /// height. The flap always marks a hidden rail, so the rail is found without a search.
+    private func reachesFlap(_ point: CGPoint) -> Bool {
+        guard isHiddenAtEdge, let edge = hiddenEdge, !areaBounds.isEmpty, !revealStrip.isEmpty,
+              point.y >= revealStrip.minY, point.y <= revealStrip.maxY else { return false }
+        let edgeX = edge == .left ? areaBounds.minX : areaBounds.maxX
+        return abs(point.x - edgeX) <= Self.flapReach
     }
 
     // MARK: Hiding at the Edge
@@ -231,7 +191,6 @@ final class ControlIslandState {
     /// Brings a hidden rail back and wakes it; it hides again once the pointer has stayed away.
     func revealAtEdge(_ reveal: EdgeReveal, now: Date = Date()) {
         lastNearPointer = now
-        hideEdgeFlap()
         guard hiddenEdge != nil else { return }
         if isTuckedAway {
             isTuckedAway = false

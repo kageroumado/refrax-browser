@@ -16,7 +16,7 @@ nonisolated extension ControlIslandPlacement {
     }
 
     static let edgeHidingTitle = "Hide at the Edge"
-    static let edgeHidingHelp = "Against the window's left or right edge, the controls slide away; move the pointer to the edge to bring them back"
+    static let edgeHidingHelp = "Against the window's left or right edge, the controls slide away, the window's lights with them; a sliver on the edge marks where they are, and the pointer coming to it brings them back. ⌘W and the menus still work"
     /// The strip along the window edge that brings a hidden rail back.
     static let revealStripWidth: CGFloat = 6
     /// How far past the rail's ends the strip reaches.

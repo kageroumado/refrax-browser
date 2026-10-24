@@ -17,7 +17,7 @@ struct FloatingStartPage: View {
     @Environment(CommandLensManager.self) private var lens
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("startPage.hintsDismissed") private var hintsDismissed = false
-    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
+    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.default
     /// The page's frame in window coordinates; everything measured in the window is drawn relative to it.
     @State private var pageFrame: CGRect = .zero
     /// The lens's frame in window coordinates.

@@ -82,7 +82,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .navigation: "One row; Forward appears when available · ⌥-click shows history"
         case .page: "The page's icon; hover it for the page card with address, reload, favorite, and actions"
         case .copyLink: "Copy the page address"
-        case .floatingTabs: "Show your islands · hold ⌥ for Recent tabs"
+        case .floatingTabs: "Show your islands, or Recent tabs with the other modifier held"
         case .spaces: "Grouped space icons with the current space selected"
         case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"
         case .reload: "Reload the page or stop loading · ⌘R"

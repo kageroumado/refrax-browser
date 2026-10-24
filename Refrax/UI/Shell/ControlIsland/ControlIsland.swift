@@ -245,7 +245,7 @@ struct ControlIsland: View {
                     .help("Hold \(revealKey.title) for a glance at your islands; click to keep them up")
                     .accessibilityLabel("Show islands: hold \(revealKey.title)")
                 }
-                if state.showsEdgeFlap, let edge = state.hiddenEdge {
+                if isHiddenAtEdge, let edge = state.hiddenEdge {
                     let flap = CGRect(
                         x: edge == .left ? area.minX : area.maxX - Layout.flapWidth,
                         y: min(max(area.minY, frame.midY - Layout.flapHeight / 2), area.maxY - Layout.flapHeight),
@@ -377,7 +377,7 @@ struct ControlIsland: View {
         .onAppear {
             state.wake()
             flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-                optionIsDown = event.modifierFlags.contains(.option)
+                optionIsDown = event.modifierFlags.contains(revealKey.secondMeaningFlag)
                 return event
             }
             // Escape still reaches the page; a rail the pointer brought back also hides.
@@ -492,7 +492,7 @@ struct ControlIsland: View {
                 showsRecent ? "Recent tabs" : item.title,
                 symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
                 enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
-                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show your islands · hold \(revealKey.glyph) for a glance · ⌥ for recent tabs",
+                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show your islands · hold \(revealKey.glyph) for a glance · \(revealKey.secondMeaningGlyph) for recent tabs",
             ) {
                 if optionIsHeld {
                     showRecentTabs()
@@ -541,9 +541,10 @@ struct ControlIsland: View {
         }
     }
 
-    /// Option is down as the button fires: the macOS way to ask a control for its second meaning.
+    /// The second-meaning modifier is down as the button fires: the macOS way to ask a control
+    /// for its other action.
     private var optionIsHeld: Bool {
-        NSEvent.modifierFlags.contains(.option)
+        NSEvent.modifierFlags.contains(revealKey.secondMeaningFlag)
     }
 
     /// The recent-tab picker, in place of the lens and the tab layer.

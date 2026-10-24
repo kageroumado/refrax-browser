@@ -45,14 +45,12 @@ struct ControlIslandEdgeHidingTests {
     }
 
     @Test @MainActor
-    func `the rail hides at its edge by default, and the setting survives relaunch`() throws {
+    func `the rail shows by default, and the hiding setting survives relaunch`() throws {
         let suite = "ControlIslandEdgeHidingTests.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let configuration = ControlIslandConfiguration(defaults: defaults)
-        #expect(configuration.hidesAtEdge)
-        configuration.setHidesAtEdge(false)
-        #expect(!ControlIslandConfiguration(defaults: defaults).hidesAtEdge)
+        #expect(!configuration.hidesAtEdge)
         configuration.setHidesAtEdge(true)
         let restored = ControlIslandConfiguration(defaults: defaults)
         #expect(restored.hidesAtEdge)

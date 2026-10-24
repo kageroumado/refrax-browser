@@ -3,7 +3,8 @@ import SwiftUI
 
 /// A tab taken out of its island: a window of its own over the page, with the window's lights
 /// and title bar, resizable, moved by its title bar, a child of the browser window so it
-/// follows it. Red closes the tab, yellow puts it back in its island, green opens it as the page.
+/// follows it. Red closes the tab; the toolbar's two buttons return it to its island or open it
+/// as the page.
 final class TabCardWindow: FloatingPageWindow {
     var onClose: () -> Void = {}
     var onReturn: () -> Void = {}
@@ -19,38 +20,18 @@ final class TabCardWindow: FloatingPageWindow {
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.fullScreenAuxiliary, .transient]
-        // The standard buttons act on the tab, whatever AppKit would do to a window that is
-        // not key; the overrides below cover the keyboard equivalents.
+        // The lights keep their meaning: red closes the tab, since closing the window does;
+        // a child window neither minimizes nor zooms, so those two are dim.
         standardWindowButton(.closeButton)?.target = self
         standardWindowButton(.closeButton)?.action = #selector(closeTab)
-        standardWindowButton(.miniaturizeButton)?.target = self
-        standardWindowButton(.miniaturizeButton)?.action = #selector(returnToIsland)
-        standardWindowButton(.zoomButton)?.target = self
-        standardWindowButton(.zoomButton)?.action = #selector(openAsPage)
+        styleMask.remove(.miniaturizable)
+        standardWindowButton(.zoomButton)?.isEnabled = false
     }
 
     @objc private func closeTab() { onClose() }
-    @objc private func returnToIsland() { onReturn() }
-    @objc private func openAsPage() { onOpen() }
 
     override func performClose(_: Any?) {
         onClose()
-    }
-
-    override func miniaturize(_: Any?) {
-        onReturn()
-    }
-
-    override func performMiniaturize(_: Any?) {
-        onReturn()
-    }
-
-    override func zoom(_: Any?) {
-        onOpen()
-    }
-
-    override func performZoom(_: Any?) {
-        onOpen()
     }
 
     override var canBecomeKey: Bool { true }
@@ -149,9 +130,12 @@ final class TabCardPresenter {
         window.onReturn = { [weak self] in self?.islands.returnToIsland(tab.id) }
         window.onOpen = { [weak self] in self?.islands.open(tab) }
         window.title = tab.displayTitle
-        let content = TabCardContent(tab: tab, page: page) { [weak self] in
-            self?.editAddress(of: tab, in: window)
-        }
+        let content = TabCardContent(
+            tab: tab, page: page,
+            onEditAddress: { [weak self] in self?.editAddress(of: tab, in: window) },
+            onReturn: { [weak self] in self?.islands.returnToIsland(tab.id) },
+            onOpen: { [weak self] in self?.islands.open(tab) },
+        )
         .refraxEnvironment(environment)
         window.contentViewController = NSHostingController(rootView: content)
         window.setFrame(frame(for: tab), display: false)
@@ -301,16 +285,25 @@ final class TabCardPresenter {
     }
 }
 
-/// What a card window shows: the page's address bar under the window's lights, and the page.
+/// What a card window shows: the page's address bar under the window's lights, the card's two
+/// verbs at its trailing end, and the page. The toolbar carries the window's tint, so the
+/// card reads as the islands' sibling.
 private struct TabCardContent: View {
     let tab: Tab
     let page: WebPage
     let onEditAddress: () -> Void
+    let onReturn: () -> Void
+    let onOpen: () -> Void
+
+    @Environment(WindowState.self) private var windowState
 
     private enum Layout {
         static let toolbarHeight: CGFloat = 40
         /// Room for the window's lights at the leading edge of the toolbar.
         static let lightsWidth: CGFloat = 78
+        static let controlSize: CGFloat = 28
+        static let controlSpacing: CGFloat = 2
+        static let trailingInset: CGFloat = 6
     }
 
     var body: some View {
@@ -323,12 +316,30 @@ private struct TabCardContent: View {
                 Spacer().frame(width: Layout.lightsWidth)
                 PageAddressField(webPage: page, onEdit: onEditAddress)
                     .padding(.trailing, 8)
+                HStack(spacing: Layout.controlSpacing) {
+                    verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
+                    verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
+                }
+                .padding(.trailing, Layout.trailingInset)
             }
             .frame(height: Layout.toolbarHeight)
             .frame(maxWidth: .infinity)
+            .background(windowState.controlIslandTint)
             .background(.bar)
             .ignoresSafeArea()
         }
         .frame(minWidth: TabCardWindow.minimumSize.width, minHeight: TabCardWindow.minimumSize.height)
+    }
+
+    private func verb(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
     }
 }

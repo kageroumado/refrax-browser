@@ -117,8 +117,19 @@ struct IslandView: View {
                 .gesture(moveGesture)
         }
         // The Control Island's glass: the window's tint under regular glass.
-        .background(windowState.controlIslandTint, in: shape)
+        .background(tint, in: shape)
         .glassEffect(.regular, in: shape)
+        // A pinned island says so on its face: it stays when the key is let go.
+        .overlay(alignment: .topTrailing) {
+            if island.placement.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: Layout.pinSize, weight: .semibold))
+                    .foregroundStyle(color)
+                    .padding(Layout.pinInset)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         // A blurred shape under the glass is the shadow: a row's hover never re-renders the
         // island for it.
         .background {
@@ -137,6 +148,14 @@ struct IslandView: View {
 
     private enum Layout {
         static let nudge: CGFloat = 40
+        static let pinSize: CGFloat = 8
+        static let pinInset: CGFloat = 5
+    }
+
+    /// The island's glass is tinted with its group's color; the plain Tabs island takes the
+    /// window's tint, so islands tell apart by hue.
+    private var tint: Color {
+        island.isDefault ? windowState.controlIslandTint : color.opacity(ControlIslandPlacement.spaceTintOpacity)
     }
 
     private func nudge(dx: CGFloat, dy: CGFloat) {

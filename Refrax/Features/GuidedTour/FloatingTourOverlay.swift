@@ -11,7 +11,7 @@ struct FloatingTourOverlay: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
+    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.default
     @State private var cardSize = CGSize.zero
     @State private var progressFrame = CGRect.zero
     /// A click on the dimmed page draws the eye back to the target.
