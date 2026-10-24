@@ -52,6 +52,8 @@ final class TabCardPresenter {
         static let persistDelay: Duration = .milliseconds(400)
         /// How often a held card is checked for its release.
         static let releasePoll: Duration = .milliseconds(50)
+        /// A card this close to an anchored lens is away while the lens is up.
+        static let lensClearance: CGFloat = 8
     }
 
     private unowned let parent: NSWindow
@@ -84,6 +86,7 @@ final class TabCardPresenter {
                 activeTabID: windowState.activeTabID,
                 hidden: windowState.showsCenteredLens || windowState.isSpaceLocked,
                 anchored: windowState.showsAnchoredLens,
+                lensFrame: windowState.commandLensFrame,
             )
         }
         observation = Task(name: "Follow the cards") { [weak self] in
@@ -105,6 +108,7 @@ final class TabCardPresenter {
         var activeTabID: UUID?
         var hidden: Bool
         var anchored: Bool
+        var lensFrame: CGRect
     }
 
     // MARK: - Keeping the windows in step
@@ -121,9 +125,11 @@ final class TabCardPresenter {
         for tab in wanted where cards[tab.id] == nil {
             open(tab)
         }
+        // An anchored lens lives in the browser window, under every card: the card it edits
+        // makes way, and so does any card over it.
+        let lens = windowState.showsAnchoredLens && editingTabID != nil ? windowState.commandLensFrame.insetBy(dx: -Layout.lensClearance, dy: -Layout.lensClearance) : .null
         for (id, card) in cards {
-            // The card whose address the lens edits makes way: the lens sits where its field was.
-            let away = hidden || id == editingTabID
+            let away = hidden || id == editingTabID || contentFrame(of: card.window).intersects(lens)
             card.window.alphaValue = away ? 0 : 1
             card.window.ignoresMouseEvents = away
         }
@@ -265,6 +271,13 @@ final class TabCardPresenter {
             target.origin.y = min(max(target.minY, visible.minY), visible.maxY - target.height)
         }
         window.setFrame(target, display: true)
+    }
+
+    /// A card's frame in the parent's content, top-down.
+    private func contentFrame(of window: NSWindow) -> CGRect {
+        let content = contentOnScreen
+        let screen = window.frame
+        return CGRect(x: screen.minX - content.minX, y: content.maxY - screen.maxY, width: screen.width, height: screen.height)
     }
 
     /// The pointer in the parent's content, top-down.
