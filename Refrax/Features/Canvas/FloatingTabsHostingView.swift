@@ -8,6 +8,8 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     /// A right-click at a point; returns whether it was handled, which keeps it from the page.
     var onSecondaryPointerDown: ((CGPoint, NSEvent) -> Bool)?
     var controlState: (() -> ControlIslandState?)?
+    /// The pointer over the page, for what shows near it.
+    var onPointerMoved: ((CGPoint) -> Void)?
     private var pointerMonitor: Any?
     private var pointerTrackingArea: NSTrackingArea?
 
@@ -30,7 +32,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
+        let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
+        controlState?()?.pointerMoved?(point)
+        onPointerMoved?(point)
     }
 
     override func mouseExited(with event: NSEvent) {

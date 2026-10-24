@@ -48,6 +48,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     private(set) var environment: RefraxEnvironment!
     /// The windows of the tabs taken out of their islands.
     private var tabCardPresenter: TabCardPresenter?
+    /// The islands, each a window over the page.
+    private var islandWindowPresenter: IslandWindowPresenter?
 
     // MARK: Detail Tray
 
@@ -199,6 +201,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             tabManager: appDelegate.tabManager, environment: environment,
         )
         tabCardPresenter?.start()
+        islandWindowPresenter = IslandWindowPresenter(parent: window, windowState: windowState, islands: islandController, environment: environment)
+        islandWindowPresenter?.start()
 
         setupRootView(window: window)
 
@@ -274,6 +278,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         }
         floatingView.onSecondaryPointerDown = { [weak islandController] point, _ in
             islandController?.clickDirectionLabel(at: point) ?? false
+        }
+        floatingView.onPointerMoved = { [weak islandController] point in
+            islandController?.pointerMoved(point)
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
             guard let floatingView, let tabCanvasManager, let islandController else { return [] }
@@ -458,6 +465,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     func windowWillClose(_: Notification) {
         tabCardPresenter?.stop()
+        islandWindowPresenter?.stop()
         NotificationCenter.default.removeObserver(self)
         removeUndoRedoMonitor()
         cancelAllObservationTasks()

@@ -15,6 +15,8 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// The Control Island's corner.
     static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
     static let rowCornerRadius: CGFloat = 8
+    /// The header above the rows: the island's name and controls, there whether shown or not.
+    static let headerHeight: CGFloat = 28
     /// The largest share of the window's height an island takes before its rows scroll.
     static let maximumShare: CGFloat = 0.4
 
@@ -24,9 +26,9 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
         iconsOnly ? Self.iconWidth : Self.titleWidth
     }
 
-    /// The height of `rows` rows, one at least, and the padding.
+    /// The height of the header, `rows` rows, one at least, and the padding.
     func contentHeight(rows: Int) -> CGFloat {
-        CGFloat(max(1, rows)) * Self.rowHeight + 2 * Self.padding
+        Self.headerHeight + CGFloat(max(1, rows)) * Self.rowHeight + 2 * Self.padding
     }
 
     /// The island's size on screen: its content, held to the window's share.
@@ -35,10 +37,10 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
         return CGSize(width: width, height: min(contentHeight(rows: rows), max(least, window.height * Self.maximumShare)))
     }
 
-    /// Row `index`'s frame in the island, before any scrolling.
+    /// Row `index`'s frame in the island, under the header, before any scrolling.
     func rowFrame(_ index: Int) -> CGRect {
         CGRect(
-            x: Self.padding, y: Self.padding + CGFloat(index) * Self.rowHeight,
+            x: Self.padding, y: Self.padding + Self.headerHeight + CGFloat(index) * Self.rowHeight,
             width: width - 2 * Self.padding, height: Self.rowHeight,
         )
     }
@@ -46,14 +48,14 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// Where a row dropped at `point` goes among `count` rows: before the row whose top half it
     /// is on, after the one whose bottom half, so 0 through `count`.
     func insertion(at point: CGPoint, count: Int) -> Int {
-        let y = point.y - Self.padding
+        let y = point.y - Self.padding - Self.headerHeight
         return min(count, max(0, Int((y / Self.rowHeight).rounded())))
     }
 
     /// The row `point` is on, when it is on one's middle: a drop there joins that row's tab
     /// instead of landing beside it.
     func joinedRow(at point: CGPoint, count: Int) -> Int? {
-        let y = point.y - Self.padding
+        let y = point.y - Self.padding - Self.headerHeight
         guard y >= 0 else { return nil }
         let row = Int(y / Self.rowHeight)
         let within = (y - CGFloat(row) * Self.rowHeight) / Self.rowHeight

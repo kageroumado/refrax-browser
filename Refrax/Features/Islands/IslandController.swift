@@ -16,6 +16,13 @@ struct Island: Identifiable, Equatable {
 
 /// Where a dragged row would land: an island and the row it goes before, or the tab on that
 /// island it joins as a second pane.
+/// A row on its way somewhere: drawn over the page at the pointer, since its island's window
+/// ends at the island's edge.
+struct RowGhost: Equatable {
+    let tabID: UUID
+    var point: CGPoint
+}
+
 struct IslandDrop: Equatable {
     let island: UUID
     let row: Int
@@ -67,11 +74,9 @@ final class IslandController {
         static let crossingWindow: TimeInterval = 1.5
         /// The least space between two islands once one is let go over another.
         static let islandGap: CGFloat = 8
-        /// The island's controls, outside it: a capsule this tall, at least this wide, this far off.
-        static let controlsHeight: CGFloat = 28
-        static let controlsMinWidth: CGFloat = 180
-        static let controlsGap: CGFloat = 6
-        /// How long the controls stay after the pointer leaves the island, so they can be reached.
+        /// The pointer this close to an island, on the page, shows the island's header.
+        static let headerReach: CGFloat = 24
+        /// How long the header stays after the pointer leaves the island.
         static let controlsGrace: Duration = .milliseconds(350)
         /// Where the first island of a space goes, normalized to the window.
         static let firstIslandOrigin = CGPoint(x: 0.1, y: 0.1)
@@ -121,10 +126,16 @@ final class IslandController {
     var draggedIslandID: UUID?
     /// Where each direction label sits while the key is held, in the window's content.
     @ObservationIgnored var directionLabelFrames: [TableDirection: CGRect] = [:]
-    /// The island under the pointer, or the one the pointer just left; its controls show.
+    /// The island under the pointer, or the one the pointer just left; its header shows.
     private(set) var hoveredIslandID: UUID?
-    /// The island whose controls are in use (a rename, its menu), so they stay while the pointer is away.
+    /// The island the pointer is near on the page, within ``Layout/headerReach``; its header shows.
+    private(set) var nearIslandID: UUID?
+    /// The island whose header is in use (a rename, its menu), so it stays while the pointer is away.
     private(set) var heldControlsIslandID: UUID?
+    /// The row being dragged, at the pointer, for the layer to draw.
+    var rowGhost: RowGhost?
+    /// Each island's window while it is on screen, for what must pop up from it.
+    @ObservationIgnored var islandWindows: [UUID: NSWindow] = [:]
     /// A new island's name, open for editing in its controls as soon as they show.
     var renameRequest: UUID?
     @ObservationIgnored private var hoverClearTask: Task<Void, Never>?
@@ -263,22 +274,28 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
-    /// Where the islands take the pointer: every visible island, and the controls of the one
-    /// under the pointer.
+    /// Where the islands take the pointer in the layer: nowhere, since each island is a
+    /// window of its own.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
-        visibleIslands.map(frame(of:)) + (controlsIsland.map { [controlsFrame(for: $0, in: bounds)] } ?? [])
+        []
     }
 
-    // MARK: - Controls Beside an Island
+    // MARK: - An Island's Header
 
-    /// The island whose controls show: the one in use, else the one under the pointer.
-    var controlsIsland: Island? {
-        guard draggedIslandID == nil, let id = heldControlsIslandID ?? hoveredIslandID else { return nil }
-        return visibleIslands.first { $0.id == id }
+    /// Whether an island's header shows: the pointer is on or near it, or it is in use.
+    func showsHeader(of islandID: UUID) -> Bool {
+        hoveredIslandID == islandID || nearIslandID == islandID || heldControlsIslandID == islandID || draggedIslandID == islandID
     }
 
-    /// The pointer entered or left an island, or its controls. Leaving keeps the controls for a
-    /// grace, long enough to cross the gap to them.
+    /// The pointer moved over the page: the island it is near shows its header.
+    func pointerMoved(_ point: CGPoint) {
+        let near = visibleIslands.first { frame(of: $0).insetBy(dx: -Layout.headerReach, dy: -Layout.headerReach).contains(point) }?.id
+        if nearIslandID != near {
+            nearIslandID = near
+        }
+    }
+
+    /// The pointer entered or left an island's window. Leaving keeps the header for a grace.
     func setHovered(_ islandID: UUID, _ hovered: Bool) {
         hoverClearTask?.cancel()
         hoverClearTask = nil
@@ -293,32 +310,13 @@ final class IslandController {
         }
     }
 
-    /// Keeps an island's controls while they are in use, whatever the pointer does.
+    /// Keeps an island's header while it is in use, whatever the pointer does.
     func holdControls(_ islandID: UUID, _ held: Bool) {
         if held {
             heldControlsIslandID = islandID
         } else if heldControlsIslandID == islandID {
             heldControlsIslandID = nil
         }
-    }
-
-    /// Where an island's controls go: a capsule centered over the island above it, else below,
-    /// else beside it on the side with room.
-    func controlsFrame(for island: Island, in bounds: CGRect) -> CGRect {
-        let frame = frame(of: island)
-        let size = CGSize(width: min(max(frame.width, Layout.controlsMinWidth), bounds.width), height: Layout.controlsHeight)
-        let gap = Layout.controlsGap
-        let x = min(max(bounds.minX, frame.midX - size.width / 2), bounds.maxX - size.width)
-        if frame.minY - gap - size.height >= bounds.minY {
-            return CGRect(x: x, y: frame.minY - gap - size.height, width: size.width, height: size.height)
-        }
-        if frame.maxY + gap + size.height <= bounds.maxY {
-            return CGRect(x: x, y: frame.maxY + gap, width: size.width, height: size.height)
-        }
-        if frame.maxX + gap + size.width <= bounds.maxX {
-            return CGRect(x: frame.maxX + gap, y: frame.minY, width: size.width, height: size.height)
-        }
-        return CGRect(x: max(bounds.minX, frame.minX - gap - size.width), y: frame.minY, width: size.width, height: size.height)
     }
 
     /// The side of the page a row dragged to `point` would join the current tab on: the
