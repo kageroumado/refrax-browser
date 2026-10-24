@@ -88,6 +88,13 @@ struct IslandView: View {
                 .padding(IslandGeometry.padding)
                 .frame(width: frame.width, height: frame.height, alignment: .top)
                 .clipShape(shape)
+                // Any empty glass moves the window: the open hand says so.
+                .background {
+                    Color.clear
+                        .contentShape(shape)
+                        .pointerStyle(.grabIdle)
+                        .gesture(WindowDragGesture())
+                }
                 // The Control Island's glass: the window's tint under regular glass, the same
                 // on every island; the rows inside are concentric with the island's corner.
                 .background(windowState.controlIslandTint, in: shape)
@@ -204,6 +211,13 @@ private struct IslandPill: View {
         .padding(.leading, Layout.leadingInset)
         .padding(.trailing, Layout.trailingInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The pill moves the window too.
+        .background {
+            Color.clear
+                .contentShape(Capsule())
+                .pointerStyle(.grabIdle)
+                .gesture(WindowDragGesture())
+        }
         .background(windowState.controlIslandTint, in: .capsule)
         .glassEffect(.regular, in: .capsule)
         .opacity(isShown ? 1 : 0)

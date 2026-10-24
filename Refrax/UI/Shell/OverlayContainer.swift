@@ -18,8 +18,6 @@ import SwiftUI
 ///
 /// Each overlay is extracted to its own file to isolate observation scope:
 /// - `BrowserBeamsOverlay` - Observes the lens entrance and frame, and the page card's frame
-/// - `CommandLensOverlay` - Observes the lens entrance (centered)
-/// - `AnchoredLensOverlay` - Observes the lens entrance (beside the page card)
 /// - `ScreenshotPreviewOverlay` - Observes `screenshotCoordinator.currentPreview`
 /// - `RecordingPreviewOverlay` - Observes `recordingCoordinator.currentPreview`
 /// - `FloatingTourOverlay` - Observes the tour's current step and the frames it points at
@@ -40,8 +38,7 @@ struct OverlayContainer: View {
     /// When true, the hosting AppKit view passes clicks through to SwiftUI.
     /// The actual hit regions are handled by individual overlays.
     private var requiresHitTesting: Bool {
-        windowState.showsCommandLens
-            || windowState.toastMessage != nil
+        windowState.toastMessage != nil
             || windowState.pendingSearchEngineDetection != nil
             || tabSwitcherManager.isActive
             || lockedSpace != nil
@@ -59,12 +56,10 @@ struct OverlayContainer: View {
             // Tab switcher overlay (Control+Tab)
             TabSwitcherOverlay()
 
-            // Beams from the rail to what it opened, under the lens they point at
+            // Beams from the rail to what it opened, under the lens they point at. The lens
+            // itself is a window of its own (``CommandLensWindowPresenter``), above every
+            // island and card.
             BrowserBeamsOverlay()
-
-            // Command Lens, centered (⌘T) or beside the page card (⌘L)
-            CommandLensOverlay()
-            AnchoredLensOverlay()
 
             // Floating tour: scrim, spotlights, instruction card, progress
             FloatingTourOverlay()

@@ -50,6 +50,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     private var tabCardPresenter: TabCardPresenter?
     /// The islands, each a window over the page.
     private var islandWindowPresenter: IslandWindowPresenter?
+    /// The Command Lens, a window over everything.
+    private var commandLensWindowPresenter: CommandLensWindowPresenter?
 
     // MARK: Detail Tray
 
@@ -203,6 +205,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         tabCardPresenter?.start()
         islandWindowPresenter = IslandWindowPresenter(parent: window, windowState: windowState, islands: islandController, environment: environment)
         islandWindowPresenter?.start()
+        commandLensWindowPresenter = CommandLensWindowPresenter(parent: window, windowState: windowState, environment: environment)
+        commandLensWindowPresenter?.start()
 
         setupRootView(window: window)
 
@@ -466,6 +470,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     func windowWillClose(_: Notification) {
         tabCardPresenter?.stop()
         islandWindowPresenter?.stop()
+        commandLensWindowPresenter?.stop()
         NotificationCenter.default.removeObserver(self)
         removeUndoRedoMonitor()
         cancelAllObservationTasks()
