@@ -656,6 +656,12 @@ final class WindowState {
         commandLensEntrance?.anchor != nil
     }
 
+    /// The lens in the middle of the window, which the islands and cards make way for; an
+    /// anchored one sits on the field it edits and leaves them be.
+    var showsCenteredLens: Bool {
+        showsCommandLens && !showsAnchoredLens
+    }
+
     var commandLensBinding: Binding<Bool> {
         Binding(
             get: { self.showsCommandLens },

@@ -55,18 +55,52 @@ struct PageAddressField: View {
     @ViewBuilder
     private var domain: some View {
         if let onEdit {
-            Button(action: onEdit) {
-                domainLabel
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Address")
-            .accessibilityValue(url?.safeDisplayDomain ?? "")
-            .help("Edit address")
+            domainLabel
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .gesture(pressGesture(onEdit))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Address")
+                .accessibilityValue(url?.safeDisplayDomain ?? "")
+                .accessibilityAction { onEdit() }
+                .help("Edit address")
         } else {
             domainLabel
         }
+    }
+
+    @State private var pressBegan: Date?
+    @State private var pressMovedWindow = false
+
+    private enum Press {
+        /// A press let go within this long, without moving, is a click.
+        static let clickDuration: TimeInterval = 0.4
+        /// Movement past this is a drag of the window.
+        static let dragDistance: CGFloat = 4
+    }
+
+    /// A short click edits the address; a press that moves, or is held, drags the window the
+    /// field is in, the way a title bar does, and edits nothing when let go.
+    private func pressGesture(_ onEdit: @escaping () -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onChanged { value in
+                if pressBegan == nil {
+                    pressBegan = .now
+                    pressMovedWindow = false
+                }
+                guard !pressMovedWindow, hypot(value.translation.width, value.translation.height) > Press.dragDistance,
+                      let event = NSApp.currentEvent, let window = event.window else { return }
+                pressMovedWindow = true
+                window.performDrag(with: event)
+            }
+            .onEnded { _ in
+                let began = pressBegan
+                pressBegan = nil
+                if !pressMovedWindow, let began, Date.now.timeIntervalSince(began) < Press.clickDuration {
+                    onEdit()
+                }
+                pressMovedWindow = false
+            }
     }
 
     private var domainLabel: some View {

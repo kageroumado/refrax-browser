@@ -64,9 +64,10 @@ struct IslandsLayer: View {
 
 }
 
-/// One island: its header, then a column of the group's tabs as rows, filling its window.
-/// Any of its empty glass moves it, by the window. The header is always there, so the island
-/// keeps its size, and shows while the pointer is on or near the island or the header is in use.
+/// One island in its window: the pill with its name and controls above, a glass column of the
+/// group's tabs as rows below. Any of the glass moves the window. The pill is always laid out,
+/// so the window keeps its size, and shows while the pointer is on or near the island or the
+/// pill is in use.
 struct IslandView: View {
     let island: Island
 
@@ -77,37 +78,23 @@ struct IslandView: View {
         islands.geometry(for: island)
     }
 
-    private var color: Color {
-        islands.color(of: island)
-    }
-
     var body: some View {
         let shape = WindowCorner.concentric
         let frame = islands.frame(of: island)
-        VStack(spacing: 0) {
-            IslandHeader(island: island)
-                .frame(height: IslandGeometry.headerHeight)
+        VStack(spacing: IslandGeometry.pillGap) {
+            IslandPill(island: island)
+                .frame(width: frame.width, height: IslandGeometry.pillHeight)
             rows
+                .padding(IslandGeometry.padding)
+                .frame(width: frame.width, height: frame.height, alignment: .top)
+                .clipShape(shape)
+                // The Control Island's glass: the window's tint under regular glass, the same
+                // on every island; the rows inside are concentric with the island's corner.
+                .background(windowState.controlIslandTint, in: shape)
+                .glassEffect(.regular, in: shape)
+                .containerShape(.rect(cornerRadius: WindowCorner.radius))
         }
-        .padding(IslandGeometry.padding)
-        .frame(width: frame.width, height: frame.height, alignment: .top)
-        .clipShape(shape)
-        // The Control Island's glass: the window's tint under regular glass, the same on every
-        // island; the rows inside are concentric with the island's corner.
-        .background(windowState.controlIslandTint, in: shape)
-        .glassEffect(.regular, in: shape)
-        .containerShape(.rect(cornerRadius: WindowCorner.radius))
-        // A pinned island says so on its face: it stays when the key is let go.
-        .overlay(alignment: .topTrailing) {
-            if island.placement.isPinned, !islands.showsHeader(of: island.id) {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: Layout.pinSize, weight: .semibold))
-                    .foregroundStyle(color)
-                    .padding(Layout.pinInset)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
+        .frame(width: frame.width, height: frame.height + IslandGeometry.pillReserve, alignment: .bottom)
         .onHover { islands.setHovered(island.id, $0) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
@@ -121,8 +108,6 @@ struct IslandView: View {
 
     private enum Layout {
         static let nudge: CGFloat = 40
-        static let pinSize: CGFloat = 8
-        static let pinInset: CGFloat = 6
     }
 
     private func nudge(dx: CGFloat, dy: CGFloat) {
@@ -160,9 +145,10 @@ struct IslandView: View {
     }
 }
 
-/// An island's header: its name, which a double-click renames, then the pin, the menu and the
-/// plus. Always laid out; visible while the pointer is on or near the island or it is in use.
-private struct IslandHeader: View {
+/// An island's pill: its name, which a double-click renames, then the pin, the menu and the
+/// plus, in a glass capsule above the island. Visible while the pointer is on or near the
+/// island or the pill is in use; laid out always.
+private struct IslandPill: View {
     let island: Island
 
     @Environment(IslandController.self) private var islands
@@ -170,22 +156,21 @@ private struct IslandHeader: View {
     @State private var isRenaming = false
     @State private var draftName = ""
     @FocusState private var nameIsFocused: Bool
-    /// Where the menu button is, in the island, so its menu hangs from it.
+    /// Where the menu button is, in the island's window, so its menu hangs from it.
     @State private var menuButtonFrame: CGRect = .zero
 
     private enum Layout {
-        /// From the island's padding to the name's ink, and from the last glyph's box to it.
-        static let leadingInset: CGFloat = 6
-        static let trailingInset: CGFloat = 0
-        /// The name reads above the rows' titles: larger than a tab's title, and semibold.
-        static let titleSize: CGFloat = 14
+        /// From the capsule's edge to the name's ink.
+        static let leadingInset: CGFloat = 14
+        /// From the last glyph's box to the capsule's edge: with the glyph's own inset in its
+        /// box, the same as the name's.
+        static let trailingInset: CGFloat = 8
+        /// The system's weights: the name a touch above a row's title, the glyphs regular.
+        static let titleSize: CGFloat = 13
+        static let glyphSize: CGFloat = 12
         static let controlSize: CGFloat = 24
         static let controlSpacing: CGFloat = 4
         static let fade: TimeInterval = 0.15
-    }
-
-    private var color: Color {
-        islands.color(of: island)
     }
 
     private var isShown: Bool {
@@ -197,7 +182,7 @@ private struct IslandHeader: View {
             if isRenaming || islands.renameRequest == island.id {
                 TextField("Name", text: $draftName)
                     .textFieldStyle(.plain)
-                    .font(.system(size: Layout.titleSize, weight: .semibold))
+                    .font(.system(size: Layout.titleSize))
                     .focused($nameIsFocused)
                     .onSubmit { commitRename() }
                     .onExitCommand { endRename() }
@@ -206,7 +191,7 @@ private struct IslandHeader: View {
                     }
             } else {
                 Text(island.title)
-                    .font(.system(size: Layout.titleSize, weight: .semibold))
+                    .font(.system(size: Layout.titleSize))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .onTapGesture(count: 2) { beginRename() }
@@ -218,6 +203,9 @@ private struct IslandHeader: View {
         }
         .padding(.leading, Layout.leadingInset)
         .padding(.trailing, Layout.trailingInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(windowState.controlIslandTint, in: .capsule)
+        .glassEffect(.regular, in: .capsule)
         .opacity(isShown ? 1 : 0)
         .allowsHitTesting(isShown)
         .animation(.easeOut(duration: Layout.fade), value: isShown)
@@ -237,8 +225,8 @@ private struct IslandHeader: View {
             islands.togglePin(island.id)
         } label: {
             Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(color) : AnyShapeStyle(.secondary))
+                .font(.system(size: Layout.glyphSize))
+                .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(Color.appAccentColor) : AnyShapeStyle(.secondary))
                 .frame(width: Layout.controlSize, height: Layout.controlSize)
                 .contentShape(Rectangle())
         }
@@ -253,7 +241,7 @@ private struct IslandHeader: View {
             showMenu()
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: Layout.glyphSize))
                 .foregroundStyle(.secondary)
                 .frame(width: Layout.controlSize, height: Layout.controlSize)
                 .contentShape(Rectangle())
@@ -271,7 +259,7 @@ private struct IslandHeader: View {
             islands.addTab(to: island.id)
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: Layout.glyphSize))
                 .foregroundStyle(.primary)
                 .frame(width: Layout.controlSize, height: Layout.controlSize)
                 .contentShape(Rectangle())
@@ -283,7 +271,7 @@ private struct IslandHeader: View {
     }
 
     /// The island's menu, an AppKit menu hanging from the button in the island's own window:
-    /// the header stays while it tracks.
+    /// the pill stays while it tracks.
     private func showMenu() {
         guard let content = islands.islandWindows[island.id]?.contentView else { return }
         let menu = NSMenu()
@@ -647,9 +635,9 @@ private struct IslandTabRow: View, Equatable {
         return actions
     }
 
-    /// A point in this island's window, in the layer: the window sits at the island's frame.
+    /// A point in this island's window, in the layer: the window sits at the island's window frame.
     private func layerPoint(_ local: CGPoint) -> CGPoint {
-        let origin = islands.frame(of: island).origin
+        let origin = islands.windowFrame(of: island).origin
         return CGPoint(x: origin.x + local.x, y: origin.y + local.y)
     }
 

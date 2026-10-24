@@ -62,8 +62,8 @@ final class IslandWindowPresenter {
         let windowState = windowState
         let changes = Observations {
             Key(
-                frames: Dictionary(uniqueKeysWithValues: islands.visibleIslands.map { ($0.id, islands.frame(of: $0)) }),
-                hidden: windowState.showsCommandLens || windowState.isSpaceLocked,
+                frames: Dictionary(uniqueKeysWithValues: islands.visibleIslands.map { ($0.id, islands.windowFrame(of: $0)) }),
+                hidden: windowState.showsCenteredLens || windowState.isSpaceLocked,
                 dragged: islands.draggedIslandID,
             )
         }
@@ -85,14 +85,14 @@ final class IslandWindowPresenter {
 
     private func sync() {
         let visible = islands.visibleIslands
-        let hidden = windowState.showsCommandLens || windowState.isSpaceLocked
+        let hidden = windowState.showsCenteredLens || windowState.isSpaceLocked
         for id in Array(entries.keys) where !visible.contains(where: { $0.id == id }) {
             close(id, animated: true)
         }
         for island in visible {
             let entry = entries[island.id] ?? open(island)
             if islands.draggedIslandID != island.id {
-                let target = screenFrame(for: islands.frame(of: island))
+                let target = screenFrame(for: islands.windowFrame(of: island))
                 if entry.window.frame != target {
                     entry.window.setFrame(target, display: true)
                 }
@@ -107,7 +107,7 @@ final class IslandWindowPresenter {
         let controller = NSHostingController(rootView: IslandWindowContent(islandID: island.id).refraxEnvironment(environment))
         controller.sizingOptions = []
         window.contentViewController = controller
-        window.setFrame(screenFrame(for: islands.frame(of: island)), display: false)
+        window.setFrame(screenFrame(for: islands.windowFrame(of: island)), display: false)
         window.alphaValue = 0
         var entry = Entry(window: window)
         let id = island.id
@@ -174,7 +174,7 @@ final class IslandWindowPresenter {
         let content = contentOnScreen
         let screen = entry.window.frame
         islands.draggedIslandID = id
-        islands.moveIsland(id, to: CGPoint(x: screen.minX - content.minX, y: content.maxY - screen.maxY))
+        islands.moveIsland(id, to: CGPoint(x: screen.minX - content.minX, y: content.maxY - screen.maxY + IslandGeometry.pillReserve))
         entry.window.orderFront(nil)
         entry.settle?.cancel()
         entry.settle = Task(name: "Settle an island") { [weak self] in

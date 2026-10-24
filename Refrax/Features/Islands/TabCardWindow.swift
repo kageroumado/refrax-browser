@@ -62,6 +62,8 @@ final class TabCardPresenter {
     private let environment: RefraxEnvironment
     private var cards: [UUID: Card] = [:]
     private var observation: Task<Void, Never>?
+    /// The card whose address the lens is editing; it is away while the lens is up.
+    private var editingTabID: UUID?
 
     init(parent: NSWindow, windowState: WindowState, islands: IslandController, canvas: TabCanvasManager, tabManager: TabManager, environment: RefraxEnvironment) {
         self.parent = parent
@@ -80,7 +82,8 @@ final class TabCardPresenter {
             Key(
                 detached: Set(islands.detachedTabs.map(\.id)),
                 activeTabID: windowState.activeTabID,
-                hidden: windowState.showsCommandLens || windowState.isSpaceLocked,
+                hidden: windowState.showsCenteredLens || windowState.isSpaceLocked,
+                anchored: windowState.showsAnchoredLens,
             )
         }
         observation = Task(name: "Follow the cards") { [weak self] in
@@ -101,22 +104,28 @@ final class TabCardPresenter {
         var detached: Set<UUID>
         var activeTabID: UUID?
         var hidden: Bool
+        var anchored: Bool
     }
 
     // MARK: - Keeping the windows in step
 
     private func sync() {
         let wanted = islands.detachedTabs.filter { $0.id != windowState.activeTabID }
-        let hidden = windowState.showsCommandLens || windowState.isSpaceLocked
+        let hidden = windowState.showsCenteredLens || windowState.isSpaceLocked
+        if !windowState.showsAnchoredLens {
+            editingTabID = nil
+        }
         for id in Array(cards.keys) where !wanted.contains(where: { $0.id == id }) {
             close(id)
         }
         for tab in wanted where cards[tab.id] == nil {
             open(tab)
         }
-        for card in cards.values {
-            card.window.alphaValue = hidden ? 0 : 1
-            card.window.ignoresMouseEvents = hidden
+        for (id, card) in cards {
+            // The card whose address the lens edits makes way: the lens sits where its field was.
+            let away = hidden || id == editingTabID
+            card.window.alphaValue = away ? 0 : 1
+            card.window.ignoresMouseEvents = away
         }
     }
 
@@ -271,15 +280,17 @@ final class TabCardPresenter {
         return canvas.islandDrop?(card.tab, pointer) ?? false
     }
 
-    /// The address field was clicked: the lens opens in the browser window to edit this page's
-    /// address, anchored where the card is.
+    /// The address field was clicked: the lens opens in the browser window on the card's own
+    /// field, the card away meanwhile, so the lens is where the field was.
     private func editAddress(of tab: Tab, in window: TabCardWindow) {
         let content = contentOnScreen
         let screen = window.frame
-        let local = CGRect(x: screen.minX - content.minX, y: content.maxY - screen.maxY, width: screen.width, height: screen.height)
+        let card = CGRect(x: screen.minX - content.minX, y: content.maxY - screen.maxY, width: screen.width, height: screen.height)
+        let field = TabCardContent.addressFieldFrame(inCard: card)
         windowState.recordInteraction(with: tab.activePage.id)
+        editingTabID = tab.id
         parent.makeKeyAndOrderFront(nil)
-        windowState.openCommandLens(prefill: tab.activePage.url.absoluteString, anchor: local)
+        windowState.openCommandLens(prefill: tab.activePage.url.absoluteString, anchor: field, source: field)
     }
 }
 
@@ -295,12 +306,25 @@ private struct TabCardContent: View {
     let onOpen: () -> Void
 
     @Environment(WindowState.self) private var windowState
+    @State private var isToolbarHovered = false
 
-    private enum Layout {
+    enum Layout {
         static let toolbarHeight: CGFloat = 40
         /// The address field's own inset, on both sides of the toolbar.
         static let edgeInset: CGFloat = 8
         static let closeSize: CGFloat = 16
+        /// The two verbs' width together, at the trailing end.
+        static var verbsWidth: CGFloat { Constants.PageControls.buttonWidth * 2 + edgeInset }
+    }
+
+    /// Where the address field sits in a card at `card`: after the close button, before the
+    /// verbs, centered in the toolbar.
+    static func addressFieldFrame(inCard card: CGRect) -> CGRect {
+        let leading = Layout.edgeInset + Constants.PageControls.buttonWidth
+        return CGRect(
+            x: card.minX + leading, y: card.minY + (Layout.toolbarHeight - Constants.PageControls.height) / 2,
+            width: max(0, card.width - leading - Layout.verbsWidth), height: Constants.PageControls.height,
+        )
     }
 
     var body: some View {
@@ -313,15 +337,21 @@ private struct TabCardContent: View {
                 closeButton
                     .padding(.leading, Layout.edgeInset)
                 PageAddressField(webPage: page, onEdit: onEditAddress)
-                verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
-                verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
-                    .padding(.trailing, Layout.edgeInset)
+                // The verbs wait under the pointer, so the toolbar is the address alone at rest.
+                HStack(spacing: 0) {
+                    verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
+                    verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
+                }
+                .opacity(isToolbarHovered ? 1 : 0)
+                .animation(.easeInOut(duration: 0.15), value: isToolbarHovered)
+                .padding(.trailing, Layout.edgeInset)
             }
             .frame(height: Layout.toolbarHeight)
             .frame(maxWidth: .infinity)
             .background(windowState.controlIslandTint)
             .background(.bar)
             .ignoresSafeArea()
+            .onHover { isToolbarHovered = $0 }
         }
         .frame(minWidth: TabCardWindow.minimumSize.width, minHeight: TabCardWindow.minimumSize.height)
     }

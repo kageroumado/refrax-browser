@@ -240,7 +240,7 @@ final class IslandController {
 
     /// The tabs taken out of their islands, floating as live cards.
     var detachedTabs: [Tab] {
-        guard !windowState.isSpaceLocked, !windowState.showsCommandLens else { return [] }
+        guard !windowState.isSpaceLocked, !windowState.showsCenteredLens else { return [] }
         return state.detached.compactMap(tab(for:)).filter { canvas.storedFloatingPlacement(for: $0)?.isDocked != true }
     }
 
@@ -255,7 +255,7 @@ final class IslandController {
 
     /// The islands on screen now.
     var visibleIslands: [Island] {
-        guard !windowState.isSpaceLocked, !windowState.showsCommandLens else { return [] }
+        guard !windowState.isSpaceLocked, !windowState.showsCenteredLens else { return [] }
         return islands.filter { isRevealed || $0.placement.isPinned || $0.id == emergingIslandID }
     }
 
@@ -274,6 +274,12 @@ final class IslandController {
         return CGRect(origin: origin, size: size)
     }
 
+    /// An island's window: the island's frame with the room for its pill above.
+    func windowFrame(of island: Island) -> CGRect {
+        let frame = frame(of: island)
+        return CGRect(x: frame.minX, y: frame.minY - IslandGeometry.pillReserve, width: frame.width, height: frame.height + IslandGeometry.pillReserve)
+    }
+
     /// Where the islands take the pointer in the layer: nowhere, since each island is a
     /// window of its own.
     func hitRegions(in bounds: CGRect) -> [CGRect] {
@@ -289,7 +295,7 @@ final class IslandController {
 
     /// The pointer moved over the page: the island it is near shows its header.
     func pointerMoved(_ point: CGPoint) {
-        let near = visibleIslands.first { frame(of: $0).insetBy(dx: -Layout.headerReach, dy: -Layout.headerReach).contains(point) }?.id
+        let near = visibleIslands.first { windowFrame(of: $0).insetBy(dx: -Layout.headerReach, dy: -Layout.headerReach).contains(point) }?.id
         if nearIslandID != near {
             nearIslandID = near
         }

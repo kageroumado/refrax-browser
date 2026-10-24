@@ -12,12 +12,12 @@ struct IslandGeometryTests {
         return CGPoint(x: frame.midX, y: frame.midY)
     }
 
-    @Test("An island is as wide as its kind and as tall as its header, rows and padding")
+    @Test("An island is as wide as its kind and as tall as its rows and padding")
     func size() {
         #expect(titles.width == IslandGeometry.titleWidth)
         #expect(IslandGeometry(iconsOnly: true).width == IslandGeometry.iconWidth)
         let three = titles.contentHeight(rows: 3)
-        #expect(three == IslandGeometry.headerHeight + 3 * IslandGeometry.rowHeight + 2 * IslandGeometry.padding)
+        #expect(three == 3 * IslandGeometry.rowHeight + 2 * IslandGeometry.padding)
         #expect(titles.size(rows: 3, in: CGSize(width: 1600, height: 1000)).height == three)
     }
 
@@ -28,11 +28,11 @@ struct IslandGeometryTests {
         #expect(titles.size(rows: 0, in: CGSize(width: 1600, height: 10)).height == titles.contentHeight(rows: 0))
     }
 
-    @Test("Rows stack under the header, each a row tall")
+    @Test("Rows stack from the top, each a row tall")
     func rowFrames() {
         let first = titles.rowFrame(0)
         let second = titles.rowFrame(1)
-        #expect(first.minY == IslandGeometry.padding + IslandGeometry.headerHeight)
+        #expect(first.minY == IslandGeometry.padding)
         #expect(second.minY == first.maxY)
         #expect(first.width == IslandGeometry.titleWidth - 2 * IslandGeometry.padding)
     }
