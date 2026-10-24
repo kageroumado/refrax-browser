@@ -322,5 +322,4 @@ launched from the frontmost app; otherwise they are skipped.
 ## 8. Reference implementations
 
 - **System WebKit**: built into Refrax (in-process).
-- **Chromium (CEF)**: `Engines/Chromium/` — in-process interim engine, `Scripts/build-chromium-engine.sh`.
-- **Chromium (out-of-process host)**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.
+- **Chromium**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.
