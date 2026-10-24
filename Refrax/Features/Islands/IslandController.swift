@@ -469,7 +469,10 @@ final class IslandController {
 
     /// Steps to the neighbor in `direction`; at the island's edge, crosses to the island that
     /// way, or pushes against nothing.
-    func step(_ direction: TableDirection) {
+    /// A step in `direction`: to the neighbor row, or toward the next island. A scroll
+    /// against the island's edge leans on it first and crosses on the second push; a click on
+    /// the label that names the island, `atOnce`, crosses with the first.
+    func step(_ direction: TableDirection, atOnce: Bool = false) {
         guard travel == nil else {
             pendingStep = direction
             return
@@ -479,7 +482,7 @@ final class IslandController {
             travel(to: tab, style: .slide(direction))
         } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.tabIDs.first, let tab = tab(for: tabID) {
             // The island's edge resists: the first push leans on it, the second crosses.
-            if let armed = armedCrossing, armed.direction == direction, Date.now.timeIntervalSince(armed.at) < Layout.crossingWindow {
+            if atOnce || (armedCrossing.map { $0.direction == direction && Date.now.timeIntervalSince($0.at) < Layout.crossingWindow } ?? false) {
                 armedCrossing = nil
                 travel(to: tab, style: .cross(direction))
             } else {
@@ -761,7 +764,7 @@ final class IslandController {
     /// label it steps that way. Returns whether a label took it.
     func clickDirectionLabel(at point: CGPoint) -> Bool {
         guard canvas.isMomentaryNavigation, let direction = directionLabelFrames.first(where: { $0.value.contains(point) })?.key else { return false }
-        step(direction)
+        step(direction, atOnce: true)
         return true
     }
 

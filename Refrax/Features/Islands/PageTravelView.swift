@@ -233,7 +233,7 @@ struct PageTravelView: View {
                         direction: direction, text: label.text, crosses: label.crosses,
                         isArmed: label.crosses && islands.armedCrossing?.direction == direction,
                     ) {
-                        islands.step(direction)
+                        islands.step(direction, atOnce: true)
                     }
                     // The label's frame in the window's content: a click with the reveal key
                     // down is a secondary click, which the layer's monitor sends here by frame.

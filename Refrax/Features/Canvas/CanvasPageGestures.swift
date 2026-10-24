@@ -43,8 +43,11 @@ final class CanvasPageGestures {
         self.floatingHasKeyboardFocus = floatingHasKeyboardFocus
         self.resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.interruptControl()
-                self?.canvas.dismissFloatingTabs()
+                // Key going to one of the window's own children (an island, a card, the
+                // lens) is a click on the browser, which ends nothing.
+                guard let self, NSApp.keyWindow?.parent !== self.window else { return }
+                self.interruptControl()
+                self.canvas.dismissFloatingTabs()
             }
         }
         self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
@@ -64,6 +67,11 @@ final class CanvasPageGestures {
 
     /// Returns the event to deliver, or nil when the floating layer takes it.
     func handle(_ event: NSEvent) -> NSEvent? {
+        // The modifiers reach the key window; while that is an island, a card or the lens,
+        // the browser window's hold still follows them.
+        if event.type == .flagsChanged, event.window !== window, event.window == nil || event.window?.parent === window {
+            return handleFlags(event)
+        }
         guard event.window === window else { return event }
         // With the reveal key down, a scroll anywhere over the page steps between chips; over
         // an island or the Control Island it is theirs. Either way it never ends the hold.
