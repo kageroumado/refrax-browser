@@ -20,12 +20,12 @@ final class TabCardWindow: FloatingPageWindow {
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.fullScreenAuxiliary, .transient]
-        // The lights keep their meaning: red closes the tab, since closing the window does;
-        // a child window neither minimizes nor zooms, so those two are dim.
+        // One light, red, which closes the tab, since closing the window does; a child window
+        // neither minimizes nor zooms, so those two are not there.
         standardWindowButton(.closeButton)?.target = self
         standardWindowButton(.closeButton)?.action = #selector(closeTab)
-        styleMask.remove(.miniaturizable)
-        standardWindowButton(.zoomButton)?.isEnabled = false
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
     }
 
     @objc private func closeTab() { onClose() }
@@ -299,11 +299,11 @@ private struct TabCardContent: View {
 
     private enum Layout {
         static let toolbarHeight: CGFloat = 40
-        /// Room for the window's lights at the leading edge of the toolbar.
-        static let lightsWidth: CGFloat = 78
-        static let controlSize: CGFloat = 28
-        static let controlSpacing: CGFloat = 2
-        static let trailingInset: CGFloat = 6
+        /// Room for the window's one light at the leading edge of the toolbar: its margin, the
+        /// light, and the same margin again.
+        static let lightsWidth: CGFloat = 36
+        /// The address field's own inset, matched on the trailing side of the two verbs.
+        static let trailingInset: CGFloat = 8
     }
 
     var body: some View {
@@ -315,12 +315,9 @@ private struct TabCardContent: View {
             HStack(spacing: 0) {
                 Spacer().frame(width: Layout.lightsWidth)
                 PageAddressField(webPage: page, onEdit: onEditAddress)
-                    .padding(.trailing, 8)
-                HStack(spacing: Layout.controlSpacing) {
-                    verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
-                    verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
-                }
-                .padding(.trailing, Layout.trailingInset)
+                verb("Return to island", symbol: "arrow.down.right.and.arrow.up.left", action: onReturn)
+                verb("Open as the page", symbol: "arrow.up.left.and.arrow.down.right", action: onOpen)
+                    .padding(.trailing, Layout.trailingInset)
             }
             .frame(height: Layout.toolbarHeight)
             .frame(maxWidth: .infinity)
@@ -331,11 +328,13 @@ private struct TabCardContent: View {
         .frame(minWidth: TabCardWindow.minimumSize.width, minHeight: TabCardWindow.minimumSize.height)
     }
 
+    /// A verb in the address field's own control style, the reload button's.
     private func verb(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: Layout.controlSize, height: Layout.controlSize)
+                .font(.system(size: Constants.PageControls.buttonFontSize, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Constants.PageControls.buttonWidth, height: Constants.PageControls.buttonHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

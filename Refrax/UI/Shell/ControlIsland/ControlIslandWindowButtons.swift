@@ -56,9 +56,9 @@ final class ControlIslandWindowButtonGroup: NSView {
         for (index, button) in buttons.enumerated() {
             let frame = CGRect(
                 x: 0,
-                y: CGFloat(index) * ControlIslandPlacement.rowHeight,
+                y: CGFloat(index) * ControlIslandPlacement.lightPitch,
                 width: bounds.width,
-                height: ControlIslandPlacement.rowHeight,
+                height: ControlIslandPlacement.lightPitch,
             )
             if button.frame != frame {
                 button.frame = frame

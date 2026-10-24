@@ -117,8 +117,11 @@ struct IslandView: View {
                 .gesture(moveGesture)
         }
         // The Control Island's glass: the window's tint under regular glass.
-        .background(tint, in: shape)
+        // The Control Island's glass: the window's tint under regular glass, the same on every
+        // island; the rows inside are concentric with the island's corner.
+        .background(windowState.controlIslandTint, in: shape)
         .glassEffect(.regular, in: shape)
+        .containerShape(.rect(cornerRadius: WindowCorner.radius))
         // A pinned island says so on its face: it stays when the key is let go.
         .overlay(alignment: .topTrailing) {
             if island.placement.isPinned {
@@ -152,11 +155,6 @@ struct IslandView: View {
         static let pinInset: CGFloat = 5
     }
 
-    /// The island's glass is tinted with its group's color; the plain Tabs island takes the
-    /// window's tint, so islands tell apart by hue.
-    private var tint: Color {
-        island.isDefault ? windowState.controlIslandTint : color.opacity(ControlIslandPlacement.spaceTintOpacity)
-    }
 
     private func nudge(dx: CGFloat, dy: CGFloat) {
         let origin = islands.frame(of: island).origin
@@ -227,11 +225,38 @@ private struct IslandControls: View {
     @FocusState private var nameIsFocused: Bool
 
     private enum Layout {
-        static let horizontalPadding: CGFloat = 10
+        /// From the capsule's edge to the name's ink.
+        static let leadingPadding: CGFloat = 14
+        /// From the last control's box to the capsule's edge: with the glyph's own inset in
+        /// its box, the same as the name's.
+        static let trailingPadding: CGFloat = 8
         /// The name reads above the rows' titles: larger than a tab's title, and semibold.
         static let titleSize: CGFloat = 14
         static let controlSize: CGFloat = 24
         static let controlSpacing: CGFloat = 4
+    }
+
+    @State private var dragStart: CGPoint?
+
+    /// The drag that moves the island by its pill, from where the island was when it began.
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("islands"))
+            .onChanged { value in
+                if dragStart == nil {
+                    dragStart = islands.frame(of: island).origin
+                    islands.draggedIslandID = island.id
+                    islands.holdControls(island.id, true)
+                }
+                if let dragStart {
+                    islands.moveIsland(island.id, to: CGPoint(x: dragStart.x + value.translation.width, y: dragStart.y + value.translation.height))
+                }
+            }
+            .onEnded { _ in
+                dragStart = nil
+                islands.draggedIslandID = nil
+                islands.holdControls(island.id, false)
+                islands.endIslandMove(keeping: island.id)
+            }
     }
 
     /// Where the menu button is, in the layer, so its menu hangs from it.
@@ -265,9 +290,13 @@ private struct IslandControls: View {
             menuButton
             newTabButton
         }
-        .padding(.leading, Layout.horizontalPadding)
-        .padding(.trailing, (Layout.horizontalPadding - Layout.controlSpacing) / 2)
+        .padding(.leading, Layout.leadingPadding)
+        .padding(.trailing, Layout.trailingPadding)
         .frame(width: frame.width, height: frame.height)
+        .contentShape(Capsule())
+        // The pill is the island's handle too: dragging it moves the island.
+        .gesture(moveGesture)
+        .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
         .background(windowState.controlIslandTint, in: .capsule)
         .glassEffect(.regular, in: .capsule)
         .coordinateSpace(name: "islandControls")
@@ -424,9 +453,8 @@ private struct IslandTabRow: View, Equatable {
 
     private enum Layout {
         static let faviconSize: CGFloat = 16
-        /// A split tab's panes, side by side in the icon's slot.
-        static let paneFaviconSize: CGFloat = 12
-        static let paneGap: CGFloat = 2
+        /// A split tab's panes, overlapping in the icon's slot.
+        static let paneFaviconSize: CGFloat = 11
         static let closeSize: CGFloat = 20
         static let previewDelay: Duration = .milliseconds(650)
         static let ringSize: CGFloat = 20
@@ -478,7 +506,7 @@ private struct IslandTabRow: View, Equatable {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: IslandGeometry.rowCornerRadius, style: .continuous)
+        let shape = ConcentricRectangle(corners: .concentric(minimum: .fixed(IslandGeometry.rowCornerRadius)), isUniform: true)
         HStack(spacing: 8) {
             pages
             if !iconsOnly {
@@ -514,7 +542,7 @@ private struct IslandTabRow: View, Equatable {
         .animation(.snappy(duration: 0.2), value: islands.drop)
         .overlay {
             if isJoinTarget {
-                shape.strokeBorder(Color.appAccentColor, lineWidth: 1.5)
+                shape.stroke(Color.appAccentColor, lineWidth: 1.5).padding(0.75)
                 Image(systemName: "rectangle.split.2x1")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.appAccentColor)
@@ -583,14 +611,16 @@ private struct IslandTabRow: View, Equatable {
     /// The tab's page as its favicon with the loading ring; a tab of two pages shows both,
     /// the two panes side by side in small.
     @ViewBuilder
-    /// The row's icon, in the one slot every row keeps: a split tab's two panes share it.
+    /// The row's icon, in the one slot every row keeps: a split tab's two panes share it, the
+    /// left pane's icon at the top leading corner and the right pane's over it at the bottom
+    /// trailing, each with its own corners.
     private var pages: some View {
         if tab.pages.count > 1 {
-            HStack(spacing: Layout.paneGap) {
-                ForEach(tab.pages.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }.prefix(2)) { page in
+            let panes = Array(tab.pages.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }.prefix(2))
+            ZStack {
+                ForEach(Array(panes.enumerated()), id: \.element.id) { index, page in
                     FaviconView(data: page.faviconData, url: page.url, size: Layout.paneFaviconSize)
-                        .frame(width: (Layout.faviconSize - Layout.paneGap) / 2, height: Layout.faviconSize)
-                        .clipped()
+                        .frame(width: Layout.faviconSize, height: Layout.faviconSize, alignment: index == 0 ? .topLeading : .bottomTrailing)
                 }
             }
             .frame(width: Layout.faviconSize, height: Layout.faviconSize)

@@ -13,6 +13,8 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
     static let lightDiameter: CGFloat = 12
     static let railWidth = margin * 2 + lightDiameter
     static let rowHeight: CGFloat = 32
+    /// The window's lights, one under another, as far apart as the system sets them side by side.
+    static let lightPitch: CGFloat = 20
     static let contentInset: CGFloat = 8
     static let horizontalInset: CGFloat = 4
     static let contentWidth = railWidth - horizontalInset * 2
@@ -77,7 +79,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
         let bottom = gripBottomInset(aboveRadius: layout.rows.last == .spaces ? spaceRowHeight / 2 : 0)
         return layout.elements.reduce(contentInset + bottom) { height, element in
             switch element {
-            case .row(.windowControls): height + rowHeight * 3
+            case .row(.windowControls): height + lightPitch * 3
             case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
             case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount, overflows: favoritesOverflow)
             case .row: height + rowHeight

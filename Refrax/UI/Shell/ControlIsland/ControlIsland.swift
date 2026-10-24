@@ -473,7 +473,7 @@ struct ControlIsland: View {
         case .windowControls:
             // The lights rest with the glass: gray and faint while the rail is clear.
             ControlIslandWindowButtons()
-                .frame(height: Layout.rowHeight * 3)
+                .frame(height: Layout.lightPitch * 3)
                 .saturation(isResting ? 0 : 1)
                 .opacity(isResting ? Layout.restingLightsOpacity : 1)
         case .navigation:

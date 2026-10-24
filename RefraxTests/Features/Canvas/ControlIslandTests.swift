@@ -227,7 +227,7 @@ struct ControlIslandTests {
     func `the rail's height counts every row and every gap, and is the same at rest and awake`() {
         let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .floatingTabs, .spaces]
         let height = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0)
-        let rows = ControlIslandPlacement.rowHeight * 6
+        let rows = ControlIslandPlacement.rowHeight * 3 + ControlIslandPlacement.lightPitch * 3
         let gaps = ControlIslandPlacement.sectionGap * 2
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
         let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
