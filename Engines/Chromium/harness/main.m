@@ -248,7 +248,9 @@ static void Note(NSString* message) {
   NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:request options:0 error:nil];
   NSString* kind = parsed.allKeys.firstObject;
   NSDictionary* answer = @{@"cancel" : @{}};
-  if ([kind isEqualToString:@"openURL"]) {
+  if ([kind isEqualToString:@"navigation"]) {
+    answer = @{@"allow" : @{}};
+  } else if ([kind isEqualToString:@"openURL"]) {
     answer = @{@"handled" : @{}};
   } else if ([kind isEqualToString:@"permission"]) {
     answer = @{@"deny" : @{}};

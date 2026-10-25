@@ -434,14 +434,20 @@ cmd_sign() {
         [[ -e "$helpers/$tool" ]] &&
             sign --identifier "$tool" --options restrict,library,runtime,kill "$helpers/$tool"
     done
-    sign --options restrict,library,runtime,kill "$helpers/$HOST_NAME Helper.app"
-    sign --options restrict,library,runtime,kill "$helpers/$HOST_NAME Helper (Alerts).app"
-    sign --options restrict,kill,runtime \
-        --entitlements "$ENTITLEMENTS/helper-renderer-entitlements.plist" \
-        "$helpers/$HOST_NAME Helper (Renderer).app"
-    sign --options restrict,kill,runtime \
-        --entitlements "$ENTITLEMENTS/helper-gpu-entitlements.plist" \
-        "$helpers/$HOST_NAME Helper (GPU).app"
+    # Every helper app the framework ships (Chromium adds variants, such as 155's Aperitif
+    # helpers): renderers and GPU helpers take their entitlements, the rest the plain options.
+    local helper
+    for helper in "$helpers"/*.app; do
+        case "$helper" in
+            *"Renderer).app")
+                sign --options restrict,kill,runtime \
+                    --entitlements "$ENTITLEMENTS/helper-renderer-entitlements.plist" "$helper" ;;
+            *"GPU).app")
+                sign --options restrict,kill,runtime \
+                    --entitlements "$ENTITLEMENTS/helper-gpu-entitlements.plist" "$helper" ;;
+            *) sign --options restrict,library,runtime,kill "$helper" ;;
+        esac
+    done
     local dylib
     for dylib in "$framework/Libraries"/*.dylib; do
         [[ -e "$dylib" ]] && sign --identifier "$(basename "$dylib" .dylib)" "$dylib"
