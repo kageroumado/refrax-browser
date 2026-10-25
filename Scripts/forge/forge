@@ -88,7 +88,7 @@ cmd_doctor() {
     check "Metal toolchain" xcrun metal --version
     check "python3.13 with httplib2" "$PYTHON" -c 'import httplib2, socks'
     local tool
-    for tool in git ninja go greadlink node xz rsync; do
+    for tool in git ninja go greadlink node npm esbuild xz rsync; do
         check "$tool" command -v "$tool"
     done
     check "Refrax GN args" test -f "$REFRAX_ARGS"
@@ -138,10 +138,20 @@ cmd_bootstrap() {
 
 chromium_version() { cat "$MAIN_REPO/chromium_version.txt"; }
 
+# A tree that exists is moved to the new version in place (fetch, reset --hard, clean -ffdx):
+# files unchanged between the versions keep their mtimes and ninja rebuilds only what moved.
+# The clean would also delete out/, so the build directories wait outside the tree meanwhile.
 cmd_fetch() {
     [[ -d "$UNGOOGLED/.git" ]] || die "run forge bootstrap first"
+    local parked="$FORGE/out.parked" status=0
+    [[ -d "$SRC/out" ]] && mv "$SRC/out" "$parked"
     log "fetching Chromium $(chromium_version) (shallow clone with PGO profile)"
-    "$PYTHON" "$UNGOOGLED/retrieve_and_unpack_resource.py" -g arm64
+    "$PYTHON" "$UNGOOGLED/retrieve_and_unpack_resource.py" -g arm64 || status=$?
+    if [[ -d "$parked" ]]; then
+        [[ -e "$SRC/out" ]] && trash "$SRC/out"
+        mv "$parked" "$SRC/out"
+    fi
+    ((status == 0)) || die "fetch failed ($status)"
     touch "$(stamp "fetched-$(chromium_version)")"
 }
 
@@ -163,12 +173,35 @@ step_gn() { (cd "$SRC" && "$PYTHON" tools/gn/bootstrap/bootstrap.py -o out/gn --
 step_bindgen() { (cd "$SRC" && "$PYTHON" tools/rust/build_bindgen.py --skip-test); }
 
 # Refrax's edits to upstream files (Engines/Chromium/patches/README.md says why each exists).
+# Every patch is tried first: a series that half-applies leaves a tree no rerun can repair.
 step_refrax_patches() {
-    local patch
+    local patch failed=0
+    for patch in "$PATCHES"/*.patch; do
+        patch -p1 --forward --dry-run -d "$SRC" <"$patch" >/dev/null ||
+            { log "  does not apply: $(basename "$patch")"; failed=1; }
+    done
+    ((failed == 0)) || die "rebase the patches in $PATCHES onto Chromium $(chromium_version)"
     for patch in "$PATCHES"/*.patch; do
         log "  $(basename "$patch")"
         patch -p1 --forward --quiet -d "$SRC" <"$patch"
     done
+}
+
+# DevTools' build runs esbuild from devtools-frontend's node_modules, where ungoogled prunes the
+# binary; as ungoogled-chromium-macos does, the npm package matching Homebrew's esbuild takes
+# its place, and Homebrew's binary serves it.
+step_esbuild() {
+    local version module target
+    version=$(esbuild --version)
+    module="$FORGE/esbuild-node/node_modules/esbuild"
+    target="$SRC/third_party/devtools-frontend/src/node_modules/esbuild"
+    if [[ ! -f "$module/package.json" ]] ||
+        [[ "$(node -p 'require(process.argv[1]).version' "$module/package.json")" != "$version" ]]; then
+        npm install --prefix "$FORGE/esbuild-node" --no-save --package-lock=false --no-bin-links \
+            --ignore-scripts --omit=optional --no-audit --no-fund "esbuild@$version"
+    fi
+    [[ -e "$target" || -L "$target" ]] && trash "$target"
+    ln -s "$module" "$target"
 }
 
 cmd_prepare() {
@@ -182,6 +215,7 @@ cmd_prepare() {
         -r "$MAIN_REPO/domain_regex.list" -f "$MAIN_REPO/domain_substitution.list" "$SRC"
     prepare_step refrax step_refrax_patches
     prepare_step toolchains "$PYTHON" "$UNGOOGLED/retrieve_and_unpack_resource.py" -p arm64
+    prepare_step esbuild step_esbuild
     mkdir -p "$SRC/out"
     prepare_step gn step_gn
     prepare_step bindgen step_bindgen

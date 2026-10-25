@@ -20,7 +20,7 @@
  
   protected:
    // Needs access to CreateAutoreleasePool.
-@@ -120,10 +119,8 @@
+@@ -117,10 +116,8 @@
    int run_nesting_level() const { return run_nesting_level_; }
    bool keep_running() const { return keep_running_; }
  
@@ -31,7 +31,7 @@
  
    // Sets this pump's delegate.  Signals the appropriate sources if
    // |delegateless_work_| is true.  |delegate| can be NULL.
-@@ -388,9 +385,18 @@
+@@ -355,7 +352,16 @@
    void DoRun(Delegate* delegate) override;
    bool DoQuit() override;
  
@@ -42,8 +42,6 @@
 +  void Detach() override;
 +
   private:
-   friend class ScopedPumpMessagesInPrivateModes;
- 
 +  // The outermost RunLoop while attached.
 +  std::optional<RunLoop> attached_run_loop_;
 +
@@ -52,23 +50,23 @@
    // True if DoRun is managing its own run loop as opposed to letting
 --- a/base/message_loop/message_pump_apple.mm
 +++ b/base/message_loop/message_pump_apple.mm
-@@ -64,7 +64,6 @@
- MessagePumpNSApplication* g_app_pump;
+@@ -53,7 +53,6 @@
+ bool g_not_using_cr_app = false;
  #endif  // !BUILDFLAG(IS_IOS)
  
 -#if BUILDFLAG(IS_IOS)
  constexpr int kDefaultInitialNestingLevel = 1;
  // Tracks the initial loop nesting level for the current thread's message pump.
- // It is used to synchronize the pump's internal nesting state with the host app's
-@@ -79,7 +78,6 @@
- // TODO(crbug.com/516847270): Pass this via OnAttach() if we can avoid
- // subclass specific parameter pollution on MessagePumpCFRunLoopBase.
+ // It is used to synchronize the pump's internal nesting state with the host
+@@ -69,7 +68,6 @@
+ // TODO(crbug.com/516847270): Pass this via OnAttach() if we can avoid subclass
+ // specific parameter pollution on MessagePumpCFRunLoopBase.
  thread_local std::optional<int> g_initial_nesting_level;
 -#endif  // BUILDFLAG(IS_IOS)
  
  }  // namespace
  
-@@ -243,11 +241,9 @@
+@@ -173,11 +171,9 @@
                                             latest_time);
  }
  
@@ -79,8 +77,8 @@
 -#endif  // BUILDFLAG(IS_IOS)
  
  // Must be called on the run loop thread.
- MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase(int initial_mode_mask) {
-@@ -352,7 +348,6 @@
+ MessagePumpCFRunLoopBase::MessagePumpCFRunLoopBase() {
+@@ -283,7 +279,6 @@
                        std::memory_order_relaxed);
  }
  
@@ -88,7 +86,7 @@
  void MessagePumpCFRunLoopBase::OnAttach() {
    CHECK_EQ(nesting_level_, 0);
  
-@@ -403,7 +398,6 @@
+@@ -334,7 +329,6 @@
    //   displaying a long press context menu (CRWContextMenuController).
    CHECK_GE(nesting_level_, 0);
  }
@@ -96,7 +94,7 @@
  
  void MessagePumpCFRunLoopBase::SetDelegate(Delegate* delegate) {
    delegate_ = delegate;
-@@ -923,6 +917,27 @@
+@@ -803,6 +797,27 @@
    running_own_loop_ = last_running_own_loop;
  }
  
@@ -191,7 +189,7 @@
  #include "base/message_loop/message_pump_apple.h"
  #elif BUILDFLAG(IS_ANDROID)
  #include "base/message_loop/message_pump_android.h"
-@@ -739,7 +739,7 @@
+@@ -737,7 +737,7 @@
    return pump_.get();
  }
  
@@ -222,7 +220,7 @@
    if (settings_.message_loop_type == MessagePumpType::UI &&
        associated_thread_->IsBound()) {
      controller_->DetachFromMessagePump();
-@@ -1011,7 +1011,7 @@
+@@ -1009,7 +1009,7 @@
    return controller_->IsTaskExecutionAllowed();
  }
  
