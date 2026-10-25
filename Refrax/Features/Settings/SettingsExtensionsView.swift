@@ -350,6 +350,19 @@ private struct ExtensionDetailSheet: View {
                     .disabled(!isInstalled)
             }
 
+            // The extension's own settings page
+            if isInstalled, ext.isEnabled, extensionManager.hasOptionsPage(ext) {
+                Section {
+                    Button("Open Extension Settings") {
+                        Task { await extensionManager.openOptionsPage(for: ext) }
+                    }
+                } footer: {
+                    Text("Opens the extension's own settings page in a new tab.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // Private mode
             Section {
                 Toggle("Allow in Private Mode", isOn: privateBinding(for: ext))
