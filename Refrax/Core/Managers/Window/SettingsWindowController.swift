@@ -10,8 +10,8 @@ import SwiftUI
 /// ## Window Style
 ///
 /// The settings window uses a panel-style appearance similar to Safari's preferences:
-/// - Fixed size (500x400)
-/// - Utility window style for lighter visual weight
+/// - 800×550, resizable between 750×500 and 1000×800
+/// - Transparent titlebar with a unified toolbar
 /// - Auto-centers on first appearance
 /// - Not restorable (settings state doesn't need persistence)
 ///
@@ -25,6 +25,7 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
 
     private var window: NSWindow?
     private let environment: SettingsEnvironment
+    private let navigation = SettingsNavigation()
 
     // MARK: - Initialization
 
@@ -53,7 +54,12 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
     // MARK: - Window Management
     
     /// Show the settings window, creating it if needed or bringing it to front if already open.
-    func showWindow() {
+    ///
+    /// - Parameter category: The section to show; `nil` keeps the one on screen.
+    func showWindow(category: SettingsCategory? = nil) {
+        if let category {
+            navigation.requestedCategory = category
+        }
         if let existingWindow = window {
             // Window exists, just bring it to front
             existingWindow.makeKeyAndOrderFront(nil)
@@ -75,7 +81,7 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
     
     private func createSettingsWindow() -> NSWindow {
         // Create SwiftUI content view with environment
-        let settingsView = SettingsView()
+        let settingsView = SettingsView(navigation: navigation)
             .settingsEnvironment(environment)
 
         let hostingController = NSHostingController(rootView: settingsView)
@@ -83,7 +89,7 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
         // Create window with panel styling
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Settings"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
 
@@ -122,4 +128,10 @@ final class SettingsWindowController: NSObject, NSToolbarDelegate {
         // Release window to free memory
         window = nil
     }
+}
+
+/// A section another part of the app asks the settings window to show.
+@Observable
+final class SettingsNavigation {
+    var requestedCategory: SettingsCategory?
 }

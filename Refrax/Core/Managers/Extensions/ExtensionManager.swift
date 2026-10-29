@@ -143,9 +143,6 @@ final class ExtensionManager {
     /// Browser state for accessing tab/window managers.
     unowned let state: BrowserState
 
-    /// Answers extensions' reader-mode queries (`tabs.toggleReaderMode`, `isInReaderMode`).
-    weak var readerModeManager: ReaderModeManager?
-
     /// Manager for handling permission prompts.
     let permissionPromptManager = PermissionPromptManager()
 
@@ -381,7 +378,6 @@ final class ExtensionManager {
         // Load the extension into the default controller
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
-
 
         // Persist the extension
         installedExtensions.append(installedExtension)
@@ -620,7 +616,6 @@ final class ExtensionManager {
         grantRequestedPermissions(of: extension_, to: &installedExtension)
         applyPersistedPermissions(to: context, from: installedExtension)
 
-
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
@@ -703,7 +698,6 @@ final class ExtensionManager {
         // Load the extension into the default controller
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
-
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -817,7 +811,6 @@ final class ExtensionManager {
         // Load into default controller
         try load(context, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
-
 
         // Persist
         installedExtensions.append(installedExtension)
@@ -1216,7 +1209,7 @@ final class ExtensionManager {
     ///
     /// - Parameter tabPage: The closed tab page.
     func removeTabAdapter(for tabPage: TabPage) {
-        tabAdapters.removeValue(forKey: tabPage.id)
+        tabAdapters.removeValue(forKey: tabPage.id)?.tabPage = nil
     }
 
     /// Gets or creates an extension window adapter.
@@ -1347,13 +1340,20 @@ final class ExtensionManager {
     ///   - tab: The closed tab.
     ///   - windowClosing: Whether the window is also closing.
     func dispatchTabClosed(_ tab: Tab, windowClosing: Bool) {
-        guard let tabPage = tab.pages.first else { return }
+        for tabPage in tab.pages {
+            dispatchPageClosed(tabPage, windowClosing: windowClosing)
+        }
+    }
 
+    /// Releases a page's extension identity before transferring or deleting its model.
+    func dispatchPageClosed(_ tabPage: TabPage, windowClosing: Bool = false) {
+        guard let tab = tabPage.tab else { return }
+        let controller = controller(for: tab)
         tabsWithoutWebView.remove(tabPage.id)
         if let adapter = tabAdapters[tabPage.id] {
-            controller(for: tab).didCloseTab(adapter, windowIsClosing: windowClosing)
-            removeTabAdapter(for: tabPage)
+            controller.didCloseTab(adapter, windowIsClosing: windowClosing)
         }
+        removeTabAdapter(for: tabPage)
     }
 
     /// Notifies extensions that a tab was activated.
@@ -1431,9 +1431,10 @@ final class ExtensionManager {
         controller.didChangeTabProperties(.title, for: adapter)
     }
 
-    /// Notifies extensions that a tab's pinned state changed.
+    /// Notifies extensions that a tab became a favorite or stopped being one; extensions
+    /// see favorites as pinned tabs.
     ///
-    /// - Parameter tab: The tab whose pinned state changed.
+    /// - Parameter tab: The tab that changed.
     func dispatchPinnedChanged(_ tab: Tab) {
         guard let tabPage = tab.pages.first else { return }
         guard let adapter = tabAdapters[tabPage.id] else { return }
@@ -1617,7 +1618,6 @@ final class ExtensionManager {
 
         try load(context, into: defaultController)
         loadedContexts[extension_.uniqueIdentifier] = context
-
     }
 
     /// The folder an installed extension's resources load from. Everything except a local

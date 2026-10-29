@@ -26,8 +26,6 @@ struct PaneContentWrapper: View {
     @Environment(WindowState.self) private var windowState
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
-    @Environment(ReaderModeManager.self) private var readerModeManager
-    @Environment(\.webViewForcedInactive) private var isForcedInactive
 
     private enum Constants {
         static let linkPreviewPadding: CGFloat = 8
@@ -61,21 +59,13 @@ struct PaneContentWrapper: View {
         ObjectIdentifier(windowState)
     }
 
-    /// Whether reader mode is active for this page's tab.
-    private var isReaderActive: Bool {
-        guard let tabPage else { return false }
-        return readerModeManager.isReaderActive(for: tabPage.id)
-    }
-
     /// Whether the webView should ignore all events.
     ///
-    /// Events are blocked during layout mode, space lock, reader mode,
-    /// or when globally disabled.
+    /// Events are blocked during layout mode, space lock, or when globally disabled.
     private var shouldIgnoreAllEvents: Bool {
         windowState.webViewsShouldIgnoreAllEvents
             || isLayoutMode
             || windowState.isSpaceLocked
-            || isReaderActive
     }
 
     var body: some View {
@@ -86,7 +76,7 @@ struct PaneContentWrapper: View {
         let isCurrentOwner = ownerID == windowID
         // When ownerID is nil, we should be active - we'll claim ownership via onChange.
         // This prevents the "empty frame" gap when another window releases ownership.
-        let isOwner = !isForcedInactive && (isCurrentOwner || ownerID == nil)
+        let isOwner = isCurrentOwner || ownerID == nil
 
         ZStack(alignment: .bottomLeading) {
             // The adapter - always rendered for position stability
@@ -129,9 +119,6 @@ struct PaneContentWrapper: View {
                         cachedTrayTrailingEdge = newValue
                         updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
                     }
-                    .onChange(of: windowState.sidebarOverlayTrailingEdge) { _, _ in
-                        updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
-                    }
             }
         }
         .modifier(DialogModifiers(dialogState: dialogState))
@@ -162,7 +149,7 @@ struct PaneContentWrapper: View {
         .onChange(of: webPage?.ownerWindowID) { oldValue, newValue in
             // When ownership is released (becomes nil), immediately claim it.
             // This prevents the visual gap when another window closes and releases ownership.
-            guard !isForcedInactive, let webPage, newValue == nil, oldValue != nil else { return }
+            guard let webPage, newValue == nil, oldValue != nil else { return }
             webPage.claimOwnership(for: windowState)
         }
     }
@@ -194,9 +181,6 @@ struct PaneContentWrapper: View {
             DeepLinkView(deepLink: deepLink)
         }
 
-        // Reader mode overlay
-        ReaderOverlayContainer(tabID: tabPage.id)
-
         // Link hover preview
         LinkHoverPreviewView(url: $hoveredLinkURL)
             .padding([.vertical, .trailing], Constants.linkPreviewPadding)
@@ -221,7 +205,7 @@ struct PaneContentWrapper: View {
         // window of ours is key (the app is in the background). Leaving a stale owner
         // in place puts the adapter into portal mode over a layer that is attached
         // nowhere, which renders as a blank pane.
-        if !isForcedInactive, ownerID != windowID, ownerID == nil || isWindowKey || NSApp.keyWindow == nil {
+        if ownerID != windowID, ownerID == nil || isWindowKey || NSApp.keyWindow == nil {
             webPage.claimOwnership(for: windowState)
         }
 
@@ -256,12 +240,7 @@ struct PaneContentWrapper: View {
         historyActivityManager.unregisterPage(tabPageID, windowID: windowID)
         page.onBecameHidden()
 
-        // Release ownership unless a reference pane window is open.
-        // The separate window shares the same WindowState, so releasing here
-        // would clear ownership needed by the separate window's view.
-        if !windowState.hasReferencePaneWindow {
-            page.releaseOwnership(for: windowState)
-        }
+        page.releaseOwnership(for: windowState)
 
         // Clean up link hover callback only if we set it
         if page.ownerWindowID == nil || page.ownerWindowID == windowID {
@@ -272,9 +251,7 @@ struct PaneContentWrapper: View {
     }
 
     private func handleWindowBecameKey(_ notification: Notification) {
-        // Don't claim ownership if forced inactive
-        guard !isForcedInactive,
-              let webPage, let tabPage,
+        guard let webPage, let tabPage,
               let keyWindow = notification.object as? NSWindow,
               keyWindow === windowState.window else {
             return
@@ -309,13 +286,10 @@ struct PaneContentWrapper: View {
 
     /// Updates the link preview leading padding based on container position and overlay state.
     ///
-    /// If the container's leading edge is covered by the sidebar overlay or detail tray,
-    /// positions the preview just past the obstruction's trailing edge.
+    /// If the container's leading edge is covered by the detail tray,
+    /// positions the preview just past the tray's trailing edge.
     private func updateLinkPreviewOffset(containerMinX: CGFloat, animated: Bool = true) {
-        // Use the greater of sidebar overlay and detail tray trailing edges.
-        // When the tray is visible, it's already positioned past the sidebar overlay,
-        // so max() naturally picks the outermost obstruction.
-        let obstruction = max(windowState.sidebarOverlayTrailingEdge, cachedTrayTrailingEdge)
+        let obstruction = cachedTrayTrailingEdge
 
         let newOffset: CGFloat = if obstruction > 0, containerMinX < obstruction {
             obstruction - containerMinX + Constants.linkPreviewPadding
@@ -490,9 +464,10 @@ private final class ClientIdentityPanelBridge: NSObject {
         self.candidates = candidates
     }
 
-    // The didEnd selector's first parameter is the sheet's *parent window*,
-    // not the SFChooseIdentityPanel — the panel is accessed via its singleton.
-    @objc func panelDidEnd(
+    /// The didEnd selector's first parameter is the sheet's *parent window*,
+    /// not the SFChooseIdentityPanel — the panel is accessed via its singleton.
+    @objc
+    func panelDidEnd(
         _: NSWindow,
         returnCode: Int,
         contextInfo: UnsafeMutableRawPointer?,
@@ -500,17 +475,15 @@ private final class ClientIdentityPanelBridge: NSObject {
         guard !didFire else { return }
         didFire = true
 
-        nonisolated(unsafe) let chosen: SecIdentity?
-        if returnCode == NSApplication.ModalResponse.OK.rawValue,
-           let panel = SFChooseIdentityPanel.shared(),
-           let picked = panel.identity()?.takeUnretainedValue()
-        {
+        nonisolated(unsafe) let chosen: SecIdentity? = if returnCode == NSApplication.ModalResponse.OK.rawValue,
+                                                          let panel = SFChooseIdentityPanel.shared(),
+                                                          let picked = panel.identity()?.takeUnretainedValue() {
             // Match by CF reference identity against our retained candidates
             // so the returned SecIdentity stays alive past this callback.
-            chosen = candidates.first { ($0 as AnyObject) === (picked as AnyObject) }
+            candidates.first { ($0 as AnyObject) === (picked as AnyObject) }
                 ?? picked
         } else {
-            chosen = nil
+            nil
         }
         continuation.resume(returning: chosen)
 

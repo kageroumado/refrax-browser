@@ -64,14 +64,18 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
     #if os(macOS) && !targetEnvironment(macCatalyst)
         /// Wires up context menu action callbacks to use pagePool's managers.
         private func setupContextMenuActions() {
+            contextMenuBuilder.onLookAtLink = { [weak self] url in
+                guard let pool = self?.pagePool, let window = pool.windowManager.activeWindowController?.windowState else { return }
+                pool.tabManager.look(at: url, in: window)
+            }
             contextMenuBuilder.onOpenInNewTab = { [weak self] url in
                 guard let self,
                       let pagePool,
                       let tab = owner?.tabPage.tab,
                       let space = tab.space ?? pagePool.state.spaces.first
                 else { return }
-                // Pinned/live favorite tabs have stale position info — prepend instead
-                let isContained = tab.isPinned || tab.isLiveFavorite
+                // Favorites have stale position info — prepend instead
+                let isContained = tab.isFavorite
                 pagePool.tabManager.createTab(
                     url: url,
                     in: space,
@@ -94,11 +98,6 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             contextMenuBuilder.onInsertGIF = { [weak self] in
                 guard let self, let pagePool, let owner else { return }
                 pagePool.windowManager.activeWindowController?.windowState.showGifPicker(for: owner)
-            }
-
-            contextMenuBuilder.onSpeedReadSelection = { [weak self] text in
-                guard let self, let pagePool else { return }
-                pagePool.windowManager.activeWindowController?.windowState.showSpeedReader(for: text)
             }
 
             contextMenuBuilder.onDownloadFile = { [weak self] url in
@@ -319,7 +318,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             return
         }
         Task.immediate(name: "Geolocation permission") {
-            decisionHandler(await owner.decidePermission(.geolocation, host: origin.host) ? .grant : .deny)
+            await decisionHandler(owner.decidePermission(.geolocation, host: origin.host) ? .grant : .deny)
         }
     }
 
@@ -337,7 +336,7 @@ final class WKUIDelegateAdapter: NSObject, WKUIDelegatePrivate {
             return
         }
         Task.immediate(name: "Notification permission") {
-            decisionHandler(await owner.requestNotificationPermission(for: origin))
+            await decisionHandler(owner.requestNotificationPermission(for: origin))
         }
     }
 

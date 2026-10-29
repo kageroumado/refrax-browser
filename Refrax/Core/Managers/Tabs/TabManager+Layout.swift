@@ -1,182 +1,7 @@
 import Foundation
 import SwiftData
 
-// MARK: - Reference Pane
-
 extension TabManager {
-    /// Adds a tab to the reference pane.
-    ///
-    /// - Parameters:
-    ///   - url: URL to load.
-    ///   - title: Tab title.
-    ///   - space: Space to add to. If nil, uses active window's space.
-    ///   - windowState: The window to activate the tab in. If nil, uses the active window.
-    /// - Returns: The created Tab, or nil if limit reached.
-    @discardableResult
-    func addReferenceTab(url: URL, title: String = "New Tab", in space: Space? = nil, windowState: WindowState? = nil) -> Tab? {
-        guard let targetSpace = space ?? activeWindowState?.activeSpace else {
-            return nil
-        }
-        return referencePaneManager.addReferenceTab(url: url, title: title, in: targetSpace, windowState: windowState)
-    }
-
-    /// Closes a reference tab.
-    func closeReferenceTab(_ tab: Tab) {
-        referencePaneManager.closeReferenceTab(tab)
-    }
-
-    /// Duplicates a reference tab.
-    ///
-    /// Creates a new reference tab with the same URL and title as the original.
-    /// Returns nil if the reference tab limit is reached.
-    @discardableResult
-    func duplicateReferenceTab(_ tab: Tab) -> Tab? {
-        guard tab.isReferenceTab, let space = tab.space else { return nil }
-        return addReferenceTab(
-            url: tab.activePage.url,
-            title: tab.displayTitle,
-            in: space,
-        )
-    }
-
-    /// Sets the active reference tab in a specific window.
-    ///
-    /// - Parameters:
-    ///   - tab: The reference tab to activate.
-    ///   - windowState: The window to activate the tab in. If nil, uses the active window.
-    func setActiveReferenceTab(_ tab: Tab, in windowState: WindowState) {
-        referencePaneManager.setActiveReferenceTab(tab, in: windowState)
-    }
-
-    // MARK: - Tab Transfer (Main ↔ Reference)
-
-    /// Moves a tab to the reference pane, preserving the same Tab object.
-    ///
-    /// The tab is removed from `space.tabs` and added to `space.referenceTabs`.
-    /// Session state is preserved by keeping the same Tab instance.
-    ///
-    /// - Parameters:
-    ///   - tab: The tab to move.
-    ///   - windowState: The window to activate the tab in. If nil, uses the active window.
-    func moveTabToReferencePane(_ tab: Tab, in windowState: WindowState? = nil) {
-        referencePaneManager.moveTabToReferencePane(tab, in: windowState)
-    }
-
-    /// Moves a reference tab to the main area, preserving the same Tab object.
-    ///
-    /// The tab is removed from `space.referenceTabs` and added to `space.tabs`.
-    /// Session state is preserved by keeping the same Tab instance.
-    /// Window state is synchronized to update active reference tab selections.
-    func moveReferenceTabToMainArea(_ referenceTab: Tab, makeActive: Bool = true) {
-        guard let space = referenceTab.space else { return }
-
-        // Calculate insertion index based on current active tab
-        let insertionIndex: Int = if let windowState = windowSync.findWindowState(for: space),
-                                     let activeTabID = windowState.activeTabID(for: space.id),
-                                     let activeIndex = space.tabs.firstIndex(where: { $0.id == activeTabID }) {
-            activeIndex + 1
-        } else {
-            space.tabs.count
-        }
-
-        let moved = referencePaneManager.moveReferenceTabToMainArea(
-            referenceTab,
-            insertionIndex: insertionIndex,
-        ) { [self] space in
-            positioner.normalize(space: space, force: true)
-        }
-
-        if moved, makeActive,
-           let windowState = windowSync.findWindowState(for: space) ?? activeWindowState {
-            setActiveTab(referenceTab, in: windowState)
-        }
-    }
-
-    /// Moves a page from a split-view tab to the reference pane.
-    func movePageToReferencePane(_ page: TabPage, from tab: Tab) {
-        guard let space = tab.space else { return }
-
-        // Single-page tab: move the whole tab
-        guard tab.pages.count > 1 else {
-            moveTabToReferencePane(tab)
-            return
-        }
-
-        guard tab.pages.contains(where: { $0.id == page.id }),
-              space.referenceTabs.count < Self.maxReferenceTabs else {
-            return
-        }
-
-        // Remove page from source tab
-        tab._removePage(page)
-
-        if tab.activePage.id == page.id, let first = tab.pages.first {
-            tab._setActivePage(first)
-        }
-
-        // Create new reference tab that will contain this page
-        let referenceTab = Tab(space: space, isReferenceTab: true)
-        referenceTab.position = space.referenceTabs.count
-
-        // Move the existing page to the new tab (no need to create a new TabPage)
-        page.position = .single
-        referenceTab.pages = [page]
-
-        space.tabs.append(referenceTab)
-        state.indexTab(referenceTab)
-        state.modelContext.insert(referenceTab)
-        // No need to delete page - it's just moved to a new parent
-
-        // Only set active in the current window (per-window selection)
-        windowSync.setActiveReferenceTabIDInWindow(for: space, newTabID: referenceTab.id)
-
-        state.incrementListVersion()
-        scheduleSave()
-
-        Logger.info("Moved page to reference pane: \(page.title)", category: Logger.tabs)
-    }
-
-    /// Moves a reference tab into an existing tab as a split-view page.
-    ///
-    /// Window state is synchronized to update active reference tab selections.
-    func moveReferenceTabToPage(_ referenceTab: Tab, into targetTab: Tab, at position: PanePosition? = nil) {
-        guard let space = referenceTab.space,
-              referenceTab.isReferenceTab,
-              space.referenceTabs.contains(where: { $0.id == referenceTab.id }),
-              targetTab.pages.count < 4 else {
-            return
-        }
-
-        // Capture position before removal (for smart adjacent selection)
-        let closedIndex = referenceTab.position
-        let targetPosition = position ?? nextAvailablePosition(in: targetTab)
-        let sourcePage = referenceTab.activePage
-
-        // Remove from tabs relationship
-        space.tabs.removeAll { $0.id == referenceTab.id }
-        state.removeFromIndex(referenceTab)
-
-        // Sync reference tab selection - use smart adjacent selection
-        windowSync.syncInvalidActiveReferenceTabIDs(for: space, closedIndex: closedIndex)
-
-        // Renumber remaining reference tabs
-        for (index, refTab) in space.referenceTabs.enumerated() {
-            refTab.position = index
-        }
-
-        sourcePage.position = targetPosition
-        targetTab._addPage(sourcePage, at: targetPosition)
-        setupLayoutIfNeeded(for: targetTab, newPage: sourcePage, position: targetPosition)
-
-        state.modelContext.delete(referenceTab)
-
-        targetTab._setActivePage(sourcePage)
-        state.incrementListVersion()
-        scheduleSave()
-
-        Logger.info("Moved reference tab into split view: \(sourcePage.title)", category: Logger.tabs)
-    }
-
     // MARK: - Multi-Page Layouts
 
     /// Adds a page to a tab at the specified position.
@@ -201,26 +26,30 @@ extension TabManager {
     /// - Returns: The new TabPage in the destination tab, or `nil` if the operation failed.
     @discardableResult
     func moveTabToLayout(_ sourceTab: Tab, into destinationTab: Tab, at position: PanePosition) -> TabPage? {
-        guard sourceTab.pages.count == 1, !sourceTab.isMultiPage else {
-            Logger.warning("Cannot move multi-page tab into layout", category: Logger.tabs)
+        guard sourceTab.space != nil, sourceTab.pages.count == 1, !sourceTab.isMultiPage else {
+            Logger.warning("Combining requires a space-bound single-page tab", category: Logger.tabs)
             return nil
         }
 
         let sourcePage = sourceTab.activePage
+        let undo = TabLayoutUndo(source: sourceTab, destination: destinationTab, windows: layoutWindows(in: sourceTab.space))
+
+        state.extensionManager?.dispatchTabClosed(sourceTab, windowClosing: false)
 
         let newPage = TabPage(
             url: sourcePage.url,
             title: sourcePage.title,
             layoutPosition: position,
         )
-        newPage.faviconData = sourcePage.faviconData
-        newPage.largeFaviconData = sourcePage.largeFaviconData
+        newPage.copyContent(from: sourcePage)
 
         destinationTab._addPage(newPage, at: position)
 
         pagePool.transferPage(from: sourcePage, to: newPage, preserveHistory: true)
 
         closeTabWithoutRemovingPages(sourceTab)
+
+        registerLayoutUndo(undo, joinedPageID: newPage.id, position: position)
 
         state.incrementListVersion()
         scheduleSave()
@@ -263,8 +92,7 @@ extension TabManager {
         }
 
         let newTab = Tab(space: space, url: page.url, title: page.title, position: space.tabs.count)
-        newTab.activePage.faviconData = page.faviconData
-        newTab.activePage.largeFaviconData = page.largeFaviconData
+        newTab.activePage.copyContent(from: page)
 
         pagePool.transferPage(from: page, to: newTab.activePage, preserveHistory: true)
 

@@ -14,13 +14,6 @@ struct SuggestionActionView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Color(.pillBackground), in: Capsule())
-            } else if case .referenceTab = suggestion.type {
-                Text("Open in pane")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(.pillBackground), in: Capsule())
             } else if case .searchProvider = suggestion.type {
                 let isSelected = selection?.buttonSelection == .switchProvider
                 HStack(spacing: 4) {

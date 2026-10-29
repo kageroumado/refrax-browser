@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// `BookmarkFolder` provides Chrome-style hierarchical organization with up to 3 levels
 /// of nesting. Folders can contain bookmarks and other folders, and can themselves be
-/// favorited to appear in the sidebar as navigable tiles.
+/// favorited to appear in the favorites grid as navigable tiles.
 ///
 /// ## Hierarchy Rules
 ///
@@ -16,7 +16,7 @@ import SwiftUI
 ///
 /// ## Favorites Display
 ///
-/// Like bookmarks, folders can be favorited and displayed as tiles in the sidebar.
+/// Like bookmarks, folders can be favorited and displayed as tiles in the favorites grid.
 /// Clicking a folder tile opens a menu showing contained bookmarks and subfolders.
 /// Subfolders in the menu are also expandable via nested menus.
 ///
@@ -72,7 +72,7 @@ final class BookmarkFolder {
     
     // MARK: - Favorites Display
     
-    /// Whether this folder appears in the sidebar favorites grid
+    /// Whether this folder appears in the favorites grid
     var isFavorite: Bool
     
     /// Position in favorites grid (encoded as row * 1000 + column)
@@ -107,7 +107,7 @@ final class BookmarkFolder {
     ///   - iconName: Optional custom icon (SF Symbol or emoji)
     ///   - parent: Optional parent folder (nil = root level)
     ///   - position: Position within parent (default: 0)
-    ///   - isFavorite: Whether to show in sidebar favorites (default: false)
+    ///   - isFavorite: Whether to show in favorites (default: false)
     ///   - favoritePosition: Grid position if favorited (default: 0,0)
     init(
         name: String,

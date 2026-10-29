@@ -155,12 +155,26 @@ extension URL {
     nonisolated static let blank = URL.staticRequired("about:blank")
 
     /// Whether this URL represents a blank page (`about:blank`).
+    /// An http or https address, the kind a browser tab opens.
+    nonisolated var isWebURL: Bool {
+        let scheme = scheme?.lowercased()
+        return scheme == "http" || scheme == "https"
+    }
+
     var isBlank: Bool {
         self == .blank || absoluteString == "about:blank"
     }
 
     var isDeepLink: Bool {
         scheme == DeepLink.scheme
+    }
+
+    /// The document's file name, for a page that has no title of its own (a PDF, an image,
+    /// a plain-text file): the URL's last path component, or `nil` for a bare host or root path.
+    nonisolated var documentFileName: String? {
+        let name = lastPathComponent
+        guard !name.isEmpty, name != "/" else { return nil }
+        return name
     }
 
     /// URL formatted for display (protocol and www prefix removed).

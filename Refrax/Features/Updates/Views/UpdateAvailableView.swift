@@ -11,8 +11,8 @@ import SwiftUI
 ///   ``AppUpdateManager/restartToUpdate()`` which mounts the DMG, verifies
 ///   code signing, stages the new app, and terminates. The sheet stays open
 ///   until the process exits.
-/// - **Later**: Dismisses the sheet. The update remains downloaded and the sidebar
-///   continues to show the restart indicator.
+/// - **Later**: Dismisses the sheet. The update remains downloaded and the island's
+///   updates control continues to show the restart indicator.
 struct UpdateAvailableView: View {
     @Environment(AppUpdateManager.self) private var updateManager
     @Environment(\.dismiss) private var dismiss
@@ -32,7 +32,7 @@ struct UpdateAvailableView: View {
         }
         .frame(width: 480, height: 400)
         .onAppear {
-            if case .readyToInstall(let u) = updateManager.phase {
+            if case let .readyToInstall(u) = updateManager.phase {
                 update = u
             }
         }
@@ -137,5 +137,4 @@ struct UpdateAvailableView: View {
         }
         .padding(Constants.Spacing.medium)
     }
-
 }

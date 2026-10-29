@@ -67,8 +67,8 @@ final class ReflectedViewController: NSWindowController, NSWindowDelegate {
         self.environment = environment
         self.windowState = ReflectedWindowState(webPage: webPage)
 
-        // Use ReferencePaneWindow for consistent appearance with Glimpse
-        let window = ReferencePaneWindow()
+        // Use FloatingPageWindow for consistent appearance with Glimpse
+        let window = FloatingPageWindow()
         super.init(window: window)
 
         windowState.window = window
@@ -186,7 +186,7 @@ private struct ReflectedContentView: View {
         ZStack(alignment: .top) {
             // Web content - extends under toolbar
             webContent
-            // Toolbar with address bar
+            // Toolbar with the address field
             toolbarArea.zIndex(1)
         }
         .frame(minWidth: Layout.minWindowWidth, minHeight: Layout.minWindowHeight)
@@ -238,9 +238,9 @@ private struct ReflectedContentView: View {
 
 // MARK: - Reflected Window Toolbar
 
-/// Toolbar for reflected windows with address bar.
+/// Toolbar for reflected windows with the address field.
 ///
-/// Matches the Reference Pane and Glimpse toolbar pattern.
+/// Matches the Glimpse toolbar pattern.
 private struct ReflectedWindowToolbar: View {
     let windowState: ReflectedWindowState
 
@@ -249,16 +249,6 @@ private struct ReflectedWindowToolbar: View {
         static let trafficLightWidth: CGFloat = 78
         static let spacing: CGFloat = 8
         static let buttonHeight: CGFloat = 24
-    }
-
-    private var addressBarContext: AddressBarContext {
-        AddressBarContext(
-            webPage: windowState.webPage,
-            tabPage: nil, // No TabPage for reflected windows
-            onOpenLens: {}, // No lens for reflected windows
-            isLensVisible: false,
-            onShowFindNavigator: {},
-        )
     }
 
     var body: some View {
@@ -276,9 +266,7 @@ private struct ReflectedWindowToolbar: View {
     }
 
     private var centerContent: some View {
-        AddressBar()
-            .environment(\.addressBarContext, addressBarContext)
-            .environment(\.addressBarIsFloating, true)
+        PageAddressField(webPage: windowState.webPage)
             .frame(height: Layout.buttonHeight)
             .frame(minWidth: 150, maxWidth: 400)
             .glassEffect()

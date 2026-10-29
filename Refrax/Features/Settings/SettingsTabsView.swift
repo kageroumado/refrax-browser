@@ -14,20 +14,19 @@ struct TabsSettingsView: View {
     @State private var showAutoArchiveRulesSheet = false
     @State private var showDisableArchiveAlert = false
     @State private var showTimeLimitsSheet = false
+    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.default
 
     var body: some View {
         @Bindable var settings = settings
 
         Form {
-            // MARK: - Previews
-
-            Section {
-                Toggle("Show tab previews on hover", isOn: $settings.showTabPreviews)
-                    .highlightable(id: "tabs.showPreviews", highlightedItemId: highlightedItemId)
-            } header: {
-                Text("Previews")
-            } footer: {
-                Text("Display a thumbnail preview when hovering over tabs in the sidebar.")
+            Section("Floating Tabs") {
+                Picker("Reveal key", selection: $revealKey) {
+                    ForEach(FloatingRevealKey.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Text("Hold \(revealKey.title) to see adjacent pages. Use the tabs button to arrange them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // MARK: - Archive
@@ -121,7 +120,7 @@ struct TabsSettingsView: View {
             Section {
                 Picker("Video fullscreen", selection: Binding(
                     get: { settings.elementFullscreenMode },
-                    set: { settings.elementFullscreenMode = $0 }
+                    set: { settings.elementFullscreenMode = $0 },
                 )) {
                     ForEach(FullscreenPresentationMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
@@ -194,17 +193,16 @@ struct TabsSettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var lastCheckText: some View {
-        Group {
-            if let lastRun = scheduledTasksManager.lastTaskRun {
-                Text("Last check: \(lastRun.relativeFormatted)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Not yet checked")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        if let lastRun = scheduledTasksManager.lastTaskRun {
+            Text("Last check: \(lastRun.relativeFormatted)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Not yet checked")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

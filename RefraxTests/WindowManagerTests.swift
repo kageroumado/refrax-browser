@@ -19,16 +19,16 @@ extension Tag {
 @Suite("WindowManager Initial State", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowManagerInitialStateTests {
-    @Test("Has no windows initially")
-    func hasNoWindowsInitially() throws {
+    @Test
+    func `Has no windows initially`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(!env.windowManager.hasWindows)
         #expect(env.windowManager.allWindowStates.isEmpty)
     }
 
-    @Test("Active window controller is nil when no windows")
-    func activeWindowControllerNil() throws {
+    @Test
+    func `Active window controller is nil when no windows`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.activeWindowController == nil)
@@ -36,15 +36,15 @@ struct WindowManagerInitialStateTests {
         #expect(env.windowManager.mainWindowController == nil)
     }
 
-    @Test("Last active browser window controller is nil initially")
-    func lastActiveNil() throws {
+    @Test
+    func `Last active browser window controller is nil initially`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.lastActiveBrowserWindowController == nil)
     }
 
-    @Test("Window controllers for space returns empty when no windows")
-    func windowControllersForSpaceEmpty() throws {
+    @Test
+    func `Window controllers for space returns empty when no windows`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
 
@@ -53,16 +53,16 @@ struct WindowManagerInitialStateTests {
         #expect(controllers.isEmpty)
     }
 
-    @Test("Tab manager reference is set")
-    func tabManagerReferenceSet() throws {
+    @Test
+    func `Tab manager reference is set`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.tabManager != nil)
         #expect(env.windowManager.tabManager === env.tabManager)
     }
 
-    @Test("Model container is set")
-    func modelContainerSet() throws {
+    @Test
+    func `Model container is set`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.modelContainer === env.container)
@@ -74,8 +74,8 @@ struct WindowManagerInitialStateTests {
 @Suite("WindowManager URL Handling", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowManagerURLHandlingTests {
-    @Test("Open URL with space available does not crash")
-    func openURLWithSpace() throws {
+    @Test
+    func `Open URL with space available does not crash`() throws {
         let env = try TabManagerTestEnvironment()
         _ = env.makeSpace() // Ensure at least one space exists
 
@@ -92,8 +92,8 @@ struct WindowManagerURLHandlingTests {
 @Suite("WindowManager Actions", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowManagerActionTests {
-    @Test("Open location is no-op when no windows")
-    func openLocationNoWindow() throws {
+    @Test
+    func `Open location is no-op when no windows`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.activeWindowController == nil)
@@ -102,8 +102,8 @@ struct WindowManagerActionTests {
         env.windowManager.openLocation()
     }
 
-    @Test("Show page search is no-op when no windows")
-    func showPageSearchNoWindow() throws {
+    @Test
+    func `Show page search is no-op when no windows`() throws {
         let env = try TabManagerTestEnvironment()
 
         #expect(env.windowManager.activeWindowController == nil)
@@ -118,109 +118,103 @@ struct WindowManagerActionTests {
 @Suite("WindowState Lens Operations", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowStateLensTests {
-    @Test("Lens starts nil")
-    func lensStartsNil() throws {
+    @Test
+    func `Lens starts closed`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         #expect(windowState.showsCommandLens == false)
-        #expect(windowState.showsAddressLens == false)
+        #expect(windowState.showsAnchoredLens == false)
+        #expect(windowState.commandLensEntrance == nil)
     }
 
-    @Test("Open command lens sets state")
-    func openCommandLensSetsState() throws {
+    @Test
+    func `⌘T opens the lens empty and centered`() throws {
         let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = try env.createActiveTab(url: #require(URL(string: "https://example.com/page")), in: space, for: windowState)
 
         windowState.openCommandLens()
 
         #expect(windowState.showsCommandLens == true)
-        #expect(windowState.showsAddressLens == false)
+        #expect(windowState.showsAnchoredLens == false)
+        #expect(windowState.commandLensEntrance == CommandLensEntrance(prefill: nil, anchor: nil))
+        #expect(windowState.commandLensEntrance?.editsCurrentPage == false)
     }
 
-    @Test("Close command lens clears state")
-    func closeCommandLensClearsState() throws {
+    @Test
+    func `⌘L opens the lens with the page address, anchored to the page card`() throws {
         let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        let url = try #require(URL(string: "https://example.com/page"))
+        _ = env.createActiveTab(url: url, in: space, for: windowState)
+        let card = CGRect(x: 68, y: 12, width: 416, height: 44)
+        windowState.pageCardFrame = card
+
+        windowState.editAddress()
+
+        #expect(windowState.showsCommandLens == true)
+        #expect(windowState.showsAnchoredLens == true)
+        #expect(windowState.commandLensEntrance == CommandLensEntrance(prefill: url.absoluteString, anchor: card))
+        #expect(windowState.commandLensEntrance?.editsCurrentPage == true)
+    }
+
+    @Test
+    func `Either entrance replaces the other`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = try env.createActiveTab(url: #require(URL(string: "https://example.com/page")), in: space, for: windowState)
+
+        windowState.openCommandLens()
+        windowState.editAddress()
+        #expect(windowState.showsAnchoredLens == true)
 
         windowState.openCommandLens()
         #expect(windowState.showsCommandLens == true)
+        #expect(windowState.showsAnchoredLens == false)
+    }
 
+    @Test
+    func `Closing clears the entrance and the lens frame`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        _ = try env.createActiveTab(url: #require(URL(string: "https://example.com/page")), in: space, for: windowState)
+
+        windowState.editAddress()
+        windowState.commandLensFrame = CGRect(x: 1, y: 1, width: 1, height: 1)
         windowState.closeCommandLens()
+
         #expect(windowState.showsCommandLens == false)
+        #expect(windowState.commandLensEntrance == nil)
+        #expect(windowState.commandLensFrame == .zero)
     }
 
-    @Test("Open address lens sets state")
-    func openAddressLensSetsState() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        windowState.openAddressLens()
-
-        #expect(windowState.showsAddressLens == true)
-        #expect(windowState.showsCommandLens == false)
-    }
-
-    @Test("Close address lens clears state")
-    func closeAddressLensClearsState() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        windowState.openAddressLens()
-        #expect(windowState.showsAddressLens == true)
-
-        windowState.closeAddressLens()
-        #expect(windowState.showsAddressLens == false)
-    }
-
-    @Test("Opening one lens closes other implicitly")
-    func openingOneLensClosesOther() throws {
+    @Test
+    func `An empty page routes either entrance to the start page lens`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         windowState.openCommandLens()
-        #expect(windowState.showsCommandLens == true)
-
-        windowState.openAddressLens()
-        #expect(windowState.showsAddressLens == true)
         #expect(windowState.showsCommandLens == false)
+        #expect(windowState.startPageLensRequest == 1)
+
+        windowState.editAddress()
+        #expect(windowState.showsCommandLens == false)
+        #expect(windowState.startPageLensRequest == 2)
     }
 
-    @Test("Reference pane lens state")
-    func referencePaneLensState() throws {
+    @Test
+    func `Command lens binding works`() throws {
         let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
         let windowState = env.makeWindowState()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        // Default (address bar mode): don't create new tab
-        windowState.openReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == true)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        windowState.closeReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-
-        // Explicit forNewTab: true (+ button mode): create new tab
-        windowState.openReferencePaneLens(forNewTab: true)
-
-        #expect(windowState.showsReferencePaneLens == true)
-        #expect(windowState.isCreatingReferenceTab == true)
-
-        windowState.closeReferencePaneLens()
-
-        #expect(windowState.showsReferencePaneLens == false)
-        #expect(windowState.isCreatingReferenceTab == false)
-    }
-
-    @Test("Command lens binding works")
-    func commandLensBindingWorks() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        env.spaceManager.switchToSpaceSync(space, for: windowState)
+        let tab = try env.tabManager.createTab(url: #require(URL(string: "https://example.com")), in: space, makeActive: false)
+        windowState.setActiveTabID(tab.id, for: space.id)
 
         let binding = windowState.commandLensBinding
         #expect(binding.wrappedValue == false)
@@ -238,8 +232,8 @@ struct WindowStateLensTests {
 @Suite("WindowState Detail Tray", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowStateDetailTrayTests {
-    @Test("Detail tray starts hidden")
-    func detailTrayStartsHidden() throws {
+    @Test
+    func `Detail tray starts hidden`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -247,8 +241,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.isDetailTrayVisible == false)
     }
 
-    @Test("Show detail tray sets mode")
-    func showDetailTraySetsMode() throws {
+    @Test
+    func `Show detail tray sets mode`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -263,8 +257,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.detailTrayMode == .history)
     }
 
-    @Test("Hide detail tray clears mode")
-    func hideDetailTrayClearsMode() throws {
+    @Test
+    func `Hide detail tray clears mode`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -276,8 +270,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.isDetailTrayVisible == false)
     }
 
-    @Test("Toggle detail tray shows when hidden")
-    func toggleDetailTrayShowsWhenHidden() throws {
+    @Test
+    func `Toggle detail tray shows when hidden`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -285,8 +279,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.detailTrayMode == .downloads)
     }
 
-    @Test("Toggle detail tray hides when showing same mode")
-    func toggleDetailTrayHidesWhenSameMode() throws {
+    @Test
+    func `Toggle detail tray hides when showing same mode`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -295,8 +289,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.detailTrayMode == .hidden)
     }
 
-    @Test("Toggle detail tray switches mode when showing different")
-    func toggleDetailTraySwitchesMode() throws {
+    @Test
+    func `Toggle detail tray switches mode when showing different`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -305,8 +299,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.detailTrayMode == .bookmarks)
     }
 
-    @Test("Toggle with hidden mode is no-op")
-    func toggleWithHiddenModeIsNoOp() throws {
+    @Test
+    func `Toggle with hidden mode is no-op`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -315,8 +309,8 @@ struct WindowStateDetailTrayTests {
         #expect(windowState.detailTrayMode == .downloads)
     }
 
-    @Test("Back forward mode is valid detail tray mode")
-    func backForwardModeIsValid() throws {
+    @Test
+    func `Back forward mode is valid detail tray mode`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -331,16 +325,16 @@ struct WindowStateDetailTrayTests {
 @Suite("WindowState Toast Notifications", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowStateToastTests {
-    @Test("Toast starts nil")
-    func toastStartsNil() throws {
+    @Test
+    func `Toast starts nil`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         #expect(windowState.toastMessage == nil)
     }
 
-    @Test("Show toast sets message")
-    func showToastSetsMessage() throws {
+    @Test
+    func `Show toast sets message`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -348,8 +342,8 @@ struct WindowStateToastTests {
         #expect(windowState.toastMessage == "Test message")
     }
 
-    @Test("Dismiss toast clears message")
-    func dismissToastClearsMessage() throws {
+    @Test
+    func `Dismiss toast clears message`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -360,8 +354,8 @@ struct WindowStateToastTests {
         #expect(windowState.toastMessage == nil)
     }
 
-    @Test("Show toast replaces previous message")
-    func showToastReplacesPrevious() throws {
+    @Test
+    func `Show toast replaces previous message`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
@@ -371,63 +365,13 @@ struct WindowStateToastTests {
     }
 }
 
-// MARK: - WindowState Sidebar/Inspector Tests
-
-@Suite("WindowState Sidebar and Inspector", .tags(.windowManager), .serialized)
-@MainActor
-struct WindowStateSidebarInspectorTests {
-    @Test("Sidebar starts expanded")
-    func sidebarStartsExpanded() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isSidebarCollapsed == false)
-    }
-
-    @Test("Inspector starts collapsed")
-    func inspectorStartsCollapsed() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isInspectorCollapsed == true)
-    }
-
-    @Test("Toggle sidebar changes state")
-    func toggleSidebarChangesState() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isSidebarCollapsed == false)
-
-        windowState.toggleSidebar()
-        #expect(windowState.isSidebarCollapsed == true)
-
-        windowState.toggleSidebar()
-        #expect(windowState.isSidebarCollapsed == false)
-    }
-
-    @Test("Toggle inspector changes state")
-    func toggleInspectorChangesState() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.isInspectorCollapsed == true)
-
-        windowState.toggleInspector()
-        #expect(windowState.isInspectorCollapsed == false)
-
-        windowState.toggleInspector()
-        #expect(windowState.isInspectorCollapsed == true)
-    }
-}
-
 // MARK: - WindowState Navigation Cleanup Tests
 
 @Suite("WindowState Navigation Cleanup", .tags(.windowManager), .serialized)
 @MainActor
 struct WindowStateNavigationCleanupTests {
-    @Test("Clear navigation state clears all IDs")
-    func clearNavigationStateClearsAllIDs() throws {
+    @Test
+    func `Clear navigation state clears all IDs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
@@ -440,26 +384,23 @@ struct WindowStateNavigationCleanupTests {
             makeActive: false,
         )
         windowState.setActiveTabID(tab.id, for: space.id)
-        windowState.activeReferenceTabID = tab.id
 
         // Create a live favorite tab to test live favorite clearing
-        let liveFavoriteTab = try Tab(space: nil, url: #require(URL(string: "https://example.com")), status: .liveFavorite)
-        env.browserState.addLiveFavoriteTab(liveFavoriteTab)
+        let liveFavoriteTab = try Tab(space: nil, url: #require(URL(string: "https://example.com")), status: .favorite)
+        env.browserState.addFavoriteTab(liveFavoriteTab)
         windowState.setActiveTab(liveFavoriteTab)
 
         #expect(windowState.activeSpaceID != nil)
         #expect(windowState.activeTabID == liveFavoriteTab.id) // Live favorite takes priority
-        #expect(windowState.activeReferenceTabID != nil)
 
         windowState.clearNavigationState()
 
         #expect(windowState.activeSpaceID == nil)
         #expect(windowState.activeTabID == nil)
-        #expect(windowState.activeReferenceTabID == nil)
     }
 
-    @Test("Set active tab ID for space stores per-space")
-    func setActiveTabIDPerSpace() throws {
+    @Test
+    func `Set active tab ID for space stores per-space`() throws {
         let env = try TabManagerTestEnvironment()
         let space1 = env.makeSpace(name: "Space 1")
         let space2 = env.makeSpace(name: "Space 2")
@@ -483,8 +424,8 @@ struct WindowStateNavigationCleanupTests {
         #expect(windowState.activeTabID(for: space2.id) == tab2.id)
     }
 
-    @Test("Clear active tab ID removes entry")
-    func clearActiveTabIDRemovesEntry() throws {
+    @Test
+    func `Clear active tab ID removes entry`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeWindowState()
@@ -503,43 +444,13 @@ struct WindowStateNavigationCleanupTests {
     }
 }
 
-// MARK: - WindowState Overlay State Tests
-
-@Suite("WindowState Overlay State", .tags(.windowManager), .serialized)
-@MainActor
-struct WindowStateOverlayTests {
-    @Test("Tutorial peek starts false")
-    func tutorialPeekStartsFalse() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.hasShownTutorialPeek == false)
-    }
-
-    @Test("Reference pane docked width has default")
-    func referencePaneDockedWidthHasDefault() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.referencePaneDockedWidth == 400)
-    }
-
-    @Test("Sidebar thickness has default")
-    func sidebarThicknessHasDefault() throws {
-        let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
-
-        #expect(windowState.sidebarThickness == 300)
-    }
-}
-
 // MARK: - DetailTrayMode Tests
 
 @Suite("DetailTrayMode Enum", .tags(.windowManager))
 @MainActor
 struct DetailTrayModeTests {
-    @Test("All cases are equatable")
-    func allCasesAreEquatable() {
+    @Test
+    func `All cases are equatable`() {
         #expect(DetailTrayMode.hidden == DetailTrayMode.hidden)
         #expect(DetailTrayMode.downloads == DetailTrayMode.downloads)
         #expect(DetailTrayMode.bookmarks == DetailTrayMode.bookmarks)
@@ -551,22 +462,16 @@ struct DetailTrayModeTests {
     }
 }
 
-// MARK: - FocusedLens Tests
+// MARK: - CommandLensEntrance Tests
 
-@Suite("FocusedLens Enum", .tags(.windowManager))
+@Suite("CommandLensEntrance", .tags(.windowManager))
 @MainActor
-struct FocusedLensTests {
-    @Test("All cases are hashable")
-    func allCasesAreHashable() {
-        let set: Set<FocusedLens> = [.address, .command]
-        #expect(set.count == 2)
-        #expect(set.contains(.address))
-        #expect(set.contains(.command))
-    }
-
-    @Test("Cases are distinct")
-    func casesAreDistinct() {
-        #expect(FocusedLens.address != FocusedLens.command)
+struct CommandLensEntranceTests {
+    @Test
+    func `An anchored entrance edits the current page; a centered one opens a new tab`() {
+        #expect(CommandLensEntrance(prefill: nil, anchor: nil).editsCurrentPage == false)
+        #expect(CommandLensEntrance(prefill: "https://example.com", anchor: nil).editsCurrentPage == false)
+        #expect(CommandLensEntrance(prefill: "https://example.com", anchor: CGRect(x: 0, y: 0, width: 416, height: 44)).editsCurrentPage == true)
     }
 }
 
@@ -581,9 +486,7 @@ struct FocusedLensTests {
 // 3. handleWindowClosed - Triggered by NSWindow.willCloseNotification
 // 4. frontmostWindowController - Uses NSApplication.shared.keyWindow
 // 5. mainWindowController - Uses NSApplication.shared.mainWindow
-// 6. createReferencePaneWindow - Creates separate window for reference pane
-// 7. closeReferencePaneWindow - Closes reference pane window
-// 8. lastActiveBrowserWindowController updates - From NSWindow.didBecomeKeyNotification
+// 6. lastActiveBrowserWindowController updates - From NSWindow.didBecomeKeyNotification
 //
 // These should be tested via integration tests or UI tests that have access to
 // the full AppKit environment.

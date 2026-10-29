@@ -1,65 +1,92 @@
 import SwiftUI
 
-/// Overlay view displaying the Control+Tab tab switcher.
-///
-/// Shows a horizontal row of recently used tabs with preview thumbnails
-/// and titles. The currently selected tab is highlighted.
-///
-/// ## Architecture
-///
-/// This view is rendered in `OverlayContainer` which sits above all split view
-/// content. It uses `TabSwitcherManager` to access the list of recent tabs
-/// and the current selection state.
-///
-/// ## Layout
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────┐
-/// │                          Glass Container                        │
-/// │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐│
-/// │  │ Preview │  │ Preview │  │ Preview │  │ Preview │  │ Preview ││
-/// │  │         │  │         │  │ (sel)   │  │         │  │         ││
-/// │  │─────────│  │─────────│  │─────────│  │─────────│  │─────────││
-/// │  │  Title  │  │  Title  │  │  Title  │  │  Title  │  │  Title  ││
-/// │  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘│
-/// └─────────────────────────────────────────────────────────────────┘
-/// ```
+/// Recent tabs support click selection, outside dismissal, and Control-Tab navigation.
 struct TabSwitcherOverlay: View {
-    @Environment(TabSwitcherManager.self) private var tabSwitcherManager
+    @Environment(TabSwitcherManager.self) private var switcher
 
     var body: some View {
-        if tabSwitcherManager.isActive {
-            ZStack {
-                switcherContent
+        if switcher.isActive {
+            GeometryReader { geometry in
+                ZStack {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { switcher.cancel() }
+                        .accessibilityLabel("Dismiss recent tabs")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { switcher.cancel() }
+                    switcherContent
+                        .frame(width: min(contentWidth, max(1, geometry.size.width - Layout.windowInset * 2)))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            .animation(.spring(duration: 0.15), value: tabSwitcherManager.selectedIndex)
+            .transition(.opacity)
         }
+    }
+
+    private var contentWidth: CGFloat {
+        CGFloat(switcher.recentTabs.count) * Layout.itemWidth
+            + CGFloat(max(0, switcher.recentTabs.count - 1)) * Layout.itemSpacing
+            + Layout.containerPadding * 2
     }
 
     private var switcherContent: some View {
-        HStack(spacing: Layout.itemSpacing) {
-            ForEach(Array(tabSwitcherManager.recentTabs.enumerated()), id: \.element.id) { index, tab in
-                TabSwitcherItem(
-                    tab: tab,
-                    isSelected: index == tabSwitcherManager.selectedIndex,
-                )
+        VStack(spacing: 12) {
+            HStack {
+                Text("Recent Tabs").font(.callout.weight(.semibold))
+                Spacer()
+                Button {
+                    switcher.cancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                    .accessibilityLabel("Dismiss recent tabs")
+                    .buttonStyle(ControlIslandButtonStyle())
+                    .focusEffectDisabled()
+                    .help("Dismiss recent tabs · Esc")
+            }
+            ScrollViewReader { reader in
+                ScrollView(.horizontal) {
+                    HStack(spacing: Layout.itemSpacing) {
+                        ForEach(Array(switcher.recentTabs.enumerated()), id: \.element.id) { index, tab in
+                            Button {
+                                switcher.activate(tabID: tab.id)
+                            } label: {
+                                TabSwitcherItem(tab: tab, isSelected: index == switcher.selectedIndex)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(ControlIslandButtonStyle())
+                            .focusEffectDisabled()
+                            .accessibilityLabel("Switch to \(tab.displayTitle)")
+                            .id(tab.id)
+                        }
+                    }
+                }
+                .scrollIndicators(.automatic)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(height: Layout.itemHeight)
+                .onChange(of: switcher.selectedIndex, initial: true) { _, index in
+                    if switcher.recentTabs.indices.contains(index) {
+                        reader.scrollTo(switcher.recentTabs[index].id, anchor: .center)
+                    }
+                }
             }
         }
         .padding(Layout.containerPadding)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Layout.containerCornerRadius))
-        .shadow(color: .black.opacity(0.25), radius: Layout.shadowRadius, y: Layout.shadowY)
+        .background { Color.clear.contentShape(Rectangle()).onTapGesture {} }
+        .glassEffect(.regular, in: .rect(cornerRadius: Layout.containerCornerRadius))
+        .shadow(color: .black.opacity(0.25), radius: 32, y: 8)
     }
-
-    // MARK: - Constants
 
     private enum Layout {
         static let containerPadding: CGFloat = 16
         static let containerCornerRadius: CGFloat = 24
         static let itemSpacing: CGFloat = 12
-        static let shadowRadius: CGFloat = 32
-        static let shadowY: CGFloat = 8
+        static let itemWidth: CGFloat = 160
+        static let itemHeight: CGFloat = 136
+        static let windowInset: CGFloat = 24
     }
 }
 
@@ -91,22 +118,9 @@ private struct TabSwitcherItem: View {
     @ViewBuilder
     private var previewContent: some View {
         WebViewThumbnail(tabID: tab.id)
+            .allowsHitTesting(false)
             .frame(width: Layout.previewWidth, height: Layout.previewHeight)
             .clipShape(RoundedRectangle(cornerRadius: Layout.previewCornerRadius))
-    }
-
-    private var fallbackPreview: some View {
-        RoundedRectangle(cornerRadius: Layout.previewCornerRadius)
-            .fill(.quaternary)
-            .frame(width: Layout.previewWidth, height: Layout.previewHeight)
-            .overlay {
-                faviconView
-            }
-    }
-
-    @ViewBuilder
-    private var faviconView: some View {
-        FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
     }
 
     private var titleView: some View {
@@ -141,6 +155,5 @@ private struct TabSwitcherItem: View {
         static let previewCornerRadius: CGFloat = 8
         static let selectionPadding: CGFloat = 8
         static let selectionCornerRadius: CGFloat = 12
-        static let faviconSize: CGFloat = 32
     }
 }

@@ -9,12 +9,12 @@ import AppKit
 ///
 /// ## Shortcuts Handled
 ///
-/// - **Cmd+T**: Open command lens (new tab)
-/// - **Cmd+L**: Open address lens
+/// - **Cmd+T**: Open the Command Lens, empty and centered
+/// - **Cmd+L**: Open the Command Lens beside the page card with the address in it
 /// - **Cmd+Shift+[**: Select previous tab
 /// - **Cmd+Shift+]**: Select next tab
 /// - **Ctrl+Tab / Ctrl+Shift+Tab**: Tab switcher navigation
-/// - **Escape**: Dismiss tab switcher, command lens, or address lens
+/// - **Escape**: Dismiss the tab switcher or the anchored lens
 /// - **Extension commands**: Shortcuts registered by browser extensions
 ///
 /// ## Priority
@@ -93,15 +93,15 @@ final class KeyboardShortcutsManager: Sendable {
 
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-        // Cmd+T: Open command lens
+        // Cmd+T: the lens, empty and centered
         if modifiers == .command, event.charactersIgnoringModifiers == "t" {
             controller.openCommandLens()
             return nil
         }
 
-        // Cmd+L: Open address lens
+        // Cmd+L: the lens beside the page card with the address in it
         if modifiers == .command, event.charactersIgnoringModifiers == "l" {
-            controller.openAddressLens()
+            controller.editAddress()
             return nil
         }
 
@@ -130,13 +130,13 @@ final class KeyboardShortcutsManager: Sendable {
             return nil
         }
 
-        // Cmd+Shift+[: Select previous tab
+        // Cmd+Shift+[: Previous tab in recency
         if modifiers == [.command, .shift], event.charactersIgnoringModifiers == "[" {
             controller.selectPreviousTab()
             return nil
         }
 
-        // Cmd+Shift+]: Select next tab
+        // Cmd+Shift+]: Next tab in recency
         if modifiers == [.command, .shift], event.charactersIgnoringModifiers == "]" {
             controller.selectNextTab()
             return nil
@@ -152,6 +152,8 @@ final class KeyboardShortcutsManager: Sendable {
                     tabSwitcherManager.selectNext()
                 }
             } else if tabSwitcherManager.canShowSwitcher {
+                controller.windowState.closeCommandLens()
+                controller.tabCanvasManager.dismissFloatingTabs()
                 tabSwitcherManager.show()
             }
             return nil
@@ -164,14 +166,22 @@ final class KeyboardShortcutsManager: Sendable {
                 tabSwitcherManager.cancel()
                 return nil
             }
-            // Command Lens handles its own escape via CommandLensView.handleEscape()
-            // which implements three-tiered behavior: clear text → exit mode → close
-            if controller.windowState.showsAddressLens {
-                controller.windowState.closeAddressLens()
+            // The centered lens handles its own Escape in CommandLensView.handleEscape()
+            // (clear text → exit mode → close); the anchored lens holds the page address,
+            // so Escape closes it outright instead of clearing that text.
+            if controller.windowState.showsAnchoredLens {
+                controller.windowState.closeCommandLens()
+                return nil
+            }
+            let controls = controller.windowState.controlIsland
+            if controller.tabCanvasManager.showsFloatingControls,
+               !controls.isPresenting,
+               controls.hasKeyboardFocus || controls.showsAddress || controls.isHovered || controls.tabInfo.isVisible {
+                controls.dismiss()
                 return nil
             }
             // Stop loading if the page is currently loading
-            if controller.windowState.activeWebPage?.isLoading == true {
+            if controller.windowState.focusedWebPage?.isLoading == true {
                 controller.stopLoading()
                 return nil
             }
@@ -197,7 +207,7 @@ final class KeyboardShortcutsManager: Sendable {
 
         // Tab switcher: dismiss when Control key is released
         if controller.tabSwitcherManager.isActive, !event.modifierFlags.contains(.control) {
-            controller.tabSwitcherManager.dismiss()
+            controller.tabSwitcherManager.controlReleased()
         }
 
         return event
@@ -213,10 +223,10 @@ final class KeyboardShortcutsManager: Sendable {
         // Button 3 = Back, Button 4 = Forward (standard multi-button mouse mapping)
         switch event.buttonNumber {
         case 3:
-            controller.windowState.activeWebPage?.goBack()
+            controller.windowState.focusedWebPage?.goBack()
             return nil
         case 4:
-            controller.windowState.activeWebPage?.goForward()
+            controller.windowState.focusedWebPage?.goForward()
             return nil
         default:
             return event

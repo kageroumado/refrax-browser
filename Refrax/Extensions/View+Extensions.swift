@@ -2,6 +2,12 @@ import SwiftData
 import SwiftUI
 
 extension View {
+    /// The shared glass, tint, and corner treatment for floating browser chrome.
+    func windowGlassSurface(tint: Color, glass: Glass = .regular) -> some View {
+        background(tint, in: WindowCorner.concentric)
+            .glassEffect(glass, in: WindowCorner.concentric)
+    }
+
     // MARK: - Conditional Modifiers
 
     /// Conditionally applies a transformation to a view

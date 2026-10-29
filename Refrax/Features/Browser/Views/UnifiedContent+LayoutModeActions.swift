@@ -5,8 +5,7 @@ import SwiftUI
 extension UnifiedContentView {
     /// Handles tapping on an empty slot to open command lens for adding a new page
     func handleEmptySlotTap(at position: PanePosition) {
-        // Clear reference tab mode in case it was set from a previous interaction
-        windowState.isCreatingReferenceTab = false
+
         windowState.layoutModeTargetPosition = position
         windowState.openCommandLens()
     }
@@ -80,24 +79,6 @@ extension UnifiedContentView {
         }
 
         tabManager.movePageToNewTab(page, from: tab, makeActive: false)
-    }
-
-    /// Moves a pane to the reference pane (right sidebar)
-    func moveToReferencePane(at position: PanePosition) {
-        guard let page = layoutGrid.page(at: position),
-              windowState.activeSpace?.referenceTabCount ?? 0 < 4 else {
-            return
-        }
-
-        layoutGrid.removePage(at: position)
-        workingConfig.panePositions.removeValue(forKey: page.id)
-        workingConfig.expansions.removeValue(forKey: position)
-
-        tabManager.movePageToReferencePane(page, from: tab)
-
-        withAnimation(conditionalSpringAnimation) {
-            updateCachedFrames()
-        }
     }
 }
 

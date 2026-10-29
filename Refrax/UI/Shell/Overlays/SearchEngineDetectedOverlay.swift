@@ -19,7 +19,6 @@ struct SearchEngineDetectedOverlay: View {
                     SearchEngineDetectedPill(detection: detection)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 16)
-                        .offset(x: windowState.sidebarThickness / 2)
                         .ignoresSafeArea()
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }

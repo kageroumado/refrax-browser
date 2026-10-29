@@ -62,8 +62,6 @@ import Security
 ///
 /// On launch, ``detectPostUpdate()`` checks UserDefaults for `pendingUpdateVersion`:
 /// - Sets ``justUpdated`` with version, previous version, and release notes
-/// - Sidebar shows ``UpdateNotificationPanel`` (auto-dismisses after 60s)
-/// - Tapping the panel opens ``UpdateCompletedSheet`` with full release notes
 /// - UserDefaults keys are cleared
 ///
 /// ## User Preferences
@@ -109,16 +107,8 @@ final class AppUpdateManager {
     /// Current phase of the update lifecycle.
     var phase: UpdatePhase = .idle
 
-    /// Set on launch after a successful update. Drives the notification panel.
+    /// Set on launch after a successful update; the automatic check skips that launch.
     var justUpdated: PostUpdateInfo?
-
-    /// When `true`, the sidebar notification panel shows the failure error message.
-    /// Set by clicking the warning icon in the sidebar bottom controls.
-    var showFailedPanel = false
-
-    /// When `true`, the sidebar shows the crash report notification panel.
-    /// Set after an automatic crash report is submitted on relaunch.
-    var crashReportSent = false
 
     /// When the last successful check completed.
     var lastCheckDate: Date?
@@ -186,7 +176,7 @@ final class AppUpdateManager {
             break
         }
 
-        let pendingVersion: String? = if case .readyToInstall(let pending) = phase {
+        let pendingVersion: String? = if case let .readyToInstall(pending) = phase {
             pending.version
         } else {
             nil
@@ -261,15 +251,6 @@ final class AppUpdateManager {
         pendingUpdate = nil
     }
 
-    /// Dismisses the failure panel and resets phase to idle.
-    ///
-    /// Called when the user closes the error notification panel. Update checks
-    /// will resume on the next background scheduler cycle.
-    func dismissFailure() {
-        showFailedPanel = false
-        phase = .idle
-    }
-
     // MARK: - Installation
 
     /// Initiates the update installation process.
@@ -279,7 +260,7 @@ final class AppUpdateManager {
     ///
     /// Called when the user clicks "Restart Now" in the update UI.
     func restartToUpdate() async {
-        guard case .readyToInstall(let update) = phase,
+        guard case let .readyToInstall(update) = phase,
               let dmgPath = downloadedDMGPath
         else { return }
 
@@ -356,7 +337,7 @@ final class AppUpdateManager {
     /// Checks for post-update metadata left by a previous installation.
     ///
     /// Called during ``RefraxAppDelegate/startDeferredMaintenance()`` on launch.
-    /// If found, sets ``justUpdated`` to drive the notification panel and clears
+    /// If found, sets ``justUpdated`` and clears
     /// the UserDefaults keys.
     func detectPostUpdate() {
         guard let version = UserDefaults.standard.string(forKey: UDKey.pendingVersion) else {
@@ -606,13 +587,13 @@ final class AppUpdateManager {
         # Refrax Updater — replaces app bundle and relaunches
         PID="$1"; STAGED="$2"; INSTALL="$3"
         OLD="${INSTALL}.old"
-
+        
         # Wait for app to quit (max 30s)
         for _ in $(seq 1 60); do
             kill -0 "$PID" 2>/dev/null || break
             sleep 0.5
         done
-
+        
         # Ordered swap with rollback — never leave zero apps installed
         rm -rf "$OLD"
         mv "$INSTALL" "$OLD" || exit 1
@@ -623,10 +604,10 @@ final class AppUpdateManager {
         fi
         xattr -dr com.apple.quarantine "$INSTALL"
         rmdir "$(dirname "$STAGED")" 2>/dev/null
-
+        
         # Relaunch
         open "$INSTALL"
-
+        
         # Deferred cleanup (give open time to start the app)
         sleep 2
         rm -rf "$OLD"

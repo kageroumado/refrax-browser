@@ -22,6 +22,18 @@ extension MenuBarManager {
 
         windowMenu.addItem(.separator())
 
+        let moveTabItem = NSMenuItem(
+            title: "Move Tab to New Window",
+            action: #selector(moveCurrentTabToNewWindow(_:)),
+            keyEquivalent: "n",
+        )
+        moveTabItem.keyEquivalentModifierMask = [.command, .option]
+        moveTabItem.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: nil)
+        moveTabItem.target = self
+        windowMenu.addItem(moveTabItem)
+
+        windowMenu.addItem(.separator())
+
         // MARK: Window Options Group
 
         let keepOnTopItem = NSMenuItem(
@@ -170,6 +182,15 @@ extension MenuBarManager {
 
         opacityMenuItem.submenu = opacityMenu
         return opacityMenuItem
+    }
+
+    // MARK: - Tab Actions
+
+    /// Moves the current page into a new window of its space.
+    @objc
+    func moveCurrentTabToNewWindow(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.activeTab else { return }
+        controller.tabManager.moveTabToNewWindow(tab, from: controller.windowState)
     }
 
     // MARK: - Window Option Actions

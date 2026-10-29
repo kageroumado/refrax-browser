@@ -13,9 +13,9 @@ import SwiftUI
 ///
 /// ## Managed State
 ///
-/// - **Lenses**: Command lens (Cmd+K) and address bar lens for quick actions
-/// - **Layout**: Sidebar and inspector visibility, widths, and collapse states
-/// - **Overlays**: Sidebar hover overlay animation and positioning
+/// - **Lenses**: Command Lens, centered or beside the page card
+/// - **Floating layer**: Placements of floating tabs, the Control Island, and the File Island
+/// - **Detail tray**: Which tray panel is showing
 /// - **Drag Operations**: Tracks content being dragged for visual feedback
 /// - **Layout Mode**: Enable/disable interface customization mode
 ///
@@ -27,7 +27,7 @@ import SwiftUI
 ///
 /// ## Navigation State
 ///
-/// WindowState stores only IDs for active space/tab/reference tab. Actual objects
+/// WindowState stores only IDs for active space and tab. Actual objects
 /// are retrieved via `BrowserState.tab(for:)` which provides O(1) lookup.
 /// Convenience properties (`activeTab`, `activeSpace`, `activePage`) handle
 /// the lookup automatically.
@@ -206,7 +206,7 @@ final class WindowState {
     /// Returns the active space if it requires authentication, otherwise nil.
     ///
     /// Use this to conditionally show the lock overlay at window level.
-    /// The overlay should cover the entire window including sidebar to prevent
+    /// The overlay covers the entire window to prevent
     /// information leakage from tab titles and group names.
     var lockedSpaceRequiringAuth: Space? {
         guard let space = activeSpace else { return nil }
@@ -245,6 +245,30 @@ final class WindowState {
     
     var activeSpaceGroups: [TabGroup] {
         activeSpace?.groups ?? []
+    }
+
+    var readingState: WindowReadingState {
+        var selected: [Space.ID: Tab.ID] = [:]
+        for space in browserState.spaces where space.dataStoreMode != .private {
+            if let id = activeTabID(for: space.id), let tab = browserState.tab(for: id), !tab.isArchived {
+                selected[space.id] = id
+            }
+        }
+        let main = activeSpace?.dataStoreMode == .private ? nil : activeTabID
+        return WindowReadingState(tabIDsBySpace: selected, mainTabID: main)
+    }
+
+    /// Returns the page eligible for immediate resumption; locked spaces await authentication.
+    func restoreReadingState(_ saved: WindowReadingState) -> Tab? {
+        for (spaceID, tabID) in saved.tabIDsBySpace {
+            guard let tab = browserState.tab(for: tabID), !tab.isArchived,
+                  tab.space?.id == spaceID, tab.space?.dataStoreMode != .private else { continue }
+            setActiveTabID(tabID, for: spaceID, trackPrevious: false)
+        }
+        guard !isSpaceLocked, activeSpace?.dataStoreMode != .private,
+              let id = saved.mainTabID, let tab = browserState.tab(for: id), !tab.isArchived,
+              tab.isFavorite || tab.space?.id == activeSpaceID else { return nil }
+        return tab
     }
 
     /// Active tab IDs per space (allows remembering position when switching spaces).
@@ -324,24 +348,11 @@ final class WindowState {
         activeTab?.activePage
     }
     
-    /// Active reference tab ID for this window.
-    ///
-    /// Reference tabs appear in the reference pane for side-by-side browsing.
-    var activeReferenceTabID: Tab.ID?
-
-    /// Active reference tab for this window.
-    ///
-    /// Uses O(1) lookup via `BrowserState.tab(for:)`.
-    var activeReferenceTab: Tab? {
-        guard let id = activeReferenceTabID else { return nil }
-        return browserState.tab(for: id)
-    }
-
     // MARK: - Focused Webpage Tracking
 
     /// The ID of the last-interacted webpage in this window.
     ///
-    /// This tracks which webpage (from main content, split-view, or reference pane)
+    /// This tracks which webpage (from main content or split-view)
     /// the user last interacted with. Used by the address bar to show the correct
     /// URL and navigation state.
     ///
@@ -354,20 +365,14 @@ final class WindowState {
     /// When nil or the referenced page is removed, falls back to:
     /// 1. Active tab's primary page (if single-page tab)
     /// 2. Active tab's active page (if split-view tab)
-    /// 3. First reference tab's page (if no main tab)
     var focusedPageID: TabPage.ID?
 
     /// The focused webpage for address bar and navigation display.
     ///
     /// Returns the last-interacted webpage, or falls back to a sensible default
-    /// if the focused page is no longer available or belongs to a hidden reference pane.
+    /// if the focused page is no longer available.
     var focusedWebPage: WebPage? {
         if let focusedPageID, let webPage = browserState.webPage(for: focusedPageID) {
-            // If the inspector is collapsed, don't return reference tab pages
-            // The address bar should show the active main tab instead
-            if isInspectorCollapsed, webPage.tabPage.tab?.isReferenceTab == true {
-                return fallbackWebPage
-            }
             return webPage
         }
         return fallbackWebPage
@@ -392,15 +397,7 @@ final class WindowState {
     /// @ObservationIgnored to reduce observation dependencies.
     @ObservationIgnored
     private var fallbackPage: TabPage? {
-        if let activeTab {
-            return activeTab.activePage
-        }
-        // Only fall back to reference tab if the reference pane is visible
-        if !isInspectorCollapsed,
-           let refTab = activeReferenceTab {
-            return refTab.activePage
-        }
-        return nil
+        activeTab?.activePage
     }
 
     /// Records an interaction with a webpage.
@@ -436,47 +433,47 @@ final class WindowState {
 
     // MARK: - Lens State
 
-    /// Currently visible lens, if any.
+    /// How the Command Lens is open; `nil` while it is closed.
     ///
-    /// When set, darkens the background and presents the lens interface for
-    /// quick actions or address entry.
-    private(set) var focusedLens: FocusedLens?
-    
-    /// Frame of the address bar in global coordinates (root of view hierarchy).
+    /// One lens has two entrances. ⌘T and the rail button open it empty and centered;
+    /// ⌘L and the page card's identity open it beside the card with the page address in it.
+    private(set) var commandLensEntrance: CommandLensEntrance?
+
+    /// Frame of the page card in window coordinates.
     ///
-    /// Used to position the address lens overlay aligned with the address bar.
-    var addressBarFrame: CGRect = .zero
+    /// The anchor for the lens when it opens with the page address in it.
+    var pageCardFrame: CGRect = .zero
 
-    // MARK: - Split View State
+    /// Frame of the Command Lens capsule in global coordinates, kept current by its overlay while the lens is up.
+    var commandLensFrame: CGRect = .zero
 
-    /// Whether the sidebar (vertical tabs) is collapsed.
-    ///
-    /// When collapsed, only the sidebar overlay appears on hover. When expanded,
-    /// the sidebar is pinned open. Synced with `@SceneStorage` for persistence.
-    var isSidebarCollapsed: Bool = false
+    /// The window's islands, for menus and lens commands built from the window's state.
+    @ObservationIgnored weak var islandController: IslandController?
+    /// The empty page hosts Command Lens itself; each request refocuses that lens.
+    var startPageLensRequest = 0
 
-    /// Whether the inspector (reference pane) is collapsed.
-    ///
-    /// The inspector shows side-by-side content when working with multiple sources.
-    /// Synced with `@SceneStorage` for persistence across launches.
-    var isInspectorCollapsed: Bool = true
+    /// Where the next tab the lens opens goes: the end of an island, when an island asked.
+    var newTabIsland: NewTabIsland?
 
-    // MARK: - Sidebar Overlay State
-
-    /// The effective sidebar mode for this window.
-    ///
-    /// Returns the global default from ``BrowserSettings/defaultSidebarMode``.
-    var effectiveSidebarMode: SidebarMode {
-        settings.defaultSidebarMode
+    nonisolated struct NewTabIsland: Equatable, Sendable {
+        /// The group, or `nil` for the loose tabs.
+        let groupID: UUID?
     }
+
+    // MARK: - Floating Layer State
+
+    let controlIsland = ControlIslandState()
+    let fileIsland = FileIslandState()
+    let pageVisit = PageVisitState()
+    var floatingPlacements: [Tab.ID: FloatingTabPlacement] = [:]
 
     // MARK: - Detail Tray State
 
     /// Current mode for the detail tray (downloads, bookmarks, history, or hidden).
     ///
-    /// The detail tray is a secondary panel that slides in adjacent to the sidebar,
+    /// The detail tray is a glass panel that slides in from the window's leading edge,
     /// providing quick access to downloads, bookmarks, and history without opening
-    /// dedicated tabs. Uses Liquid Glass styling consistent with the sidebar overlay.
+    /// dedicated tabs.
     var detailTrayMode: DetailTrayMode = .hidden
 
     /// Whether the detail tray is currently visible.
@@ -490,81 +487,6 @@ final class WindowState {
     /// like `LinkHoverPreviewView` to avoid overlapping with the tray. A value of 0
     /// means the tray is hidden or not yet positioned.
     var detailTrayTrailingEdge: CGFloat = 0
-
-    /// Trailing edge of the sidebar overlay in window coordinates.
-    ///
-    /// Set by `RefraxWindowController` when the sidebar overlay shows/hides.
-    /// Accounts for compact strip width or full overlay width. A value of 0
-    /// means the overlay is hidden or the sidebar is expanded (pinned).
-    var sidebarOverlayTrailingEdge: CGFloat = 0
-
-    /// Current width of the sidebar panel.
-    ///
-    /// Dynamically updated as the user resizes the sidebar. Persisted per
-    /// window by AppKit state restoration and app-wide by `WindowGeometryStore`.
-    var sidebarThickness: CGFloat = 300
-
-    /// Tracks whether the tutorial peek animation has played this session.
-    ///
-    /// On first launch, the sidebar briefly peeks out to teach users about
-    /// the hover interaction. This flag prevents repeated animations.
-    var hasShownTutorialPeek = false
-
-    // MARK: - Compact Tab Title Tooltip
-
-    /// Frame of the currently hovered compact tab button in global coordinates.
-    ///
-    /// Used by CompactTabTitleOverlay to position the title tooltip adjacent
-    /// to the tab when hovered.
-    var compactTabTooltipFrame: CGRect = .zero
-
-    /// Title to display in the compact tab tooltip.
-    ///
-    /// Set when hovering a compact tab button after the delay expires.
-    /// Cleared when hover ends.
-    private(set) var compactTabTooltipTitle: String?
-
-    /// Centralized task for compact tab tooltip delay.
-    ///
-    /// Previously each CompactTabButton had its own `@State tooltipTask`, creating
-    /// 100+ Task allocations for windows with many tabs. Now managed centrally.
-    @ObservationIgnored
-    private var compactTabTooltipTask: Task<Void, Never>?
-
-    /// Delay before showing compact tab tooltip.
-    private static let compactTabTooltipDelay: Duration = .milliseconds(200)
-
-    /// Starts the tooltip hover delay for a compact tab.
-    ///
-    /// After the delay, the tooltip title will be set if the hover hasn't been cancelled.
-    /// Frame should be updated separately via `compactTabTooltipFrame`.
-    ///
-    /// - Parameter title: The title to show in the tooltip.
-    func startCompactTabTooltipHover(title: String) {
-        compactTabTooltipTask?.cancel()
-
-        let capturedTitle = title
-        compactTabTooltipTask = Task {
-            try? await Task.sleep(for: Self.compactTabTooltipDelay)
-            guard !Task.isCancelled else { return }
-            compactTabTooltipTitle = capturedTitle
-        }
-    }
-
-    /// Ends the tooltip hover, cancelling any pending delay and clearing the title.
-    func endCompactTabTooltipHover() {
-        compactTabTooltipTask?.cancel()
-        compactTabTooltipTask = nil
-        compactTabTooltipTitle = nil
-    }
-
-    // MARK: - Compact Address Bar
-
-    /// Whether the compact sidebar address bar overlay is visible.
-    ///
-    /// Shown when hovering the link button or during page load in compact mode.
-    /// The overlay is rendered in OverlayContainer with fixed positioning.
-    var showsCompactAddressBar = false
 
     // MARK: - Layout Mode State
 
@@ -580,7 +502,7 @@ final class WindowState {
     /// Whether the mouse cursor is currently inside the bounds of an overlay.
     ///
     /// When `true`, WKWebView's `_ignoresAllEvents` is set to block all input.
-    /// This is used when the sidebar overlay or detail tray is visible, so that
+    /// This is used while the cursor is over the detail tray or the lens is up, so that
     /// the overlay receives events instead of the underlying web content.
     var webViewsShouldIgnoreAllEvents = false
 
@@ -598,26 +520,6 @@ final class WindowState {
     /// at this position instead of creating a new tab.
     var layoutModeTargetPosition: PanePosition?
 
-    /// When set, command lens creates a new reference tab instead of a main tab.
-    ///
-    /// Set to `true` when user taps the "add tab" button in the reference pane.
-    /// The command lens will then route the selected URL/search to `addReferenceTab()`
-    /// instead of creating a normal tab.
-    var isCreatingReferenceTab = false
-
-    /// Whether the command lens is visible in the reference pane window.
-    ///
-    /// This is separate from `showsCommandLens` because the reference pane window
-    /// has its own lens overlay positioned at the top-middle of the window.
-    var showsReferencePaneLens = false
-
-    /// Whether a reference pane window is open for this WindowState.
-    ///
-    /// Set by `WindowManager.createReferencePaneWindow()` and cleared when the window closes.
-    /// When true, the docked reference pane view should NOT force WebViews inactive
-    /// because the content is being displayed in the separate window.
-    var hasReferencePaneWindow = false
-
     // MARK: - Toast Notification State
 
     /// Current toast message to display, if any.
@@ -625,6 +527,9 @@ final class WindowState {
     /// Set this to show a brief notification at the top of the window.
     /// Automatically clears after a few seconds.
     var toastMessage: String?
+
+    /// The button the current toast offers beside its message, such as Undo.
+    var toastAction: ToastAction?
 
     /// Auto-dismiss task for the current toast.
     @ObservationIgnored
@@ -634,14 +539,18 @@ final class WindowState {
     ///
     /// - Parameters:
     ///   - message: The message to display.
-    ///   - duration: How long to show the toast (default 4 seconds).
-    func showToast(_ message: String, duration: Duration = .seconds(4)) {
+    ///   - action: A button beside the message; pressing it runs the action and closes the toast.
+    ///   - duration: How long to show the toast: 4 seconds, or 6 with an action.
+    func showToast(_ message: String, action: ToastAction? = nil, duration: Duration? = nil) {
         toastDismissTask?.cancel()
         toastMessage = message
+        toastAction = action
 
+        let duration = duration ?? (action == nil ? .seconds(4) : .seconds(6))
         toastDismissTask = Task { [weak self] in
             try await Task.sleep(for: duration)
             self?.toastMessage = nil
+            self?.toastAction = nil
         }
     }
 
@@ -650,6 +559,7 @@ final class WindowState {
         toastDismissTask?.cancel()
         toastDismissTask = nil
         toastMessage = nil
+        toastAction = nil
     }
 
     // MARK: - Search Engine Detection
@@ -714,53 +624,6 @@ final class WindowState {
     /// Whether the browser data import wizard is showing.
     var showsBrowserImport = false
 
-    // MARK: - Speed Reader State
-
-    /// Current speed reader window controller, retained to keep the window alive.
-    @ObservationIgnored
-    private var speedReaderWindowController: SpeedReaderWindowController?
-
-    /// The speed reader panel still splitting its words; a newer request cancels it.
-    @ObservationIgnored
-    private var speedReaderOpening: Task<Void, Never>?
-
-    /// Shows the speed reader panel for the given selected text.
-    ///
-    /// Creates a minimal `ExtractedArticle` from the text and opens the speed reader panel
-    /// attached to the current window. The panel reference is retained until closed.
-    ///
-    /// - Parameter text: The selected text to speed read.
-    func showSpeedReader(for text: String) {
-        // Close existing speed reader if open
-        speedReaderWindowController?.close()
-
-        // Create a minimal article from the selected text
-        let article = ExtractedArticle(
-            title: "Selected Text",
-            byline: nil,
-            content: text,
-            textContent: text,
-            excerpt: nil,
-            siteName: nil,
-            publishedTime: nil,
-            sourceURL: URL.staticRequired("refrax://selection"),
-        )
-
-        // Create and show the speed reader panel
-        let parentWindow = NSApp.keyWindow
-        speedReaderOpening?.cancel()
-        speedReaderOpening = Task(name: "Open Speed Reader for selection") { [weak self] in
-            let controller = await SpeedReaderWindowController.make(
-                article: article,
-                settings: self?.settings,
-                parentWindow: parentWindow,
-            )
-            guard let self, !Task.isCancelled else { return }
-            controller.showCentered()
-            speedReaderWindowController = controller
-        }
-    }
-
     // MARK: - Page Search Bar State
 
     /// Per-tab page find navigator presentation state
@@ -782,49 +645,21 @@ final class WindowState {
         )
     }
     
-    // MARK: - Reference Pane Layout (Window-Specific)
-
-    // Per-window visual layout state for the reference pane.
-    //
-    // ## Architecture: Content vs Layout Separation
-    //
-    // ```
-    // ┌─────────────────────────────────────────────────────┐
-    // │ CONTENT (What)        → Per-Space (TabManager)      │
-    // │ • Reference tabs      → Stored in Space             │
-    // ├─────────────────────────────────────────────────────┤
-    // │ LAYOUT (How)          → Per-Window (WindowState)    │
-    // │ • Inspector collapsed → Here                        │
-    // │ • Docked width        → Here                        │
-    // │ • Controls locked     → Here                        │
-    // │ • Active ref tab ID   → Here                        │
-    // └─────────────────────────────────────────────────────┘
-    // ```
-    //
-    // ## Why Separate?
-    //
-    // Multiple windows can show the SAME space with DIFFERENT layouts:
-    // - Window A: Reference pane docked at 400px width
-    // - Window B: Reference pane docked at 500px width
-    // - Both showing the same Space with same reference tabs
-    //
-    // ## Separate Window Mode
-    //
-    // To detach the reference pane into a separate window, use
-    // `WindowManager.createReferencePaneWindow()`. This creates a new
-    // `ReferencePaneWindow` that shares the same WindowState.
-
-    /// Reference pane width when docked in inspector panel
-    var referencePaneDockedWidth: CGFloat = 400
-
     // MARK: - Computed Properties
 
     var showsCommandLens: Bool {
-        focusedLens == .command
+        commandLensEntrance != nil
     }
 
-    var showsAddressLens: Bool {
-        focusedLens == .address
+    /// The lens is up beside the page card, editing the page's address.
+    var showsAnchoredLens: Bool {
+        commandLensEntrance?.anchor != nil
+    }
+
+    /// The lens in the middle of the window, which the islands and cards make way for; an
+    /// anchored one sits on the field it edits and leaves them be.
+    var showsCenteredLens: Bool {
+        showsCommandLens && !showsAnchoredLens
     }
 
     var commandLensBinding: Binding<Bool> {
@@ -854,57 +689,44 @@ final class WindowState {
 
     // MARK: - Lens Actions
 
-    /// Opens the address lens.
+    /// Opens the Command Lens.
     ///
-    /// Animation is handled by `AddressLensOverlay`.
-    func openAddressLens() {
-        webViewsShouldIgnoreAllEvents = true
-        focusedLens = .address
-    }
-
-    /// Closes the address lens.
+    /// - Parameters:
+    ///   - prefill: Text the lens starts with, selected. `nil` opens it empty.
+    ///   - anchor: The control the lens unfolds beside, in window coordinates. `nil` centers
+    ///     it in the window. An anchored lens edits the current page's address: a committed
+    ///     URL loads in that page instead of a new tab.
+    ///   - source: The control that opened a centered lens, in window coordinates, for a ray
+    ///     of light from it to the lens. ⌘T passes `nil`: a key needs no pointer guidance.
     ///
-    /// Animation is handled by `AddressLensOverlay`.
-    func closeAddressLens() {
-        clearFocus()
-    }
-
-    /// Opens the command lens (no animation by default)
-    func openCommandLens() {
+    /// On an empty page the start page hosts the lens itself, and either entrance refocuses it.
+    func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil, source: CGRect? = nil) {
+        if activeTab == nil {
+            startPageLensRequest &+= 1
+            return
+        }
         webViewsShouldIgnoreAllEvents = true
-        focusedLens = .command
+        commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor, source: source)
     }
 
-    /// Closes the command lens (no animation by default)
+    /// ⌘L: the lens beside the page card with the page's address in it, selected.
+    func editAddress() {
+        openCommandLens(prefill: focusedPage?.url.absoluteString ?? "", anchor: pageCardFrame)
+    }
+
+    /// Closes the Command Lens from either entrance.
     func closeCommandLens() {
         clearFocus()
     }
 
-    /// Opens the command lens in the reference pane window.
-    ///
-    /// This shows the lens overlay in the reference pane window. The lens is
-    /// positioned at the top-middle of the window.
-    ///
-    /// - Parameter forNewTab: If true, the lens will create a new reference tab.
-    ///   If false (default), the lens will navigate the current reference tab.
-    func openReferencePaneLens(forNewTab: Bool = false) {
-        isCreatingReferenceTab = forNewTab
-        showsReferencePaneLens = true
-    }
-
-    /// Closes the command lens in the reference pane window.
-    func closeReferencePaneLens() {
-        showsReferencePaneLens = false
-        isCreatingReferenceTab = false
-    }
-
     private func clearFocus() {
-        focusedLens = nil
+        commandLensEntrance = nil
+        commandLensFrame = .zero
         webViewsShouldIgnoreAllEvents = false
         (window as? RefraxWindow)?.lockedFirstResponder = nil
         // Clear contextual creation flags when any lens closes
-        isCreatingReferenceTab = false
         layoutModeTargetPosition = nil
+        newTabIsland = nil
     }
     
     // MARK: - Layout Mode Actions
@@ -928,18 +750,6 @@ final class WindowState {
         }
     }
     
-    // MARK: - Split View Actions
-
-    /// Toggle sidebar visibility
-    func toggleSidebar() {
-        isSidebarCollapsed.toggle()
-    }
-
-    /// Toggle inspector/reference pane visibility
-    func toggleInspector() {
-        isInspectorCollapsed.toggle()
-    }
-
     // MARK: - Detail Tray Actions
 
     /// Toggles the detail tray for a specific mode.
@@ -1026,7 +836,7 @@ final class WindowState {
     ///   - trackPrevious: Whether to track the current tab as previous for "go back"
     ///     behavior. Set to false during batch operations or cleanup.
     func setActiveTab(_ tab: Tab, trackPrevious: Bool = true) {
-        if tab.status == .liveFavorite {
+        if tab.status == .favorite {
             // Live favorites override space-based active tab
             _activeLiveFavoriteTabID = tab.id
         } else if let spaceID = tab.space?.id {
@@ -1041,7 +851,7 @@ final class WindowState {
         }
 
         // Sync focused page with the new active tab's primary page.
-        // This ensures AddressBar and other UI that depends on focusedPageID
+        // This ensures the page card and other UI that depends on focusedPageID
         // updates immediately when switching tabs, not just on user interaction.
         focusedPageID = tab.activePage.id
     }
@@ -1078,12 +888,10 @@ final class WindowState {
     ///     for new windows that should start without a tab selected.
     func setActiveSpace(_ space: Space, restoreActiveTab _: Bool = true) {
         activeSpaceID = space.id
+        focusedPageID = activePageID
         // Persist as the last-active space so windowless surfaces (a standalone Glimpse)
         // can default to it after every window closes.
         browserState.lastActiveSpaceID = space.id
-        // Note: Reference tabs intentionally don't auto-select on space switch.
-        // The user must explicitly choose which reference tab to load via the
-        // empty state tab selector, matching the behavior for main tabs.
     }
     
     /// Removes references to a deleted tab from all navigation state.
@@ -1135,77 +943,56 @@ final class WindowState {
         activeSpaceID = nil
         _activeTabIDs.removeAll()
         _previousActiveTabIDs.removeAll()
-        activeReferenceTabID = nil
         _activeLiveFavoriteTabID = nil
     }
 }
 
-// MARK: - Focus Region
+// MARK: - Lens Entrance
 
-/// Identifies which quick-action lens is currently visible in the window.
+/// How the Command Lens was opened, which sets its text, its place, and where its result goes.
 ///
-/// Lenses are overlay interfaces that appear over the main content for
-/// focused tasks like entering URLs or executing commands.
-///
-/// ## Lens Types
-///
-/// - **Address Lens**: Appears below the address bar for URL entry with suggestions
-/// - **Command Lens**: Centered overlay (Cmd+K) for quick actions and search
-///
-/// ## Behavior
-///
-/// Only one lens can be visible at a time. When a lens is active:
-/// - Background is dimmed with a dark overlay
-/// - Keyboard focus moves to the lens
-/// - Escape key dismisses the lens
-/// - Background clicks dismiss the lens
-///
-/// - Note: The lens state is managed by ``WindowState`` which coordinates
-///   the animation and keyboard focus.
-enum FocusedLens: Hashable, Sendable {
-    /// Address bar lens for URL entry and suggestions.
-    ///
-    /// Positioned directly below the address bar in the toolbar.
-    /// Displays search suggestions and history as the user types.
-    case address
+/// One lens, two entrances: empty and centered (⌘T, the rail button), or beside the page card
+/// with the page address in it (⌘L, the card's identity). While the
+/// lens is up, keyboard focus moves to it, Escape and background clicks dismiss it, and the page
+/// beneath ignores events.
+struct CommandLensEntrance: Equatable, Sendable {
+    /// Text the lens starts with, selected.
+    var prefill: String?
 
-    /// Command palette for quick actions.
-    ///
-    /// Centered overlay (Cmd+K) providing:
-    /// - Quick tab switching
-    /// - URL navigation
-    /// - Command execution
-    /// - Search across tabs and history
-    case command
+    /// The control the lens unfolds beside, in window coordinates; `nil` centers it.
+    var anchor: CGRect?
+
+    /// The control that opened a centered lens, in window coordinates, which a ray of light
+    /// leaves for the lens; `nil` when a key opened it.
+    var source: CGRect?
+
+    /// An anchored lens edits the current page's address: a committed URL loads in that page.
+    var editsCurrentPage: Bool {
+        anchor != nil
+    }
 }
 
 // MARK: - Detail Tray Mode
 
-/// Content mode for the sidebar detail tray panel.
+/// Content mode for the detail tray panel.
 ///
-/// The detail tray is a secondary slide-out panel adjacent to the sidebar that
-/// provides quick access to downloads, bookmarks, and history. It uses the same
-/// Liquid Glass styling as the sidebar overlay and coordinates with it when the
-/// sidebar is collapsed.
+/// The detail tray is a glass panel that slides in from the window's leading edge and
+/// provides quick access to downloads, bookmarks, and history.
 ///
 /// ## Entry Points
 ///
-/// - Sidebar overlay buttons (when sidebar is collapsed)
+/// - Control Island and File Island controls
 /// - Menu bar: View → Show Downloads/Bookmarks/History
 /// - Keyboard shortcuts: ⌘⇧D (downloads), ⌘⇧B (bookmarks), ⌘Y (history)
-///
-/// ## Positioning
-///
-/// The detail tray positions itself based on sidebar state:
-/// - **Sidebar expanded**: Adjacent to sidebar trailing edge with 8px gap
-/// - **Sidebar collapsed + overlay visible**: Adjacent to overlay trailing edge
-/// - **Sidebar collapsed + overlay hidden**: Floats at left edge with glass effect
 ///
 /// - Note: The tray state is managed by ``WindowState`` and animated by
 ///   ``RefraxWindowController`` using layer-based transforms.
 enum DetailTrayMode: Equatable, Sendable {
     /// Detail tray is hidden.
     case hidden
+
+    /// Live favorite tabs, shortcuts, and favorite folders shared by every space.
+    case favorites
 
     /// Showing downloads panel with active and completed downloads.
     case downloads

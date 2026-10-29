@@ -39,6 +39,8 @@ struct DetailTrayContent: View {
     @ViewBuilder
     private var contentView: some View {
         switch windowState.detailTrayMode {
+        case .favorites:
+            FavoritesTrayView()
         case .downloads:
             DownloadsTrayView()
         case .bookmarks:
@@ -205,6 +207,11 @@ private struct DetailTrayTitleMenuOverlay: NSViewRepresentable {
         }
 
         @objc
+        func selectFavorites(_: NSMenuItem) {
+            DispatchQueue.main.async { [self] in onSelectMode(.favorites) }
+        }
+
+        @objc
         func selectTabSnapshots(_: NSMenuItem) {
             DispatchQueue.main.async { [self] in onSelectMode(.tabSnapshots) }
         }
@@ -226,7 +233,7 @@ private final class DetailTrayTitleMenuOverlayView: NSView {
 
         let menu = NSMenu()
 
-        let modes: [DetailTrayMode] = [.history, .downloads, .bookmarks, .tabSnapshots, .lightboard]
+        let modes = DetailTrayMode.drawerModes
         for mode in modes where mode != currentMode {
             let item = NSMenuItem(
                 title: mode.title,
@@ -246,6 +253,7 @@ private final class DetailTrayTitleMenuOverlayView: NSView {
 
     private func selector(for mode: DetailTrayMode) -> Selector {
         switch mode {
+        case .favorites: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectFavorites(_:))
         case .history: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectHistory(_:))
         case .downloads: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectDownloads(_:))
         case .bookmarks: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectBookmarks(_:))
@@ -283,16 +291,18 @@ private struct DetailTrayHeaderButtonStyle: ButtonStyle {
 // MARK: - DetailTrayMode Extensions
 
 extension DetailTrayMode {
+    static let drawerModes: [Self] = [.favorites, .history, .bookmarks, .lightboard, .downloads, .tabSnapshots]
     /// Display title for the mode.
     var title: String {
         switch self {
         case .hidden: ""
+        case .favorites: "Favorites"
         case .downloads: "Downloads"
         case .bookmarks: "Bookmarks"
         case .history: "History"
         case .backForward: "Navigation"
         case .tabSnapshots: "Tab Snapshots"
-        case .lightboard: "Lightboard"
+        case .lightboard: "Tab Statistics"
         }
     }
 
@@ -300,6 +310,7 @@ extension DetailTrayMode {
     var icon: String {
         switch self {
         case .hidden: ""
+        case .favorites: "star"
         case .downloads: "arrow.down.circle"
         case .bookmarks: "bookmark"
         case .history: "clock"
@@ -327,7 +338,7 @@ private enum DetailTrayToolbarConstants {
 /// Capsule-shaped toolbar for the detail tray's normal mode buttons.
 ///
 /// Places buttons inside a shared capsule container, centered at the bottom.
-/// Uses the same sizing as SidebarControlButton (32pt buttons, 12pt icons).
+/// 32pt buttons with 12pt icons.
 struct DetailTrayToolbar<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -344,7 +355,7 @@ struct DetailTrayToolbar<Content: View>: View {
 
 /// A button for use inside DetailTrayToolbar (capsule style).
 ///
-/// Uses same sizing as SidebarControlButton but without individual background or hover effect.
+/// 32pt buttons with 12pt icons, without individual background or hover effect.
 struct DetailTrayToolbarButton: View {
     let icon: String
     let action: () -> Void
@@ -380,7 +391,7 @@ struct DetailTrayToolbarButton: View {
 
 /// Circular button for the detail tray's edit/selection mode.
 ///
-/// Uses the same sizing as SidebarControlButton without hover effect.
+/// 32pt buttons with 12pt icons, without hover effect.
 struct DetailTrayCircleButton: View {
     let icon: String
     let action: () -> Void

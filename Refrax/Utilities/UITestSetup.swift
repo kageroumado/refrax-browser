@@ -6,8 +6,7 @@ import SwiftData
 /// When the app is launched with `--uitest`, this handler reads additional arguments
 /// to configure the initial test state:
 ///
-/// - `--uitest-tabs=N`: Creates N regular (unpinned) tabs
-/// - `--uitest-pinned-tabs=N`: Creates N pinned tabs
+/// - `--uitest-tabs=N`: Creates N regular tabs
 /// - `--uitest-groups=N`: Creates N groups
 /// - `--uitest-grouped-tabs=N`: Creates N tabs per group (default: 2)
 /// - `--uitest-favorites=N`: Creates N favorite items
@@ -15,12 +14,11 @@ import SwiftData
 /// ## Example
 ///
 /// ```bash
-/// open Refrax.app --args --uitest --uitest-tabs=5 --uitest-pinned-tabs=2 --uitest-groups=2
+/// open Refrax.app --args --uitest --uitest-tabs=5 --uitest-groups=2
 /// ```
 ///
 /// This creates:
 /// - 5 regular tabs named "Test Tab 1" through "Test Tab 5"
-/// - 2 pinned tabs named "Pinned Tab 1" and "Pinned Tab 2"
 /// - 2 groups named "Test Group 1" and "Test Group 2", each with 2 tabs
 enum UITestSetup {
     // MARK: - Configuration
@@ -28,14 +26,13 @@ enum UITestSetup {
     /// Parsed configuration from launch arguments.
     struct Configuration {
         var regularTabCount: Int = 0
-        var pinnedTabCount: Int = 0
         var groupCount: Int = 0
         var tabsPerGroup: Int = 2
         var favoriteCount: Int = 0
 
         /// Whether any test data should be created.
         var hasTestData: Bool {
-            regularTabCount > 0 || pinnedTabCount > 0 || groupCount > 0 || favoriteCount > 0
+            regularTabCount > 0 || groupCount > 0 || favoriteCount > 0
         }
     }
 
@@ -63,9 +60,6 @@ enum UITestSetup {
             if arg.hasPrefix("--uitest-tabs="),
                let value = Int(arg.dropFirst("--uitest-tabs=".count)) {
                 config.regularTabCount = value
-            } else if arg.hasPrefix("--uitest-pinned-tabs="),
-                      let value = Int(arg.dropFirst("--uitest-pinned-tabs=".count)) {
-                config.pinnedTabCount = value
             } else if arg.hasPrefix("--uitest-groups="),
                       let value = Int(arg.dropFirst("--uitest-groups=".count)) {
                 config.groupCount = value
@@ -97,21 +91,6 @@ enum UITestSetup {
         bookmarksManager: BookmarksManager? = nil,
     ) {
         var currentPosition = 0
-        var pinnedPosition = 0
-
-        // Create pinned tabs
-        for i in 1 ... max(1, config.pinnedTabCount) where config.pinnedTabCount > 0 {
-            let tab = Tab(
-                space: space,
-                url: testURL(for: "pinned-\(i)"),
-                title: "Pinned Tab \(i)",
-                status: .pinned,
-                position: pinnedPosition,
-            )
-            tab.customName = "Pinned Tab \(i)"
-            modelContext.insert(tab)
-            pinnedPosition += 1
-        }
 
         // Create groups with their tabs
         for groupIndex in 1 ... max(1, config.groupCount) where config.groupCount > 0 {

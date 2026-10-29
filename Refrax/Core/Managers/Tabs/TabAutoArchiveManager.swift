@@ -361,10 +361,15 @@ final class TabAutoArchiveManager {
 
     /// Checks if a tab is exempt from auto-archiving.
     private func isExempt(_ tab: Tab, activeTabIDs: Set<UUID>) -> Bool {
-        if tab.isPinned { return true }
-        if tab.isArchived { return true }
-        if tab.isLiveFavorite { return true }
-        if activeTabIDs.contains(tab.id) { return true }
+        if tab.isArchived {
+            return true
+        }
+        if tab.isFavorite {
+            return true
+        }
+        if activeTabIDs.contains(tab.id) {
+            return true
+        }
 
         guard let page = pagePool?.existingPage(for: tab.activePage) else {
             return false
@@ -380,11 +385,7 @@ final class TabAutoArchiveManager {
     private func collectActiveTabIDs() -> Set<UUID> {
         guard let windowManager else { return [] }
 
-        return Set(
-            windowManager.allWindowStates.flatMap { state in
-                [state.activeTab?.id, state.activeReferenceTab?.id].compactMap(\.self)
-            },
-        )
+        return Set(windowManager.allWindowStates.compactMap { $0.activeTab?.id })
     }
 
     // MARK: - Domain Matching

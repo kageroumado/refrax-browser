@@ -154,12 +154,16 @@ actor HistoryQueryActor {
                 descriptor.fetchOffset = offset
 
                 let batch = try modelContext.fetch(descriptor)
-                if batch.isEmpty { break }
+                if batch.isEmpty {
+                    break
+                }
 
                 total += batch.reduce(0) { $0 + $1.timeSpent }
                 offset += batch.count
 
-                if batch.count < batchSize { break }
+                if batch.count < batchSize {
+                    break
+                }
             }
             return total
         } catch {
@@ -277,7 +281,6 @@ nonisolated struct TabSnapshotItemData: Sendable {
     let url: URL
     let title: String
     let position: Int
-    let isPinned: Bool
     let groupID: UUID?
     let customName: String?
     let faviconData: Data?
@@ -287,7 +290,6 @@ nonisolated struct TabSnapshotItemData: Sendable {
         self.url = item.url
         self.title = item.title ?? item.url.host ?? ""
         self.position = item.position
-        self.isPinned = item.isPinned
         self.groupID = item.groupID
         self.customName = item.customName
         self.faviconData = item.faviconData

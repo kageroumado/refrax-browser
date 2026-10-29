@@ -21,7 +21,7 @@ struct EditSpaceSheet: View {
     /// Whether lock was originally enabled when the sheet opened.
     private let wasLockEnabledOriginally: Bool
 
-    // Command-line access
+    /// Command-line access
     @State private var exposesCookiesToControl: Bool
 
     init(space: Space) {
@@ -191,7 +191,7 @@ struct EditSpaceSheet: View {
         spaceManager.updateSpace(
             space,
             name: trimmedName,
-            iconName: trimmedIcon.isEmpty ? "briefcase.fill" : trimmedIcon,
+            iconName: trimmedIcon,
             color: selectedColor,
         )
 

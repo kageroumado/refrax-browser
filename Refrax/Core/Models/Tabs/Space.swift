@@ -13,12 +13,6 @@ import SwiftUI
 /// are persisted to disk. The `tabs` and `groups` relationships are managed
 /// automatically by SwiftData.
 ///
-/// ## Reference Tabs
-///
-/// Reference tabs are tabs marked with `isReferenceTab = true`. They appear in
-/// a side panel (max 4 per space). Access them via the `referenceTabs` computed
-/// property which filters the `tabs` relationship.
-///
 /// ## Runtime State
 ///
 /// Some properties are runtime-only (`@Transient`):
@@ -37,10 +31,10 @@ final class Space {
     /// Display name of the space.
     var name: String
 
-    /// SF Symbol name or emoji character for the space icon.
+    /// SF Symbol name or emoji character for the space icon, or empty while none was chosen.
     ///
     /// If the string is a single character that's an emoji, it's displayed as-is.
-    /// Otherwise it's interpreted as an SF Symbol name.
+    /// Otherwise it's interpreted as an SF Symbol name; ``symbolName`` resolves an empty one.
     var iconName: String
 
     /// Optional description for the space.
@@ -122,20 +116,34 @@ final class Space {
     /// When a command-line tool last read this space's gated cookie data.
     var lastCookieControlAccess: Date?
 
+    // MARK: - Floating Layer
+
+    /// Whether the floating layer keeps this space's cards in stacks by site: new tabs from a
+    /// stacked site fall into its stack.
+    var stacksBySite: Bool = false
+
+    // MARK: - Table
+
+    /// Retained in the SwiftData schema so existing stores can open with their saved fields.
+    var tableLayoutData: Data?
+
     /// Whether control-server clients may read this space's HttpOnly cookies and cookie values.
     ///
     /// A shared-store (`.global`) space never does: its store is the one every other shared
     /// space uses, so exposing it would expose the user's ordinary browsing.
     var exposesCookiesToControlServer: Bool {
-        if case .global = dataStoreMode { false } else { exposesCookiesToControl }
+        if case .global = dataStoreMode {
+            false
+        } else {
+            exposesCookiesToControl
+        }
     }
 
     // MARK: - Relationships
 
     /// All tabs in this space.
     ///
-    /// Includes both regular tabs and reference tabs. Use `mainTabs` and `referenceTabs`
-    /// computed properties to filter by type.
+    /// Includes archived tabs. Use `mainTabs` for the activatable tabs in position order.
     ///
     /// - Note: Delete rule is `.cascade` - deleting a space deletes all its tabs.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
@@ -165,10 +173,6 @@ final class Space {
     /// Cached sorted main tabs to avoid O(n log n) sort on every access.
     @Transient
     private var _mainTabsCache: [Tab]?
-
-    /// Cached sorted reference tabs to avoid O(n log n) sort on every access.
-    @Transient
-    private var _referenceTabsCache: [Tab]?
 
     /// Tabs count when cache was created, for staleness detection.
     @Transient
@@ -266,7 +270,7 @@ final class Space {
 
     // MARK: - Tab Access
 
-    /// Main tabs (non-reference, non-archived tabs) sorted by position.
+    /// Non-archived tabs sorted by position.
     ///
     /// Excludes archived tabs since they are non-activatable and displayed
     /// separately in the Archive group.
@@ -279,51 +283,31 @@ final class Space {
         let currentCount = tabs.count
         if currentCount != _tabsCacheCount {
             _mainTabsCache = nil
-            _referenceTabsCache = nil
         }
-        if let cached = _mainTabsCache { return cached }
-        let result = tabs.filter { !$0.isReferenceTab && !$0.isArchived }
+        if let cached = _mainTabsCache {
+            return cached
+        }
+        let result = tabs.filter { !$0.isArchived }
             .sorted { $0.position < $1.position }
         _mainTabsCache = result
         _tabsCacheCount = tabs.count // Update count AFTER building cache
         return result
     }
 
-    /// Reference pane tabs sorted by position.
-    ///
-    /// Maximum 4 reference tabs per space. Excludes archived tabs.
-    ///
-    /// Results are cached. Cache is auto-invalidated when tabs count changes.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var referenceTabs: [Tab] {
-        // Auto-invalidate cache if tabs count changed
-        let currentCount = tabs.count
-        if currentCount != _tabsCacheCount {
-            _mainTabsCache = nil
-            _referenceTabsCache = nil
-        }
-        if let cached = _referenceTabsCache { return cached }
-        let result = tabs.filter { $0.isReferenceTab && !$0.isArchived }
-            .sorted { $0.position < $1.position }
-        _referenceTabsCache = result
-        _tabsCacheCount = tabs.count // Update count AFTER building cache
-        return result
-    }
-
-    /// Pinned tabs sorted by position.
+    /// Tabs in pinned groups, sorted by position.
     ///
     /// Uses cached `mainTabs` - already sorted by position.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
     var pinnedTabs: [Tab] {
-        mainTabs.filter(\.isPinned)
+        mainTabs.filter(\.isInPinnedGroup)
     }
 
-    /// Unpinned tabs sorted by position.
+    /// Tabs outside pinned groups, sorted by position.
     ///
     /// Uses cached `mainTabs` - already sorted by position.
     /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
     var unpinnedTabs: [Tab] {
-        mainTabs.filter { !$0.isPinned }
+        mainTabs.filter { !$0.isInPinnedGroup }
     }
 
     /// Total number of main tabs.
@@ -334,25 +318,40 @@ final class Space {
         mainTabs.count
     }
 
-    /// Number of reference tabs.
-    ///
-    /// Uses cached count to avoid filtering on every access.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var referenceTabCount: Int {
-        referenceTabs.count
-    }
-
     /// Invalidates the cached tab arrays.
     ///
-    /// Call this when a tab's `position`, `isReferenceTab`, or `isArchived` property changes.
+    /// Call this when a tab's `position` or `isArchived` property changes.
     /// Note: Cache is auto-invalidated when tabs are added/removed (count change detection).
     func invalidateTabCaches() {
         _mainTabsCache = nil
-        _referenceTabsCache = nil
         _tabsCacheCount = -1
     }
 
     // MARK: - Icon Type
+
+    /// The SF Symbol the space shows: its chosen icon, or ``placeholderSymbol(name:position:)``
+    /// while it has none.
+    var symbolName: String {
+        iconName.isEmpty ? Self.placeholderSymbol(name: name, position: position) : iconName
+    }
+
+    /// The icon of a space with none chosen: a rounded square holding its number for a space
+    /// named by number ("Space 2"), else its initial, else its place in the list.
+    nonisolated static func placeholderSymbol(name: String, position: Int?) -> String {
+        let numbered = 0 ... 50
+        let words = name.split(separator: " ")
+        if words.count == 2, let number = Int(words[1]), numbered.contains(number) {
+            return "\(number).square"
+        }
+        if let initial = name.trimmingCharacters(in: .whitespaces).first.map({ String($0).lowercased() }),
+           initial.count == 1, let scalar = initial.unicodeScalars.first, ("a" ... "z").contains(scalar) {
+            return "\(initial).square"
+        }
+        if let position, numbered.contains(position + 1) {
+            return "\(position + 1).square"
+        }
+        return "square"
+    }
 
     /// Whether the icon is an emoji (single character) vs SF Symbol.
     var isEmoji: Bool {

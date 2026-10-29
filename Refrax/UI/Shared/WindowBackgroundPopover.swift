@@ -3,7 +3,7 @@ import SwiftUI
 /// A compact popover for quickly adjusting window background appearance.
 ///
 /// Provides controls for color selection, blend mode, blend strength, and fill opacity
-/// in a clean layout suitable for sidebar context menu access.
+/// in a compact layout.
 struct WindowBackgroundPopover: View {
     @Environment(BrowserSettings.self) private var settings
 

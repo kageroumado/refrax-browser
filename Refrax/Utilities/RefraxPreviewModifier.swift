@@ -89,13 +89,6 @@ struct RefraxPreviewModifier: PreviewModifier {
         let windowManager = WindowManager(modelContainer: modelContainer)
         let undoRedoManager = UndoRedoManager()
 
-        let referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
-
         let archiveManager = TabArchiveManager(state: browserState, settings: settings)
         let autoArchiveManager = TabAutoArchiveManager(
             state: browserState,
@@ -108,7 +101,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         // MARK: - Dependent Managers
@@ -121,7 +113,6 @@ struct RefraxPreviewModifier: PreviewModifier {
         )
 
         let extensionManager = ExtensionManager(state: browserState)
-        let readerModeManager = ReaderModeManager(state: browserState)
         let historyActivityManager = HistoryActivityManager()
 
         let windowState = WindowState(settings: settings, browserState: browserState)
@@ -130,13 +121,20 @@ struct RefraxPreviewModifier: PreviewModifier {
             tabManager: tabManager,
             windowState: windowState,
         )
-        let tabPreviewManager = TabPreviewManager(
-            previewProvider: tabPreviewProvider,
-            browserSettings: settings,
-        )
 
         let customSearchEngineManager = CustomSearchEngineManager(modelContext: modelContext)
 
+        let tabSwitcherManager = TabSwitcherManager(
+            tabManager: tabManager,
+            windowState: windowState,
+            previewProvider: tabPreviewProvider,
+        )
+        let tabCanvasManager = TabCanvasManager(
+            tabManager: tabManager,
+            windowState: windowState,
+            pagePool: pagePool,
+        )
+        let floatingTourManager = FloatingTourManager(windowState: windowState, canvas: tabCanvasManager, tabManager: tabManager, defaults: nil)
         let commandLensManager = CommandLensManager(
             tabManager: tabManager,
             historyManager: historyManager,
@@ -144,27 +142,12 @@ struct RefraxPreviewModifier: PreviewModifier {
             browserSettings: settings,
             siteSettingsManager: siteSettingsManager,
             downloadManager: downloadManager,
-            referencePaneManager: referencePaneManager,
             extensionManager: extensionManager,
             customSearchEngineManager: customSearchEngineManager,
             localNetworkSource: LocalNetworkDirectory(),
+            floatingTour: floatingTourManager,
         )
 
-        let tabSwitcherManager = TabSwitcherManager(
-            tabManager: tabManager,
-            windowState: windowState,
-            previewProvider: tabPreviewProvider,
-        )
-
-        let sidebarManagers = SidebarManagers(
-            tabManager: tabManager,
-            bookmarksManager: bookmarksManager,
-            windowState: windowState,
-            groupManager: groupManager,
-            undoRedoManager: undoRedoManager,
-            settings: settings,
-        )
-        
         browserState.downloadManager = downloadManager
         browserState.pagePool = pagePool
         browserState.extensionManager = extensionManager
@@ -201,9 +184,8 @@ struct RefraxPreviewModifier: PreviewModifier {
         pagePool.spaceDataStoreManager = spaceManager.dataStoreManager
         pagePool.completeSetup()
 
-        // MARK: - Calendar, Clipboard & Reminders
+        // MARK: - Clipboard & Reminders
 
-        let calendarManager = CalendarManager(settings: settings)
         let clipboardMonitor = ClipboardMonitor(settings: settings)
         let pageReminderManager = PageReminderManager()
         let favoritePreviewManager = FavoritePreviewManager(
@@ -233,7 +215,6 @@ struct RefraxPreviewModifier: PreviewModifier {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
             archiveManager: archiveManager,
             autoArchiveManager: autoArchiveManager,
             windowManager: windowManager,
@@ -241,38 +222,17 @@ struct RefraxPreviewModifier: PreviewModifier {
             extensionManager: extensionManager,
             dialogState: dialogState,
             tabPreviewProvider: tabPreviewProvider,
-            tabPreviewManager: tabPreviewManager,
             downloadManager: downloadManager,
+            shelfManager: ShelfManager(),
             webInspectorManager: webInspectorManager,
             sharingCoordinator: sharingCoordinator,
             passwordsManager: passwordsManager,
             commandLensManager: commandLensManager,
             modifierKeysState: modifierKeysState,
             tabSwitcherManager: tabSwitcherManager,
-            sidebarManagers: sidebarManagers,
-            cellEnvironment: SidebarCellEnvironment(
-                layoutManager: sidebarManagers.layoutManager,
-                dragCoordinator: sidebarManagers.dragCoordinator,
-                selectionManager: sidebarManagers.selectionManager,
-                tabManager: tabManager,
-                windowState: windowState,
-                browserState: browserState,
-                dependencyContainer: sidebarManagers.dependencyContainer,
-                geometryState: sidebarManagers.geometryState,
-                modifierKeysState: modifierKeysState,
-                tabPreviewManager: tabPreviewManager,
-                pagePool: pagePool,
-                historyManager: historyManager,
-                groupManager: groupManager,
-                filterManager: sidebarManagers.filterManager,
-                settings: settings,
-                mediaControlsManager: sidebarManagers.mediaControlsManager,
-                autoArchiveManager: autoArchiveManager,
-                windowManager: windowManager,
-            ),
-            readerModeManager: readerModeManager,
+            tabCanvasManager: tabCanvasManager,
+            mediaControlsManager: MediaControlsManager(tabManager: tabManager, windowState: windowState),
             undoRedoManager: undoRedoManager,
-            calendarManager: calendarManager,
             clipboardMonitor: clipboardMonitor,
             screenshotCoordinator: ScreenshotCoordinator(),
             recordingCoordinator: RecordingCoordinator(),
@@ -287,8 +247,9 @@ struct RefraxPreviewModifier: PreviewModifier {
             humanInterventionManager: HumanInterventionManager(),
             customSearchEngineManager: customSearchEngineManager,
             appUpdateManager: AppUpdateManager(settings: settings),
-            guidedTourManager: GuidedTourManager(),
+            floatingTourManager: floatingTourManager,
             engineRegistry: EngineRegistry(applicationSupport: FileManager.default.temporaryDirectory),
+            islandController: IslandController(windowState: windowState, tabManager: tabManager, groupManager: groupManager, canvas: tabCanvasManager, pagePool: pagePool),
         )
     }
 

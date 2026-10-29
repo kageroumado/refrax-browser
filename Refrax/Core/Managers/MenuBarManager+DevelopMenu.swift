@@ -88,16 +88,30 @@ extension MenuBarManager {
         emptyCachesItem.target = self
         developMenu.addItem(emptyCachesItem)
 
-        #if DEBUG
+        // --- Separator: Feature Flags ---
         developMenu.addItem(.separator())
 
-        let generateTabsItem = NSMenuItem(
-            title: "Generate 500 Test Tabs",
-            action: #selector(generateDebugTabs(_:)),
+        let floatingRegionsItem = NSMenuItem(
+            title: "Floating Tab Regions",
+            action: #selector(toggleFloatingTabRegions(_:)),
             keyEquivalent: "",
         )
-        generateTabsItem.target = self
-        developMenu.addItem(generateTabsItem)
+        floatingRegionsItem.target = self
+        floatingRegionsItem.tag = DevelopMenuItemTag.floatingTabRegions.rawValue
+        floatingRegionsItem.toolTip = "Offer Keep Part Visible and Preview Zoom in a page's actions menu"
+        developMenu.addItem(floatingRegionsItem)
+
+        #if DEBUG
+            developMenu.addItem(.separator())
+
+            let generateTabsItem = NSMenuItem(
+                title: "Generate 500 Test Tabs",
+                action: #selector(generateDebugTabs(_:)),
+                keyEquivalent: "",
+            )
+            generateTabsItem.target = self
+            developMenu.addItem(generateTabsItem)
+
         #endif
 
         developMenuItem.submenu = developMenu
@@ -106,58 +120,64 @@ extension MenuBarManager {
 
     @objc
     func toggleWebInspector(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleWebInspector()
     }
 
     @objc
     func showJavaScriptConsole(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showJavaScriptConsole()
     }
 
     @objc
     func showPageSource(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showPageSource()
     }
 
     @objc
     func showPageResources(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.showPageResources()
     }
 
     @objc
     func toggleTimelineRecording(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleTimelineRecording()
     }
 
     @objc
     func toggleElementSelection(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.toggleElementSelection()
     }
 
     #if DEBUG
-    @objc
-    func generateDebugTabs(_: Any?) {
-        guard let controller = activeWindowController,
-              let space = controller.windowState.activeSpace
-        else { return }
-        let appDelegate = NSApplication.shared.typedDelegate
-        DebugTabGenerator.generate(
-            tabManager: appDelegate.tabManager,
-            groupManager: appDelegate.groupManager,
-            space: space,
-        )
-    }
+        @objc
+        func generateDebugTabs(_: Any?) {
+            guard let controller = activeWindowController,
+                  let space = controller.windowState.activeSpace
+            else { return }
+            let appDelegate = NSApplication.shared.typedDelegate
+            DebugTabGenerator.generate(
+                tabManager: appDelegate.tabManager,
+                groupManager: appDelegate.groupManager,
+                space: space,
+            )
+        }
     #endif
 
     @objc
+    func toggleFloatingTabRegions(_: Any?) {
+        let settings = NSApplication.shared.typedDelegate.settings
+        settings.floatingTabRegionsEnabled.toggle()
+    }
+
+    @objc
     func emptyCaches(_: Any?) {
-        guard let webPage = activeWindowController?.windowState.activeWebPage else { return }
+        guard let webPage = activeWindowController?.windowState.focusedWebPage else { return }
         webPage.emptyCaches()
     }
 
@@ -165,7 +185,7 @@ extension MenuBarManager {
         guard menu.title == "Develop" else { return }
 
         guard let controller = activeWindowController else { return }
-        let activeWebPage = controller.windowState.activeWebPage
+        let activeWebPage = controller.windowState.focusedWebPage
 
         for item in menu.items {
             item.isEnabled = true
@@ -183,6 +203,9 @@ extension MenuBarManager {
                 let isSelecting = activeWebPage?.isElementSelectionActive ?? false
                 item.title = isSelecting ? "Stop Element Selection" : "Start Element Selection"
 
+            case DevelopMenuItemTag.floatingTabRegions.rawValue:
+                item.state = NSApplication.shared.typedDelegate.settings.floatingTabRegionsEnabled ? .on : .off
+
             default:
                 break
             }
@@ -195,4 +218,5 @@ private enum DevelopMenuItemTag: Int {
     case toggleInspector = 1_001
     case timelineRecording = 1_002
     case elementSelection = 1_003
+    case floatingTabRegions = 1_004
 }

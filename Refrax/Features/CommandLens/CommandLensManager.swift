@@ -28,6 +28,10 @@ final class CommandLensManager {
     var inputText: String = ""
     var suggestions: [CommandLensSuggestion] = []
     var selection: CommandLensSelection = .none
+    /// The person chose the selected row with the arrow keys or a click, rather than the lens
+    /// preselecting the first result. While editing the current page's address, Return follows
+    /// the typed text unless the choice was theirs.
+    private(set) var selectionIsExplicit = false
     var isPopupVisible: Bool = false
     var isLoading: Bool = false
     var hoveredSuggestionID: UUID?
@@ -101,6 +105,9 @@ final class CommandLensManager {
 
     // MARK: - Private State
 
+    /// The input the current suggestions were computed for. Return on a list computed for
+    /// an earlier input follows the typed text instead of that list's first row.
+    private var suggestionsInput: String?
     private var rejectedCompletion: String?
     private var rejectedAtInputLength: Int = 0
     private var commandKeyHeldDuringCommit: Bool = false
@@ -115,11 +122,9 @@ final class CommandLensManager {
     private let browserSettings: BrowserSettings
     private let siteSettingsManager: SiteSettingsManager
     private let downloadManager: DownloadManager
-    private let referencePaneManager: ReferencePaneManager
     private let extensionManager: ExtensionManager
     private let customSearchEngineManager: CustomSearchEngineManager
     private let localNetworkSource: any LocalNetworkSnapshotSource
-
 
     // MARK: - Providers
 
@@ -143,10 +148,10 @@ final class CommandLensManager {
         browserSettings: BrowserSettings,
         siteSettingsManager: SiteSettingsManager,
         downloadManager: DownloadManager,
-        referencePaneManager: ReferencePaneManager,
         extensionManager: ExtensionManager,
         customSearchEngineManager: CustomSearchEngineManager,
         localNetworkSource: any LocalNetworkSnapshotSource,
+        floatingTour: FloatingTourManager? = nil,
     ) {
         self.tabManager = tabManager
         self.historyManager = historyManager
@@ -154,24 +159,28 @@ final class CommandLensManager {
         self.browserSettings = browserSettings
         self.siteSettingsManager = siteSettingsManager
         self.downloadManager = downloadManager
-        self.referencePaneManager = referencePaneManager
         self.extensionManager = extensionManager
         self.customSearchEngineManager = customSearchEngineManager
         self.localNetworkSource = localNetworkSource
 
-        // Initialize providers
-        self.suggestionProviders = [
+        var providers: [any CommandLensSuggestionProvider] = [
             SettingsControlProvider(settings: browserSettings),
             SiteControlProvider(siteSettingsManager: siteSettingsManager, browserSettings: browserSettings),
             ExtensionControlProvider(extensionManager: extensionManager),
             OpenTabsProvider(tabManager: tabManager),
+            ArchivedTabsProvider(tabManager: tabManager),
             LocalNetworkProvider(source: localNetworkSource),
             SearchEngineProvider(customSearchEngineManager: customSearchEngineManager),
             BaseDomainSynthesisProvider(frequentDestinations: historyManager.frequentDestinations),
             HistoryProvider(historyManager: historyManager),
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
-            ActionsProvider(),
+            ActionsProvider(tabs: tabManager, windowState: windowState),
         ]
+        // The tour's page comes before every other suggestion while a tour step asks for one.
+        if let floatingTour {
+            providers.insert(TourSuggestionProvider(tour: floatingTour), at: 0)
+        }
+        self.suggestionProviders = providers
 
         self.networkProvider = NetworkSearchProvider()
 
@@ -198,6 +207,12 @@ final class CommandLensManager {
     /// In category search mode, only searches within the selected category.
     func onInputChanged(_ text: String) {
         inputText = text
+        selectionIsExplicit = false
+        // A completion that no longer extends the typed text would send Return somewhere else.
+        if let completion = inlineCompletion, !completion.lowercased().hasPrefix(normalizeForCompletion(text)) {
+            inlineCompletion = nil
+            inlineCompletionRange = nil
+        }
 
         searchTask?.cancel()
 
@@ -228,6 +243,10 @@ final class CommandLensManager {
             inlineCompletion = nil
             inlineCompletionRange = nil
             updateAvailableEmptyStateActions()
+            searchTask = Task { [weak self] in
+                try Task.checkCancellation()
+                await self?.showStandingSuggestions()
+            }
             return
         }
 
@@ -242,13 +261,16 @@ final class CommandLensManager {
             // Query all local providers concurrently
             let allSuggestions = await fetchLocalSuggestions(context: context)
 
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
 
             // Calculate inline completion from local results
             calculateInlineCompletion(for: text, from: allSuggestions)
 
             // Sort suggestions with heuristics (URL nav first, search second, then rest)
             suggestions = sortSuggestionsWithHeuristics(allSuggestions)
+            suggestionsInput = text
             isLoading = false
             selection = suggestions.isEmpty ? .none : CommandLensSelection(index: 0)
 
@@ -263,12 +285,24 @@ final class CommandLensManager {
 
             let networkSuggestions = await networkProvider.suggestions(for: context)
 
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
 
             if !networkSuggestions.isEmpty {
                 suggestions.append(contentsOf: networkSuggestions)
             }
         }
+    }
+
+    /// Shows what providers offer before anything is typed, preselected: the tour's page while
+    /// a tour step asks for one. The lens calls this as it appears and whenever its text empties.
+    func showStandingSuggestions() async {
+        let standing = await fetchLocalSuggestions(context: createContext())
+        guard !Task.isCancelled, inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        suggestions = standing
+        isPopupVisible = !standing.isEmpty
+        selection = standing.isEmpty ? .none : CommandLensSelection(index: 0)
     }
 
     // MARK: - Empty State Actions
@@ -520,11 +554,21 @@ final class CommandLensManager {
             return "exclamationmark.circle"
         case .completed:
             if let type = download.contentType {
-                if type.conforms(to: .image) { return "photo" }
-                if type.conforms(to: .movie) { return "film" }
-                if type.conforms(to: .audio) { return "music.note" }
-                if type.conforms(to: .pdf) { return "doc.richtext" }
-                if type.conforms(to: .archive) { return "archivebox" }
+                if type.conforms(to: .image) {
+                    return "photo"
+                }
+                if type.conforms(to: .movie) {
+                    return "film"
+                }
+                if type.conforms(to: .audio) {
+                    return "music.note"
+                }
+                if type.conforms(to: .pdf) {
+                    return "doc.richtext"
+                }
+                if type.conforms(to: .archive) {
+                    return "archivebox"
+                }
             }
             return "doc"
         }
@@ -773,9 +817,9 @@ final class CommandLensManager {
         SuggestionContext(
             input: inputText,
             settings: browserSettings,
-            currentTabID: windowState.activeWebPage?.id,
+            currentTabID: windowState.focusedWebPage?.id,
             selectedSearchEngine: selectedSearchEngine,
-            currentURL: windowState.activePage?.url,
+            currentURL: windowState.focusedPage?.url,
         )
     }
 
@@ -865,17 +909,32 @@ final class CommandLensManager {
     /// Sorts suggestions based on heuristics.
     ///
     /// Order:
-    /// 1. URL navigation suggestion (from inline completion or direct URL input) - if available
-    /// 2. The root of that site, when the URL points at a subpage - so a completion to the
+    /// 1. Commands the input names outright ("move to work", "new space") - see
+    ///    ``CommandLensRanking/isExactCommandMatch(query:title:)``; they replace an inline completion
+    /// 2. URL navigation suggestion (from inline completion or direct URL input) - if available
+    /// 3. The root of that site, when the URL points at a subpage - so a completion to the
     ///    most-visited deep link is always one row away from the homepage
-    /// 3. Search suggestion for raw input - always available
-    /// 4. Ask AI suggestion - when input looks like an AI query
-    /// 5. All other suggestions in their original order (by provider priority)
+    /// 4. Search suggestion for raw input - always available
+    /// 5. All other suggestions in their original order (by provider priority); only places to go
+    ///    when the input is an address
     private func sortSuggestionsWithHeuristics(_ suggestions: [CommandLensSuggestion]) -> [CommandLensSuggestion] {
         var result: [CommandLensSuggestion] = []
         var remaining = suggestions
 
-        // 1. URL navigation suggestion first (if valid URL from completion or direct input).
+        if inputLooksLikeAddress {
+            remaining.removeAll { !CommandLensRanking.isNavigation($0.type) }
+        } else {
+            // 1. Exact commands lead; a completion they displace would send Return elsewhere.
+            let (exact, rest) = CommandLensRanking.partitionExactCommands(remaining, query: inputText)
+            if !exact.isEmpty {
+                result = exact
+                remaining = rest
+                inlineCompletion = nil
+                inlineCompletionRange = nil
+            }
+        }
+
+        // 2. URL navigation suggestion (if valid URL from completion or direct input).
         //    A local device row for the same URL takes its place, keeping the gateway badge.
         if let urlSuggestion = createURLNavigationSuggestion() {
             if let localIndex = remaining.firstIndex(where: { isLocalDevice($0, at: urlSuggestion.url) }) {
@@ -883,7 +942,7 @@ final class CommandLensManager {
             } else {
                 result.append(urlSuggestion)
 
-                // 2. Site root right under it; drop the provider's copy further down
+                // 3. Site root right under it; drop the provider's copy further down
                 if let rootSuggestion = createSiteRootSuggestion(for: urlSuggestion) {
                     result.append(rootSuggestion)
                     remaining.removeAll { $0.type == .url && $0.url == rootSuggestion.url }
@@ -891,15 +950,20 @@ final class CommandLensManager {
             }
         }
 
-        // 3. Search suggestion
+        // 4. Search suggestion
         if let searchSuggestion = createSearchSuggestion() {
             result.append(searchSuggestion)
         }
 
-        // 4. All other suggestions in original order
+        // 5. All other suggestions in original order
         result.append(contentsOf: remaining)
 
         return result
+    }
+
+    /// Whether the input is a domain, URL, IP address, or local address rather than words.
+    private var inputLooksLikeAddress: Bool {
+        isValidURL(inputText.trimmingCharacters(in: .whitespaces))
     }
 
     private func isLocalDevice(_ suggestion: CommandLensSuggestion, at url: URL?) -> Bool {
@@ -930,7 +994,7 @@ final class CommandLensManager {
     }
 
     private func calculateInlineCompletion(for input: String, from suggestions: [CommandLensSuggestion]) {
-        guard !input.isEmpty else {
+        guard !input.isEmpty, !isAddressMode else {
             inlineCompletion = nil
             inlineCompletionRange = nil
             return
@@ -1263,13 +1327,21 @@ final class CommandLensManager {
         let second = octets[1]
 
         // 127.x.x.x - loopback
-        if first == 127 { return true }
+        if first == 127 {
+            return true
+        }
         // 10.x.x.x - private class A
-        if first == 10 { return true }
+        if first == 10 {
+            return true
+        }
         // 172.16.0.0 - 172.31.255.255 - private class B
-        if first == 172, second >= 16, second <= 31 { return true }
+        if first == 172, second >= 16, second <= 31 {
+            return true
+        }
         // 192.168.x.x - private class C
-        if first == 192, second == 168 { return true }
+        if first == 192, second == 168 {
+            return true
+        }
 
         return false
     }
@@ -1318,6 +1390,7 @@ final class CommandLensManager {
         inputText = ""
         isPopupVisible = false
         suggestions = []
+        suggestionsInput = nil
         selection = .none
         selectedSearchEngine = nil
         inlineCompletion = nil
@@ -1342,6 +1415,14 @@ final class CommandLensManager {
 
         let newIndex = (selection.index + offset + suggestions.count) % suggestions.count
         selection = CommandLensSelection(index: newIndex)
+        selectionIsExplicit = true
+    }
+
+    /// Selects a row the person clicked.
+    func choose(_ suggestion: CommandLensSuggestion) {
+        guard let index = suggestions.firstIndex(where: { $0.id == suggestion.id }) else { return }
+        selection = CommandLensSelection(index: index)
+        selectionIsExplicit = true
     }
 
     func selectNextButton() {
@@ -1391,7 +1472,9 @@ final class CommandLensManager {
         commandKeyHeldDuringCommit = commandKeyHeld
         optionKeyHeldDuringCommit = optionKeyHeld
 
-        guard selection.index != -1, let suggestion = suggestions[safe: selection.index] else {
+        guard selection.index != -1, let suggestion = suggestions[safe: selection.index],
+              !(isAddressMode && !selectionIsExplicit && !inputText.isEmpty),
+              !suggestionsAreStale else {
             if !inputText.isEmpty {
                 commitInput(inputText)
             }
@@ -1420,6 +1503,54 @@ final class CommandLensManager {
         }
     }
 
+    /// The list on screen was computed for an earlier input and the person has not picked a
+    /// row from it, so Return should act on what they typed.
+    private var suggestionsAreStale: Bool {
+        categorySearchMode == nil && !selectionIsExplicit
+            && !inputText.trimmingCharacters(in: .whitespaces).isEmpty
+            && suggestionsInput != inputText
+    }
+
+    func showPlace(of suggestion: CommandLensSuggestion) {
+        guard case let .openTab(id) = suggestion.type, let tab = tabManager.state.tab(for: id),
+              let controller = windowState.window?.windowController as? RefraxWindowController else { return }
+        closeCurrentLens()
+        reset()
+        Task.immediate(name: "Reveal tab location") {
+            if let space = tab.space, space.id != windowState.activeSpaceID {
+                await tabManager.spaceManager.switchToSpace(space, for: windowState)
+            }
+            guard tab.isFavorite || tab.space?.id == windowState.activeSpaceID else { return }
+            controller.tabCanvasManager.showFloatingPlace(of: tab)
+        }
+    }
+
+    /// Opens a tab just restored from the archive, switching to its space first.
+    private func showPlace(ofRestored tab: Tab) {
+        Task.immediate(name: "Open restored tab") {
+            if let space = tab.space, space.id != windowState.activeSpaceID {
+                await tabManager.spaceManager.switchToSpace(space, for: windowState)
+            }
+            guard tab.space?.id == windowState.activeSpaceID else { return }
+            tabManager.setActiveTab(tab, in: windowState)
+        }
+    }
+
+    func look(at suggestion: CommandLensSuggestion) {
+        switch suggestion.type {
+        case let .openTab(id):
+            if let tab = tabManager.state.tab(for: id) {
+                tabManager.look(at: tab, in: windowState)
+            }
+        default:
+            if let url = suggestion.url {
+                tabManager.look(at: url, in: windowState)
+            }
+        }
+        closeCurrentLens()
+        reset()
+    }
+
     private func commitSuggestion(_ suggestion: CommandLensSuggestion) {
         let makeActive = !commandKeyHeldDuringCommit
 
@@ -1443,22 +1574,18 @@ final class CommandLensManager {
                 reset()
             }
 
-        case let .referenceTab(tabID):
-            if let tab = tabManager.state.tab(for: tabID) {
-                // Open reference pane if closed
-                if windowState.isInspectorCollapsed {
-                    windowState.isInspectorCollapsed = false
-                }
-                // Activate the reference tab
-                referencePaneManager.setActiveReferenceTab(tab, in: windowState)
-                closeCurrentLens()
-                reset()
+        case let .archivedTab(tabID):
+            if let tab = tabManager.state.tab(for: tabID), tab.isArchived {
+                try? tabManager.archiveManager.restoreTab(tab)
+                showPlace(ofRestored: tab)
             }
+            closeCurrentLens()
+            reset()
 
         case let .searchProvider(engine):
             selectSearchProvider(engine)
 
-        case .url, .localDevice:
+        case .url, .localDevice, .tutorialPage:
             if let url = suggestion.url {
                 navigateToURL(url, makeActive: makeActive)
                 reset()
@@ -1536,10 +1663,83 @@ final class CommandLensManager {
                 NSApp.typedDelegate.passwordsWindowController.showWindow()
             case .openLocalDevices:
                 NSApp.typedDelegate.localDevicesWindowController.showWindow()
+            case .toggleTabCanvas:
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggleFloatingTabs()
+            case .favoriteCurrentPage:
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab, let bookmarks = tabManager.bookmarksManager {
+                    ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).toggleFavorite()
+                }
+            case .returnFromLook:
+                tabManager.returnFromLook(in: windowState)
+            case .keepPartVisible:
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+                    (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.beginRegionSelection(for: tab)
+                }
+            case let .setCurrentTabMuted(muted):
+                if let tab = windowState.activeTab {
+                    TabMediaControl(tab: tab, pagePool: tabManager.pagePool).setMuted(muted)
+                }
+            case .muteOtherTabs:
+                if let tab = windowState.activeTab {
+                    TabMediaControl.muteOthers(than: tab, in: tabManager.pagePool)
+                }
+            case let .moveCurrentTabToSpace(spaceID):
+                if let tab = windowState.activeTab, !tab.isFavorite,
+                   let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
+                    Task(name: "Move tab to space from the lens") { await tabManager.moveTabsUnlocking([tab], to: space, confirmingIn: windowState) }
+                }
+            case .moveCurrentTabToNewWindow:
+                if let tab = windowState.activeTab {
+                    tabManager.moveTabToNewWindow(tab, from: windowState)
+                }
+            case let .dockCurrentPage(edge):
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.dockCurrentPage(to: edge)
+            case let .undockPage(edge):
+                (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.undockPage(on: edge)
+            case .newSpace:
+                windowState.controlIsland.spaceRequest = .create
+            case let .table(command):
+                windowState.islandController?.perform(command)
+            case let .copyCurrentAddress(asMarkdown):
+                if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+                    let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: tabManager.bookmarksManager)
+                    if asMarkdown {
+                        actions.copyMarkdownLink()
+                    } else {
+                        actions.copyLink()
+                    }
+                    windowState.showToast(asMarkdown ? "Markdown link copied" : "Address copied")
+                }
+            case .downloadCurrentPage:
+                windowState.focusedWebPage?.downloadShownFile()
+            case .saveCurrentPageAs:
+                if let webPage = windowState.focusedWebPage, let window = windowState.window {
+                    Task(name: "Save page as from the lens") { await webPage.presentSavePanel(in: window) }
+                }
+            case .openAppearanceSettings:
+                NSApp.typedDelegate.settingsWindowController.showWindow(category: .appearance)
+            case .showOpenTabs:
+                showOpenTabs()
+                return
             }
             closeCurrentLens()
             reset()
         }
+    }
+
+    /// Lists this space's open tabs in place of the typed words, under a header that counts them.
+    private func showOpenTabs() {
+        searchTask?.cancel()
+        let tabs = (windowState.activeSpace?.tabs ?? []).filter { !$0.isArchived }
+        inputText = ""
+        inlineCompletion = nil
+        inlineCompletionRange = nil
+        suggestions = OpenTabsEmptyStateAction.suggestions(for: tabs)
+        suggestionsInput = ""
+        isPopupVisible = !suggestions.isEmpty
+        selection = suggestions.isEmpty ? .none : CommandLensSelection(index: 0)
+        selectionIsExplicit = false
+        hadUserInteraction = true
     }
 
     private func commitInput(_ input: String) {
@@ -1562,16 +1762,9 @@ final class CommandLensManager {
 
     // MARK: - Navigation
 
-    /// Whether the command lens is in address bar mode (navigate current tab, not create new).
+    /// The lens opened beside the page card to edit its address: a URL loads in the current page.
     private var isAddressMode: Bool {
-        windowState.showsAddressLens
-    }
-
-    /// Whether the command lens is in reference pane address mode.
-    /// This is when the reference pane lens is shown but NOT for creating a new tab
-    /// (i.e., opened from the address bar, not the + button).
-    private var isReferencePaneAddressMode: Bool {
-        windowState.showsReferencePaneLens && !windowState.isCreatingReferenceTab
+        windowState.commandLensEntrance?.editsCurrentPage == true
     }
 
     private func navigateToURL(_ url: URL, makeActive: Bool) {
@@ -1584,50 +1777,39 @@ final class CommandLensManager {
             return
         }
 
-        if windowState.isCreatingReferenceTab {
-            tabManager.addReferenceTab(url: url, title: url.host ?? "New Tab")
-            windowState.isCreatingReferenceTab = false
-        } else if let targetPosition = windowState.layoutModeTargetPosition,
-                  let activeTab = windowState.activeTab {
+        if let targetPosition = windowState.layoutModeTargetPosition,
+           let activeTab = windowState.activeTab {
             let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
             newPage.title = url.host ?? "New Page"
             windowState.layoutModeTargetPosition = nil
-        } else if isReferencePaneAddressMode,
-                  let refTab = windowState.activeReferenceTab,
-                  let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab when opened from address bar
-            webPage.load(url)
-        } else if isAddressMode, makeActive, let activePage = windowState.activePage {
+        } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
             }
         } else {
-            tabManager.createTab(url: url, makeActive: makeActive, loadImmediately: true)
+            createNearbyTab(url: url, makeActive: makeActive)
         }
         closeCurrentLens()
     }
 
     private func navigateToMultipleURLs(_ urls: [URL], makeActive: Bool) {
-        if isReferencePaneAddressMode,
-           let firstURL = urls.first,
-           let refTab = windowState.activeReferenceTab,
-           let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab with first URL
-            webPage.load(firstURL)
-            // Additional URLs create main tabs
-            for url in urls.dropFirst() {
-                tabManager.createTab(url: url, makeActive: false, loadImmediately: true)
-            }
-        } else if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.activePage {
+        if isAddressMode, makeActive, let firstURL = urls.first, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(firstURL)
             }
             for url in urls.dropFirst() {
-                tabManager.createTab(url: url, makeActive: false, loadImmediately: true)
+                createNearbyTab(url: url, makeActive: false)
             }
         } else {
-            for (index, url) in urls.enumerated() {
-                tabManager.createTab(url: url, makeActive: makeActive && index == 0, loadImmediately: true)
+            if let first = urls.first, makeActive {
+                createNearbyTab(url: first, makeActive: true)
+                for url in urls.dropFirst().reversed() {
+                    createNearbyTab(url: url, makeActive: false)
+                }
+            } else {
+                for url in urls.reversed() {
+                    createNearbyTab(url: url, makeActive: false)
+                }
             }
         }
         closeCurrentLens()
@@ -1644,42 +1826,41 @@ final class CommandLensManager {
             return
         }
 
-        if windowState.isCreatingReferenceTab {
-            tabManager.addReferenceTab(url: url, title: query)
-            windowState.isCreatingReferenceTab = false
-        } else if let targetPosition = windowState.layoutModeTargetPosition,
-                  let activeTab = windowState.activeTab {
+        if let targetPosition = windowState.layoutModeTargetPosition,
+           let activeTab = windowState.activeTab {
             let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
             newPage.title = query
             windowState.layoutModeTargetPosition = nil
-        } else if isReferencePaneAddressMode,
-                  let refTab = windowState.activeReferenceTab,
-                  let webPage = tabManager.pagePool.page(for: refTab.activePage) {
-            // Navigate the current reference tab when opened from address bar
-            webPage.load(url)
-        } else if isAddressMode, makeActive, let activePage = windowState.activePage {
+        } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
             }
         } else {
-            tabManager.createTab(url: url, makeActive: makeActive, loadImmediately: true)
+            createNearbyTab(url: url, makeActive: makeActive)
         }
         closeCurrentLens()
     }
 
+    /// A new tab goes after the active one in its group, or to the end of the island that
+    /// asked for it.
+    private func createNearbyTab(url: URL, makeActive: Bool) {
+        let island = windowState.newTabIsland
+        windowState.newTabIsland = nil
+        tabManager.createTab(
+            url: url,
+            groupID: island.map(\.groupID) ?? windowState.activeTab?.groupID,
+            makeActive: makeActive,
+            loadImmediately: true,
+            insertionStrategy: island == nil ? .afterActive : .append,
+        )
+    }
+
     private func closeCurrentLens() {
         // Clear contextual creation flags
-        windowState.isCreatingReferenceTab = false
         windowState.layoutModeTargetPosition = nil
 
         if windowState.showsCommandLens {
             windowState.closeCommandLens()
-        }
-        if windowState.showsAddressLens {
-            windowState.closeAddressLens()
-        }
-        if windowState.showsReferencePaneLens {
-            windowState.closeReferencePaneLens()
         }
     }
 }

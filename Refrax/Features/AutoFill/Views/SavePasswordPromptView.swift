@@ -124,8 +124,7 @@ struct SavePasswordPromptView: View {
     }
 
     private func dismissPrompt() {
-        // Setting pendingSaveRequest to nil triggers the AddressBarSavePasswordButton
-        // onChange handler to close the NSPopover
+        // Clearing the request closes the prompt's popover (`savePasswordPrompt(controller:)`).
         autoFillState.dismissSavePrompt()
     }
 }

@@ -42,7 +42,7 @@ import SwiftData
 ///
 /// ## Lifecycle
 ///
-/// - **Creation**: Via ``Tab/init(spaceID:url:title:isPinned:isFavorite:isReferenceTab:groupID:position:)``
+/// - **Creation**: Via ``Tab/init(space:url:title:status:groupID:linkedBookmark:position:)``
 ///   or when adding pages to an existing tab
 /// - **Activation**: ``TabManager/session(for:)`` creates a runtime session
 /// - **Persistence**: Automatic via SwiftData when properties change
@@ -80,6 +80,18 @@ final class TabPage: Identifiable {
             preconditionFailure("TabPage accessed before being added to a Tab")
         }
         return tab
+    }
+
+    /// Copies content and engine selection while preserving this page's identity and pane.
+    func copyContent(from page: TabPage) {
+        url = page.url
+        title = page.title
+        faviconData = page.faviconData
+        largeFaviconData = page.largeFaviconData
+        openerTabPageID = page.openerTabPageID
+        createdAt = page.createdAt
+        scrollPositionY = page.scrollPositionY
+        engineID = page.engineID
     }
     
     // MARK: - Content

@@ -24,13 +24,18 @@ struct AppearanceSettingsView: View {
                     label: "Accent color",
                     selectedColor: $settings.customAccentColor,
                     systemColor: .accentColor,
+                    defaultColor: Color.Components(encoded: BrowserSettings.Defaults.accentColorHex),
                 )
                 .highlightable(id: "appearance.accentColor", highlightedItemId: highlightedItemId)
+
+                LightThicknessSlider(thickness: $settings.lightThickness)
+                    .highlightable(id: "appearance.lightThickness", highlightedItemId: highlightedItemId)
 
                 SettingsColorPicker(
                     label: "Window background",
                     selectedColor: $settings.customWindowBackgroundColor,
                     systemColor: Color(.windowBackgroundColor),
+                    defaultColor: Color.Components(encoded: BrowserSettings.Defaults.windowBackgroundColorHex),
                 )
                 .highlightable(id: "appearance.windowBackground", highlightedItemId: highlightedItemId)
             } header: {
@@ -116,21 +121,6 @@ struct AppearanceSettingsView: View {
                 Text("Tint the window based on the active space or current website's theme color.")
             }
 
-            // MARK: - Sidebar
-
-            Section {
-                Picker("Default collapsed mode", selection: $settings.defaultSidebarMode) {
-                    ForEach(SidebarMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .highlightable(id: "appearance.sidebarMode", highlightedItemId: highlightedItemId)
-            } header: {
-                Text("Sidebar")
-            } footer: {
-                Text("Use View menu to temporarily switch modes for individual windows.")
-            }
-
             // MARK: - Page Appearance
 
             Section {
@@ -176,11 +166,13 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Settings Color Picker
 
-/// A labeled color picker with preset swatches and custom color option.
-private struct SettingsColorPicker: View {
+/// A labeled color picker with preset swatches and custom color option. Refrax's own default
+/// color, when given, has a swatch of its own beside System.
+struct SettingsColorPicker: View {
     let label: String
     @Binding var selectedColor: Color.Components?
     let systemColor: Color
+    var defaultColor: Color.Components?
 
     @State private var hoveredLabel: String?
 
@@ -188,25 +180,51 @@ private struct SettingsColorPicker: View {
         static let swatchSize: CGFloat = 20
         static let swatchRingSize: CGFloat = 27
         static let swatchSpacing: CGFloat = 3
+        /// From the label to the swatches when they stack.
+        static let stackedSpacing: CGFloat = 6
     }
 
+    /// The label beside the swatches when the row is wide enough for both on one line, else
+    /// above them; the label never wraps.
     var body: some View {
-        HStack {
-            Text(label)
-            Spacer()
-            HStack(spacing: Layout.swatchSpacing) {
-                systemSwatch
-
-                ForEach(GroupColor.allCases, id: \.self) { groupColor in
-                    colorSwatch(for: groupColor)
-                }
-
-                CustomColorSwatch(
-                    selectedColor: $selectedColor,
-                    hoveredLabel: $hoveredLabel,
-                )
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                labelText
+                Spacer()
+                swatches
+            }
+            VStack(alignment: .leading, spacing: Layout.stackedSpacing) {
+                labelText
+                swatches
             }
         }
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private var swatches: some View {
+        HStack(spacing: Layout.swatchSpacing) {
+            systemSwatch
+
+            if let defaultColor {
+                swatch(defaultColor.color, label: "Default", accessibilityLabel: "Refrax default")
+            }
+
+            ForEach(GroupColor.allCases, id: \.self) { groupColor in
+                swatch(groupColor.color, label: groupColor.rawValue, accessibilityLabel: groupColor.rawValue)
+            }
+
+            CustomColorSwatch(
+                selectedColor: $selectedColor,
+                hoveredLabel: $hoveredLabel,
+                presets: GroupColor.allCases.map(\.color) + (defaultColor.map { [$0.color] } ?? []),
+            )
+        }
+        .fixedSize()
     }
 
     // MARK: - System Swatch
@@ -251,16 +269,15 @@ private struct SettingsColorPicker: View {
 
     // MARK: - Color Swatch
 
-    private func colorSwatch(for groupColor: GroupColor) -> some View {
-        let isSelected = selectedColor?.color.approximatelyEquals(groupColor.color) ?? false
-        let swatchLabel = groupColor.rawValue
+    private func swatch(_ color: Color, label swatchLabel: String, accessibilityLabel: String) -> some View {
+        let isSelected = selectedColor?.color.approximatelyEquals(color) ?? false
 
         return Button {
-            selectedColor = groupColor.color.components
+            selectedColor = color.components
         } label: {
             ZStack {
                 Circle()
-                    .fill(groupColor.color)
+                    .fill(color)
                     .strokeBorder(Color.primary.opacity(0.1), lineWidth: 2)
                     .frame(width: Layout.swatchSize, height: Layout.swatchSize)
 
@@ -281,7 +298,7 @@ private struct SettingsColorPicker: View {
         .onHover { hovering in
             hoveredLabel = hovering ? swatchLabel : nil
         }
-        .accessibilityLabel(swatchLabel)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -295,7 +312,6 @@ private struct SettingsColorPicker: View {
             .fixedSize()
             .offset(y: 12)
     }
-
 }
 
 // MARK: - Custom Color Swatch
@@ -303,12 +319,14 @@ private struct SettingsColorPicker: View {
 private struct CustomColorSwatch: View {
     @Binding var selectedColor: Color.Components?
     @Binding var hoveredLabel: String?
+    /// The colors with swatches of their own, which never count as custom.
+    let presets: [Color]
 
     @State private var showPopover = false
 
     private var isCustom: Bool {
         guard let selectedColor else { return false }
-        return !GroupColor.allCases.contains(where: { selectedColor.color.approximatelyEquals($0.color) })
+        return !presets.contains(where: { selectedColor.color.approximatelyEquals($0) })
     }
 
     private enum Layout {

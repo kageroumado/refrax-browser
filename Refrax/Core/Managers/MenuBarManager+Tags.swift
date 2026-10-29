@@ -16,13 +16,15 @@ enum MenuItemTag: Int {
     case opacity60 = 2_012
     case opacity40 = 2_013
 
-    // App menu
+    /// App menu
     case checkForUpdates = 2_100
 
-    // View menu - sidebar mode
-    case sidebarModeOverlay = 3_001
-    case sidebarModeCompact = 3_002
-
-    // View menu - rendering engine
+    /// View menu - rendering engine
     case switchRenderingEngine = 3_010
+
+    /// View menu - sound
+    case muteTab = 3_020
+
+    /// View menu - Favorite Current Page / Remove from Favorites
+    case favoriteCurrentPage = 3_030
 }

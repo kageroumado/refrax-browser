@@ -14,7 +14,7 @@ extension BookmarksManager {
     ///   - url: The webpage URL to bookmark
     ///   - title: Display title (defaults to URL host if nil)
     ///   - folder: Optional parent folder
-    ///   - isFavorite: Whether to show in sidebar favorites
+    ///   - isFavorite: Whether to show in favorites
     ///   - favoriteMode: Interaction mode if favorited (default: .liveFavorite)
     ///   - tags: Categorization tags
     ///   - spaceID: Optional space assignment
@@ -124,7 +124,7 @@ extension BookmarksManager {
 
         if let url {
             bookmark.updateURL(url)
-            if let tab = tabManager.state.liveFavoriteTab(for: bookmark.id) {
+            if let tab = tabManager.state.favoriteTab(for: bookmark.id) {
                 tab.activePage.url = url
             }
         }

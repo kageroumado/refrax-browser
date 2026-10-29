@@ -13,7 +13,7 @@ struct TabCommand: AsyncParsableCommand {
             Close.self,
             Activate.self,
             Navigate.self,
-            Pin.self,
+            Favorite.self,
             Duplicate.self,
             Rename.self,
             Mute.self,
@@ -27,7 +27,6 @@ struct TabCommand: AsyncParsableCommand {
             RecentlyClosed.self,
             Move.self,
             Ungroup.self,
-            ToRefPane.self,
             Reorder.self,
             MarkRead.self,
             MarkUnread.self,
@@ -144,7 +143,7 @@ struct TabCommand: AsyncParsableCommand {
             discussion: """
             Navigates the active (or specified) tab to a URL. Use --wait to block \
             until the page finishes loading, or --read to also return page content.
-
+            
             Examples:
               refrax-ctl tab navigate "https://example.com"
               refrax-ctl tab navigate "https://example.com" --tab 3
@@ -187,7 +186,7 @@ struct TabCommand: AsyncParsableCommand {
                 }
                 try sendAndHandle(
                     .navigateAndRead(.init(
-                        url: url, scope: contentScope, timeout: timeout, tabID: tab, pageID: page
+                        url: url, scope: contentScope, timeout: timeout, tabID: tab, pageID: page,
                     )),
                 )
             } else if wait {
@@ -207,7 +206,7 @@ struct TabCommand: AsyncParsableCommand {
             abstract: "Close a tab",
             discussion: """
             Closes the specified tab.
-
+            
             Examples:
               refrax-ctl tab close 3             # By index
               refrax-ctl tab close active        # Active tab
@@ -246,18 +245,19 @@ struct TabCommand: AsyncParsableCommand {
 
     // MARK: - Tier 1A: Extended Tab Operations
 
-    struct Pin: AsyncParsableCommand {
+    struct Favorite: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "pin",
-            abstract: "Pin or unpin a tab",
+            commandName: "favorite",
+            abstract: "Add a tab to Favorites or remove it",
             discussion: """
-            Toggles the pin state of the specified tab. Pinned tabs stay at \
-            the top of the sidebar.
+            Toggles whether the specified tab is a favorite. A favorite belongs \
+            to no space: it shows in every space and returns to its home \
+            address when closed. Removing a favorite moves it into the active space.
             
             Examples:
-              refrax-ctl tab pin 3             # By index
-              refrax-ctl tab pin active        # Active tab
-              refrax-ctl tab pin "Hacker News" # By title/URL match
+              refrax-ctl tab favorite 3             # By index
+              refrax-ctl tab favorite active        # Active tab
+              refrax-ctl tab favorite "Hacker News" # By title/URL match
             """,
         )
 
@@ -265,7 +265,7 @@ struct TabCommand: AsyncParsableCommand {
         var id: String
 
         func run() async throws {
-            try sendAndHandle(.tabPin(.init(id: id)))
+            try sendAndHandle(.tabFavorite(.init(id: id)))
         }
     }
 
@@ -400,7 +400,7 @@ struct TabCommand: AsyncParsableCommand {
             commandName: "next",
             abstract: "Switch to the next tab",
             discussion: """
-            Activates the next tab in the tab list.
+            Opens the next tab back in recency, the Recent list's order (⌘⇧]).
             
             Examples:
               refrax-ctl tab next
@@ -417,7 +417,7 @@ struct TabCommand: AsyncParsableCommand {
             commandName: "previous",
             abstract: "Switch to the previous tab",
             discussion: """
-            Activates the previous tab in the tab list.
+            Opens the previous, more recent tab in the Recent list's order (⌘⇧[).
             
             Examples:
               refrax-ctl tab previous
@@ -578,28 +578,6 @@ struct TabCommand: AsyncParsableCommand {
         }
     }
 
-    struct ToRefPane: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "to-refpane",
-            abstract: "Move a tab to the reference pane",
-            discussion: """
-            Moves the specified tab from the main area into the reference pane.
-            
-            Examples:
-              refrax-ctl tab to-refpane active        # Active tab
-              refrax-ctl tab to-refpane 3             # By index
-              refrax-ctl tab to-refpane "Hacker News" # By title/URL match
-            """,
-        )
-
-        @Argument(help: "Tab ref (ID, index, title, URL, or: active/first/last/next/prev)")
-        var id: String
-
-        func run() async throws {
-            try sendAndHandle(.tabMoveToRefPane(.init(id: id)))
-        }
-    }
-
     struct Reorder: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "reorder",
@@ -698,7 +676,9 @@ struct TabCommand: AsyncParsableCommand {
             )
             switch response {
             case let .ok(message):
-                if let message { print(message) }
+                if let message {
+                    print(message)
+                }
             case let .error(info):
                 printError("Error [\(info.code)]: \(info.message)")
                 _Exit(1)
@@ -747,7 +727,7 @@ struct TabCommand: AsyncParsableCommand {
             discussion: """
             Without an argument, prints the engine rendering the page. With one,
             reloads the page's current URL in that engine (webkit or chromium).
-
+            
             Examples:
               refrax-ctl tab engine
               refrax-ctl tab engine chromium

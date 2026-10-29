@@ -291,7 +291,6 @@ final class SiteSettingsManager {
 
         // Reset content settings
         settings.pageZoom = 100
-        settings.useReaderWhenAvailable = false
         settings.enableContentBlockers = true
         settings.allowJavaScript = true
 
@@ -325,7 +324,6 @@ final class SiteSettingsManager {
             guard let settings = settings(for: normalized) else { continue }
 
             settings.pageZoom = 100
-            settings.useReaderWhenAvailable = false
             settings.enableContentBlockers = true
             settings.allowJavaScript = true
             settings.autoPlayPolicy = .stopMediaWithSound

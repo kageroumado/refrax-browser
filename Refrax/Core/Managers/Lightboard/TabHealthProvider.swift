@@ -282,21 +282,11 @@ final class TabHealthProvider {
             ))
         }
 
-        // Pinned
-        if tab?.isPinned == true {
+        if tab?.isFavorite == true {
             factors.append(ImportanceFactor(
-                name: "Pinned",
-                points: PageImportanceScorer.Weight.pinned,
-                icon: "pin.fill",
-            ))
-        }
-
-        // Reference tab
-        if tab?.isReferenceTab == true {
-            factors.append(ImportanceFactor(
-                name: "Reference Tab",
-                points: PageImportanceScorer.Weight.referenceTab,
-                icon: "doc.on.doc.fill",
+                name: "Favorite",
+                points: PageImportanceScorer.Weight.favorite,
+                icon: "star.fill",
             ))
         }
 
@@ -484,7 +474,9 @@ enum TabHealthFilter: String, CaseIterable, Identifiable {
     case playingMedia = "Playing Media"
     case suspended = "Suspended"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
 /// Sort modes for the tab health dashboard.
@@ -496,5 +488,7 @@ enum TabHealthSortMode: String, CaseIterable, Identifiable {
     case recent = "Recent"
     case space = "Space"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }

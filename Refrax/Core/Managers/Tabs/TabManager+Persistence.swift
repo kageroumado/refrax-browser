@@ -30,12 +30,16 @@ extension TabManager {
         spaceManager.makeDefaultSpace()
     }
 
-    /// Restores spaces from persistence on app launch.
+    /// Restores spaces from persistence on app launch, then runs the floating shape and
+    /// favorites migrations.
     ///
     /// - Returns: The default space to show in new windows.
     @discardableResult
     func restoreFromPersistence() -> Space {
-        spaceManager.restoreFromPersistence()
+        let space = spaceManager.restoreFromPersistence()
+        migrateFloatingShapesIfNeeded()
+        migrateFavoritesIfNeeded()
+        return space
 
         // Disabled the default content setup as the debug build now uses on-disk persistence.
 //        #if DEBUG
@@ -98,22 +102,21 @@ extension TabManager {
 
             spaceManager.ensureLoaded(space)
 
-            // MARK: - Pinned Tabs
+            // MARK: - Favorites
 
             let audioTest = createTab(
                 url: URL.staticRequired("https://webbrowsertools.com/audio-test/"),
                 in: space,
-                isPinned: true,
                 makeActive: false,
             )
             audioTest.customName = "Audio"
+            makeFavorite(audioTest)
 
-            createTab(
+            makeFavorite(createTab(
                 url: URL.staticRequired("https://github.com/"),
                 in: space,
-                isPinned: true,
                 makeActive: false,
-            )
+            ))
 
             // MARK: - Wikipedia Deep Dives Group
 
@@ -230,14 +233,6 @@ extension TabManager {
                     makeActive: false,
                 )
             }
-
-            // MARK: - Reference Pane
-
-            addReferenceTab(
-                url: URL.staticRequired("https://developer.apple.com/documentation/webkit"),
-                title: "WebKit Docs",
-                in: space,
-            )
 
             // MARK: - Bookmarks & Favorites
 

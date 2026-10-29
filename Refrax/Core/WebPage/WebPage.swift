@@ -996,6 +996,17 @@ final class WebPage: Identifiable {
     /// - Note: Use `claimOwnership(for:)` and `isOwner(_:)` to manage ownership.
     var ownerWindowID: ObjectIdentifier?
 
+    /// The floating host currently borrowing this page's live view.
+    /// Active temporary visits protect their return page from memory eviction.
+    var temporaryVisitRetentionCount = 0
+    var documentRevision = UUID()
+
+    var floatingPreviewOwnerID: ObjectIdentifier?
+
+    var isInFloatingPreview: Bool {
+        floatingPreviewOwnerID != nil && ownerWindowID == floatingPreviewOwnerID
+    }
+
     // MARK: - Reflected Windows
 
     /// Active reflected windows displaying this page's content.

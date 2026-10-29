@@ -81,12 +81,12 @@ extension MenuBarManager {
 
     @objc
     func goBack(_: Any?) {
-        activeWindowController?.windowState.activeWebPage?.goBack()
+        activeWindowController?.windowState.focusedWebPage?.goBack()
     }
 
     @objc
     func goForward(_: Any?) {
-        activeWindowController?.windowState.activeWebPage?.goForward()
+        activeWindowController?.windowState.focusedWebPage?.goForward()
     }
 
     @objc
@@ -158,10 +158,6 @@ extension MenuBarManager {
                 tabItem.target = self
                 tabItem.tag = index
                 tabItem.toolTip = tabInfo.url.absoluteString
-
-                if tabInfo.isReferenceTab {
-                    tabItem.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
-                }
 
                 menu.addItem(tabItem)
             }

@@ -262,6 +262,9 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     /// The portal layer used for read-only display in multi-window scenarios.
     private var portalLayer: CAPortalLayer?
 
+    /// Full-window mirrors inherit the source transform; scaled previews use their host's transform.
+    var matchesPortalSourceTransform = true
+
     /// GPU-captured snapshot layer that sits behind the portal as a transition fallback.
     ///
     /// When a secondary window closes, its `prepareForDismantle` removes the webView from
@@ -712,7 +715,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         portal.hidesSourceLayer = false // Keep source visible in active window
         portal.matchesOpacity = true // Match source opacity
         portal.matchesPosition = false // We position the portal ourselves
-        portal.matchesTransform = true // CRITICAL: Inherit transform chain for correct flip handling
+        portal.matchesTransform = matchesPortalSourceTransform
         portal.allowsBackdropGroups = true // Support backdrop blur effects
         portal.crossDisplay = true // Allow cross-display portaling
         portal.frame = bounds
@@ -1232,7 +1235,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         // Sync webView frame: find bar at top, webView below (or fills bounds if no find bar).
         // Skip when holding the webView frame during a snapshot exit transition — the webView
         // is pinned at the final target size while the snapshot covers the animation.
-        if case .active = displayMode, !isHoldingWebViewFrame {
+        if case let .active(webView) = displayMode, webView.superview === self, !isHoldingWebViewFrame {
             if isFindBarVisible, let findBarView {
                 let findBarHeight = findBarView.fittingSize.height
                 findBarView.frame = NSRect(
@@ -1242,14 +1245,14 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
                     height: findBarHeight,
                 )
 
-                webView?.frame = NSRect(
+                webView.frame = NSRect(
                     x: 0,
                     y: 0,
                     width: bounds.width,
                     height: bounds.height - findBarHeight,
                 )
             } else {
-                webView?.frame = bounds
+                webView.frame = bounds
             }
         }
     }
@@ -1270,7 +1273,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     ///   This is useful when displaying in a new window to prevent the delayed inset
     ///   application that WebKit normally applies.
     func applyTopContentInset(immediate: Bool = true) {
-        guard case let .active(webView) = displayMode else { return }
+        guard case let .active(webView) = displayMode, webView.superview === self else { return }
 
         // Skip inset application during window moves. The inset was pre-applied
         // in addWebViewToHierarchy before the move to avoid scroll corruption.

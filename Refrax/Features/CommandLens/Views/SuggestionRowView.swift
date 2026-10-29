@@ -21,16 +21,23 @@ struct SuggestionRowView: View {
 
     var body: some View {
         Button {
-            if let index = manager.suggestions.firstIndex(where: { $0.id == suggestion.id }) {
-                manager.selection = CommandLensSelection(index: index)
-                let modifiers = NSEvent.modifierFlags
-                let commandKeyHeld = modifiers.contains(.command)
-                let optionKeyHeld = modifiers.contains(.option)
-                manager.commitSelection(commandKeyHeld: commandKeyHeld, optionKeyHeld: optionKeyHeld)
-            }
+            manager.choose(suggestion)
+            let modifiers = NSEvent.modifierFlags
+            manager.commitSelection(commandKeyHeld: modifiers.contains(.command), optionKeyHeld: modifiers.contains(.option))
         } label: {
             SuggestionContentView(suggestion: suggestion, selection: selection)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .contextMenu {
+            if case .openTab = suggestion.type {
+                Button("Show Its Place", systemImage: "scope") { manager.showPlace(of: suggestion) }
+            }
+            if suggestion.url != nil {
+                Button(PageVisitState.lookActionTitle, systemImage: "eye") { manager.look(at: suggestion) }
+            } else if case .openTab = suggestion.type {
+                Button(PageVisitState.lookActionTitle, systemImage: "eye") { manager.look(at: suggestion) }
+            }
         }
         .buttonStyle(.plain)
         .background(

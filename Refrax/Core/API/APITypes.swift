@@ -9,8 +9,7 @@ public struct TabInfo: Codable, Sendable, Identifiable {
     public let url: String
     public let title: String
     public let isSecure: Bool
-    public let isPinned: Bool
-    public let isReferenceTab: Bool
+    public let isFavorite: Bool
     public let isUnread: Bool
     public let groupID: UUID?
     public let position: Int
@@ -27,8 +26,8 @@ public struct TabInfo: Codable, Sendable, Identifiable {
         self.url = tab.activePage.url.absoluteString
         self.title = tab.displayTitle
         self.isSecure = tab.isSecure
-        self.isPinned = tab.isPinned
-        self.isReferenceTab = tab.isReferenceTab
+        self.isFavorite = tab.isFavorite
+
         self.isUnread = tab.isUnread
         self.groupID = tab.groupID
         self.position = tab.position
@@ -49,7 +48,6 @@ public struct SpaceInfo: Codable, Sendable, Identifiable {
     public let position: Int
     public let createdAt: Date
     public let tabCount: Int
-    public let referenceTabCount: Int
     public let dataStoreMode: String
 
     /// Creates a ``SpaceInfo`` from a ``Space`` model.
@@ -63,7 +61,7 @@ public struct SpaceInfo: Codable, Sendable, Identifiable {
         self.position = space.position
         self.createdAt = space.createdAt
         self.tabCount = space.tabCount
-        self.referenceTabCount = space.referenceTabCount
+
         self.dataStoreMode = space.dataStoreMode.rawValue
     }
 }

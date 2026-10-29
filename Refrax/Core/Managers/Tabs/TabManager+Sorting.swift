@@ -64,7 +64,7 @@ extension TabManager {
         tabIndex: [UUID: Tab],
         groupIndex: [UUID: TabGroup],
     ) {
-        var ungroupedTabs = space.tabs.filter { $0.groupID == nil && $0.isPinned == isPinned }
+        var ungroupedTabs = space.tabs.filter { $0.groupID == nil && $0.isInPinnedGroup == isPinned }
         var rootGroups = space.groups.filter { $0.parentGroupID == nil && $0.isPinned == isPinned }
 
         ungroupedTabs.sort { compareTabs($0, $1, by: criterion) }

@@ -98,10 +98,18 @@ final class SpaceManager {
         description: String? = nil,
         color: Color? = nil,
     ) {
-        if let name { space.name = name }
-        if let iconName { space.iconName = iconName }
-        if let description { space.spaceDescription = description }
-        if let color { space.color = color }
+        if let name {
+            space.name = name
+        }
+        if let iconName {
+            space.iconName = iconName
+        }
+        if let description {
+            space.spaceDescription = description
+        }
+        if let color {
+            space.color = color
+        }
 
         state.incrementContentVersion()
         scheduleSave()
@@ -175,7 +183,7 @@ final class SpaceManager {
             duplicatedTab.customName = originalTab.customName
             duplicatedTab.activePage.faviconData = originalTab.activePage.faviconData
             duplicatedTab.activePage.largeFaviconData = originalTab.activePage.largeFaviconData
-            duplicatedTab.isReferenceTab = originalTab.isReferenceTab
+
             duplicatedTab.isUnread = true
 
             // Preserve group relationship
@@ -382,11 +390,13 @@ final class SpaceManager {
     
     // MARK: - Default Space
 
-    /// Default space configuration.
+    /// Default space configuration. The default space has no chosen icon, so it shows its number.
     enum DefaultSpaceConfig {
         static let name = "Space 1"
-        static let iconName = "moon.stars.fill"
+        static let iconName = ""
         static let color = Color.blue
+        /// The moon an untouched default space carries in older stores; restore clears it.
+        static let replacedIconName = "moon.stars.fill"
     }
 
     /// Creates a default space object without persistence.
@@ -433,6 +443,7 @@ final class SpaceManager {
                 Logger.info("Created default space", category: Logger.tabs)
                 return defaultSpace
             } else if let firstSpace = spaces.first {
+                clearReplacedDefaultIcons(in: spaces)
                 state.setSpaces(spaces)
                 Logger.info("Restored \(state.spaces.count) spaces", category: Logger.tabs)
                 return firstSpace
@@ -445,6 +456,19 @@ final class SpaceManager {
         } catch {
             Logger.error("Failed to restore spaces: \(error)", category: Logger.tabs)
             return createDefaultSpace()
+        }
+    }
+
+    /// A default space still carrying its default name and moon shows its number instead: the
+    /// moon reads as a dark mode control.
+    private func clearReplacedDefaultIcons(in spaces: [Space]) {
+        var changed = false
+        for space in spaces where space.name == DefaultSpaceConfig.name && space.iconName == DefaultSpaceConfig.replacedIconName {
+            space.iconName = DefaultSpaceConfig.iconName
+            changed = true
+        }
+        if changed {
+            scheduleSave()
         }
     }
 
@@ -493,10 +517,9 @@ final class SpaceManager {
             state.extensionManager?.dispatchTabsRestored(space.tabs)
 
             // Note: active tab is tracked per-window in WindowState
-            // Note: active reference tab is per-window only
             // WindowState.setActiveSpace() handles restoration
 
-            Logger.info("Loaded \(space.mainTabs.count) tabs, \(space.referenceTabs.count) ref tabs for: \(space.name)", category: Logger.tabs)
+            Logger.info("Loaded \(space.mainTabs.count) tabs for: \(space.name)", category: Logger.tabs)
         } catch {
             Logger.error("Failed to load tabs for space: \(error)", category: Logger.tabs)
         }

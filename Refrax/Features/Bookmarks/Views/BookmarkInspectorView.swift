@@ -84,7 +84,6 @@ struct BookmarkInspectorView: View {
 
     // MARK: - Header
 
-    @ViewBuilder
     private func headerSection(_ bookmark: Bookmark) -> some View {
         VStack(alignment: .center, spacing: 12) {
             // Large favicon
@@ -131,7 +130,6 @@ struct BookmarkInspectorView: View {
 
     // MARK: - Details Section
 
-    @ViewBuilder
     private func detailsSection(_ bookmark: Bookmark) -> some View {
         InspectorSection(title: "Details") {
             VStack(alignment: .leading, spacing: 6) {
@@ -152,7 +150,6 @@ struct BookmarkInspectorView: View {
 
     // MARK: - Activity Section
 
-    @ViewBuilder
     private func activitySection(_ bookmark: Bookmark) -> some View {
         InspectorSection(title: "Activity") {
             VStack(alignment: .leading, spacing: 6) {
@@ -169,7 +166,6 @@ struct BookmarkInspectorView: View {
 
     // MARK: - Organization Section
 
-    @ViewBuilder
     private func organizationSection(_ bookmark: Bookmark) -> some View {
         InspectorSection(title: "Organization") {
             VStack(alignment: .leading, spacing: 6) {
@@ -211,7 +207,6 @@ struct BookmarkInspectorView: View {
 
     // MARK: - Offline Section
 
-    @ViewBuilder
     private func offlineSection(_ bookmark: Bookmark) -> some View {
         InspectorSection(title: "Offline") {
             VStack(alignment: .leading, spacing: 6) {
@@ -256,11 +251,11 @@ struct BookmarkInspectorView: View {
             Circle()
                 .fill(.gray)
                 .frame(width: 6, height: 6)
-        case .downloadingHTML, .downloadingReader:
+        case .downloadingHTML:
             ProgressView()
                 .scaleEffect(0.5)
                 .frame(width: 12, height: 12)
-        case .availableHTML, .availableReader:
+        case .availableHTML:
             Circle()
                 .fill(.green)
                 .frame(width: 6, height: 6)
@@ -270,16 +265,14 @@ struct BookmarkInspectorView: View {
     private func statusText(for status: OfflineStatus) -> String {
         switch status {
         case .notSaved: "Not Saved"
-        case .downloadingHTML, .downloadingReader: "Downloading..."
+        case .downloadingHTML: "Downloading..."
         case .availableHTML: "Available (HTML)"
-        case .availableReader: "Available (Reader)"
         case .failed: "Failed"
         }
     }
 
     // MARK: - Action Bar
 
-    @ViewBuilder
     private func actionBar(_ bookmark: Bookmark) -> some View {
         HStack(spacing: 8) {
             Button {

@@ -464,7 +464,7 @@ private struct SpaceSegmentButton<ContextMenu: View>: View {
                 Text(space.iconName)
                     .font(.system(size: Layout.emojiFontSize))
             } else {
-                Image(systemName: space.iconName)
+                Image(systemName: space.symbolName)
                     .font(.system(size: Layout.iconFontSize, weight: .medium))
             }
 

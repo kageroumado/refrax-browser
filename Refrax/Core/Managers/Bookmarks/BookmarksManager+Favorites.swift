@@ -67,20 +67,22 @@ extension BookmarksManager {
 
     /// Remove a bookmark from favorites.
     ///
-    /// The bookmark still exists, just no longer shown in sidebar. If it's a live
+    /// The bookmark still exists, just no longer shown in favorites. If it's a live
     /// favorite, the tab is converted to a regular tab in the active space rather
     /// than being closed.
     ///
-    /// - Parameter bookmark: Bookmark to unfavorite
-    func removeFromFavorites(_ bookmark: Bookmark) {
+    /// - Parameters:
+    ///   - bookmark: The bookmark to remove from Favorites.
+    ///   - windowState: The window that receives a converted live tab. Defaults to the active window.
+    func removeFromFavorites(_ bookmark: Bookmark, in windowState: WindowState? = nil) {
         guard bookmark.isFavorite else { return }
 
         bookmark.isFavorite = false
 
         if bookmark.favoriteMode == .liveFavorite,
-           let tab = tabManager.state.liveFavoriteTab(for: bookmark.id) {
+           let tab = tabManager.state.favoriteTab(for: bookmark.id) {
             // Try to convert to regular tab; fall back to removal if no active window
-            if !tabManager.convertLiveFavoriteToTab(tab, bookmark: bookmark) {
+            if !tabManager.convertLiveFavoriteToTab(tab, bookmark: bookmark, in: windowState) {
                 removeLiveFavoriteTab(for: bookmark)
             }
         }

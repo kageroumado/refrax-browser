@@ -4,22 +4,20 @@ import WebKit
 /// Provides Refrax-specific browser APIs to extensions.
 ///
 /// `RefraxAPIShim` implements a `refrax.*` API namespace that extensions
-/// can use to access Refrax-specific features like favorites, pinned tabs,
+/// can use to access Refrax-specific features like favorites,
 /// and spaces.
 ///
 /// ## Available APIs
 ///
 /// - `refrax.tabs.getFavorites()` - Get all favorited tabs
 /// - `refrax.tabs.setFavorite(tabId, isFavorite)` - Set tab favorite status
-/// - `refrax.tabs.getPinned()` - Get all pinned tabs
-/// - `refrax.tabs.setPinned(tabId, isPinned)` - Set tab pinned status
 /// - `refrax.spaces.getAll()` - Get all spaces
 /// - `refrax.spaces.getCurrent()` - Get the current space
 ///
 /// ## Permissions
 ///
-/// Extensions must request the `refrax.tabs` permission to access favorites
-/// and pinned status. The `refrax.spaces` permission is required for space APIs.
+/// Extensions must request the `refrax.tabs` permission to access favorites.
+/// The `refrax.spaces` permission is required for space APIs.
 ///
 /// ## Implementation Status
 ///
@@ -92,12 +90,6 @@ actor RefraxAPIShim {
         case "tabs.setFavorite":
             await setFavorite(params: params, context: context)
 
-        case "tabs.getPinned":
-            await getPinned(context: context)
-
-        case "tabs.setPinned":
-            await setPinned(params: params, context: context)
-
         // Space APIs
         case "spaces.getAll":
             await getAllSpaces(context: context)
@@ -139,33 +131,6 @@ actor RefraxAPIShim {
 
         // TODO: Implement when BrowserState provides tab lookup API
         return .error("refrax.tabs.setFavorite is not yet implemented")
-    }
-
-    /// Gets all pinned tabs.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func getPinned(context: WKWebExtensionContext) async -> APIResponse {
-        guard hasPermission("refrax.tabs", context) else {
-            return .error("Permission denied: refrax.tabs")
-        }
-
-        // TODO: Implement when BrowserState provides allTabs() API
-        return .error("refrax.tabs.getPinned is not yet implemented")
-    }
-
-    /// Sets the pinned status of a tab.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func setPinned(
-        params _: [String: Any],
-        context: WKWebExtensionContext,
-    ) async -> APIResponse {
-        guard hasPermission("refrax.tabs", context) else {
-            return .error("Permission denied: refrax.tabs")
-        }
-
-        // TODO: Implement when BrowserState provides tab lookup API
-        return .error("refrax.tabs.setPinned is not yet implemented")
     }
 
     // MARK: - Space APIs (Stub Implementations)

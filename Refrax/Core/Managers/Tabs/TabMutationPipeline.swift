@@ -69,9 +69,6 @@ struct TabMutationPipeline {
         /// Space IDs that need active tab synchronization.
         var spaceIDsToSyncActiveTab: Set<Space.ID> = []
 
-        /// Space IDs that need active reference tab synchronization.
-        var spaceIDsToSyncActiveRefTab: Set<Space.ID> = []
-
         /// Tabs that were added and need indexing.
         var tabsToIndex: [Tab] = []
 
@@ -83,45 +80,6 @@ struct TabMutationPipeline {
         /// When a tab is closed, we store its ID and position so the sync logic
         /// can select the best replacement (previous tab → adjacent → first).
         var closedTabContexts: [Space.ID: ClosedTabContext] = [:]
-
-        // MARK: - Incremental Removal Tracking
-
-        /// ID of a single item removed (for incremental layout updates).
-        ///
-        /// When set, LayoutManager can perform an incremental removal instead of
-        /// a full rebuild. Used by single-tab close operations.
-        var removedItemID: UUID?
-
-        /// IDs of items removed in a batch operation.
-        ///
-        /// When set, LayoutManager can perform batch incremental removal.
-        /// Used by multi-tab close operations (e.g., "Close Other Tabs").
-        var batchRemovedIDs: Set<UUID>?
-
-        /// Context about a removal operation for incremental layout updates.
-        ///
-        /// Provides information needed by LayoutManager to efficiently update
-        /// only the affected portions of the layout hierarchy.
-        var removalContext: RemovalContext?
-    }
-
-    /// Context about a removal operation for incremental layout updates.
-    ///
-    /// Contains the information LayoutManager needs to perform targeted updates
-    /// instead of full hierarchy rebuilds when items are removed.
-    struct RemovalContext {
-        /// The space where the removal occurred.
-        let spaceID: Space.ID
-
-        /// Whether the removed item was pinned.
-        ///
-        /// Affects which collection in the layout needs updating.
-        let wasPinned: Bool
-
-        /// The group ID the item belonged to before removal, if any.
-        ///
-        /// Affects group hierarchy updates and descendant tracking.
-        let wasInGroupID: TabGroup.ID?
     }
 
     /// Context about a closed tab for smart active tab selection.
@@ -131,6 +89,9 @@ struct TabMutationPipeline {
 
         /// The index of the closed tab in mainTabs before removal.
         let mainTabIndex: Int
+
+        /// The adjacent page shown at the edge before the tab closed.
+        let spatialReplacementID: Tab.ID?
     }
 
     /// Executes a mutation with automatic invariant maintenance.
@@ -181,35 +142,8 @@ struct TabMutationPipeline {
             }
         }
 
-        for spaceID in effects.spaceIDsToSyncActiveRefTab {
-            if let space = state.space(for: spaceID) {
-                // Pass nil for closedIndex - batch operations use last-tab fallback
-                windowSync.syncInvalidActiveReferenceTabIDs(for: space, closedIndex: nil)
-            }
-        }
-
-        // Try incremental layout updates before incrementing version
-        var handledIncrementally = false
-
         if effects.didChangeList {
-            // Single item removal - try incremental update
-            if let removedID = effects.removedItemID,
-               let context = effects.removalContext,
-               let handler = state.onIncrementalRemoval {
-                handledIncrementally = handler(removedID, context)
-            }
-            // Batch removal - try incremental batch update
-            else if let batchIDs = effects.batchRemovedIDs,
-                    let context = effects.removalContext,
-                    let handler = state.onBatchRemoval {
-                handledIncrementally = handler(batchIDs, context.spaceID)
-            }
-
             state.incrementListVersion()
-
-            if handledIncrementally {
-                state.markIncrementallyHandled()
-            }
         }
 
         if effects.didChangeContent {
@@ -255,13 +189,14 @@ extension TabMutationPipeline.MutationEffects {
     ///
     /// - Note: Does not trigger normalization by default. Position gaps from removal
     ///   are acceptable; normalization happens lazily when needed.
-    func tabRemoved(_ tab: Tab, from space: Space, mainTabIndex: Int) {
+    func tabRemoved(_ tab: Tab, from space: Space, mainTabIndex: Int, spatialReplacementID: Tab.ID? = nil) {
         tabsToRemoveFromIndex.append(tab)
         didChangeList = true
         spaceIDsToSyncActiveTab.insert(space.id)
         closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
             tabID: tab.id,
             mainTabIndex: mainTabIndex,
+            spatialReplacementID: spatialReplacementID,
         )
     }
 
@@ -271,11 +206,5 @@ extension TabMutationPipeline.MutationEffects {
         spaceIDsToNormalize.insert(sourceSpace.id)
         spaceIDsToNormalize.insert(targetSpace.id)
         spaceIDsToSyncActiveTab.insert(sourceSpace.id)
-    }
-
-    /// Marks a reference tab change.
-    func referenceTabChanged(in space: Space) {
-        didChangeList = true
-        spaceIDsToSyncActiveRefTab.insert(space.id)
     }
 }

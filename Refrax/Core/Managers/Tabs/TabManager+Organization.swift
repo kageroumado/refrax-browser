@@ -16,6 +16,9 @@ extension TabManager {
         space.tabs.remove(at: currentIndex)
         space.tabs.insert(tab, at: index)
         normalizePositions(in: space)
+        // The sorted lists cache by count, which a move leaves unchanged.
+        space.invalidateTabCaches()
+        tab.group?.invalidateTabCache()
         state.incrementListVersion()
         scheduleSave()
 
@@ -23,41 +26,27 @@ extension TabManager {
         state.extensionManager?.dispatchTabMoved(tab, fromIndex: currentIndex, oldWindow: nil)
     }
 
-    /// Toggles a tab's pinned state.
-    func togglePinTab(_ tab: Tab) {
-        guard let space = tab.space,
-              let currentIndex = space.tabs.firstIndex(of: tab) else {
-            return
+    /// Puts `tab` between `before` and `after` in its list by position, which is the order
+    /// every sorted list reads; the relationship array itself is unordered. With no room
+    /// between the two, positions are normalized first.
+    func placeTab(_ tab: Tab, after before: Tab?, before after: Tab?) {
+        guard let space = tab.space else { return }
+        let step = positioner.multiplier(forLevel: 1)
+        func bounds() -> (low: Int, high: Int) {
+            let low = before?.position ?? ((after?.position ?? step) - step)
+            let high = after?.position ?? ((before?.position ?? 0) + step)
+            return (low, high)
         }
-
-        if tab.groupID != nil {
-            Logger.warning("Cannot pin tab in group", category: Logger.tabs)
-            return
+        var range = bounds()
+        if range.high - range.low < 2 {
+            positioner.normalize(space: space, force: true)
+            range = bounds()
         }
-
-        tab.isPinned.toggle()
-        space.tabs.remove(at: currentIndex)
-
-        if tab.isPinned {
-            // Capture origin URL for navigation containment
-            tab.originURL = tab.activePage.url
-            let pinnedCount = space.tabs.count(where: { $0.isPinned })
-            space.tabs.insert(tab, at: pinnedCount)
-        } else {
-            // Clear origin URL when unpinning
-            tab.originURL = nil
-            let firstUnpinned = space.tabs.prefix(while: { $0.isPinned }).count
-            space.tabs.insert(tab, at: firstUnpinned)
-        }
-
-        normalizePositions(in: space)
+        tab.position = positioner.positionBetween(before: range.low, after: range.high)
+        space.invalidateTabCaches()
+        tab.group?.invalidateTabCache()
         state.incrementListVersion()
         scheduleSave()
-
-        // Notify extensions of pinned state change
-        state.extensionManager?.dispatchPinnedChanged(tab)
-
-        Logger.info("Tab pin toggled: \(tab.isPinned)", category: Logger.tabs)
     }
 
     /// Sets a custom name for a tab.
@@ -133,32 +122,6 @@ extension TabManager {
         closeTabsInBatch(tabsToClose, undoActionName: "Close Other Tabs")
     }
 
-    /// Closes tabs except the specified tab in the list.
-    func closeOtherTabs(except tab: Tab, in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab).filter { $0.id != tab.id }
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Other Tabs")
-    }
-
-    /// Closes tabs above the specified tab in the list.
-    func closeTabsAbove(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[..<index].compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Tabs Above")
-    }
-
-    /// Closes tabs below the specified tab in the list.
-    func closeTabsBelow(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[(index + 1)...].compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close Tabs Below")
-    }
-
-    /// Closes all tabs in the given list items.
-    func closeAllTabs(in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab)
-        closeTabsInBatch(tabsToClose, undoActionName: "Close All Tabs")
-    }
-
     /// Closes the specified tabs.
     ///
     /// Used for closing multiple selected tabs at once.
@@ -169,34 +132,6 @@ extension TabManager {
     func closeTabs(_ tabs: [Tab], bypassArchive: Bool = false) {
         guard !tabs.isEmpty else { return }
         closeTabsInBatch(tabs, undoActionName: "Close \(tabs.count) Tabs", bypassArchive: bypassArchive)
-    }
-
-    // MARK: - Request Batch Close (with Confirmation)
-
-    /// Requests to close all tabs except the specified one, with confirmation if needed.
-    func requestCloseOtherTabs(except tab: Tab, in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab).filter { $0.id != tab.id }
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close tabs above the specified tab, with confirmation if needed.
-    func requestCloseTabsAbove(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[..<index].compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close tabs below the specified tab, with confirmation if needed.
-    func requestCloseTabsBelow(_ tab: Tab, in items: [TabListItem]) {
-        guard let index = items.firstIndex(where: { $0.tab?.id == tab.id }) else { return }
-        let tabsToClose = items[(index + 1)...].compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
-    }
-
-    /// Requests to close all tabs in the given list items, with confirmation if needed.
-    func requestCloseAllTabs(in items: [TabListItem]) {
-        let tabsToClose = items.compactMap(\.tab)
-        requestCloseTabs(tabsToClose)
     }
 
     /// Moves multiple tabs to a different space.
@@ -212,6 +147,12 @@ extension TabManager {
         guard !tabs.isEmpty else { return }
 
         spaceManager.ensureLoaded(space)
+        // A live page keeps the data store it was created with, so a tab crossing into or out
+        // of a space with its own data loses its pages and reloads in the destination's store.
+        let crossingDataStores = tabs.filter { tab in
+            guard let source = tab.space, source.id != space.id else { return false }
+            return !source.dataStoreMode.isGlobal || !space.dataStoreMode.isGlobal
+        }
 
         mutationPipeline.withMutation { effects in
             var affectedSourceSpaceIDs: Set<Space.ID> = []
@@ -242,10 +183,9 @@ extension TabManager {
                 tab.groupID = nil
 
                 // Calculate proper hierarchical position for the target space
-                let insertion = positioner.insertionPosition(for: space, isPinned: false)
+                let insertion = positioner.insertionPosition(for: space)
 
                 tab.space = space
-                tab.isPinned = false
                 tab.position = insertion.position
 
                 space.tabs.insert(tab, at: insertion.index)
@@ -258,6 +198,10 @@ extension TabManager {
             }
             effects.spaceIDsToNormalize.insert(space.id)
             effects.didChangeList = true
+        }
+
+        for tab in crossingDataStores {
+            pagePool.removePages(for: tab)
         }
 
         Logger.info("Moved \(tabs.count) tabs to space: \(space.name)", category: Logger.tabs)
@@ -296,17 +240,17 @@ extension TabManager {
         }
     }
 
-    /// Pinned tabs in the active space, sorted by position.
+    /// Tabs in pinned groups in the active space, sorted by position.
     var pinnedTabs: [Tab] {
         activeWindowState?.activeSpace?.tabs
-            .filter(\.isPinned)
+            .filter(\.isInPinnedGroup)
             .sorted { $0.position < $1.position } ?? []
     }
 
-    /// Unpinned tabs in the active space, sorted by position.
+    /// Tabs outside pinned groups in the active space, sorted by position.
     var unpinnedTabs: [Tab] {
         activeWindowState?.activeSpace?.tabs
-            .filter { !$0.isPinned }
+            .filter { !$0.isInPinnedGroup }
             .sorted { $0.position < $1.position } ?? []
     }
 }

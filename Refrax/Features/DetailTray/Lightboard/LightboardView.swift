@@ -47,7 +47,7 @@ struct LightboardView: View {
     private var header: some View {
         VStack(spacing: 0) {
             DetailTrayHeader(
-                title: "Lightboard",
+                title: "Tab Statistics",
                 currentMode: .lightboard,
                 onClose: { windowState.hideDetailTray() },
             )

@@ -99,8 +99,6 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         printStorageEntries(entries)
     case let .recentlyClosedTabs(tabs):
         printRecentlyClosedTabs(tabs)
-    case let .refPaneTabs(tabs):
-        printRefPaneTabs(tabs)
     case let .settingsEntries(entries):
         printSettingsEntries(entries)
     case let .health(info):
@@ -113,6 +111,26 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         print("pong (protocol: v\(info.protocolVersion), app: \(info.appVersion))")
     case let .humanRequested(info):
         printHumanRequest(info)
+    case let .canvas(info):
+        printCanvas(info)
+    case let .islands(info):
+        printIslands(info)
+    }
+}
+
+func printIslands(_ info: CTL.IslandsInfo) {
+    let reveal = info.isHeld ? "held" : info.isRevealed ? "up" : "down"
+    print("Islands: \(reveal) · \(info.islands.count) islands · \(info.cards.count) cards")
+    for island in info.islands {
+        let marks = [island.isPinned ? "pinned" : nil, island.isVisible ? nil : "hidden"].compactMap(\.self).joined(separator: " · ")
+        print("  \(island.title) [\(island.id.prefix(8))]  \(Int(island.x)),\(Int(island.y)) \(Int(island.width))×\(Int(island.height))\(marks.isEmpty ? "" : "  " + marks)")
+        for (index, row) in island.rows.enumerated() {
+            let panes = row.pageCount > 1 ? " · \(row.pageCount) panes" : ""
+            print("    \(index)\(row.isCurrent ? " ▸" : "  ") \(row.title)\(panes)  [\(row.tabID.prefix(8))]")
+        }
+    }
+    for card in info.cards {
+        print("  card \(Int(card.x)),\(Int(card.y)) \(Int(card.width))×\(Int(card.height))  \(card.title)  [\(card.tabID.prefix(8))]")
     }
 }
 
@@ -143,21 +161,29 @@ func printBrowserState(_ state: CTL.BrowserStateInfo) {
             let title = tab.title.isEmpty ? "(untitled)" : tab.title
             let url = tab.url ?? ""
             var flags: [String] = []
-            if tab.isActive { flags.append("active") }
-            if tab.isLoading { flags.append("loading") }
-            if tab.isPinned { flags.append("pinned") }
-            if tab.pageCount > 1 { flags.append("\(tab.pageCount) pages") }
+            if tab.isActive {
+                flags.append("active")
+            }
+            if tab.isLoading {
+                flags.append("loading")
+            }
+            if tab.isFavorite {
+                flags.append("favorite")
+            }
+            if tab.pageCount > 1 {
+                flags.append("\(tab.pageCount) pages")
+            }
             let flagStr = flags.isEmpty ? "" : " [\(flags.joined(separator: ", "))]"
             print("\(prefix)\(title) - \(url)\(flagStr)")
         }
     }
 
-    // Tabs not associated with any space
+    // Favorites belong to no space
     let orphanTabs = state.tabs.filter { tab in
         !state.spaces.contains { $0.id == tab.spaceID }
     }
     if !orphanTabs.isEmpty {
-        print("Unassigned:")
+        print("Favorites:")
         for tab in orphanTabs {
             let prefix = tab.isActive ? "  * " : "    "
             let title = tab.title.isEmpty ? "(untitled)" : tab.title
@@ -181,13 +207,27 @@ func printTab(_ tab: CTL.TabInfo) {
     let title = tab.title.isEmpty ? "(untitled)" : tab.title
     let url = tab.url ?? ""
     var flags: [String] = []
-    if tab.isActive { flags.append("active") }
-    if tab.isLoading { flags.append("loading") }
-    if tab.isPinned { flags.append("pinned") }
-    if tab.isUnread == true { flags.append("unread") }
-    if tab.customName != nil { flags.append("renamed") }
-    if tab.groupID != nil { flags.append("grouped") }
-    if tab.pageCount > 1 { flags.append("\(tab.pageCount) pages") }
+    if tab.isActive {
+        flags.append("active")
+    }
+    if tab.isLoading {
+        flags.append("loading")
+    }
+    if tab.isFavorite {
+        flags.append("favorite")
+    }
+    if tab.isUnread == true {
+        flags.append("unread")
+    }
+    if tab.customName != nil {
+        flags.append("renamed")
+    }
+    if tab.groupID != nil {
+        flags.append("grouped")
+    }
+    if tab.pageCount > 1 {
+        flags.append("\(tab.pageCount) pages")
+    }
     let flagStr = flags.isEmpty ? "" : " [\(flags.joined(separator: ", "))]"
     print("\(prefix)\(tab.id)  \(title) - \(url)\(flagStr)")
 }
@@ -196,9 +236,15 @@ func printSpaces(_ spaces: [CTL.SpaceInfo]) {
     let modeWidth = spaces.map { ($0.dataStoreMode ?? "").count }.max() ?? 0
     for space in spaces {
         var markers: [String] = []
-        if space.isActive { markers.append("active") }
-        if space.isLocked == true { markers.append("locked") }
-        if space.exposesCookies == true { markers.append("cookies exposed") }
+        if space.isActive {
+            markers.append("active")
+        }
+        if space.isLocked == true {
+            markers.append("locked")
+        }
+        if space.exposesCookies == true {
+            markers.append("cookies exposed")
+        }
         let markerText = markers.isEmpty ? "" : " [\(markers.joined(separator: ", "))]"
         let mode = (space.dataStoreMode ?? "").padding(toLength: modeWidth, withPad: " ", startingAt: 0)
         print("\(space.id)  \(mode)  \(space.name) (\(space.tabCount) tabs)\(markerText)")
@@ -208,9 +254,6 @@ func printSpaces(_ spaces: [CTL.SpaceInfo]) {
 func printWindowInfo(_ info: CTL.WindowInfoData) {
     print("Position: \(info.x), \(info.y)")
     print("Size: \(info.width)x\(info.height)")
-    print("Sidebar: \(info.isSidebarCollapsed ? "collapsed" : "visible")")
-    print("Inspector: \(info.isInspectorCollapsed ? "collapsed" : "visible")")
-    print("Reference Pane: \(info.isReferencePaneVisible ? "visible" : "hidden")")
 }
 
 // MARK: - New Formatters
@@ -234,12 +277,22 @@ func printTabDetail(_ info: CTL.TabDetailInfo) {
     }
 
     var flags: [String] = []
-    if info.isActive { flags.append("active") }
-    if info.isLoading { flags.append("loading") }
-    if info.isPinned { flags.append("pinned") }
-    if info.isUnread { flags.append("unread") }
-    if info.isMuted { flags.append("muted") }
-    if info.isReferenceTab { flags.append("reference") }
+    if info.isActive {
+        flags.append("active")
+    }
+    if info.isLoading {
+        flags.append("loading")
+    }
+    if info.isFavorite {
+        flags.append("favorite")
+    }
+    if info.isUnread {
+        flags.append("unread")
+    }
+    if info.isMuted {
+        flags.append("muted")
+    }
+
     if !flags.isEmpty {
         print("Flags: \(flags.joined(separator: ", "))")
     }
@@ -271,9 +324,13 @@ func printGroups(_ groups: [CTL.GroupInfo]) {
 func printGroup(_ group: CTL.GroupInfo) {
     var details: [String] = []
     details.append(group.color)
-    if let icon = group.iconName { details.append(icon) }
+    if let icon = group.iconName {
+        details.append(icon)
+    }
     details.append("\(group.tabCount) tabs")
-    if group.isCollapsed { details.append("collapsed") }
+    if group.isCollapsed {
+        details.append("collapsed")
+    }
     let detailStr = details.joined(separator: ", ")
     print("\(group.id)  \(group.name) [\(detailStr)]")
 }
@@ -355,8 +412,12 @@ func printCookies(_ cookies: [CTL.CookieInfo]) {
     }
     for cookie in cookies {
         var flags: [String] = []
-        if cookie.isSecure { flags.append("secure") }
-        if cookie.isHTTPOnly { flags.append("httpOnly") }
+        if cookie.isSecure {
+            flags.append("secure")
+        }
+        if cookie.isHTTPOnly {
+            flags.append("httpOnly")
+        }
         flags.append(cookie.expiresDate.map { "expires \($0)" } ?? "session")
         print("\(cookie.name)=\(cookie.value ?? "•••") (\(cookie.domain)\(cookie.path)) [\(flags.joined(separator: ", "))]")
     }
@@ -382,18 +443,6 @@ func printRecentlyClosedTabs(_ tabs: [CTL.RecentlyClosedTabInfo]) {
     }
     for tab in tabs {
         print("\(tab.closedAt)  \(tab.title) - \(tab.url)")
-    }
-}
-
-func printRefPaneTabs(_ tabs: [CTL.RefPaneTabInfo]) {
-    if tabs.isEmpty {
-        print("No reference pane tabs")
-        return
-    }
-    for tab in tabs {
-        let prefix = tab.isActive ? "* " : "  "
-        let url = tab.url ?? ""
-        print("\(prefix)\(tab.id)  \(tab.title) - \(url)")
     }
 }
 
@@ -448,6 +497,13 @@ func printFoundElements(_ elements: [CTL.FoundElementInfo]) {
             line += " [type=\(inputType)]"
         }
         print("  \(line)")
+    }
+}
+
+func printCanvas(_ info: CTL.FloatingTabsInfo) {
+    print("Floating tabs: \(info.isRevealed ? "revealed" : "hidden") · \(info.tiles.filter(\.isPinned).count) pinned previews")
+    for tile in info.tiles where tile.isVisible {
+        print("  \(Int(tile.x)),\(Int(tile.y))  \(tile.shape.rawValue)\(tile.isPinned ? " · pinned" : "")  \(tile.title)  [\(tile.tabID)]")
     }
 }
 

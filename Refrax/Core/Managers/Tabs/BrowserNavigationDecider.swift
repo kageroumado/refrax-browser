@@ -311,8 +311,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         switch policy {
         case .allow, .next:
             if let exitRoute,
-               exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url)
-            {
+               exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url) {
                 return .cancel
             }
         default:
@@ -694,10 +693,11 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         }
 
         // Default behavior
-        // Pinned/live favorite tabs have stale position and group info — use prepend
-        let isContained = tab?.isPinned == true || tab?.isLiveFavorite == true
+        // Favorites have stale position and group info — use prepend
+        let isContained = tab?.isFavorite == true
         let targetSpace = tab?.space ?? tabManager.state.spaces.first
-        tabManager.createTab(
+        let sourceWindow = sourceWindowState
+        let newTab = tabManager.createTab(
             url: url,
             in: targetSpace,
             groupID: isContained ? nil : tab?.groupID,
@@ -705,6 +705,35 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
             loadImmediately: true,
             insertionStrategy: isContained ? .prepend : .afterActive,
         )
+        if !activate, let sourceWindow {
+            confirmBackgroundTab(newTab, in: sourceWindow)
+        }
+    }
+
+    /// The browser window hosting this page, including a page in a floating card.
+    private var sourceWindowState: WindowState? {
+        var window = pagePool?.existingPage(for: tabPage)?.backingWebView.window
+        while let candidate = window {
+            if let controller = candidate.windowController as? RefraxWindowController {
+                return controller.windowState
+            }
+            window = candidate.parent
+        }
+        return tabManager.activeWindowState
+    }
+
+    /// Makes background creation visible and offers direct access to the new page.
+    private func confirmBackgroundTab(_ tab: Tab, in windowState: WindowState) {
+        let tabID = tab.id
+        let destination = tab.group?.name ?? "Tabs"
+        let manager = tabManager
+        windowState.showToast("Opened in background · \(destination)", action: ToastAction(title: "Show Tab") { [weak manager, weak windowState] in
+            guard let manager, let windowState, let tab = manager.state.tab(for: tabID), !tab.isArchived else { return }
+            if let space = tab.space, windowState.activeSpaceID != space.id {
+                manager.spaceManager.switchToSpaceSync(space, for: windowState)
+            }
+            manager.setActiveTab(tab, in: windowState)
+        })
     }
 
     /// Initiates a download for the given response.

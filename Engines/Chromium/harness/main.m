@@ -14,12 +14,17 @@
 // PageCommand and --snapshot writes the page's snapshot as a PNG, both halfway through.
 // Script messages are answered with their own body.
 //
-// Exits 0 after --seconds (default 20), 1 if the engine fails to start.
+// After --seconds (default 20) the harness closes the page, shuts the engine down and waits for
+// the host and its helpers to exit; whatever outlives the host's own clean-exit deadline is
+// killed and named. Exits 0 then, 3 if it had to kill, 1 if the engine fails to start.
 
 #import <AppKit/AppKit.h>
 #import <ImageIO/ImageIO.h>
 #import <Security/Security.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <libproc.h>
+#import <signal.h>
+#import <sys/sysctl.h>
 
 #import "RFXEngine.h"
 
@@ -34,6 +39,36 @@ static void Note(NSString* message) {
                                                                    withString:@"'"]
                                        .UTF8String);
   fflush(stdout);
+}
+
+// Every other process whose arguments name the storage directory: the host and its helpers,
+// which carry it as --user-data-dir. KERN_PROCARGS2 answers only for this user's processes.
+static NSArray<NSNumber*>* EngineProcesses(NSString* storagePath) {
+  NSMutableArray<NSNumber*>* found = [NSMutableArray array];
+  const char* needle = storagePath.fileSystemRepresentation;
+  size_t needleLength = strlen(needle);
+  int capacity = proc_listallpids(NULL, 0) + 64;
+  pid_t* pids = calloc((size_t)capacity, sizeof(pid_t));
+  int count = proc_listallpids(pids, capacity * (int)sizeof(pid_t));
+  pid_t self = getpid();
+  for (int i = 0; i < count; i++) {
+    if (pids[i] == self) {
+      continue;
+    }
+    int mib[3] = {CTL_KERN, KERN_PROCARGS2, pids[i]};
+    size_t size = 0;
+    if (sysctl(mib, 3, NULL, &size, NULL, 0) != 0 || size == 0) {
+      continue;
+    }
+    char* arguments = malloc(size);
+    if (sysctl(mib, 3, arguments, &size, NULL, 0) == 0 &&
+        memmem(arguments, size, needle, needleLength)) {
+      [found addObject:@(pids[i])];
+    }
+    free(arguments);
+  }
+  free(pids);
+  return found;
 }
 
 @interface Harness : NSObject <NSApplicationDelegate, RFXEngineHostDelegate, RFXEnginePageDelegate>
@@ -94,11 +129,31 @@ static void Note(NSString* message) {
   [NSTimer scheduledTimerWithTimeInterval:self.seconds
                                   repeats:NO
                                     block:^(NSTimer* timer) {
-                                      [self.page close];
-                                      [self.engine shutdown];
-                                      Note(@"done");
-                                      exit(0);
+                                      [self finish];
                                     }];
+}
+
+// Closing the engine's pipe asks the host to exit, which it gives itself ten seconds; the
+// harness waits a little longer, running the loop so the engine's last events still print.
+- (void)finish {
+  [self.page close];
+  [self.engine shutdown];
+  NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:15];
+  NSArray<NSNumber*>* remaining = EngineProcesses(self.storage.path);
+  while (remaining.count > 0 && deadline.timeIntervalSinceNow > 0) {
+    [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
+    remaining = EngineProcesses(self.storage.path);
+  }
+  if (remaining.count == 0) {
+    Note(@"done");
+    exit(0);
+  }
+  Note([NSString stringWithFormat:@"engine processes outlived shutdown, killed: %@",
+                                  [remaining componentsJoinedByString:@" "]]);
+  for (NSNumber* pid in remaining) {
+    kill(pid.intValue, SIGKILL);
+  }
+  exit(3);
 }
 
 - (void)applyPolicy {
@@ -248,7 +303,9 @@ static void Note(NSString* message) {
   NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:request options:0 error:nil];
   NSString* kind = parsed.allKeys.firstObject;
   NSDictionary* answer = @{@"cancel" : @{}};
-  if ([kind isEqualToString:@"openURL"]) {
+  if ([kind isEqualToString:@"navigation"]) {
+    answer = @{@"allow" : @{}};
+  } else if ([kind isEqualToString:@"openURL"]) {
     answer = @{@"handled" : @{}};
   } else if ([kind isEqualToString:@"permission"]) {
     answer = @{@"deny" : @{}};

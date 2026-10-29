@@ -49,6 +49,7 @@ final class HistoryWindowController {
         let historyView = HistoryView()
             .environment(historyManager)
             .environment(tabManager)
+            .environment(appDelegate.archiveManager)
             .environment(windowManager)
             .environment(standaloneWindowState)
             .modelContainer(modelContainer)

@@ -165,11 +165,14 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
             url: url,
             in: space,
             groupID: parentTab?.groupID,
-            isPinned: configuration.shouldBePinned,
             makeActive: false,
             loadImmediately: true,
             insertionStrategy: insertionStrategy(at: Int(configuration.index), in: space),
         )
+        // Extensions see favorites as pinned tabs.
+        if configuration.shouldBePinned {
+            tabManager.makeFavorite(tab, in: windowState)
+        }
 
         Logger.info(
             "Extension created new tab: \(url.absoluteString)",
@@ -330,7 +333,7 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
             throw PopupError.noWindow
         }
 
-        let anchor = Self.popupAnchor(addressBar: controller.windowState.addressBarFrame, in: contentView)
+        let anchor = Self.popupAnchor(pageCard: controller.windowState.pageCardFrame, in: contentView)
         popover.show(relativeTo: anchor, of: contentView, preferredEdge: contentView.isFlipped ? .maxY : .minY)
     }
 
@@ -342,11 +345,11 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
         }
     }
 
-    /// The address bar's rectangle in `contentView`'s coordinates, or a point at the top
-    /// center when the address bar is hidden.
+    /// The page card's rectangle in `contentView`'s coordinates, or a point at the top
+    /// center when the page card is hidden.
     ///
-    /// The address bar reports its frame in SwiftUI's global space, which has a top-left origin.
-    private static func popupAnchor(addressBar frame: CGRect, in contentView: NSView) -> CGRect {
+    /// The page card reports its frame in SwiftUI's global space, which has a top-left origin.
+    private static func popupAnchor(pageCard frame: CGRect, in contentView: NSView) -> CGRect {
         let bounds = contentView.bounds
         guard !frame.isEmpty, bounds.contains(CGPoint(x: frame.midX, y: frame.midY)) else {
             let y = contentView.isFlipped ? bounds.minY + 40 : bounds.maxY - 40

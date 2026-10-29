@@ -61,17 +61,14 @@ struct PageImportanceScorer {
         /// Form has unsaved user input
         static let hasFormData: Int = 500
 
-        /// Tab is pinned by user
-        static let pinned: Int = 300
+        /// Tab is a favorite
+        static let favorite: Int = 300
 
         /// Tab was visible within last 5 minutes
         static let recentlyVisible: Int = 200
 
         /// Maximum recency bonus (decays over time)
         static let maxRecencyBonus: Int = 100
-
-        /// Tab is a reference tab (usually kept for context)
-        static let referenceTab: Int = 150
     }
 
     // MARK: - Configuration
@@ -156,16 +153,20 @@ struct PageImportanceScorer {
             factors.append("playing-audio")
         }
 
-        // Pinned status
-        if let tab, tab.isPinned {
-            score += Weight.pinned
-            factors.append("pinned")
+        if page.isInFloatingPreview,
+           page.contentView.window != nil, !page.contentView.isHiddenOrHasHiddenAncestor {
+            score += Weight.isActive
+            factors.append("floating-preview")
         }
 
-        // Reference tab
-        if let tab, tab.isReferenceTab {
-            score += Weight.referenceTab
-            factors.append("reference")
+        if page.temporaryVisitRetentionCount > 0 {
+            score += Weight.isActive
+            factors.append("return-destination")
+        }
+
+        if let tab, tab.isFavorite {
+            score += Weight.favorite
+            factors.append("favorite")
         }
 
         // Recent visibility
@@ -223,16 +224,15 @@ struct PageImportanceScorer {
             factors.append("form-data")
         }
 
-        // Pinned status
-        if let tab, tab.isPinned {
-            score += Weight.pinned
-            factors.append("pinned")
+        if page.isInFloatingPreview,
+           page.contentView.window != nil, !page.contentView.isHiddenOrHasHiddenAncestor {
+            score += Weight.isActive
+            factors.append("floating-preview")
         }
 
-        // Reference tab
-        if let tab, tab.isReferenceTab {
-            score += Weight.referenceTab
-            factors.append("reference")
+        if let tab, tab.isFavorite {
+            score += Weight.favorite
+            factors.append("favorite")
         }
 
         // Recent visibility

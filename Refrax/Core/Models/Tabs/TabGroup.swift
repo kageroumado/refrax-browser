@@ -46,13 +46,44 @@ final class TabGroup {
     /// SF Symbol icon name
     var iconName: String?
 
+    /// Serialized ``BoardFrame``: the zone this group claims on the tab canvas.
+    /// The zone shown is always at least this rectangle, grown to hold its members.
+    var boardFrameData: Data?
+
+    /// The zone this group claims on the tab canvas, or `nil` if it only follows its members.
+    var boardFrame: CGRect? {
+        get { BoardFrame.decode(boardFrameData) }
+        set { boardFrameData = BoardFrame.encode(newValue) }
+    }
+
+    /// Serialized ``BoardPoint``: set when the group is a magnet on the tab canvas.
+    /// A magnet gathers its members around this point instead of claiming a zone.
+    var boardAnchorData: Data?
+
+    /// The magnet's anchor on the tab canvas, or `nil` if the group is a zone.
+    var boardAnchor: CGPoint? {
+        get { BoardPoint.decode(boardAnchorData) }
+        set { boardAnchorData = BoardPoint.encode(newValue) }
+    }
+
+    /// Whether the group is a magnet on the tab canvas.
+    var isMagnet: Bool {
+        boardAnchorData != nil
+    }
+
+    /// The registrable domain this group gathers when it is a site stack on the floating layer.
+    /// A site stack is named by its site, takes new tabs from that site while the space keeps
+    /// stacks by site, and dissolves once it holds a single tab.
+    var stackSite: String?
+
     /// Position in the tab list (alongside tabs)
     var position: Int
     
     /// Whether the group is pinned (like pinned tabs)
     var isPinned: Bool
 
-    /// Whether the group is collapsed in the sidebar
+    /// Whether the group is folded to its header. The fold belongs to the group, so switching
+    /// spaces never resets it.
     var isCollapsed: Bool
 
     /// Whether this is the special Archive group for the space.
@@ -166,7 +197,9 @@ final class TabGroup {
             _sortedTabsCache = nil
             _tabsCacheCount = tabs.count
         }
-        if let cached = _sortedTabsCache { return cached }
+        if let cached = _sortedTabsCache {
+            return cached
+        }
         let result = tabs.sorted { $0.position < $1.position }
         _sortedTabsCache = result
         return result

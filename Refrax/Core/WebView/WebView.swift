@@ -140,6 +140,7 @@ struct WebViewRepresentable: NSViewRepresentable {
         let webView = page.backingWebView
         let coordinator = context.coordinator
         let environment = context.environment
+        coordinator.displayRevision &+= 1
 
         // Check if configuration is locked - skip most updates if so
         let isLocked = environment.webViewConfigurationLocked
@@ -160,7 +161,7 @@ struct WebViewRepresentable: NSViewRepresentable {
         }
 
         // Display mode ALWAYS needs updating (tab switching, portal mode)
-        updateDisplayMode(adapter, webView: webView)
+        updateDisplayMode(adapter, webView: webView, coordinator: coordinator)
 
         // Interaction blocking ALWAYS needs updating (quick look, etc.)
         applyInteractionBlocking(webView)
@@ -184,14 +185,7 @@ struct WebViewRepresentable: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: CocoaWebViewAdapter, coordinator: Coordinator) {
-        // Don't call setInactiveMode() here — it would remove the webView from the
-        // superview, but that's unnecessary work:
-        // 1. The adapter is being removed from the view hierarchy by SwiftUI anyway
-        // 2. When the webView is needed again, addSubview() will automatically
-        //    remove it from its old superview (this adapter) before adding to the new one
-        // 3. Explicit removal here causes extra view hierarchy churn during tab switching
-        //
-        // We just clean up the delegate to prevent callbacks to a dismantled adapter.
+        // Release this adapter's children and invalidate its pending display updates.
         nsView.prepareForDismantle()
         coordinator.cleanup()
     }
@@ -206,7 +200,7 @@ struct WebViewRepresentable: NSViewRepresentable {
     ///
     /// This is always called regardless of configuration lock since tab switching
     /// and multi-window scenarios require mode updates.
-    private func updateDisplayMode(_ adapter: CocoaWebViewAdapter, webView: WebPageWebView) {
+    private func updateDisplayMode(_ adapter: CocoaWebViewAdapter, webView: WebPageWebView, coordinator: Coordinator) {
         // While the windowed-fullscreen video window hosts the web view, the
         // tab keeps its frozen snapshot — reclaiming the web view here would
         // yank it out of the video window on the next SwiftUI pass.
@@ -223,8 +217,11 @@ struct WebViewRepresentable: NSViewRepresentable {
                 // This happens when created inside an NSSplitViewItem inspector that hasn't
                 // completed its initial layout pass. Without deferral, active mode is never
                 // set and the content stays invisible.
+                let revision = coordinator.displayRevision
                 DispatchQueue.main.async {
-                    guard adapter.bounds.size != .zero else { return }
+                    guard coordinator.displayRevision == revision,
+                          coordinator.currentPageID == page.id,
+                          adapter.bounds.size != .zero else { return }
                     adapter.setActiveMode(webView: webView, expectedFrame: webView.frame)
                 }
                 return
@@ -287,7 +284,7 @@ struct WebViewRepresentable: NSViewRepresentable {
         // calling updateScrollPocket() with the correct insets.
 
         // Automatic content inset adjustment
-        // Disable when manually providing content insets (e.g., reference pane window)
+        // Disable when manually providing content insets (e.g., Glimpse and Reflected windows)
         let automaticallyAdjustsInsets = environment.webViewAutomaticallyAdjustsContentInsets
         if webView._automaticallyAdjustsContentInsets != automaticallyAdjustsInsets {
             webView._automaticallyAdjustsContentInsets = automaticallyAdjustsInsets
@@ -485,6 +482,7 @@ extension WebViewRepresentable {
     final class Coordinator {
         /// The ID of the currently configured page.
         var currentPageID: WebPage.ID?
+        var displayRevision = 0
 
         /// Whether initial configuration has been applied.
         var hasAppliedInitialConfiguration = false
@@ -520,6 +518,7 @@ extension WebViewRepresentable {
 
         /// Cleans up coordinator resources.
         func cleanup() {
+            displayRevision &+= 1
             currentPageID = nil
             hasAppliedInitialConfiguration = false
             clearCachedValues()

@@ -10,7 +10,6 @@ extension TabManager {
     ///   - url: URL to load.
     ///   - space: Space to create tab in. If nil, uses active window's space.
     ///   - groupID: Optional group to add the tab to.
-    ///   - isPinned: Whether to pin the tab.
     ///   - makeActive: Whether to activate the tab immediately.
     ///   - loadImmediately: Whether to create a session and load the URL even when `makeActive` is false.
     ///     Set to `true` for user-initiated background tabs (e.g., cmd+click).
@@ -24,7 +23,6 @@ extension TabManager {
         url: URL,
         in space: Space? = nil,
         groupID: UUID? = nil,
-        isPinned: Bool = false,
         makeActive: Bool = true,
         loadImmediately: Bool? = nil,
         insertionStrategy: TabPositioner.InsertionStrategy = .prepend,
@@ -38,27 +36,18 @@ extension TabManager {
         let activeTabID = activeWindowState?.activeTabID
         let insertion = insertionPosition(
             in: targetSpace,
-            isPinned: isPinned,
             groupID: groupID,
             strategy: insertionStrategy,
             activeTabID: activeTabID,
         )
-        let status: TabStatus = isPinned ? .pinned : .regular
-
         let tab = Tab(
             space: targetSpace,
             url: url,
             title: url.host ?? "New Tab",
-            status: status,
             groupID: groupID,
             position: insertion.position,
         )
         tab.isUnread = !makeActive
-
-        // Set origin URL for pinned tabs (navigation containment)
-        if isPinned {
-            tab.originURL = url
-        }
 
         mutationPipeline.withMutation { effects in
             targetSpace.tabs.insert(tab, at: insertion.index)
@@ -115,35 +104,35 @@ extension TabManager {
         return tab
     }
 
-    // MARK: - Live Favorite Tab Operations
+    // MARK: - Favorite Tab Operations
 
-    /// Creates a global live favorite tab for a bookmark.
+    /// Creates the tab of a favorited bookmark: a favorite at the bookmark's address.
     ///
-    /// Live favorite tabs are stored in `BrowserState.liveFavoriteTabs` and appear
-    /// in the favorites grid across all spaces. They use global website data storage.
+    /// Favorites are stored in `BrowserState.favoriteTabs`, appear in the favorites column
+    /// in every space, and use global website data storage.
     ///
     /// - Parameters:
     ///   - bookmark: The bookmark to create a tab for.
     ///   - loadImmediately: Whether to create a WebPage and start loading immediately.
     ///     Set to `true` (default) for user-initiated actions.
     ///     Set to `false` for restore/launch to avoid blocking with GPU initialization.
-    /// - Returns: The created live favorite tab.
+    /// - Returns: The created favorite.
     @discardableResult
     func createLiveFavoriteTab(for bookmark: Bookmark, loadImmediately: Bool = true) -> Tab {
         let tab = Tab(
-            space: nil, // Live tabs don't belong to a space
+            space: nil, // Favorites belong to no space
             url: bookmark.url,
             title: bookmark.title,
-            status: .liveFavorite,
+            status: .favorite,
             linkedBookmark: bookmark,
-            position: state.liveFavoriteTabs.count,
+            position: state.favoriteTabs.count,
         )
 
         // Copy favicon data from bookmark to tab page
         tab.activePage.faviconData = bookmark.faviconData
         tab.activePage.largeFaviconData = bookmark.largeFaviconData
 
-        state.addLiveFavoriteTab(tab)
+        state.addFavoriteTab(tab)
         state.modelContext.insert(tab)
         scheduleSave()
 
@@ -151,19 +140,20 @@ extension TabManager {
             // Create WebPage and start loading for user-initiated actions
             _ = pagePool.page(for: tab.activePage)
         }
-        // Otherwise, WebPage is created lazily when the live favorite is activated
-        // (see setActiveLiveFavoriteTab) to avoid GPU initialization during launch
+        // Otherwise, WebPage is created lazily when the favorite is activated
+        // to avoid GPU initialization during launch
         return tab
     }
 
-    /// Closes a live favorite tab.
+    /// Deletes a favorite's tab, for when its bookmark is deleted or becomes a shortcut.
     ///
-    /// Removes the tab from BrowserState and cleans up its session.
+    /// Removes the tab from BrowserState and cleans up its session. Closing a favorite
+    /// returns it home instead (``returnFavoriteHome(_:)``).
     ///
-    /// - Parameter tab: The live favorite tab to close.
+    /// - Parameter tab: The favorite to delete.
     func closeLiveFavoriteTab(_ tab: Tab) {
-        guard tab.status == .liveFavorite else {
-            Logger.warning("Attempted to close non-live-favorite tab as live favorite", category: Logger.tabs)
+        guard tab.status == .favorite else {
+            Logger.warning("Attempted to delete a regular tab as a favorite", category: Logger.tabs)
             return
         }
 
@@ -176,7 +166,8 @@ extension TabManager {
     /// Closes a tab.
     ///
     /// Removes sessions, updates groups, handles undo registration,
-    /// and activates an adjacent tab if needed.
+    /// and activates an adjacent tab if needed. A favorite returns home instead
+    /// (``returnFavoriteHome(_:)``).
     ///
     /// When archive is enabled and `bypassArchive` is false, the tab is moved
     /// to the archive instead of being permanently deleted. Archived tabs can
@@ -185,34 +176,36 @@ extension TabManager {
     /// - Parameters:
     ///   - tab: Tab to close.
     ///   - registerUndo: Whether to register an undo action. Set to false for conversions
-    ///     where the tab content is preserved elsewhere (e.g., converting to live favorite).
+    ///     where the tab content is preserved elsewhere (e.g., converting to a shortcut).
     ///   - bypassArchive: If true, permanently deletes the tab even when archive is enabled.
     ///     Use for "Delete Immediately" actions or when clearing the archive.
     func closeTab(_ tab: Tab, registerUndo: Bool = true, bypassArchive: Bool = false) {
+        if tab.isFavorite {
+            returnFavoriteHome(tab)
+            return
+        }
+        let spatialReplacementID = spatialReplacement(for: tab)
+
         // Route through archive if enabled and not bypassing
         if state.settings.archiveEnabled, !bypassArchive, !tab.isArchived {
             // Capture state before archive modifies the tab
             guard let space = tab.space else { return }
             let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
-            let isReferenceTab = tab.isReferenceTab
 
             do {
                 try archiveManager.archive(tab)
 
                 // Trigger window state sync so active tab selection updates
-                // Now that mainTabs/referenceTabs exclude archived tabs, the sync
-                // will detect the archived tab as invalid and select a replacement
+                // mainTabs excludes archived tabs, so the sync detects the
+                // archived tab as invalid and selects a replacement
                 mutationPipeline.withMutation { effects in
                     effects.didChangeList = true
-                    if isReferenceTab {
-                        effects.spaceIDsToSyncActiveRefTab.insert(space.id)
-                    } else {
-                        effects.spaceIDsToSyncActiveTab.insert(space.id)
-                        effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
-                            tabID: tab.id,
-                            mainTabIndex: mainTabIndex,
-                        )
-                    }
+                    effects.spaceIDsToSyncActiveTab.insert(space.id)
+                    effects.closedTabContexts[space.id] = TabMutationPipeline.ClosedTabContext(
+                        tabID: tab.id,
+                        mainTabIndex: mainTabIndex,
+                        spatialReplacementID: spatialReplacementID,
+                    )
                 }
                 return
             } catch {
@@ -235,7 +228,7 @@ extension TabManager {
         // Get index in mainTabs for proper adjacency fallback
         let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
 
-        let closedInfo = ClosedTabInfo(tab: tab)
+        let closedInfo = closedTabInfo(for: tab)
 
         // Capture page IDs before closing, defer orphan cleanup
         let closingPageIDs = Set(tab.pages.map(\.id))
@@ -248,10 +241,6 @@ extension TabManager {
         pagePool.removePages(for: tab)
 
         mutationPipeline.withMutation { effects in
-            // Capture removal context before modifying state
-            let wasPinned = tab.isPinned
-            let wasInGroupID = tab.groupID
-
             if let groupID = tab.groupID,
                let group = space.groups.first(where: { $0.id == groupID }) {
                 group._removeTab(tab)
@@ -260,15 +249,7 @@ extension TabManager {
             space.tabs.remove(at: index)
             state.modelContext.delete(tab)
             // Pass mainTabIndex for smart adjacent tab selection in the pipeline
-            effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex)
-
-            // Populate incremental removal tracking
-            effects.removedItemID = tab.id
-            effects.removalContext = TabMutationPipeline.RemovalContext(
-                spaceID: space.id,
-                wasPinned: wasPinned,
-                wasInGroupID: wasInGroupID,
-            )
+            effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex, spatialReplacementID: spatialReplacementID)
         }
 
         if registerUndo {
@@ -372,17 +353,22 @@ extension TabManager {
             return
         }
 
-        let status: TabStatus = info.isPinned ? .pinned : .regular
         let tab = Tab(
             space: space,
             url: info.url,
             title: info.title,
-            status: status,
             groupID: info.groupID,
             position: info.position,
         )
         tab.customName = info.customName
         tab.activePage.faviconData = info.faviconData
+        if let placement = info.floatingPlacement {
+            if space.dataStoreMode == .private {
+                windowSync.findWindowState(for: space)?.floatingPlacements[tab.id] = placement
+            } else {
+                tab.floatingPlacement = placement
+            }
+        }
 
         let insertIndex = min(info.position, space.tabs.count)
         space.tabs.insert(tab, at: insertIndex)
@@ -406,20 +392,32 @@ extension TabManager {
         Logger.info("Tab restored: \(info.title)", category: Logger.tabs)
     }
 
+    /// Captures the card's saved place, including a private space's window-local place.
+    func closedTabInfo(for tab: Tab) -> ClosedTabInfo {
+        let placement = tab.space.flatMap { windowSync.findWindowState(for: $0) }?.floatingPlacements[tab.id]
+        return ClosedTabInfo(tab: tab, floatingPlacement: placement)
+    }
+
+    /// Picks the page advertised at a nearby edge while the closing page is still present.
+    private func spatialReplacement(for tab: Tab) -> Tab.ID? {
+        guard let space = tab.space,
+              let window = windowSync.findWindowState(for: space),
+              window.activeTabID(for: space.id) == tab.id,
+              let table = window.islandController else { return nil }
+        // The row below takes over, as in every tab strip; then the row above.
+        for direction in [TableDirection.down, .up, .right, .left] {
+            if let neighbor = table.destination(toward: direction) {
+                return neighbor.id
+            }
+        }
+        return nil
+    }
+
     /// Reopens the last closed tab.
     ///
     /// Delegates to UndoRedoManager which tracks recently closed tabs.
     func reopenLastClosedTab() {
         undoRedoManager.reopenLastClosedTab()
-    }
-
-    /// Restores a closed reference tab from undo info.
-    ///
-    /// Called by UndoRedoManager when undoing a reference tab close.
-    ///
-    /// - Parameter info: Information about the closed reference tab to restore.
-    func restoreReferenceTab(_ info: ClosedTabInfo) {
-        referencePaneManager.restoreReferenceTab(info)
     }
 
     /// Duplicates a tab.
@@ -531,8 +529,8 @@ extension TabManager {
         // Detach preview page from the source tab (don't remove WebPage from pool)
         tab.previewPage = nil
 
-        // Pinned/live favorite tabs have stale position and group info — use prepend
-        let isContained = tab.isPinned || tab.isLiveFavorite
+        // Favorites have stale position and group info — use prepend
+        let isContained = tab.isFavorite
         let groupID: UUID? = isContained ? nil : tab.groupID
         let strategy: TabPositioner.InsertionStrategy = isContained ? .prepend : .afterActive
 
@@ -540,7 +538,6 @@ extension TabManager {
         let activeTabID = activeWindowState?.activeTabID
         let insertion = insertionPosition(
             in: targetSpace,
-            isPinned: false,
             groupID: groupID,
             strategy: strategy,
             activeTabID: activeTabID,

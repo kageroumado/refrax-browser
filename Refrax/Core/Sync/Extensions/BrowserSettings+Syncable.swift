@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension BrowserSettings: Syncable {
-    nonisolated static var ckRecordType: String { "BrowserSettings" }
+    nonisolated static var ckRecordType: String {
+        "BrowserSettings"
+    }
 
     /// Well-known record name for the singleton BrowserSettings record.
     ///
@@ -24,15 +26,12 @@ extension BrowserSettings: Syncable {
 
         record["customWindowBackgroundColorHex"] = customWindowBackgroundColorHex as NSString?
         record["windowBackgroundMixAmount"] = windowBackgroundMixAmount as NSNumber
+        record["lightThickness"] = lightThickness as NSNumber
         record["windowBackgroundMixModeRawValue"] = windowBackgroundMixModeRawValue as NSString
         record["enableSpaceWindowColoring"] = enableSpaceWindowColoring as NSNumber
         record["enableWebsiteWindowColoring"] = enableWebsiteWindowColoring as NSNumber
         record["windowBackgroundFillOpacity"] = windowBackgroundFillOpacity as NSNumber
         record["websiteColorUseSolidBlend"] = websiteColorUseSolidBlend as NSNumber
-
-        // MARK: - Appearance: Sidebar
-
-        record["defaultSidebarModeRaw"] = defaultSidebarModeRaw as NSString
 
         // MARK: - Appearance: Page
 
@@ -40,10 +39,6 @@ extension BrowserSettings: Syncable {
         record["pageFilterRaw"] = pageFilterRaw as NSString
         record["preserveMediaInFilter"] = preserveMediaInFilter as NSNumber
         record["backgroundRemovalModeRaw"] = backgroundRemovalModeRaw as NSString
-
-        // MARK: - Tabs: Previews
-
-        record["showTabPreviews"] = showTabPreviews as NSNumber
 
         // MARK: - Tabs: Archive
 
@@ -100,14 +95,6 @@ extension BrowserSettings: Syncable {
 
         record["defaultLockTimeout"] = defaultLockTimeout as NSNumber
 
-        // MARK: - Getting Started
-
-        record["showSidebarHints"] = showSidebarHints as NSNumber
-
-        // MARK: - Browsing: Gestures
-
-        record["spaceSwipeGestureEnabled"] = spaceSwipeGestureEnabled as NSNumber
-
         // MARK: - Browsing: Link Previews
 
         record["shiftClickLinkPreviewEnabled"] = shiftClickLinkPreviewEnabled as NSNumber
@@ -153,18 +140,6 @@ extension BrowserSettings: Syncable {
         record["ytdlpEnabled"] = ytdlpEnabled as NSNumber
         record["ytdlpUseCookies"] = ytdlpUseCookies as NSNumber
         record["ytdlpDeleteAfterPhotosImport"] = ytdlpDeleteAfterPhotosImport as NSNumber
-
-        // MARK: - Widgets: Calendar
-
-        record["showCalendarWidget"] = showCalendarWidget as NSNumber
-        record["calendarLookAheadHours"] = calendarLookAheadHours as NSNumber
-        record["calendarAutoExpandOnImminent"] = calendarAutoExpandOnImminent as NSNumber
-        record["enabledCalendarIDsJSON"] = enabledCalendarIDsJSON as NSString
-
-        // MARK: - Widgets: Speed Reader
-
-        record["speedReaderWPM"] = speedReaderWPM as NSNumber
-        record["speedReaderResumePositionsJSON"] = speedReaderResumePositionsJSON as NSString
 
         // MARK: - Advanced: JavaScript
 
@@ -237,6 +212,7 @@ extension BrowserSettings: Syncable {
         settings.customWindowBackgroundColorHex = record["customWindowBackgroundColorHex"] as? String
         settings.windowBackgroundMixAmount = (record["windowBackgroundMixAmount"] as? Double)
             ?? Defaults.windowBackgroundMixAmount
+        settings.lightThickness = (record["lightThickness"] as? Double) ?? Defaults.lightThickness
         settings.windowBackgroundMixModeRawValue = record["windowBackgroundMixModeRawValue"] as? String
             ?? Defaults.windowBackgroundMixMode.rawValue
         settings.enableSpaceWindowColoring = (record["enableSpaceWindowColoring"] as? Bool) ?? false
@@ -244,11 +220,6 @@ extension BrowserSettings: Syncable {
         settings.windowBackgroundFillOpacity = (record["windowBackgroundFillOpacity"] as? Double)
             ?? Defaults.windowBackgroundFillOpacity
         settings.websiteColorUseSolidBlend = (record["websiteColorUseSolidBlend"] as? Bool) ?? true
-
-        // MARK: - Appearance: Sidebar
-
-        settings.defaultSidebarModeRaw = record["defaultSidebarModeRaw"] as? String
-            ?? SidebarMode.compact.rawValue
 
         // MARK: - Appearance: Page
 
@@ -259,10 +230,6 @@ extension BrowserSettings: Syncable {
         settings.preserveMediaInFilter = (record["preserveMediaInFilter"] as? Bool) ?? true
         settings.backgroundRemovalModeRaw = record["backgroundRemovalModeRaw"] as? String
             ?? BackgroundRemovalMode.none.rawValue
-
-        // MARK: - Tabs: Previews
-
-        settings.showTabPreviews = (record["showTabPreviews"] as? Bool) ?? false
 
         // MARK: - Tabs: Archive
 
@@ -319,14 +286,6 @@ extension BrowserSettings: Syncable {
 
         settings.defaultLockTimeout = (record["defaultLockTimeout"] as? Int) ?? 300
 
-        // MARK: - Getting Started
-
-        settings.showSidebarHints = (record["showSidebarHints"] as? Bool) ?? true
-
-        // MARK: - Browsing: Gestures
-
-        settings.spaceSwipeGestureEnabled = (record["spaceSwipeGestureEnabled"] as? Bool) ?? true
-
         // MARK: - Browsing: Link Previews
 
         settings.shiftClickLinkPreviewEnabled = (record["shiftClickLinkPreviewEnabled"] as? Bool) ?? true
@@ -374,18 +333,6 @@ extension BrowserSettings: Syncable {
         settings.ytdlpEnabled = (record["ytdlpEnabled"] as? Bool) ?? true
         settings.ytdlpUseCookies = (record["ytdlpUseCookies"] as? Bool) ?? true
         settings.ytdlpDeleteAfterPhotosImport = (record["ytdlpDeleteAfterPhotosImport"] as? Bool) ?? false
-
-        // MARK: - Widgets: Calendar
-
-        settings.showCalendarWidget = (record["showCalendarWidget"] as? Bool) ?? false
-        settings.calendarLookAheadHours = (record["calendarLookAheadHours"] as? Int) ?? 24
-        settings.calendarAutoExpandOnImminent = (record["calendarAutoExpandOnImminent"] as? Bool) ?? true
-        settings.enabledCalendarIDsJSON = record["enabledCalendarIDsJSON"] as? String ?? "[]"
-
-        // MARK: - Widgets: Speed Reader
-
-        settings.speedReaderWPM = (record["speedReaderWPM"] as? Int) ?? 250
-        settings.speedReaderResumePositionsJSON = record["speedReaderResumePositionsJSON"] as? String ?? "{}"
 
         // MARK: - Advanced: JavaScript
 

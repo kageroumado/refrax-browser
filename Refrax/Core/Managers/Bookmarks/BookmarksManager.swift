@@ -6,7 +6,7 @@ import SwiftUI
 /// Manages bookmarks, folders, and favorites display across the application.
 ///
 /// `BookmarksManager` is the central coordinator for Refrax's bookmarking system,
-/// handling everything from creating bookmarks to managing the favorites grid in the sidebar.
+/// handling everything from creating bookmarks to managing the favorites grid.
 ///
 /// ## Core Responsibilities
 ///
@@ -57,7 +57,7 @@ final class BookmarksManager {
 
     // MARK: - State
 
-    /// Cached list of favorite items for sidebar display.
+    /// Cached list of favorite items for the favorites grid and the island.
     ///
     /// This cache is rebuilt when favorites change and includes live favorite tabs
     /// with their associated Tab instances from BrowserState.
@@ -71,7 +71,7 @@ final class BookmarksManager {
     @ObservationIgnored var _favoritesCacheKey: FavoritesCacheKey?
 
     /// Version counter that increments on any favorites change (add/remove/reorder).
-    /// Used by Sidebar to detect changes that don't affect count.
+    /// Used by views to detect changes that don't affect count.
     var favoritesVersion: Int = 0
 
     /// Flag to coalesce multiple refresh requests into a single refresh.

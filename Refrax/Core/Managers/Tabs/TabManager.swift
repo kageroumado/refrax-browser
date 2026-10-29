@@ -5,61 +5,60 @@ import SwiftData
 import SwiftUI
 import WebKit
 
-/// Coordinates all tab operations and browsing sessions across the application.
-///
-/// `TabManager` is the single entry point for all tab-related operations in Refrax.
-/// It owns specialized sub-managers and provides a unified API for:
-///
-/// - Tab lifecycle (create, close, duplicate, restore)
-/// - Tab activation and navigation
-/// - Tab organization (pin, move, reorder)
-/// - Tab groups (create, nest, collapse)
-/// - Reference pane management
-/// - Tab/page transfers between areas
-/// - Multi-page layouts
-/// - Cross-collection operations (tabs ↔ favorites)
-/// - Batch operations with unified undo
-///
-/// ## Multi-Window Architecture
-///
-/// TabManager supports multiple windows via WindowManager. Each window has independent
-/// navigation state stored in its WindowState:
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────┐
-/// │ TabManager (app-global, singleton)                      │
-/// │   state.spaces: [Space]     ← shared across windows     │
-/// │   state.tabIndex            ← O(1) tab lookup           │
-/// │   pagePool               ← shared session cache      │
-/// │   windowManager             ← access to all windows     │
-/// ├─────────────────────────────────────────────────────────┤
-/// │ Window A (WindowState)     │ Window B (WindowState)     │
-/// │   activeSpaceID: X         │   activeSpaceID: Y         │
-/// │   activeTabID: 1           │   activeTabID: 3           │
-/// └─────────────────────────────────────────────────────────┘
-/// ```
-///
-/// ## Window Access
-///
-/// Operations that affect window state access windows via `windowManager`:
-/// ```swift
-/// // Get active window
-/// let windowState = windowManager.activeWindowController?.windowState
-///
-/// // Iterate all windows showing a space
-/// for controller in windowManager.windowControllers {
-///     if controller.windowState.activeSpaceID == space.id { ... }
-/// }
-/// ```
-///
-/// ## Sub-Manager Access
-///
-/// Sub-managers are injected into the SwiftUI environment for direct access in views:
-/// ```swift
-/// @Environment(WebPagePool.self) var pagePool
-/// @Environment(SpaceManager.self) var spaceManager
-/// @Environment(TabGroupManager.self) var groupManager
-/// @Environment(ReferencePaneManager.self) var referencePaneManager
+// Coordinates all tab operations and browsing sessions across the application.
+//
+// `TabManager` is the single entry point for all tab-related operations in Refrax.
+// It owns specialized sub-managers and provides a unified API for:
+//
+// - Tab lifecycle (create, close, duplicate, restore)
+// - Tab activation and navigation
+// - Tab organization (pin, move, reorder)
+// - Tab groups (create, nest, collapse)
+// - Tab/page transfers between areas
+// - Multi-page layouts
+// - Cross-collection operations (tabs ↔ favorites)
+// - Batch operations with unified undo
+//
+// ## Multi-Window Architecture
+//
+// TabManager supports multiple windows via WindowManager. Each window has independent
+// navigation state stored in its WindowState:
+//
+// ```
+// ┌─────────────────────────────────────────────────────────┐
+// │ TabManager (app-global, singleton)                      │
+// │   state.spaces: [Space]     ← shared across windows     │
+// │   state.tabIndex            ← O(1) tab lookup           │
+// │   pagePool               ← shared session cache      │
+// │   windowManager             ← access to all windows     │
+// ├─────────────────────────────────────────────────────────┤
+// │ Window A (WindowState)     │ Window B (WindowState)     │
+// │   activeSpaceID: X         │   activeSpaceID: Y         │
+// │   activeTabID: 1           │   activeTabID: 3           │
+// └─────────────────────────────────────────────────────────┘
+// ```
+//
+// ## Window Access
+//
+// Operations that affect window state access windows via `windowManager`:
+// ```swift
+// // Get active window
+// let windowState = windowManager.activeWindowController?.windowState
+//
+// // Iterate all windows showing a space
+// for controller in windowManager.windowControllers {
+//     if controller.windowState.activeSpaceID == space.id { ... }
+// }
+// ```
+//
+// ## Sub-Manager Access
+//
+// Sub-managers are injected into the SwiftUI environment for direct access in views:
+// ```swift
+// @Environment(WebPagePool.self) var pagePool
+// @Environment(SpaceManager.self) var spaceManager
+// @Environment(TabGroupManager.self) var groupManager
+
 ///
 /// // Then use directly
 /// pagePool.clearInactivePages()
@@ -145,11 +144,6 @@ final class TabManager {
     /// Injected at initialization. Accessible via `@Environment(TabGroupManager.self)`.
     unowned let groupManager: TabGroupManager
 
-    /// Manages reference pane operations.
-    ///
-    /// Injected at initialization. Accessible via `@Environment(ReferencePaneManager.self)`.
-    unowned let referencePaneManager: ReferencePaneManager
-
     /// Evaluates URL routing rules for navigation decisions.
     ///
     /// Lazily initialized on first access.
@@ -201,9 +195,6 @@ final class TabManager {
     }
 
     // MARK: - Constants
-
-    /// Maximum number of tabs allowed in the reference pane.
-    static let maxReferenceTabs = 4
 
     /// Maximum length for custom tab names.
     static let maxCustomNameLength = 20
@@ -342,7 +333,7 @@ final class TabManager {
 
     /// Creates a TabManager with all dependencies.
     ///
-    /// All sub-managers (pagePool, spaceManager, groupManager, referencePaneManager)
+    /// All sub-managers (pagePool, spaceManager, groupManager)
     /// are created externally and passed in. This enables proper dependency injection
     /// and allows them to be accessed directly via `@Environment`.
     ///
@@ -352,13 +343,11 @@ final class TabManager {
         pagePool: WebPagePool,
         spaceManager: SpaceManager,
         groupManager: TabGroupManager,
-        referencePaneManager: ReferencePaneManager,
     ) {
         self.state = state
         self.pagePool = pagePool
         self.spaceManager = spaceManager
         self.groupManager = groupManager
-        self.referencePaneManager = referencePaneManager
 
         Logger.info("TabManager initialized", category: Logger.tabs)
     }
@@ -371,21 +360,18 @@ extension TabManager {
     ///
     /// - Parameters:
     ///   - space: The space to insert into.
-    ///   - isPinned: Whether the tab will be pinned.
     ///   - groupID: Optional group to insert into.
     ///   - strategy: The insertion strategy to use. Defaults to `.prepend`.
     ///   - activeTabID: The active tab ID (used for `.afterActive` strategy).
     /// - Returns: A tuple containing the hierarchical position value and the array index.
     func insertionPosition(
         in space: Space,
-        isPinned: Bool,
         groupID: UUID? = nil,
         strategy: TabPositioner.InsertionStrategy = .prepend,
         activeTabID: UUID? = nil,
     ) -> (position: Int, index: Int) {
         positioner.insertionPosition(
             for: space,
-            isPinned: isPinned,
             groupID: groupID,
             strategy: strategy,
             activeTabID: activeTabID,
@@ -393,6 +379,10 @@ extension TabManager {
     }
 
     func closeTabsInBatch(_ tabs: [Tab], undoActionName: String, bypassArchive: Bool = false) {
+        for favorite in tabs where favorite.isFavorite {
+            returnFavoriteHome(favorite)
+        }
+        let tabs = tabs.filter { !$0.isFavorite }
         guard !tabs.isEmpty else { return }
 
         // Separate tabs that should be archived vs permanently closed
@@ -434,20 +424,14 @@ extension TabManager {
             // Build per-space group indexes for O(1) lookups
             var groupIndexBySpace: [Space.ID: [UUID: TabGroup]] = [:]
 
-            // Track removed IDs by space for incremental update
-            var removedIDsBySpace: [Space.ID: Set<UUID>] = [:]
-
             for tab in tabsToClose {
                 guard let space = tab.space,
                       let index = space.tabs.firstIndex(of: tab) else {
                     continue
                 }
 
-                let closedInfo = ClosedTabInfo(tab: tab)
+                let closedInfo = closedTabInfo(for: tab)
                 closedInfos.append(closedInfo)
-
-                // Track for incremental update
-                removedIDsBySpace[space.id, default: []].insert(tab.id)
 
                 pagePool.removePages(for: tab)
 
@@ -471,18 +455,6 @@ extension TabManager {
                 effects.tabsToRemoveFromIndex.append(tab)
                 effects.didChangeList = true
                 effects.spaceIDsToSyncActiveTab.insert(space.id)
-            }
-
-            // Populate incremental removal tracking
-            // For single-space batch (common case), enable incremental update
-            if removedIDsBySpace.count == 1,
-               let (spaceID, removedIDs) = removedIDsBySpace.first {
-                effects.batchRemovedIDs = removedIDs
-                effects.removalContext = TabMutationPipeline.RemovalContext(
-                    spaceID: spaceID,
-                    wasPinned: false, // Mixed in batch, but doesn't affect removal
-                    wasInGroupID: nil,
-                )
             }
         }
 
@@ -527,10 +499,6 @@ extension TabManager {
             return
         }
 
-        // Capture state before removal for incremental tracking
-        let wasPinned = tab.isPinned
-        let wasInGroupID = tab.groupID
-
         // Get index in mainTabs for proper adjacency fallback
         let mainTabIndex = space.mainTabs.firstIndex(of: tab) ?? 0
 
@@ -543,14 +511,6 @@ extension TabManager {
             space.tabs.remove(at: index)
             state.modelContext.delete(tab)
             effects.tabRemoved(tab, from: space, mainTabIndex: mainTabIndex)
-
-            // Populate incremental removal tracking for LayoutManager
-            effects.removedItemID = tab.id
-            effects.removalContext = TabMutationPipeline.RemovalContext(
-                spaceID: space.id,
-                wasPinned: wasPinned,
-                wasInGroupID: wasInGroupID,
-            )
         }
     }
 
@@ -583,136 +543,6 @@ extension TabManager {
         config.panePositions[firstPage.id] = firstPosition
         config.panePositions[newPage.id] = position
         tab.layoutConfiguration = config
-    }
-
-    func collectTabsRecursively(from groupID: UUID, in space: Space, into tabs: inout [Tab]) {
-        let groupTabs = space.tabs.filter { $0.groupID == groupID }
-        tabs.append(contentsOf: groupTabs)
-
-        let nestedGroups = space.groups.filter { $0.parentGroupID == groupID }
-        for nested in nestedGroups {
-            collectTabsRecursively(from: nested.id, in: space, into: &tabs)
-        }
-    }
-
-    func updatePinStateForCollection(_ tab: Tab, collection: SidebarCollection) {
-        if collection == .pinned, !tab.isPinned {
-            // Capture origin URL for navigation containment
-            tab.originURL = tab.activePage.url
-            tab.isPinned = true
-        } else if collection == .normal, tab.isPinned {
-            // Clear origin URL when unpinning
-            tab.originURL = nil
-            tab.isPinned = false
-        }
-    }
-
-    func updateGroupMembership(for tab: Tab, newGroupID: UUID?) {
-        guard newGroupID != tab.groupID else { return }
-
-        if tab.groupID != nil {
-            groupManager.removeTabFromGroup(tab, skipReordering: true)
-        }
-
-        if let newGroupID,
-           let space = tab.space,
-           let newGroup = space.groups.first(where: { $0.id == newGroupID }) {
-            groupManager.moveTabToGroup(tab, group: newGroup, skipReordering: true)
-        }
-    }
-
-    func updateGroupPinState(_ group: TabGroup, for collection: SidebarCollection) {
-        if collection == .pinned, !group.isPinned {
-            setGroupPinStateRecursively(group, isPinned: true)
-        } else if collection == .normal, group.isPinned {
-            setGroupPinStateRecursively(group, isPinned: false)
-        }
-    }
-
-    func findEffectiveTargetIndex(
-        for group: TabGroup,
-        localTarget: Int,
-        items: [TabListItem],
-        layoutManager: Sidebar.LayoutManager,
-    ) -> Int {
-        var effectiveIndex = localTarget
-        let descendants = layoutManager.getAllDescendantIDs(of: group.id)
-
-        while effectiveIndex < items.count,
-              descendants.contains(items[effectiveIndex].id) {
-            effectiveIndex += 1
-        }
-
-        return min(effectiveIndex, items.count - 1)
-    }
-
-    func calculateNewPosition(
-        for itemID: UUID,
-        targetItem: TabListItem,
-        targetMetadata: Sidebar.LayoutManager.ItemMetadata,
-        items: [TabListItem],
-        layoutManager: Sidebar.LayoutManager,
-        movingDown: Bool,
-    ) -> Int {
-        let siblings = items.compactMap { item -> (id: UUID, position: Int)? in
-            guard item.id != itemID,
-                  let metadata = layoutManager.metadata[item.id],
-                  metadata.parentGroupID == targetMetadata.parentGroupID,
-                  metadata.nestingLevel == targetMetadata.nestingLevel else {
-                return nil
-            }
-            return (item.id, item.position)
-        }.sorted { $0.position < $1.position }
-
-        guard let targetSiblingIndex = siblings.firstIndex(where: { $0.id == targetItem.id }) else {
-            return targetItem.position
-        }
-
-        let multiplier = multiplier(forLevel: targetMetadata.nestingLevel)
-
-        if movingDown {
-            if targetSiblingIndex >= siblings.count - 1 {
-                return siblings[targetSiblingIndex].position + multiplier
-            } else {
-                let targetPos = siblings[targetSiblingIndex].position
-                let nextPos = siblings[targetSiblingIndex + 1].position
-                return nextPos - targetPos > 1 ? (targetPos + nextPos) / 2 : targetPos + 1
-            }
-        } else {
-            if targetSiblingIndex == 0 {
-                return max(1, siblings[0].position - multiplier)
-            } else {
-                let prevPos = siblings[targetSiblingIndex - 1].position
-                let targetPos = siblings[targetSiblingIndex].position
-                return targetPos - prevPos > 1 ? (prevPos + targetPos) / 2 : targetPos - 1
-            }
-        }
-    }
-
-    func multiplier(forLevel level: Int) -> Int {
-        positioner.multiplier(forLevel: level)
-    }
-
-    /// Recursively sets the pinned state for a group and all its contents.
-    ///
-    /// Updates the group's `isPinned` state along with all tabs directly in the group
-    /// and all nested groups (and their tabs) recursively.
-    ///
-    /// - Parameters:
-    ///   - group: The group to update.
-    ///   - isPinned: The new pinned state.
-    func setGroupPinStateRecursively(_ group: TabGroup, isPinned: Bool) {
-        guard let space = group.space else { return }
-
-        group.isPinned = isPinned
-
-        for tab in space.tabs where tab.groupID == group.id {
-            tab.isPinned = isPinned
-        }
-
-        for nestedGroup in space.groups where nestedGroup.parentGroupID == group.id {
-            setGroupPinStateRecursively(nestedGroup, isPinned: isPinned)
-        }
     }
 
     // MARK: - Popup Relationship Management

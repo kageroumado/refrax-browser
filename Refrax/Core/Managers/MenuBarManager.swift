@@ -9,7 +9,7 @@ import AppKit
 /// - `MenuBarManager+AppMenu.swift`: App menu + preferences action.
 /// - `MenuBarManager+FileMenu.swift`: File menu + save/export/print actions.
 /// - `MenuBarManager+EditMenu.swift`: Edit menu + browser undo/redo + find.
-/// - `MenuBarManager+ViewMenu.swift`: View menu + tab/zoom/sidebar actions.
+/// - `MenuBarManager+ViewMenu.swift`: View menu + tab/zoom/island actions.
 /// - `MenuBarManager+HistoryMenu.swift`: History menu + recently closed actions.
 /// - `MenuBarManager+BookmarksMenu.swift`: Bookmarks menu actions.
 /// - `MenuBarManager+DevelopMenu.swift`: Develop menu actions + dynamic titles.
@@ -48,14 +48,32 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
            let windowController = keyWindow.windowController as? RefraxWindowController {
             return windowController
         }
-        // Fall back to the last active browser window (e.g., when Web Inspector is focused)
-        return windowManager.lastActiveBrowserWindowController
+        // Resolve the last browser or an open window that has yet to become key.
+        return windowManager.activeWindowController
+    }
+
+    /// The key or main window when neither it nor any window it is attached to (as a sheet
+    /// or child) is a browser window.
+    var focusedWindowOutsideBrowser: NSWindow? {
+        guard let window = focusedWindow() else { return nil }
+        var candidate: NSWindow? = window
+        while let current = candidate {
+            if current.windowController is RefraxWindowController {
+                return nil
+            }
+            candidate = current.sheetParent ?? current.parent
+        }
+        return window
     }
 
     // MARK: - Initialization
 
     /// The window menu actions target first: the key window, else the main window.
     private let focusedWindow: () -> NSWindow?
+
+    var focusedUndoManager: UndoManager? {
+        focusedWindow()?.firstResponder?.undoManager
+    }
 
     init(
         windowManager: WindowManager,

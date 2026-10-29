@@ -288,7 +288,7 @@ either direction.
 Declared in Info.plist; the browser hides or disables features an engine doesn't declare.
 `javaScriptEvaluation`, `findInPage`, `zoom`, `snapshots`, `devTools`, `downloads`,
 `contentBlocking`, `userScripts`, `webExtensions`, `pictureInPicture`, `mediaCapture`,
-`readerMode`, `agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
+`agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
 
 `notifications`: Refrax answers `permission` requests of kind `notifications` from its per-origin
 store, pushes the `notifications` policy, and delivers `notificationShown` (page or engine event)
@@ -322,5 +322,4 @@ launched from the frontmost app; otherwise they are skipped.
 ## 8. Reference implementations
 
 - **System WebKit**: built into Refrax (in-process).
-- **Chromium (CEF)**: `Engines/Chromium/` — in-process interim engine, `Scripts/build-chromium-engine.sh`.
-- **Chromium (out-of-process host)**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.
+- **Chromium**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.

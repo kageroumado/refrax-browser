@@ -18,12 +18,10 @@ enum SuggestionType: Hashable, Sendable {
     /// - Parameter tabID: The unique identifier of the open tab.
     case openTab(tabID: UUID)
 
-    /// A reference pane tab to switch to.
+    /// An archived tab to restore to its space and open.
     ///
-    /// When selected, opens the reference pane (if closed) and activates the tab.
-    ///
-    /// - Parameter tabID: The unique identifier of the reference tab.
-    case referenceTab(tabID: UUID)
+    /// - Parameter tabID: The unique identifier of the archived tab.
+    case archivedTab(tabID: UUID)
 
     /// A search engine to switch to before searching.
     ///
@@ -69,6 +67,11 @@ enum SuggestionType: Hashable, Sendable {
     ///
     /// - Parameter role: Whether the device is the default gateway or a Bonjour-advertised service.
     case localDevice(LocalDeviceRole)
+
+    /// One of the tour's tutorial pages, offered first while a tour step asks for a page.
+    ///
+    /// When selected, opens the page as a tab of its own, like ``url``.
+    case tutorialPage(FloatingTabsTutorial.Page)
 }
 
 /// What a local network device is to the user.
@@ -96,6 +99,38 @@ nonisolated enum AppAction: Hashable, Sendable {
 
     /// Open the Local Devices window.
     case openLocalDevices
+
+    /// Show or hide the floating tabs in this window.
+    case toggleTabCanvas
+    case favoriteCurrentPage
+    case returnFromLook
+    case keepPartVisible
+    /// Mute or unmute the current tab.
+    case setCurrentTabMuted(Bool)
+    /// Mute every other tab that plays sound.
+    case muteOtherTabs
+    /// Move the current page to the space with this identifier.
+    case moveCurrentTabToSpace(UUID)
+    /// Move the current page into a new window.
+    case moveCurrentTabToNewWindow
+    /// Dock the current page to a side of the window.
+    case dockCurrentPage(FloatingDockEdge)
+    /// Return the page docked to a side to its floating place.
+    case undockPage(FloatingDockEdge)
+    /// Open New Space beside the island's space picker.
+    case newSpace
+    /// Move around the table or reshape the current slab.
+    case table(TableCommand)
+    /// Copy the current page's address, or its Markdown link.
+    case copyCurrentAddress(asMarkdown: Bool)
+    /// Download the PDF or image the current page shows.
+    case downloadCurrentPage
+    /// Save the current page to a file in a chosen format.
+    case saveCurrentPageAs
+    /// Open Settings at Appearance: accent color, theme.
+    case openAppearanceSettings
+    /// List this space's open tabs in the lens.
+    case showOpenTabs
 }
 
 /// Scope of a setting (global or per-site).

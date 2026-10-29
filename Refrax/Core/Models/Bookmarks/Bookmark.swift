@@ -9,13 +9,13 @@ import SwiftUI
 ///
 /// - **Organized**: Placed in hierarchical folders up to 3 levels deep
 /// - **Tagged**: Multiple tags for flexible categorization
-/// - **Favorited**: Displayed as tiles in the sidebar for quick access
+/// - **Favorited**: Displayed as tiles in the favorites grid for quick access
 /// - **Space-Assigned**: Optionally tied to a specific browsing space
-/// - **Offline-Ready**: Downloaded for offline reading (HTML or Reader mode)
+/// - **Offline-Ready**: Downloaded as HTML for offline reading
 ///
 /// ## Favorites System
 ///
-/// When a bookmark is marked as a favorite (`isFavorite = true`), it appears in the sidebar
+/// When a bookmark is marked as a favorite (`isFavorite = true`), it appears in the favorites grid
 /// as a tile. Favorites have two modes:
 ///
 /// - **Shortcut** (`.shortcut`): Clicking navigates the current tab to the URL
@@ -28,10 +28,7 @@ import SwiftUI
 ///
 /// ## Offline Reading
 ///
-/// Bookmarks support two offline modes:
-/// - **Full HTML**: Complete page with styling and images
-/// - **Reader Mode**: Extracted article text only
-///
+/// A bookmark saves the complete page, with styling and images, for offline reading.
 /// Offline content is downloaded asynchronously and stored locally.
 @Model
 final class Bookmark {
@@ -96,7 +93,7 @@ final class Bookmark {
     
     // MARK: - Favorites Display
 
-    /// Whether this bookmark appears in the sidebar favorites grid
+    /// Whether this bookmark appears in the favorites grid
     var isFavorite: Bool
     
     /// Interaction mode when favorited
@@ -145,9 +142,9 @@ final class Bookmark {
     @Relationship(inverse: \BookmarkFolder.bookmarks)
     var folder: BookmarkFolder?
 
-    /// The live favorite tab linked to this bookmark.
+    /// The favorite tab linked to this bookmark; this bookmark's URL is its home.
     ///
-    /// Set when a `.liveFavorite` tab is created for this bookmark.
+    /// Set when the favorite's tab is created, on first need or by favoriting an open tab.
     /// The inverse of ``Tab/linkedBookmark``.
     var linkedTab: Tab?
     
@@ -159,7 +156,7 @@ final class Bookmark {
     ///   - url: The webpage URL to bookmark
     ///   - title: Display title (defaults to URL host if not provided)
     ///   - folder: Optional parent folder
-    ///   - isFavorite: Whether to show in sidebar favorites (default: false)
+    ///   - isFavorite: Whether to show in favorites (default: false)
     ///   - favoriteMode: Interaction mode if favorited (default: .liveFavorite)
     ///   - favoritePosition: Grid position if favorited (default: 0,0)
     ///   - tags: Categorization tags (default: empty)
@@ -259,12 +256,12 @@ final class Bookmark {
     
     /// Whether offline content is available for reading
     var isOfflineAvailable: Bool {
-        offlineStatus == .availableHTML || offlineStatus == .availableReader
+        offlineStatus == .availableHTML
     }
 
     /// Whether offline content is currently being downloaded
     var isDownloadingOffline: Bool {
-        offlineStatus == .downloadingHTML || offlineStatus == .downloadingReader
+        offlineStatus == .downloadingHTML
     }
 
     // MARK: - Modification Methods
@@ -336,13 +333,13 @@ final class Bookmark {
 
 /// Interaction mode for favorited bookmarks.
 ///
-/// Determines what happens when a favorited bookmark is clicked in the sidebar grid.
+/// Determines what happens when a favorited bookmark is clicked in the favorites grid.
 enum FavoriteMode: String, Codable {
-    /// Creates/activates a persistent global tab visible across all spaces.
+    /// A favorite: a tab in every space whose home is this bookmark's URL.
     ///
-    /// Live favorites are actual `Tab` instances stored in `BrowserState.liveFavoriteTabs`.
-    /// They appear in the favorites grid as tiles and when clicked, switch to that tab
-    /// while staying in the current space.
+    /// Its tab (`status == .favorite`) is stored in `BrowserState.favoriteTabs`. It appears
+    /// in the island's favorites column and, when clicked, switches to that tab while
+    /// staying in the current space.
     ///
     /// This is the default mode for favorited bookmarks.
     case liveFavorite
@@ -362,14 +359,8 @@ enum OfflineStatus: String, Codable {
     /// Currently downloading full HTML
     case downloadingHTML
     
-    /// Currently downloading reader mode
-    case downloadingReader
-    
     /// Full HTML available offline
     case availableHTML
-    
-    /// Reader mode available offline
-    case availableReader
     
     /// Download failed
     case failed

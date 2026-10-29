@@ -117,10 +117,6 @@ std::optional<gfx::Rect> PermissionPrompt::GetViewBoundsInScreen() const {
   return std::nullopt;
 }
 
-bool PermissionPrompt::ShouldFinalizeRequestAfterDecided() const {
-  return true;
-}
-
 std::vector<permissions::ElementAnchoredBubbleVariant> PermissionPrompt::GetPromptVariants()
     const {
   return {};

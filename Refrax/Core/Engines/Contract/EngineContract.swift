@@ -98,7 +98,6 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
     static let webExtensions = EngineCapabilities(rawValue: 1 << 8)
     static let pictureInPicture = EngineCapabilities(rawValue: 1 << 9)
     static let mediaCapture = EngineCapabilities(rawValue: 1 << 10)
-    static let readerMode = EngineCapabilities(rawValue: 1 << 11)
     static let agentPerception = EngineCapabilities(rawValue: 1 << 12)
     static let autoFill = EngineCapabilities(rawValue: 1 << 13)
     static let processInfo = EngineCapabilities(rawValue: 1 << 14)
@@ -111,7 +110,7 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
         ("javaScriptEvaluation", .javaScriptEvaluation), ("findInPage", .findInPage), ("zoom", .zoom),
         ("snapshots", .snapshots), ("devTools", .devTools), ("downloads", .downloads),
         ("contentBlocking", .contentBlocking), ("userScripts", .userScripts), ("webExtensions", .webExtensions),
-        ("pictureInPicture", .pictureInPicture), ("mediaCapture", .mediaCapture), ("readerMode", .readerMode),
+        ("pictureInPicture", .pictureInPicture), ("mediaCapture", .mediaCapture),
         ("agentPerception", .agentPerception), ("autoFill", .autoFill), ("processInfo", .processInfo),
         ("rendererControl", .rendererControl), ("notifications", .notifications),
     ]

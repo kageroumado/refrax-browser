@@ -80,10 +80,6 @@
 // only these Objective-C protocols are visible here, never engine classes.
 #import "../../../../Engines/SDK/RFXEngine.h"
 
-// Chromium's NSApplication protocols, adopted by RefraxApplication for the
-// in-process CEF engine.
-#import "../../../../Engines/Chromium/Sources/CrApplication.h"
-
 // Note: MediaPlaybackCore APIs are loaded dynamically at runtime
 // to avoid linker dependencies on private frameworks.
 // See ProcessAudioTapManager.swift for implementation.

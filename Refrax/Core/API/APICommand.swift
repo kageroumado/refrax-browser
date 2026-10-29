@@ -55,12 +55,12 @@ public enum APICommand: Sendable {
     /// - Parameter id: The tab to activate.
     case activateTab(id: UUID)
 
-    /// Pins or unpins a tab.
+    /// Adds a tab to Favorites or removes it.
     ///
     /// - Parameters:
     ///   - id: The tab to modify.
-    ///   - isPinned: New pin state.
-    case setTabPinned(id: UUID, isPinned: Bool)
+    ///   - isFavorite: Whether the tab is a favorite.
+    case setTabFavorite(id: UUID, isFavorite: Bool)
 
     /// Moves a tab to a different position.
     ///
@@ -162,7 +162,7 @@ public extension APICommand {
     var permissionRequirements: PermissionRequirements {
         switch self {
         case .openTab, .closeTab, .closeTabs, .navigate, .reload, .goBack, .goForward,
-             .activateTab, .setTabPinned, .moveTab, .duplicateTab:
+             .activateTab, .setTabFavorite, .moveTab, .duplicateTab:
             .tabsWrite
         case .moveTabToSpace:
             PermissionRequirements(scopes: [.tabsWrite, .spacesWrite])

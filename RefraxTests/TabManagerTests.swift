@@ -29,7 +29,6 @@ struct TabManagerTestEnvironment {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let undoRedoManager: UndoRedoManager
     let tabManager: TabManager
     let windowManager: WindowManager
@@ -94,19 +93,11 @@ struct TabManagerTestEnvironment {
         groupManager.undoRedoManager = undoRedoManager
         groupManager.pagePool = pagePool
 
-        self.referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
-
         self.tabManager = TabManager(
             state: browserState,
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         // Create managers that are implicitly unwrapped on BrowserState
@@ -174,7 +165,7 @@ struct TabManagerTestEnvironment {
     /// Creates a WindowState and associates it with the window manager for testing.
     ///
     /// Also sets `tabManager.testActiveWindowState` and `groupManager.testActiveWindowState`
-    /// so that methods like `selectNextTab()` and `createGroup()` without explicit space
+    /// so that methods like `closeAllTabs()` and `createGroup()` without explicit space
     /// can find the active window state without an actual window controller.
     func makeActiveWindowState(with space: Space? = nil) -> WindowState {
         let windowState = makeWindowState()
@@ -184,7 +175,6 @@ struct TabManagerTestEnvironment {
         #if REFRAX_TESTS
             tabManager.testActiveWindowState = windowState
             groupManager.testActiveWindowState = windowState
-            referencePaneManager.testActiveWindowState = windowState
         #endif
         return windowState
     }
@@ -199,14 +189,12 @@ struct TabManagerTestEnvironment {
         in space: Space,
         for windowState: WindowState,
         groupID: UUID? = nil,
-        isPinned: Bool = false,
         loadImmediately: Bool = false,
     ) -> Refrax.Tab {
         let tab = tabManager.createTab(
             url: url,
             in: space,
             groupID: groupID,
-            isPinned: isPinned,
             makeActive: false,
             loadImmediately: loadImmediately,
         )
@@ -220,8 +208,8 @@ struct TabManagerTestEnvironment {
 @Suite("TabManager Create Operations", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerCreateTests {
-    @Test("Create tab in space with correct position")
-    func createTabInSpace() throws {
+    @Test
+    func `Create tab in space with correct position`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -238,8 +226,8 @@ struct TabManagerCreateTests {
         #expect(windowState.activeTabID == tab.id, "Tab should be active")
     }
 
-    @Test("Create tab sets unread flag when not active")
-    func createTabUnreadWhenNotActive() throws {
+    @Test
+    func `Create tab sets unread flag when not active`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -262,38 +250,8 @@ struct TabManagerCreateTests {
         #expect(backgroundTab.isUnread, "Background tab should be unread")
     }
 
-    @Test("Create pinned tab goes to pinned section")
-    func createPinnedTab() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        // Create normal tabs first
-        let normalTab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://normal.com")),
-            in: space,
-            isPinned: false,
-            makeActive: false,
-        )
-
-        // Create pinned tab
-        let pinnedTab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://pinned.com")),
-            in: space,
-            isPinned: true,
-            makeActive: false,
-        )
-
-        #expect(pinnedTab.isPinned, "Tab should be pinned")
-        #expect(pinnedTab.status == .pinned, "Tab status should be pinned")
-        #expect(!normalTab.isPinned, "Normal tab should not be pinned")
-
-        // Pinned tabs should come before normal tabs in position
-        #expect(pinnedTab.position < normalTab.position, "Pinned tab should have lower position than normal tab")
-    }
-
-    @Test("Create popup tab tracks opener page")
-    func createPopupTabTracksOpener() throws {
+    @Test
+    func `Create popup tab tracks opener page`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -315,8 +273,8 @@ struct TabManagerCreateTests {
         #expect(popup.activePage.openerTabPageID == opener.activePage.id)
     }
 
-    @Test("Create tab in group")
-    func createTabInGroup() throws {
+    @Test
+    func `Create tab in group`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -336,8 +294,8 @@ struct TabManagerCreateTests {
         #expect(group.tabs.contains(where: { $0.id == tab.id }), "Group should contain tab")
     }
 
-    @Test("Create tab with loadImmediately=true loads in background")
-    func createTabLoadImmediately() throws {
+    @Test
+    func `Create tab with loadImmediately=true loads in background`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -362,8 +320,8 @@ struct TabManagerCreateTests {
         #expect(page != nil, "Page should be created for background tab with loadImmediately=true")
     }
 
-    @Test("Create tab with loadImmediately=false does not load")
-    func createTabNoLoad() throws {
+    @Test
+    func `Create tab with loadImmediately=false does not load`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -388,8 +346,8 @@ struct TabManagerCreateTests {
         #expect(page == nil, "Page should not be created for lazy-loaded tab")
     }
 
-    @Test("Create multiple tabs assigns descending positions (prepend behavior)")
-    func createMultipleTabsSequentialPositions() throws {
+    @Test
+    func `Create multiple tabs assigns descending positions (prepend behavior)`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -415,8 +373,8 @@ struct TabManagerCreateTests {
         #expect(tab2.position > tab3.position, "Tab 2 should have higher position than tab 3")
     }
 
-    @Test("Create tab increments list version")
-    func createTabIncrementsListVersion() throws {
+    @Test
+    func `Create tab increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -438,8 +396,8 @@ struct TabManagerCreateTests {
 @Suite("TabManager Close Operations", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerCloseTests {
-    @Test("Close tab removes from space")
-    func closeTabRemovesFromSpace() throws {
+    @Test
+    func `Close tab removes from space`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -459,8 +417,8 @@ struct TabManagerCloseTests {
         #expect(env.browserState.tab(for: tabID) == nil, "Tab should be removed from index")
     }
 
-    @Test("Close tab removes from group")
-    func closeTabRemovesFromGroup() throws {
+    @Test
+    func `Close tab removes from group`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -482,8 +440,8 @@ struct TabManagerCloseTests {
         #expect(!group.tabs.contains(where: { $0.id == tabID }), "Group should not contain closed tab")
     }
 
-    @Test("Close active tab activates adjacent tab")
-    func closeActiveTabActivatesAdjacent() throws {
+    @Test
+    func `Close active tab activates adjacent tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -508,8 +466,8 @@ struct TabManagerCloseTests {
         #expect(windowState.activeTabID == tab1.id, "Tab 1 should become active after closing tab 2")
     }
 
-    @Test("Close non-active tab does not change active tab")
-    func closeNonActiveTabKeepsActive() throws {
+    @Test
+    func `Close non-active tab does not change active tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -533,8 +491,8 @@ struct TabManagerCloseTests {
         #expect(windowState.activeTabID == tab1.id, "Tab 1 should still be active")
     }
 
-    @Test("Close tab registers with undo manager")
-    func closeTabRegistersUndo() throws {
+    @Test
+    func `Close tab registers with undo manager`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -555,8 +513,8 @@ struct TabManagerCloseTests {
         )
     }
 
-    @Test("Close last tab in space leaves space empty")
-    func closeLastTabLeavesSpaceEmpty() throws {
+    @Test
+    func `Close last tab in space leaves space empty`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -573,8 +531,8 @@ struct TabManagerCloseTests {
         #expect(windowState.activeTabID == nil, "No active tab should exist")
     }
 
-    @Test("Close tab increments list version")
-    func closeTabIncrementsListVersion() throws {
+    @Test
+    func `Close tab increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -598,8 +556,8 @@ struct TabManagerCloseTests {
 @Suite("TabManager Batch Close", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerBatchCloseTests {
-    @Test("Batch close removes all tabs")
-    func batchCloseRemovesAllTabs() throws {
+    @Test
+    func `Batch close removes all tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -630,8 +588,8 @@ struct TabManagerBatchCloseTests {
         #expect(space.tabs.isEmpty, "Space should be empty")
     }
 
-    @Test("Batch close activates remaining tab when active is closed")
-    func batchCloseActivatesRemaining() throws {
+    @Test
+    func `Batch close activates remaining tab when active is closed`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -660,8 +618,8 @@ struct TabManagerBatchCloseTests {
         #expect(windowState.activeTabID == survivor.id, "Survivor should become active")
     }
 
-    @Test("Batch close with active tab not included keeps active")
-    func batchCloseKeepsActiveWhenNotIncluded() throws {
+    @Test
+    func `Batch close with active tab not included keeps active`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -688,8 +646,8 @@ struct TabManagerBatchCloseTests {
         #expect(windowState.activeTabID == activeTab.id, "Active tab should remain active")
     }
 
-    @Test("Batch close registers single undo action")
-    func batchCloseRegistersSingleUndo() throws {
+    @Test
+    func `Batch close registers single undo action`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -727,8 +685,8 @@ struct TabManagerBatchCloseTests {
 @Suite("TabManager Duplicate Operations", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerDuplicateTests {
-    @Test("Duplicate tab creates new tab with same URL")
-    func duplicateTabCreatesNewTab() throws {
+    @Test
+    func `Duplicate tab creates new tab with same URL`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -746,8 +704,8 @@ struct TabManagerDuplicateTests {
         #expect(duplicate.space?.id == original.space?.id, "Same space")
     }
 
-    @Test("Duplicate tab preserves favicon")
-    func duplicateTabPreservesFavicon() throws {
+    @Test
+    func `Duplicate tab preserves favicon`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -767,8 +725,8 @@ struct TabManagerDuplicateTests {
         #expect(duplicate.activePage.faviconData == faviconData, "Favicon should be copied")
     }
 
-    @Test("Duplicate tab is marked unread")
-    func duplicateTabIsUnread() throws {
+    @Test
+    func `Duplicate tab is marked unread`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -785,8 +743,8 @@ struct TabManagerDuplicateTests {
         #expect(duplicate.isUnread, "Duplicate should be marked unread")
     }
 
-    @Test("Duplicate tab preserves group membership")
-    func duplicateTabPreservesGroup() throws {
+    @Test
+    func `Duplicate tab preserves group membership`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -806,8 +764,8 @@ struct TabManagerDuplicateTests {
         #expect(group.tabs.contains(where: { $0.id == duplicate.id }), "Group should contain duplicate")
     }
 
-    @Test("Duplicate tab is inserted after original")
-    func duplicateTabInsertedAfterOriginal() throws {
+    @Test
+    func `Duplicate tab is inserted after original`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -835,24 +793,5 @@ struct TabManagerDuplicateTests {
         let duplicateIndex = try #require(space.tabs.firstIndex(where: { $0.id == duplicate.id }))
 
         #expect(duplicateIndex == originalIndex + 1, "Duplicate should be right after original")
-    }
-
-    @Test("Duplicate pinned tab preserves pinned status")
-    func duplicatePinnedTab() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let pinned = try env.tabManager.createTab(
-            url: #require(URL(string: "https://pinned.com")),
-            in: space,
-            isPinned: true,
-            makeActive: true,
-        )
-
-        let duplicate = env.tabManager.duplicateTab(pinned)
-
-        #expect(duplicate.isPinned, "Duplicate should be pinned")
-        #expect(duplicate.status == .pinned, "Duplicate status should be pinned")
     }
 }

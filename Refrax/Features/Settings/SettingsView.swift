@@ -13,6 +13,7 @@ import SwiftUI
 /// - `SettingsSearchView.swift`: Search section UI.
 /// - `SettingsAdvancedView.swift`: Advanced section UI + JavaScript site sheets.
 struct SettingsView: View {
+    let navigation: SettingsNavigation
     @State private var selectedCategory: SettingsCategory = .general
     @State private var searchText: String = ""
     @State private var highlightedItemId: String?
@@ -32,6 +33,14 @@ struct SettingsView: View {
             )
         }
         .navigationSplitViewStyle(.balanced)
+        // Controls follow Refrax's accent; the sidebar draws its own selection in it.
+        .tint(Color.appAccentColor)
         .frame(minWidth: 750, minHeight: 500)
+        .onChange(of: navigation.requestedCategory, initial: true) { _, category in
+            guard let category else { return }
+            searchText = ""
+            selectedCategory = category
+            navigation.requestedCategory = nil
+        }
     }
 }

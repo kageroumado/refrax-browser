@@ -2,7 +2,9 @@ import CloudKit
 import SwiftData
 
 extension SiteSettings: Syncable {
-    nonisolated static var ckRecordType: String { "SiteSettings" }
+    nonisolated static var ckRecordType: String {
+        "SiteSettings"
+    }
 
     nonisolated func encodeToRecord(_ record: CKRecord) {
         // Primary key
@@ -11,7 +13,6 @@ extension SiteSettings: Syncable {
         // MARK: - Content Settings
 
         record["pageZoom"] = pageZoom as NSNumber
-        record["useReaderWhenAvailable"] = useReaderWhenAvailable as NSNumber
         record["enableContentBlockers"] = enableContentBlockers as NSNumber
         record["allowJavaScript"] = allowJavaScript as NSNumber
         record["badgeDetectionRaw"] = badgeDetectionRaw as NSString
@@ -85,7 +86,7 @@ extension SiteSettings: Syncable {
         // Fetch by domain for upsert.
         let lowercasedDomain = domain.lowercased()
         var descriptor = FetchDescriptor<SiteSettings>(
-            predicate: #Predicate { $0.domain == lowercasedDomain }
+            predicate: #Predicate { $0.domain == lowercasedDomain },
         )
         descriptor.fetchLimit = 1
         let existing = try? context.fetch(descriptor).first
@@ -101,7 +102,6 @@ extension SiteSettings: Syncable {
         // MARK: - Content Settings
 
         siteSettings.pageZoom = (record["pageZoom"] as? Int) ?? 100
-        siteSettings.useReaderWhenAvailable = (record["useReaderWhenAvailable"] as? Bool) ?? false
         siteSettings.enableContentBlockers = (record["enableContentBlockers"] as? Bool) ?? true
         siteSettings.allowJavaScript = (record["allowJavaScript"] as? Bool) ?? true
         siteSettings.badgeDetectionRaw = record["badgeDetectionRaw"] as? String

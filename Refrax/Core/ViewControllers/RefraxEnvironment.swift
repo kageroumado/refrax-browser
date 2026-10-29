@@ -20,7 +20,6 @@ struct RefraxEnvironment {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let archiveManager: TabArchiveManager
     let autoArchiveManager: TabAutoArchiveManager
     let windowManager: WindowManager
@@ -29,19 +28,17 @@ struct RefraxEnvironment {
     let extensionManager: ExtensionManager
     let dialogState: DialogState
     let tabPreviewProvider: TabPreviewProvider
-    let tabPreviewManager: TabPreviewManager
     let downloadManager: DownloadManager
+    let shelfManager: ShelfManager
     let webInspectorManager: WebInspectorManager
     let sharingCoordinator: SharingCoordinator
     let passwordsManager: PasswordsManager
     let commandLensManager: CommandLensManager
     let modifierKeysState: ModifierKeysState
     let tabSwitcherManager: TabSwitcherManager
-    let sidebarManagers: SidebarManagers
-    let cellEnvironment: SidebarCellEnvironment
-    let readerModeManager: ReaderModeManager
+    let tabCanvasManager: TabCanvasManager
+    let mediaControlsManager: MediaControlsManager
     let undoRedoManager: UndoRedoManager
-    let calendarManager: CalendarManager
     let clipboardMonitor: ClipboardMonitor
     let screenshotCoordinator: ScreenshotCoordinator
     let recordingCoordinator: RecordingCoordinator
@@ -56,8 +53,9 @@ struct RefraxEnvironment {
     let humanInterventionManager: HumanInterventionManager
     let customSearchEngineManager: CustomSearchEngineManager
     let appUpdateManager: AppUpdateManager
-    let guidedTourManager: GuidedTourManager
+    let floatingTourManager: FloatingTourManager
     let engineRegistry: EngineRegistry
+    let islandController: IslandController
 }
 
 /// A view modifier that injects all Refrax environment dependencies.
@@ -78,7 +76,6 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.pagePool)
             .environment(environment.spaceManager)
             .environment(environment.groupManager)
-            .environment(environment.referencePaneManager)
             .environment(environment.archiveManager)
             .environment(environment.autoArchiveManager)
             .environment(environment.windowManager)
@@ -86,29 +83,17 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.extensionManager)
             .environment(environment.dialogState)
             .environment(environment.tabPreviewProvider)
-            .environment(environment.tabPreviewManager)
             .environment(environment.downloadManager)
+            .environment(environment.shelfManager)
             .environment(environment.webInspectorManager)
             .environment(environment.sharingCoordinator)
             .environment(environment.passwordsManager)
             .environment(environment.commandLensManager)
             .environment(environment.modifierKeysState)
             .environment(environment.tabSwitcherManager)
-            .environment(environment.sidebarManagers.layoutManager)
-            .environment(environment.sidebarManagers.dragCoordinator)
-            .environment(environment.sidebarManagers.filterManager)
-            .environment(environment.sidebarManagers.selectionManager)
-            .environment(environment.sidebarManagers.mediaControlsManager)
-            .environment(environment.sidebarManagers.shelfManager)
-            .environment(environment.sidebarManagers.transitionCoordinator)
-            .environment(environment.sidebarManagers.middleClickCoordinator)
-            .environment(environment.sidebarManagers.dependencyContainer)
-            .environment(environment.sidebarManagers.frameRegistry)
-            .environment(environment.sidebarManagers.geometryState)
-            .environment(environment.cellEnvironment)
-            .environment(environment.readerModeManager)
+            .environment(environment.tabCanvasManager)
+            .environment(environment.mediaControlsManager)
             .environment(environment.undoRedoManager)
-            .environment(environment.calendarManager)
             .environment(environment.clipboardMonitor)
             .environment(environment.screenshotCoordinator)
             .environment(environment.recordingCoordinator)
@@ -123,8 +108,10 @@ struct RefraxEnvironmentModifier: ViewModifier {
             .environment(environment.humanInterventionManager)
             .environment(environment.customSearchEngineManager)
             .environment(environment.appUpdateManager)
-            .environment(environment.guidedTourManager)
+            .environment(environment.floatingTourManager)
             .environment(environment.engineRegistry)
+            .environment(environment.islandController)
+            .environment(\.refraxEnvironment, environment)
             .preferredColorScheme(environment.settings.theme.colorScheme)
             .tint(environment.settings.customAccentColor?.color)
     }
@@ -135,4 +122,9 @@ extension View {
     func refraxEnvironment(_ environment: RefraxEnvironment) -> some View {
         modifier(RefraxEnvironmentModifier(environment: environment))
     }
+}
+
+extension EnvironmentValues {
+    /// The whole environment, for views that host SwiftUI inside AppKit and must apply it again.
+    @Entry var refraxEnvironment: RefraxEnvironment?
 }

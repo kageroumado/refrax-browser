@@ -107,7 +107,7 @@ final class DownloadManager {
 
     /// When the most recent download entered the completed list.
     ///
-    /// Drives the sidebar downloads indicator for instantly completed
+    /// Drives the downloads indicator for instantly completed
     /// downloads (e.g. PDF HUD saves), which never pass through the
     /// active state that normally makes the indicator appear.
     private(set) var latestCompletionDate: Date?
@@ -708,7 +708,7 @@ final class DownloadManager {
 
         applyColorTagIfNeeded(to: download)
         unpublishFileProgress(for: download.id)
-        // Some transfers finish near-instantly, so the sidebar button may never
+        // Some transfers finish near-instantly, so the downloads indicator may never
         // observe the active state — the completion window keeps it visible.
         latestCompletionDate = Date()
         updateAggregateProgress()
@@ -1404,7 +1404,7 @@ final class DownloadManager {
         }
 
         let ext = fileURL.pathExtension.lowercased()
-        let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "gif", "webp", "tiff", "tif", "bmp", "avif"]
+        let imageExtensions: Set = ["jpg", "jpeg", "png", "heic", "heif", "gif", "webp", "tiff", "tif", "bmp", "avif"]
         let isImage = imageExtensions.contains(ext)
 
         do {

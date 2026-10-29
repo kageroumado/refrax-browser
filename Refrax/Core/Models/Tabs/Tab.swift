@@ -35,16 +35,15 @@ import SwiftData
 ///
 /// ## Tab Status
 ///
-/// Tabs have three organizational states via ``TabStatus``:
+/// Tabs have two organizational states via ``TabStatus``:
 ///
 /// | Status | Description |
 /// |--------|-------------|
 /// | **Regular** | Standard tab in a space, subject to cleanup |
-/// | **Pinned** | Stays at top, never auto-closed |
-/// | **Live Favorite** | Global tab in favorites grid, visible across all spaces |
+/// | **Favorite** | A tab in every space, with a home address, never cleaned up |
 ///
-/// Live favorite tabs are linked to a ``Bookmark`` via ``linkedBookmark`` and
-/// always use global website data storage.
+/// Favorites are linked to a ``Bookmark`` via ``linkedBookmark``, whose URL is their home,
+/// and always use global website data storage.
 ///
 /// ## Organization
 ///
@@ -53,7 +52,6 @@ import SwiftData
 /// | Feature | Purpose |
 /// |---------|---------|
 /// | **Groups** | Color-coded project organization |
-/// | **Reference** | Side panel for persistent reference |
 ///
 /// ## Persistence
 ///
@@ -85,7 +83,7 @@ final class Tab {
     ///
     /// Tabs belong to exactly one space.
     ///
-    /// - Note: Live favorite tabs have `space == nil` since they exist globally.
+    /// - Note: Favorites have `space == nil` since they belong to every space.
     var space: Space?
     
     // MARK: - Content
@@ -115,8 +113,46 @@ final class Tab {
     var layoutConfigurationData: Data? {
         didSet {
             cachedLayoutConfiguration = nil
-            cachedSortedPageIDs = nil // Sort order may have changed
         }
+    }
+
+    /// Serialized ``BoardFrame``: the tab's card placement and the board fields kept with it.
+    /// `nil` until the tab has had a card.
+    var boardFrameData: Data? {
+        didSet {
+            cachedBoard = nil
+            cachedBoardData = nil
+        }
+    }
+
+    /// The board decoded once per value of its data: the layer reads a placement per event.
+    @Transient private var cachedBoard: BoardFrame?
+    @Transient private var cachedBoardData: Data?
+
+    private var board: BoardFrame? {
+        if cachedBoardData != boardFrameData || cachedBoard == nil {
+            cachedBoard = BoardFrame.value(boardFrameData)
+            cachedBoardData = boardFrameData
+        }
+        return cachedBoard
+    }
+
+    /// The tab's preview rectangle. Compact presentation keeps its center and remembers this size.
+    var boardFrame: CGRect? {
+        get { BoardFrame.decode(boardFrameData) }
+        set { boardFrameData = BoardFrame.updating(frame: newValue, isCompact: boardIsCompact, floating: floatingPlacement) }
+    }
+
+    /// Shows the tab as a compact favicon and title on the canvas.
+    var boardIsCompact: Bool {
+        get { BoardFrame.isCompact(boardFrameData) }
+        set { boardFrameData = BoardFrame.updating(frame: boardFrame, isCompact: newValue, floating: floatingPlacement) }
+    }
+
+    /// Position, presentation, and keep-visible choice for the floating tab layer.
+    var floatingPlacement: FloatingTabPlacement? {
+        get { board?.floating }
+        set { boardFrameData = BoardFrame.updating(frame: boardFrame, isCompact: boardIsCompact, floating: newValue) }
     }
 
     /// Cached decoded layout configuration to avoid repeated JSON parsing.
@@ -124,13 +160,6 @@ final class Tab {
     /// Invalidated when ``layoutConfigurationData`` changes.
     @Transient
     private var cachedLayoutConfiguration: LayoutConfiguration??
-
-    /// Cached sorted page IDs to avoid recomputation during Equatable checks.
-    ///
-    /// Invalidated when pages or layout configuration changes.
-    /// This is a performance optimization for TabView's equality comparison.
-    @Transient
-    private var cachedSortedPageIDs: [UUID]?
 
     /// Preview page for link preview popover.
     ///
@@ -158,16 +187,8 @@ final class Tab {
     ///
     /// Determines where the tab appears and its behavior:
     /// - `.regular`: Normal tab in a space, can be in groups
-    /// - `.pinned`: At top of space's tab list, exempt from cleanup
-    /// - `.live`: Global tab in favorites grid, visible across all spaces
+    /// - `.favorite`: A tab in every space with a home address, exempt from cleanup
     var status: TabStatus
-
-    /// Whether this tab appears in the reference pane.
-    ///
-    /// Reference tabs display in a persistent side panel (max 4 per space),
-    /// separate from the main tab list. Useful for documentation or
-    /// reference material while working.
-    var isReferenceTab: Bool
 
     /// Whether this tab has unread content.
     ///
@@ -199,11 +220,10 @@ final class Tab {
     /// The group object (inverse relationship).
     var group: TabGroup?
 
-    /// The bookmark this live tab is linked to.
+    /// The bookmark this favorite is linked to; its URL is the favorite's home.
     ///
-    /// Set for `.liveFavorite` status tabs to maintain bidirectional relationship
-    /// between the favorites grid bookmark and its underlying tab. When the
-    /// bookmark is deleted, this is automatically set to nil.
+    /// Set for `.favorite` tabs to maintain the bidirectional relationship between the
+    /// favorited bookmark and its tab. When the bookmark is deleted, this is set to nil.
     @Relationship(deleteRule: .nullify, inverse: \Bookmark.linkedTab)
     var linkedBookmark: Bookmark?
     
@@ -212,7 +232,6 @@ final class Tab {
     /// Zero-based position in the space's tab list.
     ///
     /// Maintained by ``TabManager`` during reordering operations.
-    /// Pinned and unpinned tabs maintain separate position sequences.
     var position: Int
     
     // MARK: - Timestamps
@@ -237,14 +256,13 @@ final class Tab {
     /// Archive group and is unloaded from memory. After a configurable period
     /// (and the user activating the app), the tab is permanently deleted.
     ///
-    /// - Note: Archived tabs are non-activatable. Clicking shows a restore prompt.
+    /// - Note: Archived tabs are restored from History › Archived or Command Lens ("archived").
     var archivedAt: Date?
 
-    /// The URL this tab was pinned at. Used for navigation containment.
+    /// The home address a pinned tab carried.
     ///
-    /// When a pinned tab navigates within the same domain, this stores the original
-    /// URL so users can return to it. For live favorites, use ``linkedBookmark?.url``
-    /// instead as that represents the bookmark's canonical URL.
+    /// ``FavoriteMigration`` reads it once to give the favorite it becomes a bookmark at
+    /// this address, then clears it. A favorite's home is ``linkedBookmark``'s URL.
     var originURL: URL?
 
     // MARK: - Initialization
@@ -252,20 +270,18 @@ final class Tab {
     /// Creates a new tab with a single page.
     ///
     /// - Parameters:
-    ///   - space: The space to contain this tab. Use `nil` for live favorite tabs.
+    ///   - space: The space to contain this tab. Use `nil` for favorites.
     ///   - url: Initial URL to load. Defaults to `about:blank`.
     ///   - title: Initial page title. Defaults to "New Tab".
     ///   - status: The organizational status. Defaults to `.regular`.
-    ///   - isReferenceTab: Whether to show in reference pane. Defaults to `false`.
     ///   - groupID: Optional group to assign (only valid for `.regular` status).
-    ///   - linkedBookmark: Bookmark this tab is linked to (for `.liveFavorite` status tabs).
+    ///   - linkedBookmark: Bookmark this tab is linked to (for `.favorite` tabs).
     ///   - position: Position in tab list. Defaults to `0`.
     init(
         space: Space?,
         url: URL = .blank,
         title: String = "New Tab",
         status: TabStatus = .regular,
-        isReferenceTab: Bool = false,
         groupID: UUID? = nil,
         linkedBookmark: Bookmark? = nil,
         position: Int = 0,
@@ -276,7 +292,6 @@ final class Tab {
         self.layoutConfigurationData = nil
         self.customName = nil
         self.status = status
-        self.isReferenceTab = isReferenceTab
         self.isUnread = false
         self.unreadFromBadge = false
         self.lastBadgeCount = nil
@@ -312,20 +327,6 @@ final class Tab {
             let rhsPos = config.panePositions[rhs.id] ?? .single
             return lhsPos.sortOrder < rhsPos.sortOrder
         }
-    }
-
-    /// Cached sorted page IDs for efficient equality checks.
-    ///
-    /// This avoids recomputing ``sortedPages`` and mapping to IDs on every
-    /// ``TabView`` equality comparison. The cache is invalidated when pages
-    /// are added or removed.
-    var sortedPageIDs: [UUID] {
-        if let cached = cachedSortedPageIDs {
-            return cached
-        }
-        let ids = sortedPages.map(\.id)
-        cachedSortedPageIDs = ids
-        return ids
     }
 
     /// Gets the page at a specific layout position.
@@ -473,20 +474,14 @@ final class Tab {
 
     // MARK: - Status Convenience Properties
 
-    /// Whether this tab is pinned to the top of its space's tab list.
-    ///
-    /// Pinned tabs sort before regular tabs and are exempt from auto-cleanup.
-    var isPinned: Bool {
-        get { status == .pinned }
-        set { status = newValue ? .pinned : .regular }
+    /// Whether this tab is a favorite: in every space, with a home address.
+    var isFavorite: Bool {
+        status == .favorite
     }
 
-    /// Whether this tab is a global live favorite.
-    ///
-    /// Live favorite tabs appear in the favorites grid across all spaces
-    /// and use global website data storage.
-    var isLiveFavorite: Bool {
-        status == .liveFavorite
+    /// Whether this tab sits in a pinned group.
+    var isInPinnedGroup: Bool {
+        group?.isPinned == true
     }
 
     /// Whether this tab was created as a popup via `window.open()`.
@@ -499,23 +494,14 @@ final class Tab {
         activePage.openerTabPageID != nil
     }
 
-    /// The URL this tab should be contained to for navigation containment.
+    /// The favorite's home address, its linked bookmark's URL; `nil` for regular tabs.
     ///
-    /// Used for Arc-style navigation behavior where pinned tabs and live favorites
-    /// are kept focused on their designated sites. Cross-domain navigations are
-    /// shown in a preview panel instead of navigating the tab.
-    ///
-    /// | Status | Home URL |
-    /// |--------|----------|
-    /// | **Pinned** | ``originURL`` (captured when pinned) |
-    /// | **Live Favorite** | ``linkedBookmark?.url`` |
-    /// | **Regular** | `nil` (no containment) |
+    /// A favorite is kept to its site: cross-domain navigations open in a preview panel
+    /// instead of navigating the tab, and closing it returns it here.
     var homeURL: URL? {
         switch status {
-        case .liveFavorite:
+        case .favorite:
             linkedBookmark?.url
-        case .pinned:
-            originURL
         case .regular:
             nil
         }
@@ -523,8 +509,7 @@ final class Tab {
 
     /// Whether the current URL differs from the home URL.
     ///
-    /// When `true`, a "back to origin" button should be shown to allow
-    /// returning to the original pinned/favorite URL.
+    /// When `true`, Go to Home is offered to return the favorite to its home address.
     ///
     /// Returns `false` for regular tabs or when the current page is blank.
     var hasNavigatedFromHome: Bool {
@@ -573,9 +558,15 @@ final class Tab {
 
         // Compute fresh
         let elapsed = now.timeIntervalSince(baseline)
-        let category: TabAgeCategory = if elapsed >= 43_200 { .old12h } // 12+ hours
-        else if elapsed >= 21_600 { .old6h } // 6-12 hours
-        else { .recent } // < 6 hours
+        let category: TabAgeCategory = if elapsed >= 43_200 {
+            .old12h
+        } // 12+ hours
+        else if elapsed >= 21_600 {
+            .old6h
+        } // 6-12 hours
+        else {
+            .recent
+        } // < 6 hours
 
         cachedAgeCategory = (category, now, baseline)
         return category
@@ -604,7 +595,6 @@ final class Tab {
     func _addPage(_ page: TabPage, at position: PanePosition) {
         page.position = position
         pages.append(page)
-        cachedSortedPageIDs = nil // Invalidate cache
 
         var config = layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
         config.panePositions[page.id] = position
@@ -622,7 +612,6 @@ final class Tab {
     ///   to ensure proper session cleanup and state synchronization.
     func _removePage(_ page: TabPage) {
         pages.removeAll { $0.id == page.id }
-        cachedSortedPageIDs = nil // Invalidate cache
 
         var config = layoutConfiguration
         config?.panePositions.removeValue(forKey: page.id)

@@ -59,8 +59,8 @@ import SwiftUI
 /// - ``BookmarksManager``: Bookmarks, favorites, and Reading List
 /// - ``DownloadManager``: HTTP and BitTorrent downloads with pause/resume
 ///
-/// Each window maintains its own ``WindowState`` for UI-specific state (sidebar width,
-/// inspector visibility) while sharing the same underlying data through the managers.
+/// Each window maintains its own ``WindowState`` for UI-specific state (floating
+/// placements, lens visibility) while sharing the same underlying data through the managers.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Storage
 
@@ -83,7 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let pagePool: WebPagePool
     let spaceManager: SpaceManager
     let groupManager: TabGroupManager
-    let referencePaneManager: ReferencePaneManager
     let archiveManager: TabArchiveManager
     let autoArchiveManager: TabAutoArchiveManager
 
@@ -108,17 +107,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let bookmarksManager: BookmarksManager
     let siteSettingsManager: SiteSettingsManager
     let downloadManager: DownloadManager
+    /// The File Island's shelf, one store shared by every window.
+    let shelfManager = ShelfManager()
     let passwordsManager: PasswordsManager
     let undoRedoManager: UndoRedoManager
     let extensionManager: ExtensionManager
-    let readerModeManager: ReaderModeManager
     let autoConsentManager: AutoConsentManager
     let contentScriptManager: ContentScriptManager
     let keyboardShortcutsManager: KeyboardShortcutsManager
     let processAudioTapManager: ProcessAudioTapManager
     let tabHealthProvider: TabHealthProvider
     let processMemoryMonitor: ProcessMemoryMonitor
-    let calendarManager: CalendarManager
     let clipboardMonitor: ClipboardMonitor
     let pageReminderManager: PageReminderManager
     let favoritePreviewManager: FavoritePreviewManager
@@ -151,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let feedbackManager: FeedbackManager
     let appUpdateManager: AppUpdateManager
 
-    // iCloud Sync
+    /// iCloud Sync
     /// Separate container for sync metadata (CloudKit system fields, history tokens).
     private(set) var syncContainer: ModelContainer?
 
@@ -173,7 +172,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             extensionManager: extensionManager,
             bookmarksManager: bookmarksManager,
             tabManager: tabManager,
-            calendarManager: calendarManager,
             cookieInspectorManager: cookieInspectorManager,
             scheduledTasksManager: scheduledTasksManager,
             archiveManager: archiveManager,
@@ -361,7 +359,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engineRegistry.apply(.scripts(scripts: scripts.map { $0.granting(scriptChannels.channelNames(in: $0.world)) }))
         }
         self.groupManager = TabGroupManager(state: browserState)
-        self.readerModeManager = ReaderModeManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()
         self.contentScriptManager = ContentScriptManager(state: browserState)
         Task { [contentScriptManager, engineRegistry] in
@@ -390,13 +387,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windowManager: windowManager,
             undoRedoManager: undoRedoManager,
         )
-        
-        self.referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
 
         self.activationObserver = AppActivationObserver()
         self.systemSleepObserver = SystemSleepObserver()
@@ -413,7 +403,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         self.bookmarksManager = BookmarksManager(
@@ -426,7 +415,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.processAudioTapManager = ProcessAudioTapManager(tabManager: tabManager)
         self.processMemoryMonitor = ProcessMemoryMonitor(pagePool: pagePool)
         self.tabHealthProvider = TabHealthProvider(tabManager: tabManager, pagePool: pagePool, memoryMonitor: processMemoryMonitor)
-        self.calendarManager = CalendarManager(settings: settings)
         self.clipboardMonitor = ClipboardMonitor(settings: settings)
         self.pageReminderManager = PageReminderManager()
         self.favoritePreviewManager = FavoritePreviewManager(
@@ -471,7 +459,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browserState.downloadManager = downloadManager
         browserState.pagePool = pagePool
         browserState.extensionManager = extensionManager
-        extensionManager.readerModeManager = readerModeManager
         browserState.webInspectorManager = webInspectorManager
         browserState.webPageConfiguration.webExtensionController = extensionManager.defaultController
         
@@ -526,7 +513,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spaceManager: spaceManager,
             pagePool: pagePool,
             browserState: browserState,
-            referencePaneManager: referencePaneManager,
             groupManager: groupManager,
             undoRedoManager: undoRedoManager,
             bookmarksManager: bookmarksManager,
@@ -564,11 +550,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tiered setup pattern: Fire-and-forget tasks at appropriate priorities.
         // This allows the first frame to render without waiting for any setup.
 
-        // Tier 1: Fast setups (~5ms total) - reader mode and auto consent
+        // Tier 1: Fast setups (~5ms total) - auto consent
         Task(priority: .userInitiated) {
-            async let reader: Void = self.readerModeManager.setup()
-            async let consent: Void = self.autoConsentManager.setup()
-            _ = await (reader, consent)
+            await self.autoConsentManager.setup()
         }
 
         // Tier 2: Content blocking (50-200ms) - needed before first navigation
@@ -620,6 +604,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task(priority: .utility) {
             await Aria2Daemon().cleanupStaleDaemon()
         }
+        // The Command Lens reads the suffix list to tell a typed domain from a search
+        Task(name: "Load public suffix list") {
+            await PublicSuffixList.shared.loadIfNeeded()
+        }
 
         #if DEBUG
             // Debug builds skip onboarding so fresh launches (--in-memory
@@ -661,7 +649,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Check if windows were restored by AppKit (RefraxWindowRestoration)
-        // If so, didDecodeRestorableState already applied sidebar/inspector/colors
+        // If so, didDecodeRestorableState already applied frame/placements/colors
         let isFirstLaunch = !windowManager.hasWindows
         if isFirstLaunch {
             prepareForFirstLaunch()
@@ -675,7 +663,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Nothing is sent until a tier is chosen; closing the prompt chooses
     /// ``TelemetryTier/off``.
+    ///
+    /// Debug builds ask only when `REFRAX_DIGOXIN_URL` points them at a test server;
+    /// otherwise their tier stays unchosen and they send nothing.
     private func showTelemetryPromptIfNeeded() {
+        #if DEBUG
+            guard ProcessInfo.processInfo.environment["REFRAX_DIGOXIN_URL"] != nil else { return }
+        #endif
         guard settings.needsTelemetryPrompt else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.telemetryPromptDelay) { [self] in
             guard settings.needsTelemetryPrompt, telemetryPromptWindowController == nil else { return }
@@ -748,7 +742,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Handles app launch when AppKit has restored windows.
     ///
-    /// Window chrome (colors, sidebar width, inspector state) was already applied
+    /// Window chrome (frame, island placement, colors) was already applied
     /// by `didDecodeRestorableState` during window restoration. This method:
     /// 1. Defers to the next run loop iteration (allows first frame to render)
     /// 2. Loads tab data from the database
@@ -936,10 +930,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let files = crashReports.prefix(Self.crashReportLogLimit)
             + [CrashMonitor.previousSessionExceptionLog()].compactMap(\.self)
-        Task(name: "Crash report") { [telemetry, appUpdateManager] in
+        Task(name: "Crash report") { [telemetry] in
             await telemetry.submitCrashReport(files: Array(files))
             CrashMonitor.markReportsSent(crashReports)
-            appUpdateManager.crashReportSent = true
         }
     }
 
@@ -996,12 +989,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let window = controller.window,
            !window.styleMask.contains(.fullScreen) {
             WindowGeometryStore.save(
-                SavedWindowGeometry(
-                    frame: window.frame,
-                    sidebarWidth: controller.windowState.sidebarThickness,
-                    isSidebarCollapsed: controller.windowState.isSidebarCollapsed,
-                    inspectorWidth: controller.windowState.referencePaneDockedWidth,
-                ),
+                SavedWindowGeometry(frame: window.frame),
                 screen: window.screen,
             )
         }
@@ -1051,7 +1039,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Silently installs or updates the `refrax-ctl` helper when `/usr/local/bin`
-    /// is user-writable, and surfaces the sidebar/Settings install affordance
+    /// is user-writable, and surfaces the Settings install affordance
     /// when administrator privileges would be required. Never prompts on its own.
     private func refreshCLIHelperInstall() {
         Task { [browserState] in

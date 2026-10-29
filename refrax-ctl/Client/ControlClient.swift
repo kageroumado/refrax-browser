@@ -3,33 +3,24 @@ import Foundation
 import RefraxProtocol
 
 nonisolated enum ControlClient {
-    private static let debugSocketPath =
-        "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support/website.refrax.browser.debug/ctl.sock"
-    private static let releaseSocketPath =
-        "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support/website.refrax.browser/ctl.sock"
+    /// The app this build of the CLI drives. A debug CLI talks only to the debug app and a
+    /// release CLI only to the release app, so a command meant for a development build can
+    /// never land in someone's real browser profile.
+    #if DEBUG
+        static let bundleID = "website.refrax.browser.debug"
+    #else
+        static let bundleID = "website.refrax.browser"
+    #endif
 
-    /// The control socket to talk to, resolved fresh on every access.
-    ///
-    /// A socket file outlives its server process (the app only unlinks it on
-    /// clean shutdown), so mere existence proves nothing — a stale debug
-    /// ctl.sock would shadow a running release Refrax forever, and every
-    /// invocation would then auto-launch the debug build. Prefer whichever
-    /// socket actually accepts a connection; with neither alive, return the
-    /// release path so the connect attempt and the auto-launch flow agree
-    /// on a target.
-    static var socketPath: String {
-        if isSocketAlive(debugSocketPath) {
-            return debugSocketPath
-        }
-        if isSocketAlive(releaseSocketPath) {
-            return releaseSocketPath
-        }
-        return releaseSocketPath
-    }
+    /// The control socket of ``bundleID``'s app.
+    static let socketPath =
+        "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support/\(bundleID)/ctl.sock"
 
-    /// Whether a control server is currently accepting connections.
+    /// Whether the control server is accepting connections. A socket file outlives its
+    /// server (the app only unlinks it on clean shutdown), so this connects rather than
+    /// checking that the file exists.
     static var isServerReachable: Bool {
-        isSocketAlive(debugSocketPath) || isSocketAlive(releaseSocketPath)
+        isSocketAlive(socketPath)
     }
 
     /// Attempts a connection to a Unix socket and reports success.
@@ -105,42 +96,29 @@ nonisolated enum ControlClient {
         throw lastError
     }
 
-    /// Launches Refrax and waits for the control socket to accept connections.
+    /// Launches ``bundleID``'s app and waits for its control socket to accept connections.
     ///
-    /// Launches the release build first — a developer working against a debug
-    /// build has it running already (its live socket wins in `socketPath`), so
-    /// reaching this point means no server is up and the release app is the
-    /// right thing to start. The debug bundle is only a fallback for machines
-    /// with no installed release build.
-    ///
-    /// - Returns: `true` if a socket becomes available.
+    /// - Returns: `true` if the socket becomes available.
     @discardableResult
     static func tryLaunch() -> Bool {
         printInfo("Refrax is not running. Launching...")
 
-        let bundleIDs = ["website.refrax.browser", "website.refrax.browser.debug"]
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-b", bundleID]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
         var launched = false
-
-        for bundleID in bundleIDs {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            process.arguments = ["-b", bundleID]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-                if process.terminationStatus == 0 {
-                    launched = true
-                    if CLIConfig.verbose {
-                        printInfo("[launch] launched \(bundleID)")
-                    }
-                    break
-                }
-            } catch {
-                continue
+        do {
+            try process.run()
+            process.waitUntilExit()
+            launched = process.terminationStatus == 0
+            if launched, CLIConfig.verbose {
+                printInfo("[launch] launched \(bundleID)")
             }
+        } catch {
+            launched = false
         }
 
         guard launched else {

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A lightweight window controller for ephemeral browsing sessions.
 ///
-/// Glimpse windows provide minimal UI (address bar + navigation only), no sidebar,
+/// Glimpse windows provide minimal UI (an address field with navigation only)
 /// and are designed for quick browsing tasks. They can be opened via:
 /// - Option+Enter from Command Lens
 /// - Option+Click on a link
@@ -17,8 +17,8 @@ import SwiftUI
 ///
 /// ## Architecture
 ///
-/// Uses `ReferencePaneWindow` for consistent styling. The SwiftUI content view
-/// provides an address bar and space transfer button in a toolbar overlay.
+/// Uses `FloatingPageWindow` for consistent styling. The SwiftUI content view
+/// provides an address field and space transfer button in a toolbar overlay.
 ///
 /// ## Lifecycle
 ///
@@ -99,8 +99,8 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
                 ?? tabManager.state.spaces.first,
         )
 
-        // Use the same window class as reference pane
-        let window = ReferencePaneWindow()
+        // Use the same window class as Reflected windows
+        let window = FloatingPageWindow()
         super.init(window: window)
 
         window.delegate = self
@@ -285,8 +285,8 @@ final class GlimpseController: NSWindowController, NSWindowDelegate {
 
     func windowWillResize(_: NSWindow, to frameSize: NSSize) -> NSSize {
         var newSize = frameSize
-        newSize.width = max(newSize.width, ReferencePaneWindow.minimumWidth)
-        newSize.height = max(newSize.height, ReferencePaneWindow.minimumHeight)
+        newSize.width = max(newSize.width, FloatingPageWindow.minimumWidth)
+        newSize.height = max(newSize.height, FloatingPageWindow.minimumHeight)
         return newSize
     }
 }
@@ -429,7 +429,7 @@ private struct GlimpseContentView: View {
 // MARK: - Glimpse Toolbar
 
 /// SwiftUI toolbar for Glimpse windows.
-/// Contains address bar and space transfer button.
+/// Contains the address field and space transfer button.
 private struct GlimpseToolbar: View {
     let glimpseState: GlimpseWindowState
     let onTransferToSpace: (Space?) -> Void
@@ -439,18 +439,6 @@ private struct GlimpseToolbar: View {
         static let trafficLightWidth: CGFloat = 78
         static let spacing: CGFloat = 8
         static let buttonHeight: CGFloat = 24
-    }
-
-    private var addressBarContext: AddressBarContext {
-        AddressBarContext(
-            webPage: glimpseState.webPage,
-            tabPage: glimpseState.tabPage,
-            onOpenLens: {
-                // Glimpse windows don't have a full command lens
-            },
-            isLensVisible: false,
-            onShowFindNavigator: {},
-        )
     }
 
     var body: some View {
@@ -468,9 +456,7 @@ private struct GlimpseToolbar: View {
     }
 
     private var centerContent: some View {
-        AddressBar()
-            .environment(\.addressBarContext, addressBarContext)
-            .environment(\.addressBarIsFloating, true)
+        PageAddressField(webPage: glimpseState.webPage)
             .frame(height: Layout.buttonHeight)
             .frame(minWidth: 150, maxWidth: 400)
             .glassEffect()
@@ -572,7 +558,7 @@ private struct SpaceIcon: View {
         if space.iconName.count == 1, space.iconName.unicodeScalars.first?.properties.isEmoji == true {
             Text(space.iconName)
         } else {
-            Image(systemName: space.iconName)
+            Image(systemName: space.symbolName)
         }
     }
 }

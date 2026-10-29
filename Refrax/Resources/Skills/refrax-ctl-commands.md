@@ -17,26 +17,25 @@ refrax-ctl open URL [--activate] [--space S]            # Open new tab (alias: t
 ```bash
 refrax-ctl tab list [--space S] [--json]      # List tabs
 refrax-ctl tab get ID [--json]                 # Basic tab info
-refrax-ctl tab detail [ID] [--json]            # Extended info (pages, pinned, group, etc.)
+refrax-ctl tab detail [ID] [--json]            # Extended info (pages, favorite, group, etc.)
 refrax-ctl tab open URL [--activate]           # Open new tab
 refrax-ctl tab close ID                        # Close tab
 refrax-ctl tab activate ID                     # Switch to tab
 refrax-ctl tab navigate URL [--tab ID] [--read] [--wait]  # Navigate within tab
-refrax-ctl tab pin ID                          # Toggle pin
+refrax-ctl tab favorite ID                     # Add to or remove from Favorites
 refrax-ctl tab duplicate ID                    # Duplicate tab
 refrax-ctl tab rename ID NAME                  # Set custom name (empty to clear)
 refrax-ctl tab mute ID                         # Toggle media mute
 refrax-ctl tab back [--tab ID] [--page ID]     # Navigate back
 refrax-ctl tab forward [--tab ID] [--page ID]  # Navigate forward
-refrax-ctl tab next                            # Select next tab
-refrax-ctl tab previous                        # Select previous tab
+refrax-ctl tab next                            # Next tab in recency (the Recent list's order)
+refrax-ctl tab previous                        # Previous, more recent tab
 refrax-ctl tab close-others ID                 # Close all other tabs
 refrax-ctl tab reopen                          # Reopen last closed tab
 refrax-ctl tab recently-closed [--json]        # List recently closed tabs
 refrax-ctl tab move ID --space S             # Move to space
 refrax-ctl tab move ID --group GID             # Move to group
 refrax-ctl tab ungroup ID                      # Remove from group
-refrax-ctl tab to-refpane ID                   # Move to reference pane
 refrax-ctl tab reorder ID --index N            # Reorder within list
 refrax-ctl tab mark-read ID                    # Mark as read
 refrax-ctl tab mark-unread ID                  # Mark as unread
@@ -103,6 +102,41 @@ refrax-ctl group icon ID ICON
 refrax-ctl group collapse ID                   # Toggle collapsed state
 ```
 
+## Floating Tabs
+
+Works with Refrax in the background. Positions are window points, origin top-left.
+
+```bash
+refrax-ctl canvas state [--json]               # Whether the layer is revealed, and every tab's card
+refrax-ctl canvas floating show|hide|hold|release                       # Reveal the layer, dismiss it, or hold and release the reveal key
+refrax-ctl canvas floating pin|unpin --tab TAB                          # Keep a card visible when the reveal key is up, or stop
+refrax-ctl canvas floating move --tab TAB --to X,Y                      # Place a card's top-left corner
+refrax-ctl canvas floating dock-left|dock-right|undock --tab TAB       # Dock a page to a window side at full height, or return it
+refrax-ctl canvas floating shape --tab TAB icon|tab|live             # Favicon icon, favicon + title tab, or live page
+refrax-ctl canvas floating resize --tab TAB --width W --height H     # From the bottom-right corner; the shape follows the size
+```
+
+## Islands
+
+The tabs of the front window's space as floating lists over the page: one island per tab group, plus one named "Tabs" for the tabs in no group. Every action prints the islands' state afterwards. An island is named by its id, a prefix of it, its title, or `tabs`; a tab as everywhere else (id, a prefix of it, or part of its title or address).
+
+```bash
+refrax-ctl islands state [--json]                     # Every island with its rows (▸ marks the current page) and every card
+refrax-ctl islands show|hide                          # Keep the islands up, as the rail's tabs button does; take them down
+refrax-ctl islands hold|release                       # Hold the reveal key (the page becomes a slab); let it go
+refrax-ctl islands step up|down|left|right            # One wheel notch: the row above or below, or the island on that side
+refrax-ctl islands open --tab TAB                     # Open a row's page
+refrax-ctl islands move-row --tab TAB --island I [--row N]   # Put a row before row N of an island (the end when left out); a card goes back in
+refrax-ctl islands detach --tab TAB [--to X,Y]        # Take a row out as a live card at a point (the page's center when left out)
+refrax-ctl islands join --tab TAB --with OTHER        # One tab of two panes: TAB joins OTHER beside it
+refrax-ctl islands join-page --tab TAB left|right     # TAB joins the current page as a pane on that side
+refrax-ctl islands pin|unpin --island I               # Keep an island up when the reveal key is up, or stop
+refrax-ctl islands new-island --tab TAB               # A new island (group) from a row
+refrax-ctl islands move --island I --to X,Y           # Put an island's top-left corner at a point
+```
+
+The page shown is never a card: a detached tab that becomes the page returns to its island.
+
 ## Space Operations
 
 ```bash
@@ -127,17 +161,6 @@ on "Allow command-line tools to read this space's cookies" in the space's settin
 isolated or private space has it, and no command can turn it on. A locked space refuses every
 cookie read and every `fetch --space` (`space_locked`). Never print a value you only need to pass
 on: export it to the Keychain.
-
-## Reference Pane
-
-```bash
-refrax-ctl refpane show|hide|toggle
-refrax-ctl refpane add URL [--title T]
-refrax-ctl refpane close ID
-refrax-ctl refpane list [--json]
-refrax-ctl refpane activate ID
-refrax-ctl refpane to-main ID                  # Move to main tab area
-```
 
 ## Visual Agent Feedback
 
@@ -214,7 +237,7 @@ refrax-ctl window minimize
 ## UI Controls
 
 ```bash
-refrax-ctl ui toggle sidebar|inspector|command-lens|address-lens
+refrax-ctl ui toggle command-lens|address-lens   # address-lens: the Command Lens with the page address in it (⌘L)
 refrax-ctl ui ax-tree [--depth N] [--id IDENTIFIER]   # Dump accessibility tree
 refrax-ctl ui ax-click IDENTIFIER                      # Click by accessibility identifier
 refrax-ctl hotkey cmd,k                                # Simulate keyboard shortcut

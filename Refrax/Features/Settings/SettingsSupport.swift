@@ -62,14 +62,16 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     }
 
     /// Rendering mode for the sidebar icon.
-    var iconRenderingMode: SymbolRenderingMode { .monochrome }
+    var iconRenderingMode: SymbolRenderingMode {
+        .monochrome
+    }
 
     var description: String {
         switch self {
         case .general:
             "Gestures, media, email links, downloads, and widgets."
         case .appearance:
-            "Theme, colors, sidebar, and page appearance."
+            "Theme, colors, and page appearance."
         case .tabs:
             "Previews, archive, snapshots, and time tracking."
         case .favorites:
@@ -119,8 +121,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .general:
             [
                 SearchableSettingItem(id: "general.mailHandler", title: "Email link handler", keywords: ["mail", "mailto", "email", "handler", "app"]),
-                SearchableSettingItem(id: "general.calendarLookAhead", title: "Calendar look-ahead", keywords: ["calendar", "look", "ahead", "hours", "events"]),
-                SearchableSettingItem(id: "general.calendarAutoExpand", title: "Calendar auto-expand", keywords: ["calendar", "auto", "expand", "imminent", "events"]),
                 SearchableSettingItem(id: "general.downloadDirectory", title: "Download location", keywords: ["download", "downloads", "folder", "directory", "save", "location"]),
                 SearchableSettingItem(id: "external.enable", title: "External URL handling", keywords: ["external", "url", "handling", "links", "default browser"]),
                 SearchableSettingItem(id: "external.defaultBehavior", title: "External URL default behavior", keywords: ["external", "url", "default", "behavior", "window", "glimpse", "space"]),
@@ -131,7 +131,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
             [
                 SearchableSettingItem(id: "appearance.theme", title: "Appearance theme", keywords: ["theme", "appearance", "light", "dark", "mode"]),
                 SearchableSettingItem(id: "appearance.accentColor", title: "Accent color", keywords: ["accent", "color", "tint", "theme"]),
-                SearchableSettingItem(id: "appearance.sidebarMode", title: "Default sidebar mode", keywords: ["sidebar", "mode", "compact", "overlay"]),
+                SearchableSettingItem(id: "appearance.lightThickness", title: "Light thickness", keywords: ["light", "beam", "ray", "thickness", "width"]),
                 SearchableSettingItem(id: "appearance.windowBackground", title: "Window background color", keywords: ["window", "background", "color"]),
                 SearchableSettingItem(id: "appearance.mixAmount", title: "Color blend strength", keywords: ["mix", "amount", "strength", "intensity", "blend"]),
                 SearchableSettingItem(id: "appearance.mixMode", title: "Color blend mode", keywords: ["blend", "mode", "mixing", "overlay", "soft light"]),
@@ -235,7 +235,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
                 SearchableSettingItem(
                     id: "featureFlags.\(flag.key)",
                     title: flag.name,
-                    keywords: flag.name.lowercased().split(separator: " ").map(String.init) + ["feature", "flag", "experimental"]
+                    keywords: flag.name.lowercased().split(separator: " ").map(String.init) + ["feature", "flag", "experimental"],
                 )
             }
         }
@@ -281,19 +281,19 @@ struct SettingsSidebarView: View {
         }
     }
 
+    /// The selected row is drawn here in Refrax's accent: a source list's own selection always
+    /// takes the system accent and ignores `.tint`.
+    private enum SelectionLayout {
+        static let cornerRadius: CGFloat = 8
+        static let horizontalInset: CGFloat = 10
+        static let verticalInset: CGFloat = 1
+    }
+
     var body: some View {
-        List(selection: $selectedCategory) {
+        List {
             if searchText.isEmpty {
-                // Show all categories when not searching
                 ForEach(SettingsCategory.allCases) { category in
-                    Label {
-                        Text(category.title)
-                    } icon: {
-                        Image(systemName: category.icon)
-                            .symbolRenderingMode(category.iconRenderingMode)
-                            .foregroundStyle(Color.appAccentColor)
-                    }
-                    .tag(category)
+                    categoryRow(category)
                 }
             } else {
                 // Show categories with matching items
@@ -326,7 +326,49 @@ struct SettingsSidebarView: View {
         .searchable(text: $searchText, placement: .sidebar, prompt: "Search Settings")
         .navigationTitle("Settings")
         .frame(minWidth: 220)
-        .tint(Color.appAccentColor)
+        .onMoveCommand { direction in
+            moveSelection(direction)
+        }
+    }
+
+    private func categoryRow(_ category: SettingsCategory) -> some View {
+        let isSelected = category == selectedCategory
+        return Button {
+            selectedCategory = category
+        } label: {
+            Label {
+                Text(category.title)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+            } icon: {
+                Image(systemName: category.icon)
+                    .symbolRenderingMode(isSelected ? .monochrome : category.iconRenderingMode)
+                    .foregroundStyle(isSelected ? Color.white : Color.appAccentColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: SelectionLayout.cornerRadius, style: .continuous)
+                .fill(isSelected ? Color.appAccentColor : Color.clear)
+                .padding(.horizontal, SelectionLayout.horizontalInset)
+                .padding(.vertical, SelectionLayout.verticalInset),
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// Up and Down step through the categories while the sidebar has focus.
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        let categories = SettingsCategory.allCases
+        guard searchText.isEmpty, let index = categories.firstIndex(of: selectedCategory) else { return }
+        switch direction {
+        case .up where index > categories.startIndex:
+            selectedCategory = categories[categories.index(before: index)]
+        case .down where categories.index(after: index) < categories.endIndex:
+            selectedCategory = categories[categories.index(after: index)]
+        default:
+            break
+        }
     }
 }
 

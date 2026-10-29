@@ -25,6 +25,15 @@ final class CommandLensNSTextField: NSTextField {
         }
         super.keyDown(with: event)
     }
+
+    /// A value set through accessibility (VoiceOver, Voice Control, automation) refreshes the
+    /// suggestions the way typing does: AppKit sets the string without posting a text change.
+    override func setAccessibilityValue(_ accessibilityValue: Any?) {
+        let previous = stringValue
+        super.setAccessibilityValue(accessibilityValue)
+        guard stringValue != previous else { return }
+        NotificationCenter.default.post(name: NSControl.textDidChangeNotification, object: self)
+    }
 }
 
 // MARK: - SwiftUI Representable

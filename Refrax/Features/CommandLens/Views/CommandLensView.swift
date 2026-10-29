@@ -4,8 +4,10 @@ import SwiftUI
 struct CommandLensView: View {
     @Environment(CommandLensManager.self) private var manager
     @Environment(WindowState.self) private var windowState
+    @Environment(FloatingTourManager.self) private var tour
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.commandLensIsSmall) private var isSmallMode
+    @Environment(\.commandLensFieldStyle) private var fieldStyle
 
     @Namespace private var glassNamespace
 
@@ -13,7 +15,8 @@ struct CommandLensView: View {
     @State private var shouldSelectAll = false
     @State private var autoShowButtonsTask: Task<Void, Never>?
 
-    private enum Layout {
+    /// The lens's measurements; the tour reads the corner radius to light the lens concentrically.
+    nonisolated enum Layout {
         static let height: CGFloat = 52
         static let heightSmall: CGFloat = 32 // Match address bar height
         static let cornerRadius: CGFloat = 26
@@ -36,15 +39,25 @@ struct CommandLensView: View {
                 VStack(spacing: 0) {
                     textFieldCapsule
                     suggestionsArea
+                    if !isSmallMode, fieldStyle == nil, windowState.activeTab != nil,
+                       windowState.commandLensEntrance?.editsCurrentPage != true, windowState.layoutModeTargetPosition == nil {
+                        CommandLensScopeLabel()
+                    }
                 }
                 .scaleEffect(providerSwitchScale)
+                .background(fieldStyle?.tint ?? .clear, in: RoundedRectangle(cornerRadius: currentCornerRadius))
+                // Typed text and suggestions are read over pages: the material keeps page text
+                // from showing through the glass, over a white page and a black one alike.
+                .background(.thickMaterial, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: currentCornerRadius))
                 .glassEffectID("textField", in: glassNamespace)
                 .overlay {
-                    RoundedRectangle(cornerRadius: currentCornerRadius)
-                        .stroke(.secondary.opacity(0.7), lineWidth: 1)
-                        .shadow(color: .secondary.opacity(0.25), radius: 3, x: 0, y: 1)
-                        .shadow(color: .secondary.opacity(0.15), radius: 2, x: 0, y: 0)
+                    if fieldStyle == nil {
+                        RoundedRectangle(cornerRadius: currentCornerRadius)
+                            .stroke(.secondary.opacity(0.7), lineWidth: 1)
+                            .shadow(color: .secondary.opacity(0.25), radius: 3, x: 0, y: 1)
+                            .shadow(color: .secondary.opacity(0.15), radius: 2, x: 0, y: 0)
+                    }
                 }
 
                 if showCategoryButtons {
@@ -56,11 +69,16 @@ struct CommandLensView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.3), value: providerSwitchScale)
         .animation(reduceMotion ? nil : .spring(duration: 0.5), value: hasSuggestions)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: manager.showSearchEngineBadge)
-        .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.isCreatingReferenceTab)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.layoutModeTargetPosition)
-        .task { onAppear() }
+        .task { await onAppear() }
+        .task(id: tour.requestedPage) {
+            guard !isSmallMode, manager.inputText.isEmpty else { return }
+            await manager.showStandingSuggestions()
+        }
         .onChange(of: manager.inputText) { _, newValue in
-            if !newValue.isEmpty { cancelAutoShowButtonsTimer() }
+            if !newValue.isEmpty {
+                cancelAutoShowButtonsTimer()
+            }
         }
         .onDisappear {
             cancelAutoShowButtonsTimer()
@@ -70,11 +88,6 @@ struct CommandLensView: View {
 
     // MARK: - Search Bar Area
 
-    // Main search bar with glass container for morphing effects.
-//    private var searchBarArea: some View {
-//
-//    }
-
     /// Whether to show category buttons (only in normal mode).
     private var showCategoryButtons: Bool {
         !isSmallMode && manager.showCategoryButtons
@@ -82,24 +95,38 @@ struct CommandLensView: View {
 
     /// Corner radius based on mode.
     private var currentCornerRadius: CGFloat {
-        isSmallMode ? Layout.cornerRadiusSmall : Layout.cornerRadius
+        if let fieldStyle {
+            return fieldStyle.cornerRadius
+        }
+        return isSmallMode ? Layout.cornerRadiusSmall : Layout.cornerRadius
     }
 
     // MARK: - Text Field Capsule
 
     /// The main text input capsule.
     private var textFieldCapsule: some View {
-        HStack(spacing: isSmallMode ? 8 : 12) {
-            searchIcon
-            referenceTabIndicator
+        HStack(spacing: fieldStyle?.iconGap ?? (isSmallMode ? 8 : 12)) {
+            leadingIcon
             layoutModeIndicator
             searchEngineBadge
             textField
             loadingIndicator
             clearButton
         }
-        .frame(height: isSmallMode ? Layout.heightSmall : Layout.height)
-        .padding(.horizontal, isSmallMode ? 8 : 16)
+        .frame(height: fieldStyle?.height ?? (isSmallMode ? Layout.heightSmall : Layout.height))
+        .padding(.leading, fieldStyle?.leadingInset ?? (isSmallMode ? 8 : 16))
+        .padding(.trailing, fieldStyle?.trailingInset ?? (isSmallMode ? 8 : 16))
+    }
+
+    /// The page's favicon where the page card shows it while the lens stands in for the card;
+    /// the search symbol everywhere else.
+    @ViewBuilder
+    private var leadingIcon: some View {
+        if let fieldStyle, let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
+            FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: fieldStyle.iconSize)
+        } else {
+            searchIcon
+        }
     }
 
     private var searchIcon: some View {
@@ -133,14 +160,6 @@ struct CommandLensView: View {
         }
     }
 
-    /// Shows a badge when the command lens is creating a reference tab.
-    @ViewBuilder
-    private var referenceTabIndicator: some View {
-        if windowState.isCreatingReferenceTab {
-            contextBadge(icon: "sidebar.right", color: .teal)
-        }
-    }
-
     /// Shows a badge when the command lens is creating a tab in a layout pane.
     @ViewBuilder
     private var layoutModeIndicator: some View {
@@ -149,7 +168,7 @@ struct CommandLensView: View {
         }
     }
 
-    /// Reusable context badge for reference/layout mode indicators.
+    /// Reusable context badge for the layout mode indicator.
     private func contextBadge(icon: String, color: Color) -> some View {
         Image(systemName: icon)
             .font(.system(size: 12, weight: .medium))
@@ -259,12 +278,14 @@ struct CommandLensView: View {
 
     // MARK: - Lifecycle
 
-    private func onAppear() {
+    private func onAppear() async {
         if isSmallMode {
-            manager.inputText = windowState.focusedPage?.url.absoluteString ?? ""
+            manager.inputText = windowState.commandLensEntrance?.prefill
+                ?? windowState.focusedPage?.url.absoluteString ?? ""
             shouldSelectAll = true
         } else {
             startAutoShowButtonsTimer()
+            await manager.showStandingSuggestions()
         }
     }
 
@@ -296,8 +317,6 @@ struct CommandLensView: View {
         } else {
             manager.reset()
             windowState.closeCommandLens()
-            windowState.closeAddressLens()
-            windowState.closeReferencePaneLens()
         }
     }
 
@@ -305,7 +324,9 @@ struct CommandLensView: View {
         // Search engine switching takes priority — Tab's primary purpose is
         // engine activation. Inline completion is available via Right Arrow.
         if let providerSuggestion = manager.suggestions.first(where: {
-            if case .searchProvider = $0.type { return true }
+            if case .searchProvider = $0.type {
+                return true
+            }
             return false
         }), case let .searchProvider(engine) = providerSuggestion.type {
             manager.selectSearchProvider(engine)

@@ -85,7 +85,7 @@ if arguments.showHelp {
     exit(0)
 }
 
-let app = RefraxApplication.shared
+let app = NSApplication.shared
 let appDelegate = AppDelegate(arguments: arguments)
 app.delegate = appDelegate
 app.run()

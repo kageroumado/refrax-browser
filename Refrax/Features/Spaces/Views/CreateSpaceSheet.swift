@@ -8,7 +8,7 @@ struct CreateSpaceSheet: View {
     @Environment(BrowserState.self) private var browserState
 
     @State private var name = ""
-    @State private var icon = "briefcase.fill"
+    @State private var icon = ""
     @State private var selectedColor: Color = .blue
     @State private var dataStoreMode: DataStoreMode = .global
 
@@ -89,7 +89,7 @@ struct CreateSpaceSheet: View {
         let space = spaceManager.createSpace(
             name: trimmedName,
             color: selectedColor,
-            iconName: trimmedIcon.isEmpty ? "briefcase.fill" : trimmedIcon,
+            iconName: trimmedIcon,
             dataStoreMode: dataStoreMode,
         )
 

@@ -54,7 +54,6 @@ final class TabSnapshot {
         for item in items.sorted(by: { $0.position < $1.position }) {
             hasher.combine(item.url.absoluteString)
             hasher.combine(item.position)
-            hasher.combine(item.isPinned)
         }
         
         hasher.combine(activeTabID)
@@ -105,9 +104,6 @@ final class TabSnapshotItem {
     /// Position in the tab bar
     var position: Int
     
-    /// Whether the tab is pinned
-    var isPinned: Bool
-    
     /// Group ID if the tab belongs to a group
     var groupID: UUID?
     
@@ -143,7 +139,6 @@ final class TabSnapshotItem {
         url: URL,
         title: String? = nil,
         position: Int,
-        isPinned: Bool = false,
         groupID: UUID? = nil,
         customName: String? = nil,
         faviconData: Data? = nil,
@@ -156,7 +151,6 @@ final class TabSnapshotItem {
         self.url = url
         self.title = title
         self.position = position
-        self.isPinned = isPinned
         self.groupID = groupID
         self.customName = customName
         self.faviconData = faviconData

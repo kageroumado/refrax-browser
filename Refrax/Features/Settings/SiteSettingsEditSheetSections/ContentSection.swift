@@ -3,12 +3,11 @@ import SwiftUI
 /// Content settings section for site settings edit sheet.
 ///
 /// Contains page zoom, JavaScript toggle, content blockers,
-/// reader mode preference, and pop-up/auto-play policies.
+/// and pop-up/auto-play policies.
 struct SiteSettingsContentSection: View {
     @Binding var pageZoom: Double
     @Binding var allowJavaScript: Bool
     @Binding var enableContentBlockers: Bool
-    @Binding var useReaderWhenAvailable: Bool
     @Binding var popUpPolicy: PopUpPolicy
     @Binding var autoPlayPolicy: AutoPlayPolicy
 
@@ -29,8 +28,6 @@ struct SiteSettingsContentSection: View {
             Toggle("Enable JavaScript", isOn: $allowJavaScript)
 
             Toggle("Enable Content Blockers", isOn: $enableContentBlockers)
-
-            Toggle("Use Reader when available", isOn: $useReaderWhenAvailable)
 
             Picker("Pop-ups", selection: $popUpPolicy) {
                 ForEach(PopUpPolicy.allCases, id: \.self) { policy in

@@ -27,7 +27,6 @@ struct APITestEnvironment {
     let groupManager: TabGroupManager
     let pagePool: WebPagePool
     let tabManager: TabManager
-    let referencePaneManager: ReferencePaneManager
     let bookmarksManager: BookmarksManager
     let extensionManager: ExtensionManager
     let downloadManager: DownloadManager
@@ -66,20 +65,11 @@ struct APITestEnvironment {
         self.groupManager = TabGroupManager(state: browserState)
         self.pagePool = WebPagePool(state: browserState)
 
-        let undoRedoManager = UndoRedoManager()
-        self.referencePaneManager = ReferencePaneManager(
-            state: browserState,
-            pagePool: pagePool,
-            windowManager: windowManager,
-            undoRedoManager: undoRedoManager,
-        )
-
         self.tabManager = TabManager(
             state: browserState,
             pagePool: pagePool,
             spaceManager: spaceManager,
             groupManager: groupManager,
-            referencePaneManager: referencePaneManager,
         )
 
         self.downloadManager = DownloadManager(modelContext: modelContext)

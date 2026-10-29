@@ -34,8 +34,6 @@ struct WebViewContainer: View {
     @Environment(WindowState.self) private var windowState
     @Environment(HistoryManager.self) private var historyManager
     @Environment(HistoryActivityManager.self) private var historyActivityManager
-    @Environment(ReaderModeManager.self) private var readerModeManager
-    @Environment(\.webViewForcedInactive) private var isForcedInactive
     @Environment(\.webViewOwnershipID) private var customOwnershipID
 
     /// The URL currently being hovered over, displayed in the link preview overlay.
@@ -66,14 +64,6 @@ struct WebViewContainer: View {
         customOwnershipID != nil
     }
 
-    /// Whether reader mode is active for this page's tab.
-    ///
-    /// When reader mode is active, the main WKWebView's mouse events are blocked
-    /// to prevent hover effects and cursor changes from bleeding through the overlay.
-    private var isReaderActive: Bool {
-        readerModeManager.isReaderActive(for: page.tabPage.id)
-    }
-
     var body: some View {
         // Determine if this window should be the owner (have the active WebView).
         // Access ownerWindowID directly to ensure SwiftUI observes changes.
@@ -81,13 +71,10 @@ struct WebViewContainer: View {
         let ownerID = page.ownerWindowID
         let isCurrentOwner = ownerID == windowID
         let isWindowKey = windowState.window?.isKeyWindow ?? false
-        let isOwner = !isForcedInactive && (isCurrentOwner || (ownerID == nil && isWindowKey))
+        let isOwner = isCurrentOwner || (ownerID == nil && isWindowKey)
 
         ZStack(alignment: .bottomLeading) {
             content(isOwner: isOwner)
-
-            // Reader mode overlay - slides up from bottom when active
-            ReaderOverlayContainer(tabID: page.tabPage.id)
 
             LinkHoverPreviewView(url: $hoveredLinkURL)
                 .padding([.vertical, .trailing], Constants.linkPreviewPadding)
@@ -112,15 +99,12 @@ struct WebViewContainer: View {
                         cachedTrayTrailingEdge = newValue
                         updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
                     }
-                    .onChange(of: windowState.sidebarOverlayTrailingEdge) { _, _ in
-                        updateLinkPreviewOffset(containerMinX: geo.frame(in: .global).minX)
-                    }
             }
         }
         .onAppear {
             // Claim ownership if we're the key window or no owner exists
-            // Don't claim if forced inactive (e.g., docked view when separate window is open)
-            if !isForcedInactive, !isCurrentOwner, page.ownerWindowID == nil || isWindowKey {
+            if !isCurrentOwner, !page.isInFloatingPreview,
+               page.ownerWindowID == nil || isWindowKey {
                 claimOwnership()
             }
 
@@ -158,13 +142,7 @@ struct WebViewContainer: View {
                 page.onBecameHidden()
             }
 
-            // Don't release ownership if a reference pane window is open (when using WindowState).
-            // The separate window shares the same WindowState, so releasing here
-            // would clear ownership needed by the separate window's WebViewContainer.
-            // For custom ownership IDs (reflected windows), always release.
-            if usesCustomOwnershipID || !windowState.hasReferencePaneWindow {
-                releaseOwnership()
-            }
+            releaseOwnership()
 
             // Clean up link hover callback only if we set it
             if page.ownerWindowID == nil || page.ownerWindowID == windowID {
@@ -196,10 +174,9 @@ struct WebViewContainer: View {
         // We must NOT respond here because windowState.window points to the MAIN
         // window — so this handler would fire when the main window becomes key,
         // incorrectly re-stealing ownership back to the reflected window.
-        guard !usesCustomOwnershipID else { return }
+        guard !usesCustomOwnershipID, !page.isInFloatingPreview else { return }
 
-        guard !isForcedInactive,
-              let keyWindow = notification.object as? NSWindow,
+        guard let keyWindow = notification.object as? NSWindow,
               keyWindow === windowState.window else {
             return
         }
@@ -266,13 +243,10 @@ struct WebViewContainer: View {
 
     /// Updates the link preview leading padding based on container position and overlay state.
     ///
-    /// If the container's leading edge is covered by the sidebar overlay or detail tray,
-    /// positions the preview just past the obstruction's trailing edge.
+    /// If the container's leading edge is covered by the detail tray,
+    /// positions the preview just past the tray's trailing edge.
     private func updateLinkPreviewOffset(containerMinX: CGFloat, animated: Bool = true) {
-        // Use the greater of sidebar overlay and detail tray trailing edges.
-        // When the tray is visible, it's already positioned past the sidebar overlay,
-        // so max() naturally picks the outermost obstruction.
-        let obstruction = max(windowState.sidebarOverlayTrailingEdge, cachedTrayTrailingEdge)
+        let obstruction = cachedTrayTrailingEdge
 
         let newOffset: CGFloat = if obstruction > 0, containerMinX < obstruction {
             obstruction - containerMinX + Constants.linkPreviewPadding
@@ -339,7 +313,6 @@ struct WebViewContainer: View {
         let shouldIgnore = windowState.webViewsShouldIgnoreAllEvents
             || windowState.isInLayoutMode
             || windowState.isSpaceLocked
-            || isReaderActive
         
         return WebView(page)
             .webViewIsActive(isOwner)

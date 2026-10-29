@@ -6,7 +6,6 @@ struct SpaceManagementSheet: View {
     @Environment(TabManager.self) private var tabManager: TabManager
     @Environment(SpaceManager.self) private var spaceManager
     @Environment(WindowState.self) private var windowState: WindowState
-    @Environment(BrowserState.self) private var browserState: BrowserState
 
     @State private var spaceToEdit: Space? = nil
     @State private var spaceToDelete: Space? = nil
@@ -36,7 +35,7 @@ struct SpaceManagementSheet: View {
                 }
             } else {
                 Button("Clear All Tabs", role: .destructive) {
-                    handleLastSpaceClear(space)
+                    tabManager.clearSpace(space)
                     spaceToDelete = nil
                 }
             }
@@ -113,7 +112,7 @@ struct SpaceManagementSheet: View {
             Text(space.iconName)
                 .font(.title3)
         } else {
-            Image(systemName: space.iconName)
+            Image(systemName: space.symbolName)
                 .font(.title3)
                 .foregroundStyle(space.color)
         }
@@ -139,22 +138,6 @@ struct SpaceManagementSheet: View {
             .buttonStyle(.borderless)
             .disabled(tabManager.state.spaces.count == 1)
         }
-    }
-
-    // MARK: - Actions
-
-    private func handleLastSpaceClear(_ space: Space) {
-        let tabsToClose = browserState.tabs(in: space)
-        for tab in tabsToClose {
-            tabManager.closeTab(tab)
-        }
-
-        spaceManager.updateSpace(
-            space,
-            name: SpaceManager.DefaultSpaceConfig.name,
-            iconName: SpaceManager.DefaultSpaceConfig.iconName,
-            color: SpaceManager.DefaultSpaceConfig.color,
-        )
     }
 }
 

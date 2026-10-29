@@ -25,7 +25,6 @@ final class RefraxControlServer {
     private unowned let spaceManager: SpaceManager
     private unowned let pagePool: WebPagePool
     private unowned let browserState: BrowserState
-    private unowned let referencePaneManager: ReferencePaneManager
     private unowned let groupManager: TabGroupManager
     private unowned let undoRedoManager: UndoRedoManager
     private unowned let bookmarksManager: BookmarksManager
@@ -52,7 +51,6 @@ final class RefraxControlServer {
         spaceManager: SpaceManager,
         pagePool: WebPagePool,
         browserState: BrowserState,
-        referencePaneManager: ReferencePaneManager,
         groupManager: TabGroupManager,
         undoRedoManager: UndoRedoManager,
         bookmarksManager: BookmarksManager,
@@ -68,7 +66,6 @@ final class RefraxControlServer {
         self.spaceManager = spaceManager
         self.pagePool = pagePool
         self.browserState = browserState
-        self.referencePaneManager = referencePaneManager
         self.groupManager = groupManager
         self.undoRedoManager = undoRedoManager
         self.bookmarksManager = bookmarksManager
@@ -165,18 +162,8 @@ final class RefraxControlServer {
             handleWindowCenter()
         case .windowInfo:
             handleWindowInfo()
-        case .refPaneShow:
-            handleRefPaneShow()
-        case .refPaneHide:
-            handleRefPaneHide()
-        case .refPaneToggle:
-            handleRefPaneToggle()
         case let .hotkey(params):
             handleHotkey(params)
-        case .sidebarToggle:
-            handleSidebarToggle()
-        case .inspectorToggle:
-            handleInspectorToggle()
         case .commandLens:
             handleCommandLens()
         case .addressLens:
@@ -187,8 +174,8 @@ final class RefraxControlServer {
         case let .uiAXClick(params):
             handleUIAXClick(params)
         // Tier 1A: Extended Tab Operations
-        case let .tabPin(params):
-            try handleTabPin(params)
+        case let .tabFavorite(params):
+            try handleTabFavorite(params)
         case let .tabDuplicate(params):
             try handleTabDuplicate(params)
         case let .tabRename(params):
@@ -217,8 +204,6 @@ final class RefraxControlServer {
             try handleTabMoveToGroup(params)
         case let .tabRemoveFromGroup(params):
             try handleTabRemoveFromGroup(params)
-        case let .tabMoveToRefPane(params):
-            try handleTabMoveToRefPane(params)
         case let .tabReorder(params):
             try handleTabReorder(params)
         case let .tabMarkRead(params):
@@ -275,17 +260,13 @@ final class RefraxControlServer {
             try await handlePageVideoViewer(params)
         case let .pagePiP(params):
             try await handlePagePiP(params)
-        // Tier 1D: Reference Pane Extended
-        case let .refPaneAddTab(params):
-            handleRefPaneAddTab(params)
-        case let .refPaneCloseTab(params):
-            handleRefPaneCloseTab(params)
-        case .refPaneListTabs:
-            handleRefPaneListTabs()
-        case let .refPaneActivateTab(params):
-            handleRefPaneActivateTab(params)
-        case let .refPaneMoveToMain(params):
-            handleRefPaneMoveToMain(params)
+        // Floating tabs
+        case let .floatingTabs(params):
+            try handleFloatingTabs(params)
+        case .canvasState:
+            try floatingStateResponse()
+        case let .islands(params):
+            try await handleIslands(params)
         // Tier 1E: Visual Agent Features
         case let .visualHighlight(params):
             try await handleVisualHighlight(params)
@@ -760,7 +741,9 @@ final class RefraxControlServer {
             if let nativeID = node.nativeID {
                 let interaction = _WKTextExtractionInteraction(action: .click)
                 interaction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    interaction.scrollToVisible = true
+                }
                 do {
                     try await webPage.performInteraction(interaction)
                 } catch {
@@ -1014,7 +997,9 @@ final class RefraxControlServer {
             if let nativeID = node.nativeID {
                 let focusInteraction = _WKTextExtractionInteraction(action: .click)
                 focusInteraction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { focusInteraction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    focusInteraction.scrollToVisible = true
+                }
                 do {
                     try await webPage.performInteraction(focusInteraction)
                 } catch {
@@ -1023,7 +1008,9 @@ final class RefraxControlServer {
 
                 let typeInteraction = _WKTextExtractionInteraction(action: .textInput)
                 typeInteraction.nodeIdentifier = nativeID
-                if Self.supportsScrollToVisible { typeInteraction.scrollToVisible = true }
+                if Self.supportsScrollToVisible {
+                    typeInteraction.scrollToVisible = true
+                }
                 typeInteraction.text = params.text
                 do {
                     try await webPage.performInteraction(typeInteraction)
@@ -1150,11 +1137,10 @@ final class RefraxControlServer {
             return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
         }
 
-        let space: Space?
-        if let spaceReference = params.spaceID {
-            space = try resolveSpace(spaceReference)
+        let space: Space? = if let spaceReference = params.spaceID {
+            try resolveSpace(spaceReference)
         } else {
-            space = windowManager.activeWindowController?.windowState.activeSpace
+            windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
         }
 
@@ -1234,48 +1220,13 @@ final class RefraxControlServer {
         }
 
         let frame = window.frame
-        let windowState = controller.windowState
 
         return .windowInfo(CTL.WindowInfoData(
             x: Int(frame.origin.x),
             y: Int(frame.origin.y),
             width: Int(frame.width),
             height: Int(frame.height),
-            isSidebarCollapsed: windowState.isSidebarCollapsed,
-            isInspectorCollapsed: windowState.isInspectorCollapsed,
-            isReferencePaneVisible: !windowState.isInspectorCollapsed,
         ))
-    }
-
-    // MARK: - Reference Pane
-
-    private func handleRefPaneShow() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        if windowState.isInspectorCollapsed {
-            windowState.toggleInspector()
-        }
-        return .ok("Reference pane shown")
-    }
-
-    private func handleRefPaneHide() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        if !windowState.isInspectorCollapsed {
-            windowState.toggleInspector()
-        }
-        return .ok("Reference pane hidden")
-    }
-
-    private func handleRefPaneToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleInspector()
-        let state = windowState.isInspectorCollapsed ? "hidden" : "shown"
-        return .ok("Reference pane \(state)")
     }
 
     // MARK: - Hotkey
@@ -1321,25 +1272,7 @@ final class RefraxControlServer {
         return .actionResult(CTL.ActionResultInfo(success: true, message: "Sent hotkey \(params.keys)"))
     }
 
-    // MARK: - Sidebar / Inspector / Lens
-
-    private func handleSidebarToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleSidebar()
-        let state = windowState.isSidebarCollapsed ? "collapsed" : "expanded"
-        return .ok("Sidebar \(state)")
-    }
-
-    private func handleInspectorToggle() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        windowState.toggleInspector()
-        let state = windowState.isInspectorCollapsed ? "collapsed" : "expanded"
-        return .ok("Inspector \(state)")
-    }
+    // MARK: - Lens
 
     private func handleCommandLens() -> ControlResponse {
         guard let windowState = windowManager.activeWindowController?.windowState else {
@@ -1353,8 +1286,8 @@ final class RefraxControlServer {
         guard let windowState = windowManager.activeWindowController?.windowState else {
             return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
         }
-        windowState.openAddressLens()
-        return .ok("Address lens opened")
+        windowState.editAddress()
+        return .ok("Command lens opened with the page address")
     }
 
     // MARK: - Accessibility Tree (AX API)
@@ -1460,7 +1393,9 @@ final class RefraxControlServer {
         for win in windows {
             var numValue: CFTypeRef?
             // Try to match by position/title if window number isn't directly accessible
-            if windows.count == 1 { return win }
+            if windows.count == 1 {
+                return win
+            }
 
             // AX doesn't directly expose windowNumber, but we can compare titles
             if AXUIElementCopyAttributeValue(win, "_AXWindowNumber" as CFString, &numValue) == .success,
@@ -1554,7 +1489,9 @@ final class RefraxControlServer {
         indent: String,
         output: inout String,
     ) {
-        if let max = maxDepth, depth >= max { return }
+        if let max = maxDepth, depth >= max {
+            return
+        }
 
         let role = axGetRole(element)
         let id = axGetIdentifier(element)
@@ -1571,10 +1508,18 @@ final class RefraxControlServer {
         if hasInfo {
             var line = indent
             line += "[\(role ?? "Element")]"
-            if let id { line += " id=\"\(id)\"" }
-            if let label { line += " \"\(label)\"" }
-            if let value, value != label { line += " value=\"\(value)\"" }
-            if !sizeStr.isEmpty { line += " \(sizeStr)" }
+            if let id {
+                line += " id=\"\(id)\""
+            }
+            if let label {
+                line += " \"\(label)\""
+            }
+            if let value, value != label {
+                line += " value=\"\(value)\""
+            }
+            if !sizeStr.isEmpty {
+                line += " \(sizeStr)"
+            }
             output += line + "\n"
         }
 
@@ -1590,11 +1535,12 @@ final class RefraxControlServer {
 
     // MARK: - Tier 1A: Extended Tab Operations
 
-    private func handleTabPin(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
+    private func handleTabFavorite(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
         let tab = try resolveTabRef(params.id)
-        tabManager.togglePinTab(tab)
-        let state = tab.isPinned ? "pinned" : "unpinned"
-        return .ok("Tab \(state)")
+        guard tabManager.toggleFavorite(tab, in: windowManager.activeWindowController?.windowState) else {
+            throw ControlError.invalidParams("Favorites are full")
+        }
+        return .ok(tab.isFavorite ? "Added to Favorites" : "Removed from Favorites")
     }
 
     private func handleTabDuplicate(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
@@ -1643,12 +1589,12 @@ final class RefraxControlServer {
     }
 
     private func handleTabNext() -> ControlResponse {
-        tabManager.selectNextTab()
+        windowManager.activeWindowController?.selectNextTab()
         return .ok("Switched to next tab")
     }
 
     private func handleTabPrevious() -> ControlResponse {
-        tabManager.selectPreviousTab()
+        windowManager.activeWindowController?.selectPreviousTab()
         return .ok("Switched to previous tab")
     }
 
@@ -1675,13 +1621,12 @@ final class RefraxControlServer {
             url: webPage?.url?.absoluteString ?? tab.activePage.url.absoluteString,
             isActive: tab.id == activeTabID,
             isLoading: webPage?.isLoading ?? false,
-            isPinned: tab.isPinned,
+            isFavorite: tab.isFavorite,
             isUnread: tab.isUnread,
             customName: tab.customName,
             groupID: tab.groupID.map { "\($0)" },
             groupName: tab.group?.name,
             spaceID: tab.space.map { "\($0.id)" },
-            isReferenceTab: tab.isReferenceTab,
             canGoBack: webPage?.canGoBack ?? false,
             canGoForward: webPage?.canGoForward ?? false,
             isMuted: webPage?.isAudioMuted ?? false,
@@ -1742,18 +1687,6 @@ final class RefraxControlServer {
         }
         groupManager.removeTabFromGroup(tab, in: space, spaceID: space.id)
         return .ok("Tab removed from group")
-    }
-
-    private func handleTabMoveToRefPane(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
-        let tab = try resolveTabRef(params.id)
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        let success = referencePaneManager.moveTabToReferencePane(tab, in: windowState)
-        if success {
-            return .ok("Tab moved to reference pane")
-        }
-        return .error(CTL.ErrorInfo(code: "move_failed", message: "Failed to move tab to reference pane"))
     }
 
     private func handleTabReorder(_ params: ControlRequest.TabReorderParams) throws -> ControlResponse {
@@ -2080,78 +2013,6 @@ final class RefraxControlServer {
         let result = try await webPage.callJavaScript("return document.documentElement.outerHTML")
         let html = result as? String ?? ""
         return .pageContent(html)
-    }
-
-    // MARK: - Tier 1D: Reference Pane Extended
-
-    private func handleRefPaneAddTab(_ params: ControlRequest.RefPaneAddTabParams) -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
-        }
-        guard let windowState = windowManager.activeWindowController?.windowState,
-              let space = windowState.activeSpace else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window or space"))
-        }
-
-        let title = params.title ?? "New Tab"
-        guard let tab = referencePaneManager.addReferenceTab(url: url, title: title, in: space, windowState: windowState) else {
-            return .error(CTL.ErrorInfo(code: "limit_reached", message: "Reference pane tab limit reached"))
-        }
-
-        let activeTabID = windowState.activeTabID
-        return .tab(buildTabInfo(tab, activeTabID: activeTabID))
-    }
-
-    private func handleRefPaneCloseTab(_ params: ControlRequest.RefPaneCloseTabParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        referencePaneManager.closeReferenceTab(tab)
-        return .ok("Reference tab closed")
-    }
-
-    private func handleRefPaneListTabs() -> ControlResponse {
-        guard let windowState = windowManager.activeWindowController?.windowState,
-              let space = windowState.activeSpace else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window or space"))
-        }
-
-        let activeRefTabID = windowState.activeReferenceTabID
-        let tabs = space.referenceTabs.map { tab in
-            CTL.RefPaneTabInfo(
-                id: "\(tab.id)",
-                title: tab.displayTitle,
-                url: pagePool.existingPage(for: tab.activePage)?.url?.absoluteString ?? tab.activePage.url.absoluteString,
-                isActive: tab.id == activeRefTabID,
-            )
-        }
-        return .refPaneTabs(tabs)
-    }
-
-    private func handleRefPaneActivateTab(_ params: ControlRequest.RefPaneActivateTabParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        guard let windowState = windowManager.activeWindowController?.windowState else {
-            return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
-        }
-        referencePaneManager.setActiveReferenceTab(tab, in: windowState)
-        return .ok("Reference tab activated")
-    }
-
-    private func handleRefPaneMoveToMain(_ params: ControlRequest.RefPaneMoveToMainParams) -> ControlResponse {
-        guard let tab = findReferenceTab(byID: params.id) else {
-            return .error(CTL.ErrorInfo(code: "not_found", message: "Reference tab not found: \(params.id)"))
-        }
-        guard let space = tab.space else {
-            return .error(CTL.ErrorInfo(code: "no_space", message: "Tab has no space"))
-        }
-        let insertionIndex = space.mainTabs.count
-        let success = referencePaneManager.moveReferenceTabToMainArea(tab, insertionIndex: insertionIndex) { _ in }
-        if success {
-            return .ok("Reference tab moved to main area")
-        }
-        return .error(CTL.ErrorInfo(code: "move_failed", message: "Failed to move reference tab to main area"))
     }
 
     // MARK: - Tier 1E: Visual Agent Features
@@ -2558,6 +2419,232 @@ final class RefraxControlServer {
 
     // MARK: - Tier 2F: Developer Tools
 
+    // MARK: - Floating Tabs
+
+    private func canvasManager() throws -> TabCanvasManager {
+        guard let controller = windowManager.activeWindowController else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return controller.tabCanvasManager
+    }
+
+    private func handleFloatingTabs(_ params: ControlRequest.FloatingTabsParams) throws -> ControlResponse {
+        let canvas = try canvasManager()
+        switch params.action {
+        case .show:
+            if !canvas.floatingVisibility.isLatched {
+                canvas.toggleFloatingTabs()
+            }
+        case .hide: canvas.dismissFloatingTabs()
+        case .hold: canvas.revealFloatingTabs()
+        case .release: canvas.releaseFloatingTabs()
+        case .dockLeft, .dockRight, .undock:
+            guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
+            let tab = try resolveTabRef(ref)
+            guard canvas.floatingTabs.contains(where: { $0.id == tab.id }) else {
+                throw ControlError.invalidParams("The tab must belong to the active space")
+            }
+            switch params.action {
+            case .dockLeft: canvas.dock(tab, to: .leading)
+            case .dockRight: canvas.dock(tab, to: .trailing)
+            default: canvas.undock(tab)
+            }
+        case .pin, .unpin, .shape, .move, .resize:
+            guard let ref = params.tab else { throw ControlError.invalidParams("A tab is required") }
+            let tab = try resolveTabRef(ref)
+            guard canvas.floatingTabs.contains(where: { $0.id == tab.id }) else {
+                throw ControlError.invalidParams("The tab must belong to the active space")
+            }
+            guard let bounds = windowManager.activeWindowController?.window?.contentView?.bounds else {
+                throw ControlError.invalidParams("A browser window is required")
+            }
+            var placement = canvas.floatingPlacement(for: tab)
+            switch params.action {
+            case .pin: placement.isPinned = true
+            case .unpin: placement.isPinned = false
+            case .shape:
+                guard let shape = params.shape.flatMap({ FloatingCardShape(rawValue: $0.rawValue) }) else {
+                    throw ControlError.invalidParams("Shape requires icon, tab, or live")
+                }
+                canvas.setFloatingShape(shape, for: tab, in: bounds)
+                return try floatingStateResponse()
+            case .move:
+                guard let x = params.x, let y = params.y, x.isFinite, y.isFinite else {
+                    throw ControlError.invalidParams("Move requires finite x and y coordinates")
+                }
+                placement.move(to: CGPoint(x: x, y: y), in: bounds)
+            case .resize:
+                guard let width = params.width, let height = params.height,
+                      width.isFinite, height.isFinite, width > 0, height > 0 else {
+                    throw ControlError.invalidParams("Resize requires positive finite width and height")
+                }
+                placement.resize(to: CGSize(width: width, height: height), in: bounds)
+            default: break
+            }
+            canvas.updateFloatingPlacement(placement, for: tab)
+        }
+        return try floatingStateResponse()
+    }
+
+    private func floatingStateResponse() throws -> ControlResponse {
+        let canvas = try canvasManager()
+        let bounds = windowManager.activeWindowController?.window?.contentView?.bounds ?? .zero
+        let visible = Set(canvas.visibleFloatingTabs.map(\.id))
+        return .canvas(.init(isRevealed: canvas.floatingVisibility.isRevealed, tiles: canvas.floatingTabs.map { tab in
+            let placement = canvas.floatingPlacement(for: tab)
+            let frame = placement.frame(in: bounds)
+            return .init(
+                tabID: tab.id.uuidString,
+                title: tab.displayTitle,
+                x: frame.minX,
+                y: frame.minY,
+                width: frame.width,
+                height: frame.height,
+                shape: ControlRequest.FloatingTabsParams.Shape(rawValue: placement.shape.rawValue) ?? .tab,
+                isPinned: placement.isPinned,
+                isVisible: visible.contains(tab.id),
+            )
+        }))
+    }
+
+    // MARK: - Islands
+
+    private func islandController() throws -> IslandController {
+        guard let controller = windowManager.activeWindowController else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return controller.islandController
+    }
+
+    /// An island by its id, a prefix of it, or its title; "tabs" is the loose tabs' island.
+    private func resolveIslandRef(_ ref: String, in islands: IslandController) throws -> Island {
+        let needle = ref.lowercased()
+        if let island = islands.islands.first(where: { $0.id.uuidString.lowercased().hasPrefix(needle) }) {
+            return island
+        }
+        if needle == "tabs", let island = islands.islands.first(where: \.isDefault) {
+            return island
+        }
+        if let island = islands.islands.first(where: { $0.title.lowercased().contains(needle) }) {
+            return island
+        }
+        throw ControlError.invalidParams("No island matches '\(ref)'; islands: \(islands.islands.map { "\($0.title) [\($0.id.uuidString.prefix(8))]" }.joined(separator: ", "))")
+    }
+
+    private func direction(_ ref: String?) throws -> TableDirection {
+        guard let ref, let direction = TableDirection(rawValue: ref.lowercased()) else {
+            throw ControlError.invalidParams("Direction must be up, down, left, or right")
+        }
+        return direction
+    }
+
+    /// Waits for a move the page view animates to land, up to two seconds.
+    private func settleTravel(_ islands: IslandController) async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while islands.travel != nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    private func handleIslands(_ params: ControlRequest.IslandsParams) async throws -> ControlResponse {
+        let islands = try islandController()
+        let canvas = try canvasManager()
+        let bounds = windowManager.activeWindowController?.window?.contentView?.bounds ?? .zero
+        func tab(_ ref: String?) throws -> Tab {
+            guard let ref else { throw ControlError.invalidParams("--tab is required") }
+            return try resolveTabRef(ref)
+        }
+        func island(_ ref: String?) throws -> Island {
+            guard let ref else { throw ControlError.invalidParams("--island is required") }
+            return try resolveIslandRef(ref, in: islands)
+        }
+        switch params.action {
+        case .state:
+            break
+        case .show:
+            if !canvas.floatingVisibility.isLatched {
+                canvas.toggleFloatingTabs()
+            }
+        case .hide:
+            canvas.dismissFloatingTabs()
+        case .hold:
+            canvas.revealFloatingTabs()
+        case .release:
+            canvas.releaseFloatingTabs()
+        case .step:
+            islands.step(try direction(params.direction))
+            await settleTravel(islands)
+        case .open:
+            islands.open(try tab(params.tab))
+            await settleTravel(islands)
+        case .moveRow:
+            let target = try island(params.island)
+            islands.moveTab(try tab(params.tab).id, to: params.row ?? Int.max, in: target.id)
+        case .detach:
+            let point = CGPoint(x: params.x ?? bounds.midX, y: params.y ?? bounds.midY)
+            islands.detach(try tab(params.tab).id, at: point)
+        case .join:
+            guard let other = params.other else { throw ControlError.invalidParams("--with is required") }
+            let source = try tab(params.tab)
+            let target = try resolveTabRef(other)
+            guard islands.canJoin(source.id, with: target.id) else {
+                throw ControlError.invalidParams("These two cannot join: one must be a single page and the other have room for a second")
+            }
+            islands.join(source.id, with: target.id)
+        case .joinPage:
+            let side = try direction(params.direction)
+            guard side == .left || side == .right else { throw ControlError.invalidParams("Direction must be left or right") }
+            islands.joinPage(try tab(params.tab).id, at: side == .left ? .topLeft : .topRight)
+        case .pin, .unpin:
+            let target = try island(params.island)
+            if target.placement.isPinned != (params.action == .pin) {
+                islands.togglePin(target.id)
+            }
+        case .newIsland:
+            islands.makeIsland(from: try tab(params.tab).id)
+        case .iconRail, .titles:
+            let target = try island(params.island)
+            islands.setIconsOnly(params.action == .iconRail, for: target.id)
+        case .move:
+            let target = try island(params.island)
+            guard let x = params.x, let y = params.y else { throw ControlError.invalidParams("--to X,Y is required") }
+            islands.moveIsland(target.id, to: CGPoint(x: x, y: y))
+            islands.endIslandMove(keeping: target.id)
+        }
+        islands.refresh()
+        return islandsStateResponse(islands, canvas: canvas, bounds: bounds)
+    }
+
+    private func islandsStateResponse(_ islands: IslandController, canvas: TabCanvasManager, bounds: CGRect) -> ControlResponse {
+        let current = islands.currentTab?.id
+        let visible = Set(islands.visibleIslands.map(\.id))
+        return .islands(.init(
+            isRevealed: canvas.floatingVisibility.isRevealed,
+            isHeld: canvas.floatingVisibility.isHeld,
+            currentTabID: current?.uuidString,
+            islands: islands.islands.map { island in
+                let frame = islands.frame(of: island)
+                return .init(
+                    id: island.id.uuidString, title: island.title, isDefault: island.isDefault,
+                    isPinned: island.placement.isPinned, isVisible: visible.contains(island.id),
+                    x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
+                    rows: island.tabIDs.compactMap { id in
+                        islands.tab(for: id).map { .init(tabID: id.uuidString, title: $0.displayTitle, isCurrent: id == current, pageCount: $0.pages.count) }
+                    },
+                )
+            },
+            cards: islands.detachedTabs.map { tab in
+                let placement = canvas.floatingPlacement(for: tab)
+                let frame = placement.frame(in: bounds)
+                return .init(
+                    tabID: tab.id.uuidString, title: tab.displayTitle, x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
+                    shape: ControlRequest.FloatingTabsParams.Shape(rawValue: placement.shape.rawValue) ?? .live,
+                    isPinned: placement.isPinned, isVisible: tab.id != current,
+                )
+            },
+        ))
+    }
+
     private func handleDevInspector(_ params: ControlRequest.DevInspectorParams) throws -> ControlResponse {
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
         let action = params.action?.lowercased() ?? "toggle"
@@ -2676,7 +2763,7 @@ final class RefraxControlServer {
     /// space came from a tab: `--space` first, then `--page`, then the tab.
     private func resolveCookieSpace(_ params: ControlRequest.DevCookiesParams) throws -> (Space, pageHost: String?) {
         if let spaceReference = params.spaceID {
-            return (try resolveSpace(spaceReference), nil)
+            return try (resolveSpace(spaceReference), nil)
         }
         if let pageID = params.pageID {
             guard let page = findTabPage(byID: pageID), let space = page.tab?.space else {
@@ -2880,7 +2967,9 @@ final class RefraxControlServer {
             if ContinuousClock.now > deadline {
                 throw ControlError.timeout("Wait timed out after \(timeout)s")
             }
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             try? await Task.sleep(for: .milliseconds(100))
         }
     }
@@ -2930,7 +3019,7 @@ final class RefraxControlServer {
             isActive: tab.id == activeTabID,
             spaceID: tab.space.map { "\($0.id)" },
             isLoading: webPage?.isLoading ?? false,
-            isPinned: tab.isPinned,
+            isFavorite: tab.isFavorite,
             isUnread: tab.isUnread,
             customName: tab.customName,
             groupID: tab.groupID.map { "\($0)" },
@@ -3050,7 +3139,17 @@ final class RefraxControlServer {
             return tab
         }
 
-        // 3. 1-based index in current space
+        // 3. A prefix of the id, as the CLI prints ids; four characters or more, so a
+        // short number still reads as an index
+        if ref.count >= 4, ref.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
+            let prefix = ref.lowercased()
+            let byID = allTabs.filter { $0.id.uuidString.lowercased().hasPrefix(prefix) }
+            if !byID.isEmpty {
+                return try uniqueMatch(byID, ref: ref)
+            }
+        }
+
+        // 4. 1-based index in current space
         if let index = Int(ref) {
             let zeroIndex = index - 1
             guard zeroIndex >= 0, zeroIndex < spaceTabs.count else {
@@ -3059,7 +3158,7 @@ final class RefraxControlServer {
             return spaceTabs[zeroIndex]
         }
 
-        // 4. Prefix-based matching
+        // 5. Prefix-based matching
         if ref.lowercased().hasPrefix("title:") {
             let query = String(ref.dropFirst(6))
             let matches = allTabs.filter { $0.activePage.title.localizedCaseInsensitiveContains(query) }
@@ -3072,7 +3171,7 @@ final class RefraxControlServer {
             return try uniqueMatch(matches, ref: ref)
         }
 
-        // 5. Fuzzy match on title or URL
+        // 6. Fuzzy match on title or URL
         let matches = allTabs.filter {
             $0.activePage.title.localizedCaseInsensitiveContains(ref) ||
                 $0.activePage.url.absoluteString.localizedCaseInsensitiveContains(ref)
@@ -3082,8 +3181,12 @@ final class RefraxControlServer {
 
     /// Returns the single match or throws an appropriate error.
     private func uniqueMatch(_ matches: [Tab], ref: String) throws -> Tab {
-        if matches.count == 1 { return matches[0] }
-        if matches.isEmpty { throw ControlError.tabNotFound(ref) }
+        if matches.count == 1 {
+            return matches[0]
+        }
+        if matches.isEmpty {
+            throw ControlError.tabNotFound(ref)
+        }
         throw ControlError.ambiguousTabRef(
             ref: ref,
             matches: matches.map { (id: "\($0.id)", title: $0.activePage.title, url: $0.activePage.url.absoluteString) },
@@ -3131,11 +3234,6 @@ final class RefraxControlServer {
             }
         }
         return nil
-    }
-
-    /// Finds a reference tab by its string ID representation across all spaces.
-    private func findReferenceTab(byID stringID: String) -> Tab? {
-        browserState.spaces.flatMap(\.referenceTabs).first { stringID == "\($0.id)" }
     }
 
     /// Builds a ``GroupInfo`` from a ``TabGroup`` model.
@@ -3506,7 +3604,7 @@ extension RefraxControlServer {
             url: url,
             scope: scope,
             timeoutSeconds: timeout,
-            configuration: configuration
+            configuration: configuration,
         )
 
         return .pageContent(content)
@@ -3517,11 +3615,10 @@ extension RefraxControlServer {
             throw ControlError.invalidURL(params.url)
         }
 
-        let space: Space?
-        if let spaceReference = params.spaceID {
-            space = try resolveSpace(spaceReference)
+        let space: Space? = if let spaceReference = params.spaceID {
+            try resolveSpace(spaceReference)
         } else {
-            space = windowManager.activeWindowController?.windowState.activeSpace
+            windowManager.activeWindowController?.windowState.activeSpace
                 ?? tabManager.state.spaces.first
         }
 
@@ -3577,7 +3674,9 @@ extension RefraxControlServer {
         if let nativeID = node.nativeID {
             let interaction = _WKTextExtractionInteraction(action: .click)
             interaction.nodeIdentifier = nativeID
-            if Self.supportsScrollToVisible { interaction.scrollToVisible = true }
+            if Self.supportsScrollToVisible {
+                interaction.scrollToVisible = true
+            }
             try await webPage.performInteraction(interaction)
         } else {
             try await webPage.callJavaScript("document.elementFromPoint(\(node.rect.midX), \(node.rect.midY))?.click()")
@@ -3660,10 +3759,14 @@ extension RefraxControlServer {
         var length = 0
         for child in node.children {
             let part = collectVisibleText(from: child, maxLength: maxLength.map { $0 - length })
-            if part.isEmpty { continue }
+            if part.isEmpty {
+                continue
+            }
             parts.append(part)
             length += part.count + 1
-            if let maxLength, length >= maxLength { break }
+            if let maxLength, length >= maxLength {
+                break
+            }
         }
         return parts.joined(separator: " ")
     }
@@ -3697,8 +3800,16 @@ extension RefraxControlServer {
 
             if matches {
                 let text = collectVisibleText(from: node, maxLength: 80)
-                let href: String? = if case let .link(url) = node.type { url } else { nil }
-                let inputType: String? = if case let .formControl(controlType, _, _, _) = node.type { controlType } else { nil }
+                let href: String? = if case let .link(url) = node.type {
+                    url
+                } else {
+                    nil
+                }
+                let inputType: String? = if case let .formControl(controlType, _, _, _) = node.type {
+                    controlType
+                } else {
+                    nil
+                }
 
                 results.append(CTL.FoundElementInfo(
                     ref: ref,

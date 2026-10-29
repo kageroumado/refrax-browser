@@ -184,7 +184,7 @@ extension Color {
 
             // Tagged format: colorspace:r,g,b[,a]
             guard let colonIndex = trimmed.firstIndex(of: ":") else { return nil }
-            let csString = String(trimmed[trimmed.startIndex..<colonIndex])
+            let csString = String(trimmed[trimmed.startIndex ..< colonIndex])
             guard let colorSpace = ColorSpace(rawValue: csString) else { return nil }
 
             let valuesPart = String(trimmed[trimmed.index(after: colonIndex)...])
@@ -204,12 +204,12 @@ extension Color {
         var cgColor: CGColor {
             switch colorSpace {
             case .sRGB:
-                return CGColor(
+                CGColor(
                     colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
                     components: [CGFloat(red), CGFloat(green), CGFloat(blue), CGFloat(alpha)],
                 )!
             case .displayP3:
-                return CGColor(
+                CGColor(
                     colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!,
                     components: [CGFloat(red), CGFloat(green), CGFloat(blue), CGFloat(alpha)],
                 )!
@@ -220,19 +220,49 @@ extension Color {
         var color: Color {
             switch colorSpace {
             case .sRGB:
-                return Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+                Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
             case .displayP3:
-                return Color(.displayP3, red: red, green: green, blue: blue, opacity: alpha)
+                Color(.displayP3, red: red, green: green, blue: blue, opacity: alpha)
             }
         }
         
+        /// The same color with its hue turned by `degrees` around the color wheel; chroma,
+        /// brightness, alpha, and color space stay. Grays have no hue and come back unchanged.
+        func rotatingHue(by degrees: Double) -> Components {
+            let high = max(red, green, blue)
+            let chroma = high - min(red, green, blue)
+            guard chroma > 0 else { return self }
+            let sector: Double = if high == red {
+                (green - blue) / chroma
+            } else if high == green {
+                (blue - red) / chroma + 2
+            } else {
+                (red - green) / chroma + 4
+            }
+            var hue = (sector * 60 + degrees).truncatingRemainder(dividingBy: 360)
+            if hue < 0 {
+                hue += 360
+            }
+            let x = chroma * (1 - abs((hue / 60).truncatingRemainder(dividingBy: 2) - 1))
+            let floor = high - chroma
+            let (r, g, b): (Double, Double, Double) = switch Int(hue / 60) {
+            case 0: (chroma, x, 0)
+            case 1: (x, chroma, 0)
+            case 2: (0, chroma, x)
+            case 3: (0, x, chroma)
+            case 4: (x, 0, chroma)
+            default: (chroma, 0, x)
+            }
+            return Components(red: r + floor, green: g + floor, blue: b + floor, alpha: alpha, colorSpace: colorSpace)
+        }
+
         /// An AppKit representation of the color.
         var nsColor: NSColor {
             switch colorSpace {
             case .sRGB:
-                return NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+                NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
             case .displayP3:
-                return NSColor(displayP3Red: red, green: green, blue: blue, alpha: alpha)
+                NSColor(displayP3Red: red, green: green, blue: blue, alpha: alpha)
             }
         }
         
@@ -355,7 +385,8 @@ extension Color {
     ///
     /// For palette colors, resolves the adaptive color to P3 components at the current appearance.
     /// For custom colors, parses the tagged/hex string directly.
-    @MainActor static func resolveStoredColorComponents(_ string: String) -> Components? {
+    @MainActor
+    static func resolveStoredColorComponents(_ string: String) -> Components? {
         if paletteColorNames.contains(string) {
             return Components(color: Color(string))
         }
@@ -436,7 +467,9 @@ extension Color {
             
             func value(_ i: Int) -> Double {
                 if let range = Range(match.range(at: i), in: trimmed),
-                   let num = Double(trimmed[range]) { return num }
+                   let num = Double(trimmed[range]) {
+                    return num
+                }
                 return 1.0
             }
             
@@ -457,11 +490,21 @@ extension Color {
         
         func hueToRgb(p: Double, q: Double, t: Double) -> Double {
             var t = t
-            if t < 0 { t += 1 }
-            if t > 1 { t -= 1 }
-            if t < 1 / 6 { return p + (q - p) * 6 * t }
-            if t < 1 / 2 { return q }
-            if t < 2 / 3 { return p + (q - p) * (2 / 3 - t) * 6 }
+            if t < 0 {
+                t += 1
+            }
+            if t > 1 {
+                t -= 1
+            }
+            if t < 1 / 6 {
+                return p + (q - p) * 6 * t
+            }
+            if t < 1 / 2 {
+                return q
+            }
+            if t < 2 / 3 {
+                return p + (q - p) * (2 / 3 - t) * 6
+            }
             return p
         }
         

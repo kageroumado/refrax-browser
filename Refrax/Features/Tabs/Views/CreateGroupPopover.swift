@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// Popover for creating a new tab group
+/// Popover for creating a tab group, or for editing an existing group's look
 ///
 /// Allows users to configure:
 /// - Group name
 /// - Group color (tint)
 /// - Group icon (SF Symbol)
 struct CreateGroupPopover: View {
+    /// The group being edited; `nil` creates a new group.
+    var group: TabGroup?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(TabManager.self) private var tabManager
     @Environment(TabGroupManager.self) private var groupManager
@@ -19,7 +22,7 @@ struct CreateGroupPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New Tab Group")
+            Text(group == nil ? "New Tab Group" : "Color & Icon")
                 .font(.headline)
 
             // Name field
@@ -85,8 +88,12 @@ struct CreateGroupPopover: View {
 
                 Spacer()
 
-                Button("Create") {
-                    createGroup()
+                Button(group == nil ? "Create" : "Save") {
+                    if let group {
+                        save(group)
+                    } else {
+                        createGroup()
+                    }
                 }
                 .keyboardShortcut(.return, modifiers: [])
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -95,8 +102,28 @@ struct CreateGroupPopover: View {
         .padding(20)
         .frame(width: 300)
         .onAppear {
+            if let group {
+                name = group.name
+                selectedColor = GroupColor(rawValue: group.colorString) ?? .steel
+                selectedIcon = group.iconName ?? "folder.fill"
+            }
             isNameFieldFocused = true
         }
+    }
+
+    private func save(_ group: TabGroup) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        if trimmedName != group.name {
+            groupManager.renameGroup(group, to: trimmedName)
+        }
+        if selectedColor.rawValue != group.colorString {
+            groupManager.updateGroupColor(group, to: selectedColor.rawValue)
+        }
+        if selectedIcon != group.iconName {
+            groupManager.updateGroupIcon(group, to: selectedIcon)
+        }
+        dismiss()
     }
 
     private func createGroup() {

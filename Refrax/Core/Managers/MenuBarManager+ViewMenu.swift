@@ -6,59 +6,8 @@ extension MenuBarManager {
     func createViewMenu() -> NSMenuItem {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
-        // updateViewMenu keeps the engine item's title and the sidebar mode checkmarks current.
+        // updateViewMenu keeps the engine, favorite, and mute items' titles current.
         viewMenu.delegate = self
-
-        // Show/Hide Sidebar
-        let sidebarItem = NSMenuItem(
-            title: "Toggle Sidebar",
-            action: #selector(toggleSidebar(_:)),
-            keyEquivalent: "s",
-        )
-        sidebarItem.keyEquivalentModifierMask = [.command]
-        sidebarItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: nil)
-        sidebarItem.target = self
-        viewMenu.addItem(sidebarItem)
-
-        // Show/Hide Reference Pane (right sidebar)
-        let inspectorItem = NSMenuItem(
-            title: "Toggle Reference Pane",
-            action: #selector(toggleInspector(_:)),
-            keyEquivalent: "s",
-        )
-        inspectorItem.keyEquivalentModifierMask = [.command, .control]
-        inspectorItem.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
-        inspectorItem.target = self
-        viewMenu.addItem(inspectorItem)
-
-        // Sidebar Mode submenu
-        let sidebarModeItem = NSMenuItem(title: "Sidebar Mode", action: nil, keyEquivalent: "")
-        sidebarModeItem.image = NSImage(systemSymbolName: "sidebar.squares.left", accessibilityDescription: nil)
-        let sidebarModeMenu = NSMenu(title: "Sidebar Mode")
-        sidebarModeMenu.delegate = self
-
-        let overlayModeItem = NSMenuItem(
-            title: "Overlay",
-            action: #selector(setSidebarModeOverlay(_:)),
-            keyEquivalent: "",
-        )
-        overlayModeItem.target = self
-        overlayModeItem.tag = MenuItemTag.sidebarModeOverlay.rawValue
-        sidebarModeMenu.addItem(overlayModeItem)
-
-        let compactModeItem = NSMenuItem(
-            title: "Compact",
-            action: #selector(setSidebarModeCompact(_:)),
-            keyEquivalent: "",
-        )
-        compactModeItem.target = self
-        compactModeItem.tag = MenuItemTag.sidebarModeCompact.rawValue
-        sidebarModeMenu.addItem(compactModeItem)
-
-        sidebarModeItem.submenu = sidebarModeMenu
-        viewMenu.addItem(sidebarModeItem)
-
-        viewMenu.addItem(.separator())
 
         // Tab Navigation
         let nextTabItem = NSMenuItem(
@@ -173,7 +122,7 @@ extension MenuBarManager {
 
         // Lightboard (Cmd+Shift+L)
         let lightboardItem = NSMenuItem(
-            title: "Show Lightboard",
+            title: "Show Tab Statistics",
             action: #selector(showLightboard(_:)),
             keyEquivalent: "l",
         )
@@ -216,6 +165,49 @@ extension MenuBarManager {
         splitViewItem.target = self
         viewMenu.addItem(splitViewItem)
 
+        let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "")
+        floatingItem.target = self
+        viewMenu.addItem(floatingItem)
+        let currentTabItem = NSMenuItem(title: "Current Tab…", action: #selector(showCurrentTabInfo(_:)), keyEquivalent: "")
+        currentTabItem.target = self
+        viewMenu.addItem(currentTabItem)
+        let returnItem = NSMenuItem(title: "Return to Activity", action: #selector(returnToActivity(_:)), keyEquivalent: "")
+        returnItem.target = self
+        viewMenu.addItem(returnItem)
+        let keepItem = NSMenuItem(title: "Keep Part Visible…", action: #selector(keepCurrentRegion(_:)), keyEquivalent: "")
+        keepItem.target = self
+        viewMenu.addItem(keepItem)
+        for edge in FloatingDockEdge.allCases {
+            let key = TabActions.dockKey(edge)
+            let dockItem = NSMenuItem(
+                title: "Dock Current Page \(edge.title)",
+                action: edge == .leading ? #selector(dockCurrentPageLeft(_:)) : #selector(dockCurrentPageRight(_:)),
+                keyEquivalent: String(key.character),
+            )
+            dockItem.keyEquivalentModifierMask = key.modifiers
+            dockItem.image = NSImage(systemSymbolName: edge == .leading ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled", accessibilityDescription: nil)
+            dockItem.target = self
+            viewMenu.addItem(dockItem)
+        }
+        viewMenu.addItem(createTableMenuItem())
+        let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
+        favoriteItem.target = self
+        favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue
+        viewMenu.addItem(favoriteItem)
+        let favoritesDrawerItem = NSMenuItem(title: "Show Favorites", action: #selector(showFavoritesDrawer(_:)), keyEquivalent: "")
+        favoritesDrawerItem.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
+        favoritesDrawerItem.target = self
+        viewMenu.addItem(favoritesDrawerItem)
+        let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
+        controlsItem.target = self
+        viewMenu.addItem(controlsItem)
+        let customizeControlsItem = NSMenuItem(title: "Customize Control Island…", action: #selector(customizeControls(_:)), keyEquivalent: "")
+        customizeControlsItem.target = self
+        viewMenu.addItem(customizeControlsItem)
+        let resetControlsItem = NSMenuItem(title: "Reset Control Position", action: #selector(resetControlPosition(_:)), keyEquivalent: "")
+        resetControlsItem.target = self
+        viewMenu.addItem(resetControlsItem)
+
         viewMenu.addItem(.separator())
 
         // Video Viewer (WebKit's in-window viewer for the current video)
@@ -229,6 +221,13 @@ extension MenuBarManager {
         videoViewerItem.target = self
         viewMenu.addItem(videoViewerItem)
 
+        let muteItem = NSMenuItem(title: "Mute Tab", action: #selector(toggleMuteCurrentTab(_:)), keyEquivalent: "m")
+        muteItem.keyEquivalentModifierMask = [.control]
+        muteItem.image = NSImage(systemSymbolName: "speaker.slash", accessibilityDescription: nil)
+        muteItem.tag = MenuItemTag.muteTab.rawValue
+        muteItem.target = self
+        viewMenu.addItem(muteItem)
+
         // Full Screen
         let fullScreenItem = NSMenuItem(
             title: "Enter Full Screen",
@@ -240,16 +239,6 @@ extension MenuBarManager {
 
         viewMenuItem.submenu = viewMenu
         return viewMenuItem
-    }
-
-    @objc
-    func toggleSidebar(_ sender: Any?) {
-        activeWindowController?.toggleSidebar(sender)
-    }
-
-    @objc
-    func toggleInspector(_: Any?) {
-        activeWindowController?.toggleInspector()
     }
 
     @objc
@@ -280,7 +269,7 @@ extension MenuBarManager {
     /// Reloads the active page in the other rendering engine: system WebKit ⇄ the first installed engine.
     @objc
     func switchRenderingEngine(_: Any?) {
-        guard let page = activeWindowController?.windowState.activeWebPage else { return }
+        guard let page = activeWindowController?.windowState.focusedWebPage else { return }
         let registry = NSApp.typedDelegate.engineRegistry
         guard let target = alternateEngine(for: page, in: registry) else { return }
         page.reload(in: target, registry: registry)
@@ -297,38 +286,45 @@ extension MenuBarManager {
     @objc
     func actualSize(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.resetZoom()
     }
 
     @objc
     func zoomIn(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.zoomIn()
     }
 
     @objc
     func zoomOut(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         webPage.zoomOut()
     }
 
     @objc
     func toggleVideoViewer(_: Any?) {
         guard let controller = activeWindowController,
-              let webPage = controller.windowState.activeWebPage else { return }
+              let webPage = controller.windowState.focusedWebPage else { return }
         // Needs an active playback session (a video that has started playing);
         // without one the SPI is a silent no-op.
         webPage.toggleInWindowVideo()
+    }
+
+    /// Mutes the current tab, or unmutes it when it is muted.
+    @objc
+    func toggleMuteCurrentTab(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.activeTab else { return }
+        TabMediaControl(tab: tab, pagePool: controller.tabManager.pagePool).toggleMute()
     }
 
     // MARK: - Detail Tray Actions
 
     @objc
     func showDownloads(_: Any?) {
-        activeWindowController?.windowState.toggleDetailTray(.downloads)
+        activeWindowController?.showDownloads()
     }
 
     @objc
@@ -366,52 +362,90 @@ extension MenuBarManager {
         windowState.openCommandLens()
     }
 
-    // MARK: - Sidebar Mode Actions
-
     @objc
-    func setSidebarModeOverlay(_: Any?) {
-        NSApp.typedDelegate.settings.defaultSidebarMode = .overlay
+    func toggleFloatingTabs(_: Any?) {
+        activeWindowController?.tabCanvasManager.toggleFloatingTabs()
     }
 
     @objc
-    func setSidebarModeCompact(_: Any?) {
-        NSApp.typedDelegate.settings.defaultSidebarMode = .compact
+    func focusBrowserControls(_: Any?) {
+        activeWindowController?.windowState.controlIsland.focus()
+    }
+
+    @objc
+    func showCurrentTabInfo(_: Any?) {
+        activeWindowController?.windowState.controlIsland.tabInfo.show()
+    }
+
+    @objc
+    func resetControlPosition(_: Any?) {
+        activeWindowController?.windowState.controlIsland.resetPlacement()
+    }
+
+    @objc
+    func customizeControls(_: Any?) {
+        activeWindowController?.windowState.controlIsland.showsCustomization = true
+    }
+
+    @objc
+    func returnToActivity(_: Any?) {
+        guard let controller = activeWindowController else { return }
+        controller.tabManager.returnFromLook(in: controller.windowState)
+    }
+
+    @objc
+    func keepCurrentRegion(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab else { return }
+        controller.tabCanvasManager.beginRegionSelection(for: tab)
+    }
+
+    @objc
+    func dockCurrentPageLeft(_: Any?) {
+        activeWindowController?.tabCanvasManager.dockCurrentPage(to: .leading)
+    }
+
+    @objc
+    func dockCurrentPageRight(_: Any?) {
+        activeWindowController?.tabCanvasManager.dockCurrentPage(to: .trailing)
+    }
+
+    @objc
+    func favoriteCurrentPage(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab,
+              let bookmarks = controller.tabManager.bookmarksManager else { return }
+        ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()
+    }
+
+    @objc
+    func showFavoritesDrawer(_: Any?) {
+        activeWindowController?.windowState.toggleDetailTray(.favorites)
     }
 
     // MARK: - View Menu Validation
 
-    /// Updates sidebar mode menu item checkmarks based on current setting.
+    /// Updates the engine, favorite, and mute items for the focused page.
     func updateViewMenu(_ menu: NSMenu) {
-        guard menu.title == "View" || menu.title == "Sidebar Mode" else { return }
+        guard menu.title == "View" else { return }
 
         if let engineItem = menu.item(withTag: MenuItemTag.switchRenderingEngine.rawValue) {
-            let page = activeWindowController?.windowState.activeWebPage
+            let page = activeWindowController?.windowState.focusedWebPage
             let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
             engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
             engineItem.isHidden = target == nil
         }
 
-        // Find sidebar mode submenu
-        let sidebarModeMenu: NSMenu? = if menu.title == "Sidebar Mode" {
-            menu
-        } else {
-            menu.item(withTitle: "Sidebar Mode")?.submenu
+        if let favoriteItem = menu.item(withTag: MenuItemTag.favoriteCurrentPage.rawValue) {
+            let isFavorite = activeWindowController?.windowState.focusedPage?.tab?.isFavorite == true
+            favoriteItem.title = isFavorite ? "Remove from Favorites" : "Favorite Current Page"
+            favoriteItem.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
         }
 
-        guard let sidebarModeMenu else { return }
-
-        let currentMode = NSApp.typedDelegate.settings.defaultSidebarMode
-
-        // Update checkmarks
-        for item in sidebarModeMenu.items {
-            switch item.tag {
-            case MenuItemTag.sidebarModeOverlay.rawValue:
-                item.state = currentMode == .overlay ? .on : .off
-            case MenuItemTag.sidebarModeCompact.rawValue:
-                item.state = currentMode == .compact ? .on : .off
-            default:
-                break
-            }
+        if let muteItem = menu.item(withTag: MenuItemTag.muteTab.rawValue) {
+            let isMuted = activeWindowController.flatMap { controller in
+                controller.windowState.activeTab.map { TabMediaControl(tab: $0, pagePool: controller.tabManager.pagePool).isMuted }
+            } ?? false
+            muteItem.title = isMuted ? "Unmute Tab" : "Mute Tab"
+            muteItem.image = NSImage(systemSymbolName: isMuted ? "speaker.wave.2" : "speaker.slash", accessibilityDescription: nil)
         }
     }
 }

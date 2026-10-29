@@ -70,13 +70,17 @@ struct RefraxFocusFilter: SetFocusFilterIntent {
 
         if let blocked = blockedDomains, !blocked.isEmpty {
             let count = blocked.components(separatedBy: ",").count
-            if !subtitle.isEmpty { subtitle += ", " }
+            if !subtitle.isEmpty {
+                subtitle += ", "
+            }
             subtitle += "\(count) blocked"
         }
 
         if let blurred = blurredDomains, !blurred.isEmpty {
             let count = blurred.components(separatedBy: ",").count
-            if !subtitle.isEmpty { subtitle += ", " }
+            if !subtitle.isEmpty {
+                subtitle += ", "
+            }
             subtitle += "\(count) blurred"
         }
 
@@ -203,7 +207,7 @@ struct SpaceEntityQuery: EntityQuery {
 
         return identifiers.compactMap { id in
             guard let space = appDelegate.browserState.space(for: id) else { return nil }
-            return SpaceEntity(id: space.id, name: space.name, iconName: space.iconName)
+            return SpaceEntity(id: space.id, name: space.name, iconName: space.symbolName)
         }
     }
 
@@ -214,7 +218,7 @@ struct SpaceEntityQuery: EntityQuery {
         }
 
         return appDelegate.browserState.spaces.map { space in
-            SpaceEntity(id: space.id, name: space.name, iconName: space.iconName)
+            SpaceEntity(id: space.id, name: space.name, iconName: space.symbolName)
         }
     }
 }

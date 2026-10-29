@@ -9,53 +9,18 @@ extension MenuBarManager {
         menu.delegate = self
         editMenu = menu
 
-        // Standard Undo - uses responder chain so WebKit text fields respond
-        let undoItem = NSMenuItem(
-            title: "Undo",
-            action: Selector(("undo:")),
-            keyEquivalent: "z",
-        )
-        undoItem.target = nil // Use responder chain
+        let undoItem = NSMenuItem(title: "Undo", action: #selector(browserUndo(_:)), keyEquivalent: "z")
+        undoItem.target = self
+        undoItem.tag = MenuItemTag.browserUndo.rawValue
         undoItem.image = NSImage(systemSymbolName: "arrow.uturn.backward", accessibilityDescription: nil)
         menu.addItem(undoItem)
 
-        // Standard Redo - uses responder chain so WebKit text fields respond
-        let redoItem = NSMenuItem(
-            title: "Redo",
-            action: Selector(("redo:")),
-            keyEquivalent: "z",
-        )
+        let redoItem = NSMenuItem(title: "Redo", action: #selector(browserRedo(_:)), keyEquivalent: "z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
-        redoItem.target = nil // Use responder chain
+        redoItem.target = self
+        redoItem.tag = MenuItemTag.browserRedo.rawValue
         redoItem.image = NSImage(systemSymbolName: "arrow.uturn.forward", accessibilityDescription: nil)
         menu.addItem(redoItem)
-
-        menu.addItem(.separator())
-
-        // Browser-level Undo (Close Tab, Delete Group, etc.)
-        // These are separate from WebKit's text editing undo because WKWebView
-        // claims ownership of undo:/redo: selectors even when it has nothing to undo.
-        let browserUndoItem = NSMenuItem(
-            title: "Undo",
-            action: #selector(browserUndo(_:)),
-            keyEquivalent: "",
-        )
-        browserUndoItem.target = self
-        browserUndoItem.tag = MenuItemTag.browserUndo.rawValue
-        browserUndoItem.image = NSImage(systemSymbolName: "arrow.uturn.backward.circle", accessibilityDescription: nil)
-        menu.addItem(browserUndoItem)
-
-        // Browser-level Redo
-        let browserRedoItem = NSMenuItem(
-            title: "Redo",
-            action: #selector(browserRedo(_:)),
-            keyEquivalent: "",
-        )
-        browserRedoItem.target = self
-        browserRedoItem.tag = MenuItemTag.browserRedo.rawValue
-        browserRedoItem.image = NSImage(systemSymbolName: "arrow.uturn.forward.circle", accessibilityDescription: nil)
-        menu.addItem(browserRedoItem)
-
         menu.addItem(.separator())
 
         menu.addItem(NSMenuItem(
@@ -98,17 +63,28 @@ extension MenuBarManager {
         return editMenuItem
     }
 
+    /// Text editing uses its responder's history; browser edits use the shared history.
+    func editingUndoManager(redo: Bool) -> UndoManager {
+        if let native = focusedUndoManager,
+           redo ? native.canRedo : native.canUndo {
+            return native
+        }
+        return undoRedoManager.undoManager
+    }
+
     @objc
     func browserUndo(_: Any?) {
-        if undoRedoManager.undoManager.canUndo {
-            undoRedoManager.undoManager.undo()
+        let manager = editingUndoManager(redo: false)
+        if manager.canUndo {
+            manager.undo()
         }
     }
 
     @objc
     func browserRedo(_: Any?) {
-        if undoRedoManager.undoManager.canRedo {
-            undoRedoManager.undoManager.redo()
+        let manager = editingUndoManager(redo: true)
+        if manager.canRedo {
+            manager.redo()
         }
     }
 
@@ -123,22 +99,28 @@ extension MenuBarManager {
         for item in menu.items {
             switch item.tag {
             case MenuItemTag.browserUndo.rawValue:
-                // Update title with action name (e.g., "Undo Close Tab \"GitHub\"")
-                item.title = undoRedoManager.undoMenuTitle
-                item.isEnabled = undoRedoManager.undoManager.canUndo
-                // Hide if nothing to undo to reduce clutter
-                item.isHidden = !undoRedoManager.undoManager.canUndo
+                let manager = editingUndoManager(redo: false)
+                item.title = manager.undoMenuItemTitle
+                item.isEnabled = manager.canUndo
 
             case MenuItemTag.browserRedo.rawValue:
-                // Update title with action name
-                item.title = undoRedoManager.redoMenuTitle
-                item.isEnabled = undoRedoManager.undoManager.canRedo
-                // Hide if nothing to redo to reduce clutter
-                item.isHidden = !undoRedoManager.undoManager.canRedo
+                let manager = editingUndoManager(redo: true)
+                item.title = manager.redoMenuItemTitle
+                item.isEnabled = manager.canRedo
 
             default:
                 break
             }
+        }
+    }
+}
+
+extension MenuBarManager: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.tag {
+        case MenuItemTag.browserUndo.rawValue: editingUndoManager(redo: false).canUndo
+        case MenuItemTag.browserRedo.rawValue: editingUndoManager(redo: true).canRedo
+        default: true
         }
     }
 }

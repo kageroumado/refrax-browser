@@ -14,7 +14,7 @@ import WebKit
 ///
 /// ## Architecture
 ///
-/// The builder follows a composition pattern similar to `SidebarContextMenus`:
+/// The builder follows a composition pattern:
 /// - Separate helper methods for each element type (data, links, images, videos)
 /// - Items are grouped by element type with separators between groups
 /// - A separator divides custom items from WebKit's default items
@@ -34,15 +34,13 @@ final class WebPageContextMenuBuilder: NSObject {
 
     /// Callback for opening a URL in a new tab.
     var onOpenInNewTab: ((URL) -> Void)?
+    var onLookAtLink: ((URL) -> Void)?
 
     /// Callback for the "Remind Me" action. Called when user selects the menu item.
     var onRemindMe: (() -> Void)?
 
     /// Callback for the "Insert GIF" action. Called when user selects the menu item.
     var onInsertGIF: (() -> Void)?
-
-    /// Callback for speed reading selected text. Receives the selected text.
-    var onSpeedReadSelection: ((String) -> Void)?
 
     /// Callback for downloading a file (image/video) to the Downloads folder.
     var onDownloadFile: ((URL) -> Void)?
@@ -59,10 +57,6 @@ final class WebPageContextMenuBuilder: NSObject {
 
     /// Returns the search engine selected in Refrax's settings. Set by the caller.
     var searchEngine: (() -> SearchEngine)?
-
-    /// Minimum character count for showing "Speed Read Selection" option.
-    /// Assumes ~6 chars per word (5 letter avg + space), so 300 chars ≈ 50 words.
-    private let speedReadMinCharCount = 300
 
     // MARK: - Initialization
 
@@ -108,12 +102,6 @@ final class WebPageContextMenuBuilder: NSObject {
             let dataItems = dataDetectionManager.createMenuItems(for: selectedText)
             if !dataItems.isEmpty {
                 itemGroups.append(dataItems)
-            }
-
-            // Speed read for long selections
-            let speedReadItems = speedReadSelectionItems(for: selectedText)
-            if !speedReadItems.isEmpty {
-                itemGroups.append(speedReadItems)
             }
         }
 
@@ -233,6 +221,7 @@ final class WebPageContextMenuBuilder: NSObject {
     /// Returns link-related menu items (open in new tab, copy).
     private func linkItems(for url: URL) -> [NSMenuItem] {
         [
+            menuItem("Look at Link", action: #selector(lookAtLink(_:)), url: url),
             menuItem("Open Link in New Tab", action: #selector(openInNewTab(_:)), url: url),
             menuItem("Copy Link", action: #selector(copyLink(_:)), url: url),
         ]
@@ -282,24 +271,6 @@ final class WebPageContextMenuBuilder: NSObject {
         }
 
         return items
-    }
-
-    /// Returns speed read menu items for sufficiently long selected text.
-    private func speedReadSelectionItems(for text: String) -> [NSMenuItem] {
-        guard onSpeedReadSelection != nil else { return [] }
-
-        // Quick character count check (O(1) for String.count)
-        guard text.count >= speedReadMinCharCount else { return [] }
-
-        let item = NSMenuItem(
-            title: "Speed Read Selection",
-            action: #selector(speedReadSelection(_:)),
-            keyEquivalent: "",
-        )
-        item.target = self
-        item.representedObject = text
-        item.image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: "Speed Read")
-        return [item]
     }
 
     /// Returns page-level action items (Remind Me).
@@ -405,6 +376,12 @@ final class WebPageContextMenuBuilder: NSObject {
     // MARK: - Actions
 
     @objc
+    private func lookAtLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onLookAtLink?(url)
+    }
+
+    @objc
     private func openInNewTab(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         onOpenInNewTab?(url)
@@ -442,13 +419,6 @@ final class WebPageContextMenuBuilder: NSObject {
     @objc
     private func insertGIF() {
         onInsertGIF?()
-    }
-
-    /// Triggers speed reading of selected text.
-    @objc
-    private func speedReadSelection(_ sender: NSMenuItem) {
-        guard let text = sender.representedObject as? String else { return }
-        onSpeedReadSelection?(text)
     }
 
     @objc

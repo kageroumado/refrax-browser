@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 import Testing
-
 @testable import Refrax
 
 // MARK: - Test Tags
@@ -55,8 +54,8 @@ final class TabSwitcherTestContext {
 @Suite("TabSwitcherManager Initial State", .tags(.tabSwitcherManager), .serialized)
 @MainActor
 struct TabSwitcherInitialStateTests {
-    @Test("Initially not active")
-    func initiallyNotActive() throws {
+    @Test
+    func `Initially not active`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -64,16 +63,16 @@ struct TabSwitcherInitialStateTests {
         #expect(ctx.switcher?.selectedIndex == 0)
     }
 
-    @Test("Initially has empty recent tabs")
-    func initiallyEmptyRecentTabs() throws {
+    @Test
+    func `Initially has empty recent tabs`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
         #expect(ctx.switcher?.recentTabs.isEmpty == true)
     }
 
-    @Test("Cannot show switcher with no recent tabs")
-    func cannotShowWithNoTabs() throws {
+    @Test
+    func `Cannot show switcher with no recent tabs`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -86,8 +85,8 @@ struct TabSwitcherInitialStateTests {
 @Suite("TabSwitcherManager Show Dismiss", .tags(.tabSwitcherManager), .serialized)
 @MainActor
 struct TabSwitcherShowDismissTests {
-    @Test("Show is no-op when cannot show")
-    func showNoOpWhenCannotShow() throws {
+    @Test
+    func `Show is no-op when cannot show`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -98,8 +97,8 @@ struct TabSwitcherShowDismissTests {
         #expect(ctx.switcher?.isActive == false, "Should not activate when cannot show")
     }
 
-    @Test("Dismiss is no-op when not active")
-    func dismissNoOpWhenNotActive() throws {
+    @Test
+    func `Dismiss is no-op when not active`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -111,8 +110,8 @@ struct TabSwitcherShowDismissTests {
         #expect(ctx.switcher?.selectedIndex == 0)
     }
 
-    @Test("Cancel resets state")
-    func cancelResetsState() throws {
+    @Test
+    func `Cancel resets state`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -128,8 +127,8 @@ struct TabSwitcherShowDismissTests {
 @Suite("TabSwitcherManager Navigation", .tags(.tabSwitcherManager), .serialized)
 @MainActor
 struct TabSwitcherNavigationTests {
-    @Test("Select next is no-op when not active")
-    func selectNextNoOpWhenNotActive() throws {
+    @Test
+    func `Select next is no-op when not active`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -141,8 +140,8 @@ struct TabSwitcherNavigationTests {
         #expect(ctx.switcher?.selectedIndex == 0, "Should not change when not active")
     }
 
-    @Test("Select previous is no-op when not active")
-    func selectPreviousNoOpWhenNotActive() throws {
+    @Test
+    func `Select previous is no-op when not active`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
@@ -159,13 +158,13 @@ struct TabSwitcherNavigationTests {
 @Suite("TabSwitcherManager Preview", .tags(.tabSwitcherManager), .serialized)
 @MainActor
 struct TabSwitcherPreviewTests {
-    @Test("Preview returns nil for uncached tab")
-    func previewReturnsNilUncached() throws {
+    @Test
+    func `Preview returns nil for uncached tab`() throws {
         let ctx = try TabSwitcherTestContext()
         defer { ctx.cleanup() }
 
-        let tab = ctx.env.tabManager.createTab(
-            url: URL(string: "https://example.com")!,
+        let tab = try ctx.env.tabManager.createTab(
+            url: #require(URL(string: "https://example.com")),
             in: ctx.space,
             makeActive: true,
         )
@@ -175,15 +174,150 @@ struct TabSwitcherPreviewTests {
     }
 }
 
-// MARK: - Notes
+@Suite("Tab switcher interactions", .serialized)
+@MainActor
+struct TabSwitcherInteractionTests {
+    private func activateAndObserve(_ tab: Tab, in ctx: TabSwitcherTestContext) async throws {
+        ctx.env.tabManager.setActiveTab(tab, in: ctx.windowState)
+        for _ in 0 ..< 100 where ctx.switcher?.recentTabs.first?.id != tab.id {
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(ctx.switcher?.recentTabs.first?.id == tab.id)
+    }
 
-//
-// Full TabSwitcherManager functionality requires async observation of WindowState.activeTabID.
-// The following behaviors require the observation to fire (tested via integration tests):
-//
-// 1. Tab activation recording - happens via @Observable observation
-// 2. Recent tabs population - requires tab activations to be recorded
-// 3. Show with selection - requires populated recent tabs
-// 4. Navigation wrap-around - requires active state with tabs
-// 5. Preview caching - requires WebView snapshot capability
-//
+    private func makePair(in ctx: TabSwitcherTestContext) async throws -> (Tab, Tab) {
+        let first = ctx.env.tabManager.createTab(url: URL(string: "about:blank#first")!, in: ctx.space, makeActive: false)
+        let second = ctx.env.tabManager.createTab(url: URL(string: "about:blank#second")!, in: ctx.space, makeActive: false)
+        try await activateAndObserve(first, in: ctx)
+        try await activateAndObserve(second, in: ctx)
+        return (first, second)
+    }
+
+    @Test
+    func `pointer picker toggles and ignores modifier release`() async throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let (_, second) = try await makePair(in: ctx)
+        let switcher = try #require(ctx.switcher)
+        switcher.toggle()
+        #expect(switcher.isActive)
+        switcher.controlReleased()
+        #expect(switcher.isActive)
+        #expect(ctx.windowState.activeTabID == second.id)
+        switcher.toggle()
+        #expect(!switcher.isActive)
+        switcher.toggle()
+        switcher.cancel()
+        #expect(!switcher.isActive)
+        #expect(ctx.windowState.activeTabID == second.id)
+    }
+
+    @Test
+    func `control tab returns across spaces`() async throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let (_, firstSpaceTab) = try await makePair(in: ctx)
+        let otherSpace = ctx.env.makeSpace(name: "Preview space")
+        let preview = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank#preview")), in: otherSpace, makeActive: false)
+        ctx.env.spaceManager.switchToSpaceSync(otherSpace, for: ctx.windowState)
+        try await activateAndObserve(preview, in: ctx)
+        let switcher = try #require(ctx.switcher)
+        switcher.show()
+        switcher.controlReleased()
+        #expect(ctx.windowState.activeSpaceID == ctx.space.id)
+        #expect(ctx.windowState.activeTabID == firstSpaceTab.id)
+        switcher.show()
+        switcher.controlReleased()
+        #expect(ctx.windowState.activeSpaceID == otherSpace.id)
+        #expect(ctx.windowState.activeTabID == preview.id)
+        #expect(ctx.windowState.focusedPageID == preview.activePage.id)
+    }
+
+    @Test
+    func `next and previous tab walk recency without trading places`() async throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let (first, second) = try await makePair(in: ctx)
+        let third = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank#third")), in: ctx.space, makeActive: false)
+        try await activateAndObserve(third, in: ctx)
+        let switcher = try #require(ctx.switcher)
+
+        switcher.stepThroughRecent(by: 1)
+        #expect(ctx.windowState.activeTabID == second.id)
+        switcher.stepThroughRecent(by: 1)
+        #expect(ctx.windowState.activeTabID == first.id)
+        switcher.stepThroughRecent(by: 1)
+        #expect(ctx.windowState.activeTabID == first.id)
+        switcher.stepThroughRecent(by: -1)
+        #expect(ctx.windowState.activeTabID == second.id)
+        switcher.stepThroughRecent(by: -1)
+        #expect(ctx.windowState.activeTabID == third.id)
+    }
+
+    @Test
+    func `pointer selection activates and closes`() async throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let (first, _) = try await makePair(in: ctx)
+        let switcher = try #require(ctx.switcher)
+        switcher.toggle()
+        switcher.activate(tabID: first.id)
+        #expect(!switcher.isActive)
+        #expect(ctx.windowState.activeTabID == first.id)
+    }
+
+    @Test
+    func `closing selected tab cannot activate its neighbor`() async throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let (first, second) = try await makePair(in: ctx)
+        let switcher = try #require(ctx.switcher)
+        switcher.show()
+        ctx.env.tabManager.closeTab(first)
+        switcher.controlReleased()
+        #expect(!switcher.isActive)
+        #expect(ctx.windowState.activeTabID == second.id)
+    }
+
+    @Test
+    func `reselecting the active tab keeps video in the page`() throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        ctx.env.settings.autoPiPOnTabSwitch = true
+        let tab = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank")), in: ctx.space, makeActive: true)
+        _ = try #require(ctx.env.pagePool.page(for: tab.activePage))
+        ctx.env.tabManager.setActiveTab(tab, in: ctx.windowState)
+        #expect(ctx.env.browserState.pipCoordinator.pendingSourceTabID == nil)
+    }
+
+    @Test
+    func `quick return cancels pending auto picture in picture`() throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        ctx.env.settings.autoPiPOnTabSwitch = true
+        let source = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank#source")), in: ctx.space, makeActive: true)
+        let other = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank#other")), in: ctx.space, makeActive: false)
+        _ = try #require(ctx.env.pagePool.page(for: source.activePage))
+        ctx.env.tabManager.setActiveTab(other, in: ctx.windowState)
+        #expect(ctx.env.browserState.pipCoordinator.pendingSourceTabID == source.id)
+        ctx.env.tabManager.setActiveTab(source, in: ctx.windowState)
+        #expect(ctx.env.browserState.pipCoordinator.pendingSourceTabID != source.id)
+        #expect(!ctx.env.browserState.pipCoordinator.isAutoPiP)
+    }
+
+    @Test
+    func `activation from any control promotes the live preview`() throws {
+        let ctx = try TabSwitcherTestContext()
+        defer { ctx.cleanup() }
+        let tab = try ctx.env.tabManager.createTab(url: #require(URL(string: "about:blank")), in: ctx.space, makeActive: false)
+        let page = try #require(ctx.env.pagePool.page(for: tab.activePage))
+        let session = FloatingPreviewSession()
+        #expect(session.acquire(page, windowID: ObjectIdentifier(ctx.windowState)))
+        #expect(page.isInFloatingPreview)
+        ctx.env.tabManager.setActiveTab(tab, in: ctx.windowState)
+        #expect(page.isOwner(ctx.windowState))
+        #expect(!page.isInFloatingPreview)
+        session.release()
+        #expect(page.isOwner(ctx.windowState))
+    }
+}

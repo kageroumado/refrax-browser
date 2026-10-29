@@ -3,61 +3,11 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// Centralized manager for all browser-level undo/redo operations.
+/// Shared undo history for browser edits, including tab closure and organization.
 ///
-/// `UndoRedoManager` provides a single, global `UndoManager` for browser actions
-/// like closing tabs, deleting groups, and other reversible operations. This ensures
-/// consistent undo/redo behavior across all windows, similar to Safari.
-///
-/// ## Architecture
-///
-/// The manager owns a single `UndoManager` instance that is used for all browser-level
-/// actions. This is intentionally separate from WebView's internal undo management
-/// (which handles text editing within pages).
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────┐
-/// │ UndoRedoManager (app-global singleton)                  │
-/// │   undoManager: UndoManager  ← for browser actions       │
-/// │   recentlyClosedTabs: [ClosedTabInfo]                   │
-/// │   recentlyDeletedGroups: [ClosedGroupInfo]              │
-/// └─────────────────────────────────────────────────────────┘
-/// ```
-///
-/// ## Why Separate from Standard Undo?
-///
-/// WebKit's `WKWebView` (and its internal `WKContentView`) claims ownership of the
-/// `undo:` and `redo:` selectors through `validateUserInterfaceItem:`. Even when
-/// the web page has nothing to undo, WebKit validates YES for these actions because
-/// it maintains an editable context. This prevents the standard responder chain from
-/// reaching our window controller for browser-level undo operations.
-///
-/// To work around this, we:
-/// 1. Keep standard `undo:`/`redo:` menu items for WebKit text editing
-/// 2. Add separate "Undo Close Tab"/"Redo Close Tab" menu items for browser actions
-/// 3. Use a keyboard event monitor in `RefraxWindowController` to intercept Cmd+Z
-///    when WebKit has nothing to undo, falling back to browser-level undo
-///
-/// ## Safari-Like Behavior
-///
-/// - Cmd+Z after closing a tab restores that tab (via event monitor)
-/// - "Undo Close Tab" menu item shows the specific action name
-/// - "Reopen Last Closed Tab" (Cmd+Shift+T) reopens and removes from list
-/// - "Recently Closed" submenu shows last 10 closed tabs
-/// - Undo/Redo is global across all windows
-///
-/// ## Usage
-///
-/// ```swift
-/// // Register a tab close (called by TabManager)
-/// undoRedoManager.registerCloseTab(closedInfo)
-///
-/// // Reopen last closed tab (Cmd+Shift+T)
-/// undoRedoManager.reopenLastClosedTab()
-///
-/// // Access for menu/UI
-/// let closedTabs = undoRedoManager.recentlyClosedTabs
-/// ```
+/// The Edit menu uses the focused editor's undo history when it has an available action,
+/// then falls back to this history. Closing tabs also adds entries to Recently Closed,
+/// which Command-Shift-T restores independently of the latest browser edit.
 @Observable
 final class UndoRedoManager {
     // MARK: - Properties
@@ -71,7 +21,6 @@ final class UndoRedoManager {
     /// Recently closed tabs available for reopening.
     ///
     /// Ordered by close time (most recent first). Limited to `maxRecentlyClosedTabs`.
-    /// Includes both main tabs and reference tabs.
     private(set) var recentlyClosedTabs: [ClosedTabInfo] = []
 
     /// Recently deleted groups available for restoration.
@@ -195,22 +144,6 @@ final class UndoRedoManager {
         undoManager.setActionName(actionName)
     }
 
-    /// Registers a reference tab close for undo.
-    ///
-    /// Reference tabs are tracked separately but use the same undo system.
-    ///
-    /// - Parameter info: Information about the closed reference tab.
-    func registerCloseReferenceTab(_ info: ClosedTabInfo) {
-        addToRecentlyClosed(info)
-
-        let title = info.title
-        undoManager.registerUndo(withTarget: self) { [weak self] _ in
-            guard let self else { return }
-            restoreReferenceTabFromUndo(info)
-        }
-        undoManager.setActionName("Close Reference Tab \"\(title)\"")
-    }
-
     // MARK: - Group Undo Operations
 
     /// Registers a group deletion for undo.
@@ -240,11 +173,7 @@ final class UndoRedoManager {
     func reopenLastClosedTab() {
         guard let info = recentlyClosedTabs.first else { return }
 
-        if info.isReferenceTab {
-            tabManager.restoreReferenceTab(info)
-        } else {
-            tabManager.restoreTab(info)
-        }
+        tabManager.restoreTab(info)
         recentlyClosedTabs.removeFirst()
 
         Logger.info("Reopened last closed tab: \(info.title)", category: Logger.tabs)
@@ -260,11 +189,7 @@ final class UndoRedoManager {
 
         let info = recentlyClosedTabs.remove(at: index)
 
-        if info.isReferenceTab {
-            tabManager.restoreReferenceTab(info)
-        } else {
-            tabManager.restoreTab(info)
-        }
+        tabManager.restoreTab(info)
 
         Logger.info("Reopened closed tab at index \(index): \(info.title)", category: Logger.tabs)
     }
@@ -301,12 +226,6 @@ final class UndoRedoManager {
     /// It restores the tab and removes it from the recently closed list.
     private func restoreTabFromUndo(_ info: ClosedTabInfo) {
         tabManager.restoreTab(info)
-        recentlyClosedTabs.removeAll { $0.id == info.id }
-    }
-
-    /// Restores a reference tab from an undo action.
-    private func restoreReferenceTabFromUndo(_ info: ClosedTabInfo) {
-        tabManager.restoreReferenceTab(info)
         recentlyClosedTabs.removeAll { $0.id == info.id }
     }
 
@@ -393,15 +312,6 @@ final class UndoRedoManager {
             tab.position = index
         }
 
-        // Restore reference tabs
-        for tabInfo in info.referenceTabInfos {
-            if let tab = tabManager.state.tab(for: tabInfo.tabID) {
-                tab.space = restoredSpace
-                tab.isReferenceTab = true
-                tab.position = tabInfo.position
-            }
-        }
-
         // Delete the result group
         tabGroupManager.deleteGroup(group, in: targetSpace, deleteContainedTabs: false)
 
@@ -467,7 +377,6 @@ struct ConvertedSpaceInfo: Equatable {
     let dataStoreMode: DataStoreMode
     let position: Int
     let tabInfos: [ConvertedTabInfo]
-    let referenceTabInfos: [ConvertedTabInfo]
     let targetSpaceID: UUID
     var resultGroupID: UUID?
 }
@@ -491,6 +400,66 @@ struct ConvertedTabInfo: Equatable {
     let tabID: UUID
     let position: Int
     let groupID: UUID?
-    let isPinned: Bool
-    let isReferenceTab: Bool
+}
+
+// MARK: - Move to Space
+
+extension UndoRedoManager {
+    /// Where a tab was before it moved to another space: the space and the group it left.
+    struct TabSpaceOrigin {
+        let tabID: UUID
+        let spaceID: UUID
+        let groupID: UUID?
+
+        init?(_ tab: Tab) {
+            guard let space = tab.space else { return nil }
+            self.tabID = tab.id
+            self.spaceID = space.id
+            self.groupID = tab.groupID
+        }
+    }
+
+    /// Registers moving tabs to another space; undo returns each tab to the space and group
+    /// it left, and redo moves them again.
+    ///
+    /// - Parameters:
+    ///   - origins: Where the tabs were before the move.
+    ///   - actionName: Name shown in the Edit menu, such as `Move to Work`.
+    func registerMoveToSpace(_ origins: [TabSpaceOrigin], actionName: String) {
+        guard !origins.isEmpty else { return }
+        undoManager.registerUndo(withTarget: self) { [weak self] _ in
+            self?.returnTabs(to: origins, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    /// Undoes the move named `actionName` when it is the latest undoable action.
+    ///
+    /// - Returns: Whether the move was undone.
+    @discardableResult
+    func undoMoveToSpace(named actionName: String) -> Bool {
+        guard undoManager.canUndo, undoManager.undoActionName == actionName else { return false }
+        undoManager.undo()
+        return true
+    }
+
+    private func returnTabs(to origins: [TabSpaceOrigin], actionName: String) {
+        let tabs = origins.compactMap { tabManager.state.tab(for: $0.tabID) }
+        let current = tabs.compactMap(TabSpaceOrigin.init)
+        let lock = tabManager.state.spaceLockManager
+        for origin in origins {
+            guard let tab = tabManager.state.tab(for: origin.tabID),
+                  let space = spaceManager.spaces.first(where: { $0.id == origin.spaceID }) else { continue }
+            // Undo never crosses a lock: a locked source or destination keeps its tabs until it
+            // is unlocked, the same gate Move to Space goes through.
+            if lock.requiresAuth(for: space) || tab.space.map(lock.requiresAuth(for:)) == true {
+                continue
+            }
+            tabManager.moveTabs([tab], to: space)
+            if let groupID = origin.groupID, let group = space.groups.first(where: { $0.id == groupID }) {
+                tabGroupManager.moveTabToGroup(tab, group: group, in: space)
+            }
+        }
+        registerMoveToSpace(current, actionName: actionName)
+    }
 }

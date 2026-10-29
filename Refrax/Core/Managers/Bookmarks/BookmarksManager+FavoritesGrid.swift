@@ -135,13 +135,13 @@ extension BookmarksManager {
             let itemType: FavoriteItem.ItemType
             if bookmark.favoriteMode == .liveFavorite {
                 // Check if tab already exists in runtime state
-                if let existingTab = tabManager.state.liveFavoriteTab(for: bookmark.id) {
+                if let existingTab = tabManager.state.favoriteTab(for: bookmark.id) {
                     // Sync favicon from tab to bookmark for persistence
                     syncFaviconFromTab(existingTab)
                     itemType = .liveFavorite(bookmark, existingTab)
                 } else if let persistedTab = bookmark.linkedTab {
                     // Tab was persisted but not yet in runtime state - restore it
-                    tabManager.state.addLiveFavoriteTab(persistedTab)
+                    tabManager.state.addFavoriteTab(persistedTab)
                     syncFaviconFromTab(persistedTab)
                     itemType = .liveFavorite(bookmark, persistedTab)
                 } else {

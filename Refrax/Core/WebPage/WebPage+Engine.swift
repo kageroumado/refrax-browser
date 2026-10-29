@@ -99,6 +99,7 @@ extension WebPage {
         case let .rendererHealthChanged(health):
             backingNavigationDelegate.pagePool?.handleRendererHealth(for: tabPage.id, health: health)
         case .navigationCommitted:
+            documentRevision = UUID()
             prompts.dismissAll()
         default:
             break
@@ -234,6 +235,9 @@ extension WebPage {
         tabPage.url = url
         if !state.title.isEmpty {
             tabPage.title = state.title
+        } else if urlChanged {
+            // A new document starts untitled: named by its file until its own title arrives.
+            tabPage.title = url.documentFileName ?? ""
         }
         httpErrorCode = nil
         httpErrorURL = nil

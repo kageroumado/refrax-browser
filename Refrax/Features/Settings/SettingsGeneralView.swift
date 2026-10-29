@@ -5,7 +5,6 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Environment(BrowserSettings.self) private var settings
     @Environment(DownloadManager.self) private var downloadManager
-    @Environment(CalendarManager.self) private var calendarManager
     let highlightedItemId: String?
 
     @State private var showImportSheet = false
@@ -17,9 +16,6 @@ struct GeneralSettingsView: View {
             // MARK: - Getting Started
 
             Section {
-                Toggle("Show sidebar guide on empty tab", isOn: $settings.showSidebarHints)
-                    .highlightable(id: "general.sidebarHints", highlightedItemId: highlightedItemId)
-
                 HStack {
                     VStack(alignment: .leading) {
                         Text("Import from Another Browser")
@@ -31,23 +27,11 @@ struct GeneralSettingsView: View {
                     Button("Import…") {
                         showImportSheet = true
                     }
+                    .buttonStyle(.borderedProminent)
                 }
                 .highlightable(id: "general.importBrowserData", highlightedItemId: highlightedItemId)
             } header: {
                 Text("Getting Started")
-            } footer: {
-                Text("Displays a quick reference guide in the main area when no tab is open.")
-            }
-
-            // MARK: - Gestures
-
-            Section {
-                Toggle("Two-finger swipe to switch spaces", isOn: $settings.spaceSwipeGestureEnabled)
-                    .highlightable(id: "general.spaceSwipeGesture", highlightedItemId: highlightedItemId)
-            } header: {
-                Text("Gestures")
-            } footer: {
-                Text("Swipe left or right on the sidebar to change spaces.")
             }
 
             // MARK: - Link Previews
@@ -165,38 +149,6 @@ struct GeneralSettingsView: View {
             // MARK: - Video Downloads (yt-dlp)
 
             YTDLPSettingsSection(settings: settings, highlightedItemId: highlightedItemId)
-
-            // MARK: - Calendar Widget
-
-            Section {
-                Toggle("Show calendar widget in sidebar", isOn: $settings.showCalendarWidget)
-                    .highlightable(id: "general.showCalendarWidget", highlightedItemId: highlightedItemId)
-                    .onChange(of: settings.showCalendarWidget) { _, enabled in
-                        if enabled, calendarManager.authorizationStatus == .notDetermined {
-                            Task {
-                                await calendarManager.requestAccess()
-                            }
-                        }
-                    }
-
-                if settings.showCalendarWidget {
-                    Picker("Show events in next", selection: $settings.calendarLookAheadHours) {
-                        Text("6 hours").tag(6)
-                        Text("12 hours").tag(12)
-                        Text("24 hours").tag(24)
-                        Text("48 hours").tag(48)
-                        Text("1 week").tag(168)
-                    }
-                    .highlightable(id: "general.calendarLookAhead", highlightedItemId: highlightedItemId)
-
-                    Toggle("Auto-expand for imminent events", isOn: $settings.calendarAutoExpandOnImminent)
-                        .highlightable(id: "general.calendarAutoExpand", highlightedItemId: highlightedItemId)
-                }
-            } header: {
-                Text("Calendar Widget")
-            } footer: {
-                Text("Display upcoming events from your calendars in the sidebar. Configure calendars in System Settings > Calendar.")
-            }
 
             // External URL handling section
             ExternalURLSettingsView(highlightedItemId: highlightedItemId)
