@@ -388,7 +388,7 @@ final class FloatingTourManager {
     /// canvas; the empty page's lens from the page itself. A step whose control is hidden
     /// by customization lights the whole rail. While the Command Lens is up over the page,
     /// the lens is the one lit area, wherever the step points.
-    func spotlights(in bounds: CGRect) -> [TourSpotlight] {
+    func spotlights(in _: CGRect) -> [TourSpotlight] {
         guard let step = currentStep else { return [] }
         if let lens = openLensFrame {
             return [FloatingTourLayout.spotlight(around: lens, of: .lens)]
@@ -568,11 +568,11 @@ extension FloatingTourManager.Step {
             return "Hold \(context.revealKey.glyph) and scroll down: the page below slides in. Scroll up to come back."
         case .floatPage:
             return context.islandsVisible
-                ? "Drag a row out of its island onto the page. It floats there as a live page; its yellow light sends it back."
+                ? "Drag a row out of its island onto the page. It floats there as a live page. Hover its toolbar and click Return to island to send it back."
                 : "Click the islands button on the controls, then drag a row out of its island onto the page."
         case .pinIsland:
             return context.islandsVisible
-                ? "Hover an island and click the pin in the capsule beside it. The island stays after you release \(context.revealKey.glyph)."
+                ? "Click the pin beside an island's name. The island stays after you release \(context.revealKey.glyph)."
                 : "Click the islands button on the controls, then pin an island so it stays."
         case .pageCard:
             return "Hover the page's icon on the controls for its card: title, address, reload, favorite, and actions."

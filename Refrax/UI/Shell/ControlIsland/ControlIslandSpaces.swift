@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A vertical space selector with a recessed track and one selected segment. Right-clicking a
-/// space offers that space's verbs; the track offers New Space and Manage Spaces.
+/// A vertical space selector and New Space action. Right-clicking a space offers its verbs;
+/// the track offers New Space and Manage Spaces.
 struct ControlIslandSpaces: View {
     let destinations: [Space]
     var focusedControl: FocusState<String?>.Binding
@@ -33,6 +33,19 @@ struct ControlIslandSpaces: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            selector
+            newSpaceButton
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Spaces")
+        .sheet(isPresented: $showsSpaceManagement) { SpaceManagementSheet() }
+        .onChange(of: showsSpaceManagement) { _, presented in
+            windowState.controlIsland.isPresenting = presented
+        }
+    }
+
+    private var selector: some View {
         Group {
             if destinations.count <= ControlIslandPlacement.maximumVisibleSpaces {
                 spaceButtons
@@ -49,15 +62,30 @@ struct ControlIslandSpaces: View {
             }
         }
         .clipShape(.rect(cornerRadius: Layout.cornerRadius))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Spaces")
         .contextMenu {
             spaceMenu(for: nil)
         }
-        .sheet(isPresented: $showsSpaceManagement) { SpaceManagementSheet() }
-        .onChange(of: showsSpaceManagement) { _, presented in
-            windowState.controlIsland.isPresenting = presented
+    }
+
+    private var newSpaceButton: some View {
+        Button(action: createSpace) {
+            ControlIslandRow {
+                Image(systemName: "plus.square.on.square")
+            }
         }
+        .focusable()
+        .focused(focusedControl, equals: "new-space")
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.space, .return]) { _ in
+            createSpace()
+            return .handled
+        }
+        .accessibilityLabel("New Space")
+        .railHelp("New Space")
+    }
+
+    private func createSpace() {
+        windowState.controlIsland.spaceRequest = .create
     }
 
     /// The verbs of `space`, or of the spaces as a whole for the track.

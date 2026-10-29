@@ -1,9 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// What accompanies the islands over the page: the docked columns, the drop zones, a row's
-/// preview, and the ghost of a row on its way. The islands themselves are windows of their
-/// own (``IslandWindowPresenter``), as are the tabs taken out of them (``TabCardPresenter``).
+/// Islands and their chrome share the page window's glass backdrop with the browser controls.
+/// Detached live pages are presented by ``TabCardPresenter``.
 struct IslandsLayer: View {
     @Environment(IslandController.self) private var islands
     @Environment(TabCanvasManager.self) private var canvas
@@ -19,32 +18,45 @@ struct IslandsLayer: View {
     var body: some View {
         GeometryReader { geometry in
             let bounds = CGRect(origin: .zero, size: geometry.size)
-            // One container for every glass sibling: islands, previews, and labels; their
-            // corners are concentric with the window's.
             GlassEffectContainer {
-            ZStack(alignment: .topLeading) {
-                FloatingDockLayer(area: bounds)
-                if let ghost = islands.rowGhost, let tab = islands.tab(for: ghost.tabID) {
-                    RowGhostView(tab: tab)
+                ZStack(alignment: .topLeading) {
+                    FloatingDockLayer(area: bounds)
+                    ForEach(islands.visibleIslands) { island in
+                        let frame = islands.fullFrame(of: island)
+                        IslandView(island: island)
+                            .frame(width: frame.width, height: frame.height)
+                            .offset(x: frame.minX, y: frame.minY)
+                    }
+                    if let ghost = islands.rowGhost, let tab = islands.tab(for: ghost.tabID) {
+                        VStack(spacing: 4) {
+                            RowGhostView(tab: tab)
+                            if islands.drop?.joins != nil {
+                                Text("Combine into split view")
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.regularMaterial, in: .capsule)
+                            }
+                        }
                         .position(ghost.point)
                         .zIndex(6)
                         .allowsHitTesting(false)
+                    }
+                    if let side = islands.sideDrop {
+                        SideDropZone(side: side, bounds: islands.pageArea)
+                            .transition(.opacity)
+                    }
+                    if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
+                        RowPreview(tab: tab, islandFrame: islands.frame(of: island), bounds: bounds)
+                            .zIndex(5)
+                            .transition(.opacity)
+                    }
                 }
-                if let side = islands.sideDrop {
-                    SideDropZone(side: side, bounds: bounds)
-                        .transition(.opacity)
-                }
-                if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
-                    RowPreview(tab: tab, islandFrame: islands.frame(of: island), bounds: bounds)
-                        .zIndex(5)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
-            .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .coordinateSpace(name: "islands")
-            .coordinateSpace(name: "floatingTabs")
+                .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
+                .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .coordinateSpace(name: "islands")
+                .coordinateSpace(name: "floatingTabs")
             }
             .onChange(of: geometry.size, initial: true) {
                 islands.updateArea(bounds.insetBy(dx: Layout.areaInset, dy: Layout.areaInset), in: bounds)
@@ -61,13 +73,12 @@ struct IslandsLayer: View {
             }
         }
     }
-
 }
 
-/// One island in its window: the pill with its name and controls above, a glass column of the
-/// group's tabs as rows below. Any of the glass moves the window. The pill is always laid out,
-/// so the window keeps its size, and shows while the pointer is on or near the island or the
-/// pill is in use.
+/// An island in the browser glass layer: the header with its name and controls above, a glass column of
+/// tab rows below. Both surfaces move the island. The header is always laid out, so the
+/// island keeps its size. Latched and pinned islands keep it visible; other headers follow
+/// pointer interaction.
 struct IslandView: View {
     let island: Island
 
@@ -81,27 +92,37 @@ struct IslandView: View {
     var body: some View {
         let shape = WindowCorner.concentric
         let frame = islands.frame(of: island)
-        VStack(spacing: IslandGeometry.pillGap) {
-            IslandPill(island: island)
-                .frame(width: frame.width, height: IslandGeometry.pillHeight)
-            rows
-                .padding(IslandGeometry.padding)
-                .frame(width: frame.width, height: frame.height, alignment: .top)
-                .clipShape(shape)
-                // Any empty glass moves the window: the open hand says so.
-                .background {
-                    Color.clear
-                        .contentShape(shape)
-                        .pointerStyle(.grabIdle)
-                        .gesture(WindowDragGesture())
-                }
-                // The Control Island's glass: the window's tint under regular glass, the same
-                // on every island; the rows inside are concentric with the island's corner.
-                .background(windowState.controlIslandTint, in: shape)
-                .glassEffect(.regular, in: shape)
-                .containerShape(.rect(cornerRadius: WindowCorner.radius))
+        let fullFrame = islands.fullFrame(of: island)
+        GlassEffectContainer {
+            VStack(alignment: .leading, spacing: IslandGeometry.headerGap) {
+                IslandHeader(island: island)
+                    .frame(width: fullFrame.width, height: IslandGeometry.headerHeight)
+                rows
+                    .padding(.vertical, IslandGeometry.padding)
+                    .padding(.horizontal, geometry.horizontalPadding)
+                    .frame(width: frame.width, height: frame.height, alignment: .top)
+                    .clipShape(shape)
+                    // Empty glass moves the island within the browser.
+                    .background {
+                        IslandDragSurface(islandID: island.id)
+                    }
+                    // The Control Island's glass: the window's tint under regular glass, the same
+                    // on every island; the rows inside are concentric with the island's corner.
+                    .windowGlassSurface(tint: windowState.controlIslandTint)
+                    .containerShape(.rect(cornerRadius: WindowCorner.radius))
+                    .overlay(alignment: .topLeading) {
+                        if let drop = islands.drop, drop.island == island.id, drop.joins == nil {
+                            Capsule()
+                                .fill(Color.appAccentColor)
+                                .frame(width: frame.width - 2 * geometry.horizontalPadding, height: IslandGeometry.insertionLineHeight)
+                                .offset(x: geometry.horizontalPadding, y: IslandGeometry.padding + CGFloat(drop.row) * geometry.cellHeight - (islands.scrollOffsets[island.id] ?? 0))
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .offset(x: frame.minX - fullFrame.minX)
+            }
+            .frame(width: fullFrame.width, height: fullFrame.height, alignment: .bottomLeading)
         }
-        .frame(width: frame.width, height: frame.height + IslandGeometry.pillReserve, alignment: .bottom)
         .onHover { islands.setHovered(island.id, $0) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
@@ -130,18 +151,28 @@ struct IslandView: View {
         let list = ForEach(Array(island.tabIDs.enumerated()), id: \.element) { index, tabID in
             if let tab = islands.tab(for: tabID) {
                 IslandTabRow(tab: tab, island: island, index: index, area: islands.bounds)
-                    .frame(height: IslandGeometry.rowHeight)
+                    .frame(height: geometry.cellHeight)
             }
         }
         if geometry.contentHeight(rows: island.tabIDs.count) > islands.frame(of: island).height + 0.5 {
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    list
+            ScrollViewReader { reader in
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        list
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
-                islands.scrollOffsets[island.id] = offset
+                .scrollIndicators(.visible)
+                .scrollIndicatorsFlash(onAppear: true)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
+                    islands.scrollOffsets[island.id] = offset
+                    if let ghost = islands.rowGhost {
+                        islands.updateRowDrag(ghost.tabID, at: ghost.point)
+                    }
+                }
+                .onChange(of: windowState.activeTabID) { revealCurrentRow(using: reader) }
+                .onChange(of: islands.isRevealed, initial: true) { revealCurrentRow(using: reader) }
+                .task(id: islands.draggedTabID) { await scrollDuringDrag(using: reader) }
             }
         } else {
             VStack(spacing: 0) {
@@ -150,32 +181,63 @@ struct IslandView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
+
+    private func revealCurrentRow(using reader: ScrollViewProxy) {
+        guard let id = windowState.activeTabID, let index = island.tabIDs.firstIndex(of: id) else { return }
+        let offset = islands.scrollOffsets[island.id] ?? 0
+        let row = geometry.rowFrame(index)
+        let height = islands.frame(of: island).height - 2 * IslandGeometry.padding
+        if row.minY < offset || row.maxY > offset + height {
+            reader.scrollTo(id, anchor: .center)
+        }
+    }
+
+    private func scrollDuringDrag(using reader: ScrollViewProxy) async {
+        guard islands.draggedTabID != nil else { return }
+        while !Task.isCancelled, islands.draggedTabID != nil {
+            if let point = islands.rowGhost?.point {
+                let frame = islands.frame(of: island)
+                if point.x >= frame.minX, point.x <= frame.maxX {
+                    let offset = islands.scrollOffsets[island.id] ?? 0
+                    let reach = geometry.cellHeight
+                    if point.y >= frame.minY, point.y < frame.minY + reach {
+                        let index = max(0, Int(offset / reach) - 1)
+                        reader.scrollTo(island.tabIDs[index], anchor: .top)
+                    } else if point.y <= frame.maxY, point.y > frame.maxY - reach {
+                        let index = min(island.tabIDs.count - 1, Int((offset + frame.height) / reach))
+                        reader.scrollTo(island.tabIDs[index], anchor: .bottom)
+                    }
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
 }
 
-/// An island's pill: its name, which a double-click renames, then the pin, the menu and the
-/// plus, in a glass capsule above the island. Visible while the pointer is on or near the
-/// island or the pill is in use; laid out always.
-private struct IslandPill: View {
+/// An island's header: its name, which a double-click renames, then the pin, the menu and the
+/// plus, in rounded glass above the island. Kept visible for latched or pinned islands,
+/// and during pointer interaction; laid out always.
+private struct IslandHeader: View {
     let island: Island
 
     @Environment(IslandController.self) private var islands
     @Environment(WindowState.self) private var windowState
     @State private var isRenaming = false
     @State private var draftName = ""
-    @FocusState private var nameIsFocused: Bool
-    /// Where the menu button is, in the island's window, so its menu hangs from it.
+    @State private var renameAfterMenu = false
+    /// The menu button's bounds in the browser glass layer.
     @State private var menuButtonFrame: CGRect = .zero
 
     private enum Layout {
-        /// From the capsule's edge to the name's ink.
+        /// From the header's edge to the name's ink.
         static let leadingInset: CGFloat = 14
-        /// From the last glyph's box to the capsule's edge: with the glyph's own inset in its
+        /// From the last glyph's box to the header's edge: with the glyph's own inset in its
         /// box, the same as the name's.
         static let trailingInset: CGFloat = 8
         /// The system's weights: the name a touch above a row's title, the glyphs regular.
         static let titleSize: CGFloat = 13
         static let glyphSize: CGFloat = 12
-        static let controlSize: CGFloat = 24
+        static let controlSize = IslandGeometry.headerControlSize
         static let controlSpacing: CGFloat = 4
         static let fade: TimeInterval = 0.15
     }
@@ -185,17 +247,37 @@ private struct IslandPill: View {
     }
 
     var body: some View {
+        Group {
+            if island.placement.iconsOnly {
+                menuButton
+                    .help(island.title)
+            } else {
+                fullHeader
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            IslandDragSurface(islandID: island.id)
+        }
+        .windowGlassSurface(tint: windowState.controlIslandTint)
+        .opacity(isShown ? 1 : 0)
+        .allowsHitTesting(isShown)
+        .animation(.easeOut(duration: Layout.fade), value: isShown)
+        .onChange(of: islands.renameRequest, initial: true) { _, requested in
+            if requested == island.id {
+                islands.renameRequest = nil
+                beginRename()
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("\(island.title) header")
+    }
+
+    private var fullHeader: some View {
         HStack(spacing: Layout.controlSpacing) {
             if isRenaming || islands.renameRequest == island.id {
-                TextField("Name", text: $draftName)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: Layout.titleSize))
-                    .focused($nameIsFocused)
-                    .onSubmit { commitRename() }
-                    .onExitCommand { endRename() }
-                    .onChange(of: nameIsFocused) { _, focused in
-                        if !focused { commitRename() }
-                    }
+                IslandNameField(text: $draftName, fontSize: Layout.titleSize, onCommit: commitRename, onCancel: endRename)
             } else {
                 Text(island.title)
                     .font(.system(size: Layout.titleSize))
@@ -211,27 +293,6 @@ private struct IslandPill: View {
         .padding(.leading, Layout.leadingInset)
         .padding(.trailing, Layout.trailingInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The pill moves the window too.
-        .background {
-            Color.clear
-                .contentShape(Capsule())
-                .pointerStyle(.grabIdle)
-                .gesture(WindowDragGesture())
-        }
-        .background(windowState.controlIslandTint, in: .capsule)
-        .glassEffect(.regular, in: .capsule)
-        .opacity(isShown ? 1 : 0)
-        .allowsHitTesting(isShown)
-        .animation(.easeOut(duration: Layout.fade), value: isShown)
-        .onChange(of: islands.renameRequest, initial: true) { _, requested in
-            if requested == island.id {
-                islands.renameRequest = nil
-                beginRename()
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(island.title) header")
     }
 
     private var pinButton: some View {
@@ -262,7 +323,7 @@ private struct IslandPill: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("island")) } action: { menuButtonFrame = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("islands")) } action: { menuButtonFrame = $0 }
         .help("Show island options")
         .accessibilityLabel("Island options")
     }
@@ -284,10 +345,11 @@ private struct IslandPill: View {
         .accessibilityLabel("New tab in \(island.title)")
     }
 
-    /// The island's menu, an AppKit menu hanging from the button in the island's own window:
-    /// the pill stays while it tracks.
+    /// An AppKit menu anchored to the island header in the browser window:
+    /// the header stays while it tracks.
     private func showMenu() {
-        guard let content = islands.islandWindows[island.id]?.contentView else { return }
+        guard let content = windowState.window?.contentView else { return }
+        renameAfterMenu = false
         let menu = NSMenu()
         menu.autoenablesItems = false
         func add(_ title: String, to menu: NSMenu, state: NSControl.StateValue = .off, _ execute: @escaping @MainActor () -> Void) {
@@ -299,10 +361,18 @@ private struct IslandPill: View {
             menu.addItem(item)
         }
         let id = island.id
-        add(island.placement.iconsOnly ? "Show Titles" : "Show Icons Only", to: menu) { islands.toggleIconsOnly(id) }
+        add(islands.state.automaticallyArranged ? "Use Free Island Placement" : "Arrange All Islands Along Left Edge", to: menu) {
+            if islands.state.automaticallyArranged {
+                islands.useFreePlacement()
+            } else {
+                islands.arrangeAutomatically()
+            }
+        }
+        add("New Tab in \(island.title)", to: menu) { islands.addTab(to: id) }
+        add(island.placement.iconsOnly ? "Show Titles" : "Show as Icon Rail", to: menu) { islands.toggleIconsOnly(id) }
         add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
         if !island.isDefault {
-            add("Rename…", to: menu) { beginRename() }
+            add("Rename…", to: menu) { renameAfterMenu = true }
             let colors = NSMenu(title: "Color")
             let current = GroupColor(rawValue: island.colorString ?? "")
             for color in GroupColor.allCases {
@@ -317,19 +387,26 @@ private struct IslandPill: View {
         if !island.isDefault {
             add("Ungroup Island", to: menu) { islands.dissolve(id) }
         }
-        // The menu hangs from the button, trailing edges aligned. The island is top-down; the
-        // content view is not.
+        // Convert the top-down glass layer coordinates to AppKit's content coordinates.
         let point = NSPoint(x: menuButtonFrame.maxX - menu.size.width, y: content.bounds.height - menuButtonFrame.maxY - 2)
         islands.holdControls(id, true)
-        menu.popUp(positioning: nil, at: point, in: content)
-        islands.holdControls(id, false)
+        // Complete the button action before entering AppKit's menu tracking loop.
+        DispatchQueue.main.async {
+            if content.window != nil { menu.popUp(positioning: nil, at: point, in: content) }
+            islands.holdControls(id, false)
+            if renameAfterMenu {
+                renameAfterMenu = false
+                beginRename()
+            }
+        }
     }
 
     private func beginRename() {
         guard !island.isDefault else { return }
+        if island.placement.iconsOnly { islands.setIconsOnly(false, for: island.id) }
+        (windowState.window as? RefraxWindow)?.lockedFirstResponder = nil
         draftName = island.title
         isRenaming = true
-        nameIsFocused = true
         islands.holdControls(island.id, true)
     }
 
@@ -407,8 +484,6 @@ private struct IslandTabRow: View, Equatable {
         static let draggedOpacity: Double = 0.35
         static let previewDelay: Duration = .milliseconds(650)
         static let ringSize: CGFloat = 20
-        /// How far past an island's edge a row still lands on it.
-        static let reach: CGFloat = 12
     }
 
     private var isCurrent: Bool {
@@ -443,14 +518,20 @@ private struct IslandTabRow: View, Equatable {
         if target >= drop.row {
             target += 1
         }
-        return CGFloat(target - index) * IslandGeometry.rowHeight
+        return CGFloat(target - index) * islands.geometry(for: island).cellHeight
     }
 
     private var rowFill: Color {
-        if isJoinTarget { return Color.appAccentColor.opacity(0.2) }
-        if isSelected { return Color.appAccentColor.opacity(0.16) }
+        if isJoinTarget {
+            return Color.appAccentColor.opacity(0.2)
+        }
+        if isSelected {
+            return Color.appAccentColor.opacity(0.16)
+        }
         // The current row is white, a lit surface on the glass, in any tint the window has.
-        if isCurrent { return Color.white.opacity(colorScheme == .dark ? 0.16 : 0.7) }
+        if isCurrent {
+            return Color.white.opacity(colorScheme == .dark ? 0.16 : 0.7)
+        }
         return Color.primary.opacity(isHovering ? 0.08 : 0)
     }
 
@@ -525,7 +606,7 @@ private struct IslandTabRow: View, Equatable {
                 islands.open(tab)
             }
         }
-        .gesture(dragGesture)
+        .highPriorityGesture(dragGesture, including: canvas.renamingTabID == tab.id ? .subviews : .all)
         .contextMenu { MenuTreeView(tree: menuTree) }
         .closesOnMiddleClick(tab)
         .help(iconsOnly ? tab.displayTitle : "")
@@ -558,10 +639,10 @@ private struct IslandTabRow: View, Equatable {
 
     /// The tab's page as its favicon with the loading ring; a tab of two pages shows both,
     /// the two panes side by side in small.
-    @ViewBuilder
     /// The row's icon, in the one slot every row keeps: a split tab's two panes share it, the
     /// left pane's icon at the top leading corner and the right pane's over it at the bottom
     /// trailing, each with its own corners.
+    @ViewBuilder
     private var pages: some View {
         if tab.pages.count > 1 {
             let panes = Array(tab.pages.sorted { ($0.position ?? .single).sortOrder < ($1.position ?? .single).sortOrder }.prefix(2))
@@ -649,62 +730,15 @@ private struct IslandTabRow: View, Equatable {
         return actions
     }
 
-    /// A point in this island's window, in the layer: the window sits at the island's window frame.
-    private func layerPoint(_ local: CGPoint) -> CGPoint {
-        let origin = islands.windowFrame(of: island).origin
-        return CGPoint(x: origin.x + local.x, y: origin.y + local.y)
-    }
-
     /// Where the row would land while it is dragged, and what happens when it is let go. The
     /// row's ghost travels over the page; the row itself stays, dimmed, in its window.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
             .onChanged { value in
-                islands.draggedTabID = tab.id
-                let point = layerPoint(value.location)
-                islands.rowGhost = RowGhost(tabID: tab.id, point: point)
-                if let target = islands.visibleIslands.first(where: { islands.frame(of: $0).insetBy(dx: -Layout.reach, dy: -Layout.reach).contains(point) }) {
-                    let frame = islands.frame(of: target)
-                    let local = islands.rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: target)
-                    let geometry = islands.geometry(for: target)
-                    let count = target.tabIDs.filter { $0 != tab.id }.count
-                    var drop = IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count))
-                    // On a row's middle the row joins that tab as its second pane.
-                    if let hit = geometry.joinedRow(at: local, count: target.tabIDs.count), islands.canJoin(tab.id, with: target.tabIDs[hit]) {
-                        drop.joins = target.tabIDs[hit]
-                    }
-                    if islands.drop != drop {
-                        islands.drop = drop
-                    }
-                    if islands.sideDrop != nil {
-                        islands.sideDrop = nil
-                    }
-                } else {
-                    if islands.drop != nil {
-                        islands.drop = nil
-                    }
-                    let side = islands.sideZone(at: point, dragging: tab.id)
-                    if islands.sideDrop != side {
-                        islands.sideDrop = side
-                    }
-                }
+                islands.updateRowDrag(tab.id, at: value.location)
             }
             .onEnded { value in
-                if let drop = islands.drop {
-                    if let joins = drop.joins {
-                        islands.join(tab.id, with: joins)
-                    } else {
-                        islands.moveTab(tab.id, to: drop.row, in: drop.island)
-                    }
-                } else if let side = islands.sideDrop {
-                    islands.joinPage(tab.id, at: side)
-                } else {
-                    islands.detach(tab.id, at: layerPoint(value.location))
-                }
-                islands.drop = nil
-                islands.sideDrop = nil
-                islands.draggedTabID = nil
-                islands.rowGhost = nil
+                islands.finishRowDrag(tab.id, at: value.location)
             }
     }
 }

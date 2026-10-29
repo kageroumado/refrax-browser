@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 import WebKit
 @testable import Refrax
@@ -12,8 +13,8 @@ private struct ExtensionTabsFixture {
     let context: WKWebExtensionContext
 
     init() async throws {
-        env = try TabManagerTestEnvironment()
-        space = env.makeSpace()
+        self.env = try TabManagerTestEnvironment()
+        self.space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let folder = FileManager.default.temporaryDirectory
@@ -22,7 +23,7 @@ private struct ExtensionTabsFixture {
         let manifest = #"{"manifest_version": 3, "name": "Test", "version": "1.0"}"#
         try manifest.write(to: folder.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
         let webExtension = try await WKWebExtension(resourceBaseURL: folder)
-        context = WKWebExtensionContext(for: webExtension)
+        self.context = WKWebExtensionContext(for: webExtension)
     }
 
     /// A tab in the space with no page, created while no extension is loaded.
@@ -126,5 +127,34 @@ struct ExtensionTabsWithoutWebViewTests {
 
         #expect(!fixture.env.extensionManager.tabsWithoutWebView.contains(tabPage.id))
         #expect(!fixture.isOpen(restored))
+        #expect(restored.tabPage == nil)
+        #expect(restored.isPinned(for: fixture.context) == false)
+        #expect(restored.url(for: fixture.context) == nil)
+    }
+
+    @Test @MainActor
+    func `A combined tab releases extension adapters before its model is deleted`() async throws {
+        let fixture = try await ExtensionTabsFixture()
+        let source = fixture.makeTab()
+        let target = fixture.makeTab()
+        try fixture.loadExtension(restoring: [source, target])
+        let adapter = fixture.extensionTab(for: source.activePage)
+        let undo = fixture.env.undoRedoManager.undoManager
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        let joined = try #require(fixture.env.tabManager.moveTabToLayout(source, into: target, at: .topRight))
+        undo.endUndoGrouping()
+        try fixture.env.modelContext.save()
+        #expect(adapter.tabPage == nil)
+        #expect(adapter.isPinned(for: fixture.context) == false)
+        #expect(adapter.title(for: fixture.context) == nil)
+        #expect(fixture.isOpen(adapter) == false)
+
+        let joinedAdapter = fixture.extensionTab(for: joined)
+        undo.undo()
+        try fixture.env.modelContext.save()
+        #expect(joinedAdapter.tabPage == nil)
+        #expect(joinedAdapter.isPinned(for: fixture.context) == false)
+        #expect(joinedAdapter.title(for: fixture.context) == nil)
     }
 }

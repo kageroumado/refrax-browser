@@ -39,6 +39,10 @@ struct CommandLensView: View {
                 VStack(spacing: 0) {
                     textFieldCapsule
                     suggestionsArea
+                    if !isSmallMode, fieldStyle == nil, windowState.activeTab != nil,
+                       windowState.commandLensEntrance?.editsCurrentPage != true, windowState.layoutModeTargetPosition == nil {
+                        CommandLensScopeLabel()
+                    }
                 }
                 .scaleEffect(providerSwitchScale)
                 .background(fieldStyle?.tint ?? .clear, in: RoundedRectangle(cornerRadius: currentCornerRadius))
@@ -83,11 +87,6 @@ struct CommandLensView: View {
     }
 
     // MARK: - Search Bar Area
-
-    // Main search bar with glass container for morphing effects.
-//    private var searchBarArea: some View {
-//
-//    }
 
     /// Whether to show category buttons (only in normal mode).
     private var showCategoryButtons: Bool {

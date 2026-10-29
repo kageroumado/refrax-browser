@@ -3,61 +3,11 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// Centralized manager for all browser-level undo/redo operations.
+/// Shared undo history for browser edits, including tab closure and organization.
 ///
-/// `UndoRedoManager` provides a single, global `UndoManager` for browser actions
-/// like closing tabs, deleting groups, and other reversible operations. This ensures
-/// consistent undo/redo behavior across all windows, similar to Safari.
-///
-/// ## Architecture
-///
-/// The manager owns a single `UndoManager` instance that is used for all browser-level
-/// actions. This is intentionally separate from WebView's internal undo management
-/// (which handles text editing within pages).
-///
-/// ```
-/// ┌─────────────────────────────────────────────────────────┐
-/// │ UndoRedoManager (app-global singleton)                  │
-/// │   undoManager: UndoManager  ← for browser actions       │
-/// │   recentlyClosedTabs: [ClosedTabInfo]                   │
-/// │   recentlyDeletedGroups: [ClosedGroupInfo]              │
-/// └─────────────────────────────────────────────────────────┘
-/// ```
-///
-/// ## Why Separate from Standard Undo?
-///
-/// WebKit's `WKWebView` (and its internal `WKContentView`) claims ownership of the
-/// `undo:` and `redo:` selectors through `validateUserInterfaceItem:`. Even when
-/// the web page has nothing to undo, WebKit validates YES for these actions because
-/// it maintains an editable context. This prevents the standard responder chain from
-/// reaching our window controller for browser-level undo operations.
-///
-/// To work around this, we:
-/// 1. Keep standard `undo:`/`redo:` menu items for WebKit text editing
-/// 2. Add separate "Undo Close Tab"/"Redo Close Tab" menu items for browser actions
-/// 3. Use a keyboard event monitor in `RefraxWindowController` to intercept Cmd+Z
-///    when WebKit has nothing to undo, falling back to browser-level undo
-///
-/// ## Safari-Like Behavior
-///
-/// - Cmd+Z after closing a tab restores that tab (via event monitor)
-/// - "Undo Close Tab" menu item shows the specific action name
-/// - "Reopen Last Closed Tab" (Cmd+Shift+T) reopens and removes from list
-/// - "Recently Closed" submenu shows last 10 closed tabs
-/// - Undo/Redo is global across all windows
-///
-/// ## Usage
-///
-/// ```swift
-/// // Register a tab close (called by TabManager)
-/// undoRedoManager.registerCloseTab(closedInfo)
-///
-/// // Reopen last closed tab (Cmd+Shift+T)
-/// undoRedoManager.reopenLastClosedTab()
-///
-/// // Access for menu/UI
-/// let closedTabs = undoRedoManager.recentlyClosedTabs
-/// ```
+/// The Edit menu uses the focused editor's undo history when it has an available action,
+/// then falls back to this history. Closing tabs also adds entries to Recently Closed,
+/// which Command-Shift-T restores independently of the latest browser edit.
 @Observable
 final class UndoRedoManager {
     // MARK: - Properties

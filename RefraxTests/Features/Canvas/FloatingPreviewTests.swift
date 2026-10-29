@@ -149,6 +149,10 @@ struct FloatingPreviewTests {
 
     @Test
     func `preview editing owns escape and browser controls can dismiss`() throws {
+        let defaults = UserDefaults.standard
+        let savedRevealKey = defaults.string(forKey: "floatingTabs.revealKey")
+        defaults.set(FloatingRevealKey.control.rawValue, forKey: "floatingTabs.revealKey")
+        defer { defaults.set(savedRevealKey, forKey: "floatingTabs.revealKey") }
         let environment = try TabManagerTestEnvironment()
         let state = environment.makeWindowState()
         let canvas = TabCanvasManager(

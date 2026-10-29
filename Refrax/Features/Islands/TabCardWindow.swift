@@ -1,10 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// A tab taken out of its island: a window of its own over the page, with the window's lights
-/// and title bar, resizable, moved by its title bar, a child of the browser window so it
-/// follows it. Red closes the tab; the toolbar's two buttons return it to its island or open it
-/// as the page.
+/// A resizable live tab over the page, moved by its toolbar and attached to the browser
+/// window. Toolbar actions close the tab, return it to its island, or open it as the page.
 final class TabCardWindow: FloatingPageWindow {
     var onClose: () -> Void = {}
     var onReturn: () -> Void = {}
@@ -20,8 +18,7 @@ final class TabCardWindow: FloatingPageWindow {
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.fullScreenAuxiliary, .transient]
-        // No lights: the card closes from the gray button in its toolbar, the Finder preview's
-        // way; a child window neither minimizes nor zooms.
+        // Cards use the toolbar's close, return, and open actions.
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             standardWindowButton(kind)?.isHidden = true
         }
@@ -31,8 +28,12 @@ final class TabCardWindow: FloatingPageWindow {
         onClose()
     }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    override var canBecomeKey: Bool {
+        true
+    }
+    override var canBecomeMain: Bool {
+        false
+    }
 }
 
 /// Keeps one card window per tab taken out of an island in one browser window, placed where
@@ -43,6 +44,7 @@ final class TabCardPresenter {
     private struct Card {
         let window: TabCardWindow
         let tab: Tab
+        let pageID: UUID
         var observers: [any NSObjectProtocol] = []
         var persist: Task<Void, Never>?
     }
@@ -125,8 +127,7 @@ final class TabCardPresenter {
         for tab in wanted where cards[tab.id] == nil {
             open(tab)
         }
-        // An anchored lens lives in the browser window, under every card: the card it edits
-        // makes way, and so does any card over it.
+        // The edited card and intersecting cards make way for its anchored address field.
         let lens = windowState.showsAnchoredLens && editingTabID != nil ? windowState.commandLensFrame.insetBy(dx: -Layout.lensClearance, dy: -Layout.lensClearance) : .null
         for (id, card) in cards {
             let away = hidden || id == editingTabID || contentFrame(of: card.window).intersects(lens)
@@ -154,7 +155,7 @@ final class TabCardPresenter {
         hosting.sizingOptions = []
         window.contentView = hosting
         window.setFrame(frame(for: tab), display: false)
-        var card = Card(window: window, tab: tab)
+        var card = Card(window: window, tab: tab, pageID: tab.activePage.id)
         let center = NotificationCenter.default
         let id = tab.id
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
@@ -170,6 +171,10 @@ final class TabCardPresenter {
     private func close(_ id: UUID) {
         guard let card = cards.removeValue(forKey: id) else { return }
         card.persist?.cancel()
+        windowState.clearFocusIfNeeded(for: card.pageID)
+        if card.window.isKeyWindow {
+            parent.makeKey()
+        }
         for observer in card.observers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -329,7 +334,9 @@ private struct TabCardContent: View {
         static let edgeInset: CGFloat = 8
         static let closeSize: CGFloat = 16
         /// The two verbs' width together, at the trailing end.
-        static var verbsWidth: CGFloat { Constants.PageControls.buttonWidth * 2 + edgeInset }
+        static var verbsWidth: CGFloat {
+            Constants.PageControls.buttonWidth * 2 + edgeInset
+        }
     }
 
     /// Where the address field sits in a card at `card`: after the close button, before the

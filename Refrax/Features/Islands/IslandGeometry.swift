@@ -4,26 +4,34 @@ import Foundation
 /// Turns an island's rows into points: the island's size, each row's frame, and the row a
 /// point falls on.
 ///
-/// An island is a band and a column of rows inside the Control Island's corner. The band
-/// holds the island's color and, under the pointer, its controls; the rows are the tabs.
+/// An island contains tab rows with a separate header for its name and controls.
 nonisolated struct IslandGeometry: Equatable, Sendable {
     static let rowHeight: CGFloat = 30
     /// The width of an island of titles, and of one of icons alone.
     static let titleWidth: CGFloat = 236
-    static let iconWidth: CGFloat = 46
+    static let iconWidth = ControlIslandPlacement.railWidth
     static let padding: CGFloat = 8
+    static let insertionLineHeight: CGFloat = 2
     /// The Control Island's corner.
     static let cornerRadius: CGFloat = ControlIslandPlacement.cornerRadius
     static let rowCornerRadius: CGFloat = 8
-    /// The pill above the island: its name and controls, a capsule this tall this far above
-    /// the glass, laid out whether shown or not so the island's window keeps its size.
-    static let pillHeight: CGFloat = 28
-    static let pillGap: CGFloat = 6
-    static var pillReserve: CGFloat { pillHeight + pillGap }
+    /// The pin, menu, and add button targets in the header.
+    static let headerControlSize: CGFloat = 24
+    /// The full name header matches the control island's width.
+    static let headerHeight = ControlIslandPlacement.railWidth
+    /// The distance between the header and the tab list.
+    static let headerGap: CGFloat = 6
+    /// The header's reserved height keeps the island's bounds stable during disclosure.
+    static var headerReserve: CGFloat {
+        headerHeight + headerGap
+    }
     /// The largest share of the window's height an island takes before its rows scroll.
     static let maximumShare: CGFloat = 0.4
 
     var iconsOnly: Bool
+
+    var cellHeight: CGFloat { iconsOnly ? ControlIslandPlacement.rowHeight : Self.rowHeight }
+    var horizontalPadding: CGFloat { iconsOnly ? ControlIslandPlacement.horizontalInset : Self.padding }
 
     var width: CGFloat {
         iconsOnly ? Self.iconWidth : Self.titleWidth
@@ -31,7 +39,7 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
 
     /// The height of `rows` rows, one at least, and the padding.
     func contentHeight(rows: Int) -> CGFloat {
-        CGFloat(max(1, rows)) * Self.rowHeight + 2 * Self.padding
+        CGFloat(max(1, rows)) * cellHeight + 2 * Self.padding
     }
 
     /// The island's size on screen: its content, held to the window's share.
@@ -43,8 +51,8 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// Row `index`'s frame in the island, before any scrolling.
     func rowFrame(_ index: Int) -> CGRect {
         CGRect(
-            x: Self.padding, y: Self.padding + CGFloat(index) * Self.rowHeight,
-            width: width - 2 * Self.padding, height: Self.rowHeight,
+            x: horizontalPadding, y: Self.padding + CGFloat(index) * cellHeight,
+            width: width - 2 * horizontalPadding, height: cellHeight,
         )
     }
 
@@ -52,7 +60,7 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// is on, after the one whose bottom half, so 0 through `count`.
     func insertion(at point: CGPoint, count: Int) -> Int {
         let y = point.y - Self.padding
-        return min(count, max(0, Int((y / Self.rowHeight).rounded())))
+        return min(count, max(0, Int((y / cellHeight).rounded())))
     }
 
     /// The row `point` is on, when it is on one's middle: a drop there joins that row's tab
@@ -60,8 +68,8 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     func joinedRow(at point: CGPoint, count: Int) -> Int? {
         let y = point.y - Self.padding
         guard y >= 0 else { return nil }
-        let row = Int(y / Self.rowHeight)
-        let within = (y - CGFloat(row) * Self.rowHeight) / Self.rowHeight
+        let row = Int(y / cellHeight)
+        let within = (y - CGFloat(row) * cellHeight) / cellHeight
         guard row < count, within > Self.joinBand, within < 1 - Self.joinBand else { return nil }
         return row
     }

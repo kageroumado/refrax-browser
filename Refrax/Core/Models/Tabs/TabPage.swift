@@ -81,6 +81,18 @@ final class TabPage: Identifiable {
         }
         return tab
     }
+
+    /// Copies content and engine selection while preserving this page's identity and pane.
+    func copyContent(from page: TabPage) {
+        url = page.url
+        title = page.title
+        faviconData = page.faviconData
+        largeFaviconData = page.largeFaviconData
+        openerTabPageID = page.openerTabPageID
+        createdAt = page.createdAt
+        scrollPositionY = page.scrollPositionY
+        engineID = page.engineID
+    }
     
     // MARK: - Content
     

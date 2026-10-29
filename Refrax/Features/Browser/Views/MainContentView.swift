@@ -6,6 +6,7 @@ struct MainContentView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(TabManager.self) private var tabManager
+    @Environment(IslandController.self) private var islands
 
     @State private var showClipboardToast = false
     @State private var size: CGSize = .zero
@@ -14,7 +15,9 @@ struct MainContentView: View {
     private var dockedPageFrame: CGRect {
         let bounds = CGRect(origin: .zero, size: size)
         guard !bounds.isEmpty else { return bounds }
-        return canvas.dockedPageFrame(in: bounds)
+        let docked = canvas.dockedPageFrame(in: bounds)
+        let leading = max(docked.minX, islands.navigationInset)
+        return CGRect(x: leading, y: docked.minY, width: max(0, docked.maxX - leading), height: docked.height)
     }
 
     var body: some View {

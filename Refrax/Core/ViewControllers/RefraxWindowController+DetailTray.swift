@@ -117,38 +117,22 @@ extension RefraxWindowController {
             updateOverlayEventBlocking()
         }
 
-        // Try to use private glass effect class for better appearance
-        let glassView: NSGlassEffectView
-        if let glassViewClass = NSClassFromString("NSContainerConcentricGlassEffectView") as? NSGlassEffectView.Type {
-            glassView = glassViewClass.init()
-            glassView.setValue(20.0, forKey: "concentricMinimumCornerRadius")
-        } else {
-            glassView = NSGlassEffectView()
-        }
-
-        glassView.translatesAutoresizingMaskIntoConstraints = false
-        glassView.cornerRadius = Constants.DetailTray.glassCornerRadius
-
-        let trayContent = DetailTrayContent()
-            .refraxEnvironment(environment)
-
-        let hostingView = NSHostingView(rootView: trayContent)
+        let hostingView = NSHostingView(rootView: LibraryDrawerSurface().refraxEnvironment(environment))
         hostingView.translatesAutoresizingMaskIntoConstraints = false
-
-        glassView.contentView = hostingView
-        container.addSubview(glassView)
-
+        hostingView.sizingOptions = []
+        container.addSubview(hostingView)
         NSLayoutConstraint.activate([
-            glassView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padding),
-            glassView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -padding),
-            glassView.topAnchor.constraint(equalTo: container.topAnchor, constant: padding),
-            glassView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -padding),
+            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
 
         contentView.addSubview(container)
 
+        let leading = container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.defaultDetailTrayLeading)
         NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.detailTrayLeading),
+            leading,
             container.topAnchor.constraint(equalTo: contentView.topAnchor),
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             container.widthAnchor.constraint(equalToConstant: trayWidth),
@@ -166,19 +150,20 @@ extension RefraxWindowController {
         }
 
         detailTrayContainer = container
-        detailTrayGlassView = glassView
+        detailTrayLeadingConstraint = leading
     }
 
     // MARK: - Observation
 
     /// Observes detail tray state changes.
     func observeDetailTrayState() {
-        let task = Task { @MainActor [weak self] in
+        let task = Task(name: "Follow the library drawer") { [weak self] in
             guard let self else { return }
 
-            let modeChanges = Observations { self.windowState.detailTrayMode }
+            let modeChanges = Observations { (self.windowState.detailTrayMode, self.windowState.controlIsland.railFrame) }
 
-            for await mode in modeChanges {
+            for await (mode, _) in modeChanges {
+                updateDetailTrayPosition()
                 if mode != .hidden {
                     showDetailTray()
                 } else {
@@ -210,7 +195,7 @@ extension RefraxWindowController {
         // Calculate how far off-screen the tray needs to go (its entire visible extent)
         let padding = Constants.DetailTray.glassEffectPadding
         let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = Self.detailTrayLeading + trayWidth
+        let trayMaxX = detailTrayLeading + trayWidth
         let hiddenTransform = CATransform3DMakeTranslation(-trayMaxX, 0, 0)
         let visibleTransform = CATransform3DIdentity
 
@@ -255,7 +240,7 @@ extension RefraxWindowController {
         // Calculate how far off-screen the tray needs to go (its entire visible extent)
         let padding = Constants.DetailTray.glassEffectPadding
         let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = Self.detailTrayLeading + trayWidth
+        let trayMaxX = detailTrayLeading + trayWidth
         let hiddenTransform = CATransform3DMakeTranslation(-trayMaxX, 0, 0)
 
         let currentTransform = layer.presentation()?.transform ?? layer.transform
@@ -293,7 +278,7 @@ extension RefraxWindowController {
         // Calculate how far off-screen the tray needs to go
         let padding = Constants.DetailTray.glassEffectPadding
         let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = Self.detailTrayLeading + trayWidth
+        let trayMaxX = detailTrayLeading + trayWidth
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -305,7 +290,19 @@ extension RefraxWindowController {
     // MARK: - Positioning
 
     /// Leading offset of the tray container: its glass sits a small gap from the window edge.
-    private static let detailTrayLeading = Constants.DetailTray.gapFromEdge - Constants.DetailTray.glassEffectPadding
+    private static let defaultDetailTrayLeading = Constants.DetailTray.gapFromEdge - Constants.DetailTray.glassEffectPadding
+
+    private var detailTrayLeading: CGFloat {
+        detailTrayLeadingConstraint?.constant ?? Self.defaultDetailTrayLeading
+    }
+
+    private func updateDetailTrayPosition() {
+        guard let content = window?.contentView else { return }
+        let glassLeading = DetailTrayLayout.leading(in: content.bounds, controlRail: windowState.controlIsland.railFrame, width: Constants.DetailTray.width)
+        detailTrayLeadingConstraint?.constant = glassLeading - Constants.DetailTray.glassEffectPadding
+        content.layoutSubtreeIfNeeded()
+        updateDetailTrayTrailingEdge()
+    }
 
     // MARK: - Trailing Edge Tracking
 
@@ -321,7 +318,7 @@ extension RefraxWindowController {
 
         let padding = Constants.DetailTray.glassEffectPadding
         let trayWidth = Constants.DetailTray.width + padding * 2
-        windowState.detailTrayTrailingEdge = Self.detailTrayLeading + trayWidth
+        windowState.detailTrayTrailingEdge = detailTrayLeading + trayWidth
     }
 
     // MARK: - Mouse Event Blocking

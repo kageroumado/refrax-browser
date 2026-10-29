@@ -7,9 +7,8 @@ struct ControlIslandFavoriteIcon: View {
     @Environment(\.appearsActive) private var appearsActive
 
     enum Layout {
-        static let faviconSize: CGFloat = 32
-        /// One favorite's row on the rail: its icon with 6 points above and below.
-        static let rowHeight: CGFloat = faviconSize + 12
+        static let faviconSize = ControlIslandPlacement.pageIconSize
+        static let rowHeight = ControlIslandPlacement.rowHeight
         static let selectionWidth: CGFloat = 3
         static let selectionHeight: CGFloat = 16
     }

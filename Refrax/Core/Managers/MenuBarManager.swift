@@ -71,6 +71,10 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
     /// The window menu actions target first: the key window, else the main window.
     private let focusedWindow: () -> NSWindow?
 
+    var focusedUndoManager: UndoManager? {
+        focusedWindow()?.firstResponder?.undoManager
+    }
+
     init(
         windowManager: WindowManager,
         undoRedoManager: UndoRedoManager,

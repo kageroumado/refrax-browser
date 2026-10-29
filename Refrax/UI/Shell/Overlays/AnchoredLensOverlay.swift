@@ -95,7 +95,7 @@ struct AnchoredLensOverlay: View {
     private var fieldStyle: CommandLensFieldStyle {
         CommandLensFieldStyle(
             height: ControlIslandPlacement.pageBranchHeight,
-            cornerRadius: ControlIslandPlacement.pageBranchHeight / 2,
+            cornerRadius: ControlIslandPlacement.cornerRadius,
             leadingInset: ControlIslandPageBranch.Layout.leadingInset,
             trailingInset: ControlIslandPageBranch.Layout.leadingInset,
             iconSize: ControlIslandPageBranch.Layout.faviconSize,

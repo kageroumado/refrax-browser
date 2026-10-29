@@ -25,7 +25,6 @@ struct ControlIsland: View {
     @GestureState private var isDraggingWindow = false
     @GestureState private var isDraggingPanel = false
     @State private var dragOrigin: CGPoint?
-    @State private var showsFavorites = false
     @State private var showsUpdate = false
     @State private var showsNowPlaying = false
     @State private var pointerPhase = ControlIslandHoverPath.Phase.outside
@@ -148,7 +147,7 @@ struct ControlIsland: View {
     /// The page card accompanies deliberate use of the rail: a settled hover, the Address row,
     /// the revealed tab layer, or a visit that can return. A pointer crossing the rail leaves it closed.
     private var showsPageBranch: Bool {
-        windowState.activePage != nil && !state.isDragging && !isHiddenAtEdge
+        windowState.activePage != nil && !windowState.isDetailTrayVisible && !state.isDragging && !isHiddenAtEdge
             && (state.tabInfo.isVisible || state.showsAddress || hoverHasSettled || windowState.pageVisit.destination != nil
                 || canvas.floatingVisibility.isRevealed)
     }
@@ -209,8 +208,7 @@ struct ControlIsland: View {
                 controls
                     .frame(width: frame.width, height: frame.height)
                     .environment(\.controlIslandIsResting, isResting)
-                    .background(spaceTint.opacity(isResting ? 0 : 1), in: WindowCorner.concentric)
-                    .glassEffect(glass, in: WindowCorner.concentric)
+                    .windowGlassSurface(tint: spaceTint.opacity(isResting ? 0 : 1), glass: glass)
                     .glassEffectID("rail", in: glassNamespace)
                     .overlay {
                         if tour.highlightsRail {
@@ -222,8 +220,7 @@ struct ControlIsland: View {
                 if showsPageBranch, !windowState.showsAnchoredLens {
                     ControlIslandPageBranch(area: area, frame: pageBranchFrame)
                         .frame(width: pageBranchFrame.width, height: pageBranchFrame.height)
-                        .background(spaceTint, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
-                        .glassEffect(.regular, in: .rect(cornerRadius: Layout.pageBranchHeight / 2))
+                        .windowGlassSurface(tint: spaceTint)
                         .glassEffectID("pageBranch", in: glassNamespace)
                         .offset(x: pageBranchFrame.minX, y: pageBranchFrame.minY)
                         // The field opens on the card's exact frame, so the card leaves at once
@@ -319,7 +316,7 @@ struct ControlIsland: View {
                 finishPanelDrag()
             }
         }
-        .onChange(of: showsFavorites || showsUpdate || showsNowPlaying || windowState.showsAnchoredLens) { _, presented in
+        .onChange(of: showsUpdate || showsNowPlaying || windowState.showsAnchoredLens) { _, presented in
             state.isPresenting = presented
         }
         .onChange(of: state.focusRequest) {
@@ -450,13 +447,9 @@ struct ControlIsland: View {
             .scrollBounceBehavior(.basedOnSize)
         }
         .padding(.top, Layout.contentInset)
-        .padding(.bottom, Layout.gripBottomInset(aboveRadius: railLayout.rows.last == .spaces ? Layout.spaceRowHeight / 2 : 0))
+        .padding(.bottom, Layout.contentInset)
         .padding(.horizontal, Layout.horizontalInset)
         .background { dragSurface }
-        .popover(isPresented: $showsFavorites, arrowEdge: opensLeft ? .leading : .trailing) {
-            ControlIslandFavorites(isPresented: $showsFavorites)
-                .readablePopoverBackground()
-        }
         .accessibilityAction(named: "Move controls left") { moveBy(dx: -32, dy: 0) }
         .accessibilityAction(named: "Move controls right") { moveBy(dx: 32, dy: 0) }
         .accessibilityAction(named: "Move controls up") { moveBy(dx: 0, dy: -32) }
@@ -508,7 +501,7 @@ struct ControlIsland: View {
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
             ControlIslandFavoriteTabs(
-                favorites: favorites, overflows: favoritesOverflow, onShowAll: { showsFavorites = true }, focusedControl: $focusedControl,
+                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.showDetailTray(.favorites) }, focusedControl: $focusedControl,
             )
         case .reload:
             control(
@@ -525,7 +518,7 @@ struct ControlIsland: View {
                 }
             }
         case .favorites:
-            control(item.title, symbol: item.symbol) { showsFavorites = true }
+            control(item.title, symbol: item.symbol) { windowState.toggleDetailTray(.favorites) }
         case .history:
             control(item.title, symbol: item.symbol) { windowState.showDetailTray(.history) }
         case .bookmarks:
@@ -624,7 +617,7 @@ struct ControlIsland: View {
     /// Empty glass drags the window natively and carries the rail's own menu on a right-click.
     private func draggableBackground(_ content: some View) -> some View {
         content
-            .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
+            .contextMenu { ControlIslandRailMenu() }
             .gesture(windowDrag)
     }
 
@@ -648,10 +641,7 @@ struct ControlIsland: View {
             .updating($isDraggingWindow) { _, dragging, _ in dragging = true }
     }
 
-    /// A 3 × 2 grid of dots closing the rail, the macOS handle for things that move. Its outer
-    /// dots sit `gripGap` from the shape above and from the rail's curved edge, by closest
-    /// approach rather than center line, so the inset under it is the larger. It fades with the
-    /// glass at rest.
+    /// A 3 × 2 grid of dots centered in the rail's final control row. It fades with the glass at rest.
     private var grip: some View {
         Grid(horizontalSpacing: Layout.gripDotSpacing, verticalSpacing: Layout.gripDotSpacing) {
             ForEach(0 ..< Layout.gripRows, id: \.self) { _ in
@@ -666,9 +656,9 @@ struct ControlIsland: View {
         }
         .frame(width: Layout.gripSize.width, height: Layout.gripSize.height)
         .opacity(isResting ? 0 : 1)
-        .frame(width: Layout.contentWidth, height: Layout.gripGap + Layout.gripSize.height, alignment: .bottom)
+        .frame(width: Layout.contentWidth, height: Layout.rowHeight)
         .contentShape(Rectangle())
-        .contextMenu { ControlIslandRailMenu(showsFavorites: $showsFavorites) }
+        .contextMenu { ControlIslandRailMenu() }
         .gesture(moveGesture)
         .railHelp("Move controls")
         .accessibilityElement()
@@ -756,9 +746,11 @@ struct ControlIsland: View {
                             .saturation(appearsActive ? 1 : 0)
                     }
                     if windowState.activeWebPage?.isLoading == true {
-                        ProgressView(value: windowState.activeWebPage?.estimatedProgress ?? 0)
-                            .progressViewStyle(.circular)
-                            .frame(width: Layout.pageIconSize + 8, height: Layout.pageIconSize + 8)
+                        Circle()
+                            .trim(from: 0, to: max(0.05, windowState.activeWebPage?.estimatedProgress ?? 0))
+                            .stroke(Color.appAccentColor, lineWidth: 1.5)
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: Layout.pageLoadingRingSize, height: Layout.pageLoadingRingSize)
                     }
                 }
             }

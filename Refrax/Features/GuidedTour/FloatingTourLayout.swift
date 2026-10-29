@@ -26,7 +26,7 @@ nonisolated enum FloatingTourTarget: CaseIterable, Sendable {
         switch self {
         case .railRow: ControlIslandPlacement.rowHeight / 2
         case .rail: ControlIslandPlacement.cornerRadius
-        case .pageCard: ControlIslandPlacement.pageBranchHeight / 2
+        case .pageCard: ControlIslandPlacement.cornerRadius
         case .floatingCard: CanvasTileLayout.slabCornerRadius
         case .island: IslandGeometry.cornerRadius
         case .lens: CommandLensView.Layout.cornerRadius

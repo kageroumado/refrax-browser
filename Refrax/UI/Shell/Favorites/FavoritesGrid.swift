@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Responsive grid of favorites, shown in the Control Island's favorites popover.
+/// Responsive grid of shared favorites in the library drawer.
 ///
 /// Favorites are space-independent and always available. They can be:
 /// - **Live tabs**: Persistent tabs that activate when clicked
@@ -10,12 +10,13 @@ import SwiftUI
 /// Uses `AdaptiveFavoritesGridLayout`, a custom `Layout` that sizes its columns from
 /// the width it is offered.
 struct FavoritesGrid: View {
+    var showsTitles = false
     @Environment(BookmarksManager.self) private var bookmarksManager
 
     var body: some View {
         AdaptiveFavoritesGridLayout(configuration: gridConfiguration) {
             ForEach(bookmarksManager.favorites) { item in
-                FavoriteTileView(item: item, shouldShowTitle: false)
+                FavoriteTileView(item: item, shouldShowTitle: showsTitles)
             }
         }
         .accessibilityIdentifier("FavoritesGrid")
@@ -24,7 +25,7 @@ struct FavoritesGrid: View {
     private var gridConfiguration: AdaptiveFavoritesGridLayout.Configuration {
         AdaptiveFavoritesGridLayout.Configuration(
             minTileWidth: Metrics.minTileWidth,
-            tileHeight: Metrics.tileHeight,
+            tileHeight: Metrics.tileHeight + (showsTitles ? 24 : 0),
             maxColumns: Metrics.maxColumns,
             spacing: Metrics.spacing,
         )

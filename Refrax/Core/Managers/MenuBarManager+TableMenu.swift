@@ -29,6 +29,8 @@ extension MenuBarManager {
             ],
             [
                 IslandItem(title: "New Island from Here", symbol: "plus.rectangle.on.rectangle", action: #selector(tableNewIsland(_:)), key: "i", modifiers: focus),
+                IslandItem(title: "Arrange Islands Along Left Edge", symbol: "rectangle.leadinghalf.inset.filled", action: #selector(arrangeIslands(_:)), key: "", modifiers: []),
+                IslandItem(title: "Use Free Island Placement", symbol: "rectangle.3.group", action: #selector(freeIslandPlacement(_:)), key: "", modifiers: []),
             ],
         ]
         for (index, group) in groups.enumerated() {
@@ -51,6 +53,15 @@ extension MenuBarManager {
 
     private var activeIslands: IslandController? {
         activeWindowController?.islandController
+    }
+
+    @objc
+    private func arrangeIslands(_: Any?) {
+        activeIslands?.arrangeAutomatically()
+    }
+    @objc
+    private func freeIslandPlacement(_: Any?) {
+        activeIslands?.useFreePlacement()
     }
 
     @objc

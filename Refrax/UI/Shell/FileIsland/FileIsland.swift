@@ -215,7 +215,7 @@ struct FileIsland: View {
             grip
         }
         .padding(.top, Placement.contentInset)
-        .padding(.bottom, Placement.gripBottomInset(aboveRadius: 0))
+        .padding(.bottom, Placement.gripBottomInset)
         .padding(.horizontal, Placement.horizontalInset)
         .background { draggableBackground(Color.clear.contentShape(Rectangle())) }
     }

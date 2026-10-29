@@ -19,7 +19,7 @@ import UniformTypeIdentifiers
 /// - ``HistoryManager``: Browsing history tracking
 /// - ``BrowserSettings``: User preferences
 /// - ``AutoFillState``: Password management
-final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUserInterfaceValidations {
+final class RefraxWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Internal Properties (accessible to extensions)
 
     /// The window's content view controller: the page, with the floating layers above it.
@@ -48,15 +48,13 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     private(set) var environment: RefraxEnvironment!
     /// The windows of the tabs taken out of their islands.
     private var tabCardPresenter: TabCardPresenter?
-    /// The islands, each a window over the page.
-    private var islandWindowPresenter: IslandWindowPresenter?
     /// The Command Lens, a window over everything.
     private var commandLensWindowPresenter: CommandLensWindowPresenter?
 
     // MARK: Detail Tray
 
     var detailTrayContainer: NSView?
-    var detailTrayGlassView: NSGlassEffectView?
+    var detailTrayLeadingConstraint: NSLayoutConstraint?
     var detailTrayHideTask: Task<Void, any Error>?
     var isCursorInDetailTray = false
 
@@ -86,8 +84,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
     private var canvasPageGestures: CanvasPageGestures?
 
     // MARK: - Undo/Redo
-
-    private var undoRedoMonitor: Any?
 
     // MARK: - Initialization
 
@@ -198,14 +194,12 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         )
         windowState.islandController = islandController
         islandController.start()
-        tabCardPresenter = TabCardPresenter(
+        self.tabCardPresenter = TabCardPresenter(
             parent: window, windowState: windowState, islands: islandController, canvas: tabCanvasManager,
             tabManager: appDelegate.tabManager, environment: environment,
         )
         tabCardPresenter?.start()
-        islandWindowPresenter = IslandWindowPresenter(parent: window, windowState: windowState, islands: islandController, environment: environment)
-        islandWindowPresenter?.start()
-        commandLensWindowPresenter = CommandLensWindowPresenter(parent: window, windowState: windowState, environment: environment)
+        self.commandLensWindowPresenter = CommandLensWindowPresenter(parent: window, windowState: windowState, environment: environment)
         commandLensWindowPresenter?.start()
 
         setupRootView(window: window)
@@ -218,7 +212,6 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         setupOverlayView(contentView: contentView)
         setupControlIslandLayer(contentView: contentView)
         setupFileIslandLayer(contentView: contentView)
-        setupUndoRedoMonitor()
 
         observeWindowState()
         observeWebsiteColor()
@@ -265,15 +258,15 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         let floatingView = FloatingTabsHostingView(rootView: IslandsLayer().refraxEnvironment(environment))
         floatingView.sizingOptions = []
         floatingView.onPointerDown = { [weak floatingView, weak tabCanvasManager, weak windowState, weak islandController] point in
-            guard let floatingView, let tabCanvasManager, let windowState, let islandController else { return }
+            guard let floatingView, let tabCanvasManager, let windowState else { return }
             if (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) }) {
+                return
+            }
+            if let islandController, islandController.visibleIslands.contains(where: { islandController.fullFrame(of: $0).contains(point) }) {
                 return
             }
             if let tab = tabCanvasManager.dockedTab(at: point, in: floatingView.bounds) {
                 windowState.recordInteraction(with: tab.activePage.id)
-                return
-            }
-            if islandController.hitRegions(in: floatingView.bounds).contains(where: { $0.contains(point) }) {
                 return
             }
             if !windowState.controlIsland.tabInfo.isMenuPresented {
@@ -288,7 +281,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
             guard let floatingView, let tabCanvasManager, let islandController else { return [] }
-            return islandController.hitRegions(in: floatingView.bounds) + tabCanvasManager.dockHitRegions(in: floatingView.bounds)
+            return tabCanvasManager.dockHitRegions(in: floatingView.bounds)
+                + islandController.visibleIslands.map { islandController.fullFrame(of: $0) }
         }
         contentView.addSubview(floatingView)
         floatingView.translatesAutoresizingMaskIntoConstraints = false
@@ -310,7 +304,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
             let local = content.convert(point, from: nil)
             let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
             return tabCanvasManager.showsFloatingControls
-                && (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(topLeft) })
+                && (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions
+                    + islandController.visibleIslands.map { islandController.fullFrame(of: $0) }).contains(where: { $0.contains(topLeft) })
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in
@@ -469,10 +464,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     func windowWillClose(_: Notification) {
         tabCardPresenter?.stop()
-        islandWindowPresenter?.stop()
         commandLensWindowPresenter?.stop()
         NotificationCenter.default.removeObserver(self)
-        removeUndoRedoMonitor()
         cancelAllObservationTasks()
     }
 
@@ -493,93 +486,5 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate, NSUser
 
     func window(_: NSWindow, didDecodeRestorableState state: NSCoder) {
         decodeWindowState(from: state)
-    }
-
-    // MARK: - NSUserInterfaceValidations
-
-    func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
-        switch item.action {
-        case #selector(browserUndo(_:)):
-            NSApplication.shared.typedDelegate.undoRedoManager.undoManager.canUndo
-        case #selector(browserRedo(_:)):
-            NSApplication.shared.typedDelegate.undoRedoManager.undoManager.canRedo
-        default:
-            true
-        }
-    }
-
-    // MARK: - Undo/Redo
-
-    @objc
-    func browserUndo(_: Any?) {
-        let undoRedoManager = NSApplication.shared.typedDelegate.undoRedoManager
-        if undoRedoManager.undoManager.canUndo {
-            undoRedoManager.undoManager.undo()
-        }
-    }
-
-    @objc
-    func browserRedo(_: Any?) {
-        let undoRedoManager = NSApplication.shared.typedDelegate.undoRedoManager
-        if undoRedoManager.undoManager.canRedo {
-            undoRedoManager.undoManager.redo()
-        }
-    }
-
-    func setupUndoRedoMonitor() {
-        undoRedoMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self,
-                  event.window === self.window,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-                  || event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
-                  event.charactersIgnoringModifiers == "z"
-            else {
-                return event
-            }
-
-            let isRedo = event.modifierFlags.contains(.shift)
-            let undoRedoManager = NSApplication.shared.typedDelegate.undoRedoManager
-
-            if let textView = window?.firstResponder as? NSTextView,
-               let undoManager = textView.undoManager {
-                if isRedo, undoManager.canRedo {
-                    return event
-                }
-                if !isRedo, undoManager.canUndo {
-                    return event
-                }
-            }
-
-            if let firstResponder = window?.firstResponder,
-               let undoManager = firstResponder.undoManager {
-                if isRedo, undoManager.canRedo {
-                    return event
-                }
-                if !isRedo, undoManager.canUndo {
-                    return event
-                }
-            }
-
-            if isRedo {
-                if undoRedoManager.undoManager.canRedo {
-                    undoRedoManager.undoManager.redo()
-                    return nil
-                }
-            } else {
-                if undoRedoManager.undoManager.canUndo {
-                    undoRedoManager.undoManager.undo()
-                    return nil
-                }
-            }
-
-            return event
-        }
-    }
-
-    func removeUndoRedoMonitor() {
-        if let monitor = undoRedoMonitor {
-            NSEvent.removeMonitor(monitor)
-            undoRedoMonitor = nil
-        }
     }
 }

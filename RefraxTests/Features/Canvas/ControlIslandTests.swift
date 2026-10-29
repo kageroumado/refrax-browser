@@ -77,7 +77,9 @@ struct ControlIslandTests {
     @Test
     func `invalid stored coordinates produce finite visible controls`() {
         let placement = ControlIslandPlacement(x: .nan, y: .infinity)
-        #expect(area.contains(placement.railFrame(in: area, height: 420)))
+        let frame = placement.railFrame(in: area, height: 420)
+        #expect(area.contains(frame))
+        #expect(frame.origin == CGPoint(x: 8, y: 8))
     }
 
     @Test(arguments: [0.0, 0.3, 0.7, 1.0], [0.0, 0.5, 1.0])
@@ -104,6 +106,8 @@ struct ControlIslandTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let state = ControlIslandState(defaults: defaults)
+        #expect(state.placement.railFrame(in: area, height: 500).origin == CGPoint(x: 8, y: 8))
+        #expect(ControlIslandPlacement.railWidth == 36)
         state.placement = ControlIslandPlacement(x: 1, y: 0.5)
         state.savePlacement()
         state.isPresenting = true
@@ -112,6 +116,8 @@ struct ControlIslandTests {
         #expect(restored.placement == ControlIslandPlacement(x: 1, y: 0.5))
         #expect(!restored.isPresenting)
         #expect(!restored.hasKeyboardFocus)
+        restored.resetPlacement()
+        #expect(restored.placement.railFrame(in: area, height: 500).origin == CGPoint(x: 8, y: 8))
     }
 
     @Test @MainActor
@@ -182,9 +188,7 @@ struct ControlIslandTests {
         let main: [ControlIslandItem] = [.windowControls, .navigation, .page, .floatingTabs, .spaces]
         let silent = ControlIslandPlacement.railHeight(items: main, spaceCount: 2, favoriteCount: 0)
         let playing = ControlIslandPlacement.railHeight(items: main + [.nowPlaying], spaceCount: 2, favoriteCount: 0)
-        let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
-        let spacesBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
-        #expect(abs(playing - silent - (ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight + flatBottom - spacesBottom)) < 0.001)
+        #expect(abs(playing - silent - (ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight)) < 0.001)
         #expect(ControlIslandRailLayout(visibleItems: main + [.nowPlaying]).elements.suffix(3)
             == [.line(before: .nowPlaying), .row(.nowPlaying), .grip])
         #expect(ControlIslandRailLayout(visibleItems: [.navigation, .nowPlaying, .updates]).elements
@@ -227,13 +231,17 @@ struct ControlIslandTests {
     func `the rail's height counts every row and every gap, and is the same at rest and awake`() {
         let items: [ControlIslandItem] = [.windowControls, .navigation, .page, .floatingTabs, .spaces]
         let height = ControlIslandPlacement.railHeight(items: items, spaceCount: 2, favoriteCount: 0)
-        let rows = ControlIslandPlacement.rowHeight * 3 + ControlIslandPlacement.lightPitch * 3
+        let rows = ControlIslandPlacement.rowHeight * 4 + ControlIslandPlacement.lightPitch * 3
         let gaps = ControlIslandPlacement.sectionGap * 2
         let spaces = ControlIslandPlacement.spaceRowHeight * 2
-        let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
-        let bottom = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
-        #expect(height == ControlIslandPlacement.contentInset + bottom + rows + gaps + spaces + grip)
+        let grip = ControlIslandPlacement.rowHeight
+        let bottom = ControlIslandPlacement.contentInset
+        #expect(abs(height - (ControlIslandPlacement.contentInset + bottom + rows + gaps + spaces + grip)) < 0.001)
         #expect(ControlIslandPlacement.gripSize == CGSize(width: 16, height: 10))
+        #expect(ControlIslandPlacement.rowHeight == ControlIslandPlacement.lightPitch)
+        #expect(ControlIslandPlacement.spaceRowHeight == ControlIslandPlacement.lightPitch)
+        #expect(ControlIslandPlacement.sectionGap == ControlIslandPlacement.contentInset * 2)
+        #expect(ControlIslandPlacement.railHeight(items: items, spaceCount: 1, favoriteCount: 0) == 282)
     }
 
     @Test
@@ -243,11 +251,7 @@ struct ControlIslandTests {
         #expect(abs(railSag - 2.14) < 0.05)
         #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 0) == 0)
         #expect(ControlIslandPlacement.cornerSag(radius: 20, offset: 20) == 20)
-        let underSpaces = ControlIslandPlacement.gripBottomInset(aboveRadius: ControlIslandPlacement.spaceRowHeight / 2)
-        let underRow = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
-        #expect(abs(underSpaces - 10.66) < 0.05)
-        #expect(abs(underRow - 8.14) < 0.05)
-        #expect(underSpaces > underRow)
+        #expect(abs(ControlIslandPlacement.gripBottomInset - 8.14) < 0.05)
     }
 
     @Test @MainActor
@@ -255,9 +259,9 @@ struct ControlIslandTests {
         let main: [ControlIslandItem] = [.navigation, .spaces, .favoriteTabs]
         let base = ControlIslandPlacement.railHeight(items: main, spaceCount: 1, favoriteCount: 2)
         let withExtras = ControlIslandPlacement.railHeight(items: main + [.history, .settings], spaceCount: 1, favoriteCount: 2)
-        let grip = ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height
-        let flatBottom = ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
-        #expect(base == ControlIslandPlacement.contentInset + flatBottom + ControlIslandPlacement.rowHeight
+        let grip = ControlIslandPlacement.rowHeight
+        let flatBottom = ControlIslandPlacement.contentInset
+        #expect(base == ControlIslandPlacement.contentInset + flatBottom + ControlIslandPlacement.rowHeight * 2
             + ControlIslandPlacement.sectionGap * 2 + ControlIslandPlacement.spaceRowHeight + ControlIslandFavoriteTabs.height(for: 2) + grip)
         #expect(abs(withExtras - base - (ControlIslandPlacement.sectionGap + ControlIslandPlacement.rowHeight * 2)) < 0.001)
         let empty = ControlIslandPlacement.railHeight(items: [], spaceCount: 0, favoriteCount: 0)

@@ -162,9 +162,6 @@ enum Constants {
         /// Duration for hide animation
         static let hideDuration: CGFloat = 0.2
 
-        /// Corner radius for the glass effect
-        static let glassCornerRadius: CGFloat = 18
-
         /// Padding around the glass effect
         static let glassEffectPadding: CGFloat = 8
     }

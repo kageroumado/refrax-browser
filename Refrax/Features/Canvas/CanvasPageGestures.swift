@@ -67,7 +67,7 @@ final class CanvasPageGestures {
 
     /// Returns the event to deliver, or nil when the floating layer takes it.
     func handle(_ event: NSEvent) -> NSEvent? {
-        // The modifiers reach the key window; while that is an island, a card or the lens,
+        // The modifiers reach the key window; while that is a card or the lens,
         // the browser window's hold still follows them.
         if event.type == .flagsChanged, event.window !== window, event.window == nil || event.window?.parent === window {
             return handleFlags(event)
@@ -127,6 +127,7 @@ final class CanvasPageGestures {
     }
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
+        if event.window?.firstResponder is NSTextView { return event }
         if FloatingRevealKey.current == .command, event.modifierFlags.contains(.command) {
             interruptControl()
             return event
@@ -137,6 +138,7 @@ final class CanvasPageGestures {
             return event
         }
         if canvas.floatingVisibility.isRevealed, event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus() {
+            islands?.cancelRowDrag()
             interruptControl()
             canvas.dismissFloatingTabs()
             return nil

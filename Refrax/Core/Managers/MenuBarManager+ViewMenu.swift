@@ -122,7 +122,7 @@ extension MenuBarManager {
 
         // Lightboard (Cmd+Shift+L)
         let lightboardItem = NSMenuItem(
-            title: "Show Lightboard",
+            title: "Show Tab Statistics",
             action: #selector(showLightboard(_:)),
             keyEquivalent: "l",
         )
@@ -194,6 +194,10 @@ extension MenuBarManager {
         favoriteItem.target = self
         favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue
         viewMenu.addItem(favoriteItem)
+        let favoritesDrawerItem = NSMenuItem(title: "Show Favorites", action: #selector(showFavoritesDrawer(_:)), keyEquivalent: "")
+        favoritesDrawerItem.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
+        favoritesDrawerItem.target = self
+        viewMenu.addItem(favoritesDrawerItem)
         let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
         controlsItem.target = self
         viewMenu.addItem(controlsItem)
@@ -410,6 +414,11 @@ extension MenuBarManager {
         guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab,
               let bookmarks = controller.tabManager.bookmarksManager else { return }
         ControlIslandTabActions(tab: tab, windowState: controller.windowState, tabs: controller.tabManager, bookmarks: bookmarks).toggleFavorite()
+    }
+
+    @objc
+    func showFavoritesDrawer(_: Any?) {
+        activeWindowController?.windowState.toggleDetailTray(.favorites)
     }
 
     // MARK: - View Menu Validation

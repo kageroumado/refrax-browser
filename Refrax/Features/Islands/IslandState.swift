@@ -9,6 +9,8 @@ nonisolated struct IslandPlacement: Codable, Equatable, Sendable {
     var isPinned: Bool = false
     /// Rows show favicons only, the favorites column's look.
     var iconsOnly: Bool = false
+    /// The compact rail's independent position, using the control island's normalized anchors.
+    var railPlacement: ControlIslandPlacement?
 
     init(x: Double, y: Double, isPinned: Bool = false, iconsOnly: Bool = false) {
         self.x = x
@@ -23,10 +25,24 @@ nonisolated struct IslandPlacement: Codable, Equatable, Sendable {
 nonisolated struct IslandState: Codable, Equatable, Sendable {
     var islands: [UUID: IslandPlacement] = [:]
     var detached: Set<UUID> = []
+    var automaticallyArranged = false
 
     init(islands: [UUID: IslandPlacement] = [:], detached: Set<UUID> = []) {
         self.islands = islands
         self.detached = detached
+    }
+
+    private enum CodingKeys: CodingKey {
+        case islands
+        case detached
+        case automaticallyArranged
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.islands = try container.decode([UUID: IslandPlacement].self, forKey: .islands)
+        self.detached = try container.decode(Set<UUID>.self, forKey: .detached)
+        self.automaticallyArranged = try container.decodeIfPresent(Bool.self, forKey: .automaticallyArranged) ?? false
     }
 
     /// Forgets tabs and islands no longer present.

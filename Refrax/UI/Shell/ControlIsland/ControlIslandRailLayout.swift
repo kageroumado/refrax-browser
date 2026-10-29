@@ -5,16 +5,15 @@ import Foundation
 /// The main section comes first in its customized order, then the additional controls
 /// in theirs. A gap carries a divider line around a group and at the boundary between
 /// the sections, except between the space picker and the favorites, which share a plain
-/// gap. The grip closes the rail, as far from the last row as from the rail's edge.
+/// gap. The grip closes the rail in a full control row.
 nonisolated struct ControlIslandRailLayout: Equatable {
     enum Element: Equatable, Identifiable {
         case row(ControlIslandItem)
-        /// A 12-point gap with a divider line.
+        /// A gap of ``ControlIslandPlacement/sectionGap`` with a divider line.
         case line(before: ControlIslandItem)
-        /// A 12-point gap without a line.
+        /// A gap of ``ControlIslandPlacement/sectionGap`` between groups.
         case gap(before: ControlIslandItem)
-        /// The handle that moves the rail, after the last row, inset from it and from the
-        /// rail's edge by the content inset.
+        /// The handle that moves the rail, centered in its final control row.
         case grip
 
         var id: String {

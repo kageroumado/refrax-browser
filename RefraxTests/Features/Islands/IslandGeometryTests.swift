@@ -16,6 +16,11 @@ struct IslandGeometryTests {
     func size() {
         #expect(titles.width == IslandGeometry.titleWidth)
         #expect(IslandGeometry(iconsOnly: true).width == IslandGeometry.iconWidth)
+        let compact = IslandGeometry(iconsOnly: true)
+        #expect(compact.width == 36)
+        #expect(compact.rowFrame(0).size == CGSize(width: 28, height: 26))
+        #expect(IslandGeometry.headerHeight == 36)
+        #expect(compact.contentHeight(rows: 3) == 94)
         let three = titles.contentHeight(rows: 3)
         #expect(three == 3 * IslandGeometry.rowHeight + 2 * IslandGeometry.padding)
         #expect(titles.size(rows: 3, in: CGSize(width: 1600, height: 1000)).height == three)

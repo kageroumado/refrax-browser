@@ -35,7 +35,7 @@ nonisolated enum FileIslandLayout {
 
     /// The grip closing the column and the inset under it.
     static var gripHeight: CGFloat {
-        ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height + ControlIslandPlacement.gripBottomInset(aboveRadius: 0)
+        ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height + ControlIslandPlacement.gripBottomInset
     }
 
     /// How many file cells fit in `bounds` beside the fixed rows, never more than ``maximumVisibleItems``.

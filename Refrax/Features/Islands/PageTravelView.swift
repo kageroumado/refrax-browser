@@ -29,12 +29,10 @@ struct PageTravelView: View {
     @State private var slabScale: CGFloat = 1
     /// The tab whose live page is painting under its snapshot.
     @State private var arrivingTabID: UUID?
-    /// The view's size: it runs past the window's top and bottom, under the title bar and the
-    /// window's corners, the way the live page does.
-    @State private var size: CGSize = .zero
     /// The part of the view the window shows, in its coordinates: the page as a picture of
     /// it is drawn here, at the picture's own size, so the live page lands on it exactly.
     @State private var visible: CGRect = .zero
+    @State private var pageFrame: CGRect = .zero
     /// The page's render on its way, before its image takes its place.
     @State private var captureTask: Task<Void, Never>?
     /// The slab's lean against an edge that did not give.
@@ -74,35 +72,38 @@ struct PageTravelView: View {
     }
 
     var body: some View {
-        ZStack {
-            background
-            if let tab = windowState.activeTab {
-                livePage(tab)
-                if showsSlab, !isTraveling {
-                    slab(image: islands.snapshot(for: tab.id), tab: tab, scale: slabScale)
-                        .offset(bumpOffset)
-                        .allowsHitTesting(false)
+        GeometryReader { geometry in
+            ZStack {
+                background
+                if let tab = windowState.activeTab {
+                    livePage(tab, size: geometry.size)
+                    if showsSlab, !isTraveling {
+                        slab(image: islands.snapshot(for: tab.id), tab: tab, scale: slabScale)
+                            .offset(bumpOffset)
+                            .allowsHitTesting(false)
+                    }
+                }
+                if let shown {
+                    travelingSlabs(shown)
+                }
+                if isInspecting, showsSlab {
+                    directionLabels(size: geometry.size)
+                        .opacity(isTraveling ? 0 : 1)
+                        .animation(.easeOut(duration: Layout.labelFade), value: isTraveling)
                 }
             }
-            if let shown {
-                travelingSlabs(shown)
-            }
-            if isInspecting, showsSlab {
-                directionLabels
-                    .opacity(isTraveling ? 0 : 1)
-                    .animation(.easeOut(duration: Layout.labelFade), value: isTraveling)
-            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .coordinateSpace(name: "pageTravel")
         .clipped()
         .background {
             WindowVisibleRectReader { rect in
                 visible = rect
-                islands.updateViewport(rect)
             }
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pageFrame = $0 }
+        .onChange(of: pageFrame) { reportViewport() }
+        .onChange(of: visible) { reportViewport() }
         .onChange(of: showsLive && arrivingTabID == nil, initial: true) { _, visible in
             islands.liveIsVisible = visible
         }
@@ -130,6 +131,10 @@ struct PageTravelView: View {
 
     // MARK: - Layers
 
+    private func reportViewport() {
+        islands.updateViewport(visible.offsetBy(dx: pageFrame.minX, dy: pageFrame.minY))
+    }
+
     private var background: some View {
         Color(nsColor: .windowBackgroundColor)
             .overlay(windowState.controlIslandTint)
@@ -138,7 +143,7 @@ struct PageTravelView: View {
 
     /// The live page, full size; invisible and deaf while a slab stands in for it, and under
     /// its snapshot until it has painted after arriving.
-    private func livePage(_ tab: Tab) -> some View {
+    private func livePage(_ tab: Tab, size: CGSize) -> some View {
         let arriving = arrivingTabID == tab.id
         return UnifiedContentView(tab: tab)
             .id(tab.id)
@@ -221,7 +226,7 @@ struct PageTravelView: View {
     }
 
     /// The names of the tabs in each direction, each sitting on the slab's rim on that side.
-    private var directionLabels: some View {
+    private func directionLabels(size: CGSize) -> some View {
         let slab = CGRect(
             x: visible.minX + (visible.width - slabSize.width) / 2, y: visible.minY + (visible.height - slabSize.height) / 2,
             width: slabSize.width, height: slabSize.height,
@@ -238,7 +243,7 @@ struct PageTravelView: View {
                     // The label's frame in the window's content: a click with the reveal key
                     // down is a secondary click, which the layer's monitor sends here by frame.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("pageTravel")) } action: { labelFrame in
-                        islands.directionLabelFrames[direction] = labelFrame.offsetBy(dx: -visible.minX, dy: -visible.minY)
+                        islands.directionLabelFrames[direction] = labelFrame.offsetBy(dx: pageFrame.minX, dy: pageFrame.minY)
                     }
                     .onDisappear { islands.directionLabelFrames[direction] = nil }
                     .position(Self.labelPosition(for: direction, on: slab))
@@ -430,6 +435,7 @@ private struct SlabChrome: ViewModifier, Animatable {
 
 /// Places a move's two slabs along its path.
 private struct TravelMotion: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let style: TravelStyle
     let progress: CGFloat
     /// The slab's size on screen: one step of a slide is a slab and the gap.
@@ -442,16 +448,20 @@ private struct TravelMotion: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        switch style {
-        case let .slide(direction):
-            let vector = Self.vector(direction, step: CGSize(width: step.width + gap, height: step.height + gap))
-            let offset = incoming
-                ? CGSize(width: vector.width * (1 - progress), height: vector.height * (1 - progress))
-                : CGSize(width: -vector.width * progress, height: -vector.height * progress)
-            content.offset(offset)
-        case .cross:
-            let scale = incoming ? Layout.crossScale + (1 - Layout.crossScale) * progress : 1 - (1 - Layout.crossScale) * progress
-            content.scaleEffect(scale).opacity(incoming ? progress : 1 - progress)
+        if reduceMotion {
+            content.opacity(incoming ? progress : 1 - progress)
+        } else {
+            switch style {
+            case let .slide(direction):
+                let vector = Self.vector(direction, step: CGSize(width: step.width + gap, height: step.height + gap))
+                let offset = incoming
+                    ? CGSize(width: vector.width * (1 - progress), height: vector.height * (1 - progress))
+                    : CGSize(width: -vector.width * progress, height: -vector.height * progress)
+                content.offset(offset)
+            case .cross:
+                let scale = incoming ? Layout.crossScale + (1 - Layout.crossScale) * progress : 1 - (1 - Layout.crossScale) * progress
+                content.scaleEffect(scale).opacity(incoming ? progress : 1 - progress)
+            }
         }
     }
 
@@ -533,7 +543,9 @@ private final class WindowVisibleRectView: NSView {
     var onChange: ((CGRect) -> Void)?
     private var reported: CGRect = .null
 
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
 
     override func layout() {
         super.layout()

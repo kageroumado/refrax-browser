@@ -26,26 +26,30 @@ extension TabManager {
     /// - Returns: The new TabPage in the destination tab, or `nil` if the operation failed.
     @discardableResult
     func moveTabToLayout(_ sourceTab: Tab, into destinationTab: Tab, at position: PanePosition) -> TabPage? {
-        guard sourceTab.pages.count == 1, !sourceTab.isMultiPage else {
-            Logger.warning("Cannot move multi-page tab into layout", category: Logger.tabs)
+        guard sourceTab.space != nil, sourceTab.pages.count == 1, !sourceTab.isMultiPage else {
+            Logger.warning("Combining requires a space-bound single-page tab", category: Logger.tabs)
             return nil
         }
 
         let sourcePage = sourceTab.activePage
+        let undo = TabLayoutUndo(source: sourceTab, destination: destinationTab, windows: layoutWindows(in: sourceTab.space))
+
+        state.extensionManager?.dispatchTabClosed(sourceTab, windowClosing: false)
 
         let newPage = TabPage(
             url: sourcePage.url,
             title: sourcePage.title,
             layoutPosition: position,
         )
-        newPage.faviconData = sourcePage.faviconData
-        newPage.largeFaviconData = sourcePage.largeFaviconData
+        newPage.copyContent(from: sourcePage)
 
         destinationTab._addPage(newPage, at: position)
 
         pagePool.transferPage(from: sourcePage, to: newPage, preserveHistory: true)
 
         closeTabWithoutRemovingPages(sourceTab)
+
+        registerLayoutUndo(undo, joinedPageID: newPage.id, position: position)
 
         state.incrementListVersion()
         scheduleSave()
@@ -88,8 +92,7 @@ extension TabManager {
         }
 
         let newTab = Tab(space: space, url: page.url, title: page.title, position: space.tabs.count)
-        newTab.activePage.faviconData = page.faviconData
-        newTab.activePage.largeFaviconData = page.largeFaviconData
+        newTab.activePage.copyContent(from: page)
 
         pagePool.transferPage(from: page, to: newTab.activePage, preserveHistory: true)
 

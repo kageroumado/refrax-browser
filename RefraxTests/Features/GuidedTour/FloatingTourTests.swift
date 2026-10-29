@@ -153,9 +153,9 @@ struct FloatingTourTests {
         #expect(spot.cornerRadius == kind.cornerRadius + Self.padding)
         #expect(spot.rect == target.insetBy(dx: -Self.padding, dy: -Self.padding))
         let expected: CGFloat = switch kind {
-        case .railRow: 16
+        case .railRow: 13
         case .rail: 16
-        case .pageCard: 22
+        case .pageCard: 16
         case .floatingCard: 12
         case .island: 16
         case .lens: 26
@@ -230,7 +230,7 @@ struct FloatingTourTests {
         tour.review()
         let lit = tour.spotlights(in: bounds)
         #expect(lit == [icon, FloatingTourLayout.spotlight(around: card, of: .pageCard)])
-        #expect(lit.map(\.cornerRadius) == [24, 30])
+        #expect(lit.map(\.cornerRadius) == [21, 24])
         #expect(tour.instructionAnchor(in: bounds) == FloatingTourLayout.spotlight(around: card))
         let beam = try #require(tour.beamRequests.first)
         #expect(beam.kind == .pageIconToCard)

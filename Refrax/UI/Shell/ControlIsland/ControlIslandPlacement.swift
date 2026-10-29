@@ -4,28 +4,31 @@ import Foundation
 /// Stores the compact control rail's normalized position within the window.
 nonisolated struct ControlIslandPlacement: Codable, Equatable {
     var x: Double = 0
-    var y: Double = 0.2
+    var y: Double = 0
 
-    /// The rail's distance from the window's edge, and from its own edge to a window light:
-    /// the rail is exactly one light wide inside two margins.
-    static let margin: CGFloat = 12
+    /// The minimum distance between the rail and the window's edge.
+    static let margin: CGFloat = 8
+    /// The inset from the rail's edge to a window light.
+    static let lightInset: CGFloat = 12
     /// The diameter of a window light's artwork.
     static let lightDiameter: CGFloat = 12
-    static let railWidth = margin * 2 + lightDiameter
-    static let rowHeight: CGFloat = 32
-    /// The window's lights, one under another, as far apart as the system sets them side by side.
-    static let lightPitch: CGFloat = 22
+    static let railWidth = lightInset * 2 + lightDiameter
+    /// Center-to-center spacing for the window lights.
+    static let lightPitch: CGFloat = 26
+    /// Every control occupies the same vertical cell as a window light.
+    static let rowHeight = lightPitch
     static let contentInset: CGFloat = 8
     static let horizontalInset: CGFloat = 4
     static let contentWidth = railWidth - horizontalInset * 2
-    static let sectionGap: CGFloat = 12
+    static let sectionGap = contentInset * 2
     /// The window's own corner: the rail is concentric with it at an edge and matches it afloat.
     static let cornerRadius: CGFloat = WindowCorner.radius
     /// The window's lights while the rail rests: gray, and this faint.
     static let restingLightsOpacity: Double = 0.45
     static let maximumVisibleSpaces = 4
-    static let spaceRowHeight = contentWidth
+    static let spaceRowHeight = rowHeight
     static let pageIconSize: CGFloat = 18
+    static let pageLoadingRingSize: CGFloat = 22
     static let pageBranchWidth: CGFloat = 416
     static let pageBranchHeight: CGFloat = 44
     /// A row under the page card for each other pane of a split tab.
@@ -51,7 +54,7 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
         width: CGFloat(gripColumns) * gripDot + CGFloat(gripColumns - 1) * gripDotSpacing,
         height: CGFloat(gripRows) * gripDot + CGFloat(gripRows - 1) * gripDotSpacing,
     )
-    /// The straight distance between the grip and the shape above it, measured at the grip's ends.
+    /// The compact File Island's gap above its grip.
     static let gripGap: CGFloat = 6
 
     /// How far a rounded edge of `radius` has receded from its straight tangent at a horizontal
@@ -62,29 +65,25 @@ nonisolated struct ControlIslandPlacement: Codable, Equatable {
         return radius - (radius * radius - offset * offset).squareRoot()
     }
 
-    /// The rail's bottom inset under the grip: the grip's ends sit `gripGap` from the rail's
-    /// curved edge, and the same `gripGap` from the shape above once that shape's own corner
-    /// (the space picker's track, or none for a flat row) is accounted for.
-    static func gripBottomInset(aboveRadius: CGFloat) -> CGFloat {
-        let half = gripSize.width / 2
-        return gripGap + cornerSag(radius: aboveRadius, offset: half) + cornerSag(radius: cornerRadius, offset: half)
+    /// The compact File Island's bottom inset keeps the grip's ends clear of its curved edge.
+    static var gripBottomInset: CGFloat {
+        gripGap + cornerSag(radius: cornerRadius, offset: gripSize.width / 2)
     }
 
     /// The rail's height: one row per action, three for the window controls, the space and
-    /// favorite columns at their own heights, a gap for every divider and for the grip, and
-    /// the content insets.
+    /// favorite columns at their own heights, a gap for every divider, a row for the grip,
+    /// and equal content insets.
     @MainActor
     static func railHeight(items: [ControlIslandItem], spaceCount: Int, favoriteCount: Int, favoritesOverflow: Bool = false) -> CGFloat {
         let layout = ControlIslandRailLayout(visibleItems: items)
-        let bottom = gripBottomInset(aboveRadius: layout.rows.last == .spaces ? spaceRowHeight / 2 : 0)
-        return layout.elements.reduce(contentInset + bottom) { height, element in
+        return layout.elements.reduce(contentInset * 2) { height, element in
             switch element {
             case .row(.windowControls): height + lightPitch * 3
-            case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight
+            case .row(.spaces): height + CGFloat(min(spaceCount, maximumVisibleSpaces)) * spaceRowHeight + rowHeight
             case .row(.favoriteTabs): height + ControlIslandFavoriteTabs.height(for: favoriteCount, overflows: favoritesOverflow)
             case .row: height + rowHeight
             case .line, .gap: height + sectionGap
-            case .grip: height + gripGap + gripSize.height
+            case .grip: height + rowHeight
             }
         }
     }

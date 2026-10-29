@@ -16,7 +16,7 @@ struct IslandsCommand: AsyncParsableCommand {
         Actions: state · show · hide · hold · release · step <up|down|left|right> · open --tab · \
         move-row --tab --island [--row N] · detach --tab [--to X,Y] · join --tab --with · \
         join-page --tab <left|right> · pin --island · unpin --island · new-island --tab · \
-        move --island --to X,Y
+        move --island --to X,Y · icon-rail --island · titles --island
 
         An island is named by its id, a prefix of it, its title, or "tabs" for the loose tabs. \
         A tab is named as everywhere in refrax-ctl: an id, a prefix, or part of its title.

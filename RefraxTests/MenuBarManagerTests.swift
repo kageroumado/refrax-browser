@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-
 @testable import Refrax
 
 // MARK: - Test Tags
@@ -16,8 +15,8 @@ extension Tag {
 @Suite("MenuBarManager Initialization", .tags(.menuBarManager))
 @MainActor
 struct MenuBarManagerInitializationTests {
-    @Test("Edit menu is initially nil")
-    func editMenuInitiallyNil() throws {
+    @Test
+    func `Edit menu is initially nil`() throws {
         let env = try TabManagerTestEnvironment()
 
         let menuBarManager = MenuBarManager(
@@ -28,8 +27,8 @@ struct MenuBarManagerInitializationTests {
         #expect(menuBarManager.editMenu == nil)
     }
 
-    @Test("Recently closed menu is initially nil")
-    func recentlyClosedMenuInitiallyNil() throws {
+    @Test
+    func `Recently closed menu is initially nil`() throws {
         let env = try TabManagerTestEnvironment()
 
         let menuBarManager = MenuBarManager(
@@ -40,8 +39,8 @@ struct MenuBarManagerInitializationTests {
         #expect(menuBarManager.recentlyClosedMenu == nil)
     }
 
-    @Test("Active window controller is nil when no windows")
-    func activeWindowControllerNilNoWindows() throws {
+    @Test
+    func `Active window controller is nil when no windows`() throws {
         let env = try TabManagerTestEnvironment()
 
         let menuBarManager = MenuBarManager(
@@ -63,8 +62,8 @@ struct MenuBarManagerInitializationTests {
 @Suite("MenuBarManager Setup", .tags(.menuBarManager), .serialized)
 @MainActor
 struct MenuBarManagerSetupTests {
-    @Test("Setup menu bar creates main menu")
-    func setupMenuBarCreatesMainMenu() throws {
+    @Test
+    func `Setup menu bar creates main menu`() throws {
         let env = try TabManagerTestEnvironment()
 
         let menuBarManager = MenuBarManager(
@@ -84,8 +83,8 @@ struct MenuBarManagerSetupTests {
         NSApplication.shared.mainMenu = originalMenu
     }
 
-    @Test("Setup menu bar creates expected menus")
-    func setupMenuBarCreatesExpectedMenus() throws {
+    @Test
+    func `Setup menu bar creates expected menus`() throws {
         let env = try TabManagerTestEnvironment()
 
         let menuBarManager = MenuBarManager(
@@ -97,7 +96,7 @@ struct MenuBarManagerSetupTests {
 
         menuBarManager.setupMenuBar()
 
-        let mainMenu = NSApplication.shared.mainMenu!
+        let mainMenu = try #require(NSApplication.shared.mainMenu)
 
         // Should have standard menu items
         // App, File, Edit, View, History, Bookmarks, Develop, Window, Help = 9
@@ -108,24 +107,49 @@ struct MenuBarManagerSetupTests {
     }
 }
 
-// MARK: - Notes
+@MainActor
+private final class UndoEditor: NSView {
+    let history = UndoManager()
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+    override var undoManager: UndoManager? {
+        history
+    }
+}
 
-//
-// MenuBarManager functionality requiring integration tests:
-//
-// 1. Menu item actions: Require active window controller and responder chain
-// 2. Dynamic menu updates: Undo/redo titles, recently closed items
-// 3. NSMenuDelegate callbacks: Menu opening/closing hooks
-// 4. Menu item validation: Enable/disable based on application state
-//
-// The tests above verify:
-// - Manager can be created with dependencies
-// - Initial state is correct (nil menus until setup)
-// - Active window controller is nil without windows
-// - Setup creates the main menu with expected items
-//
-// Full menu testing requires:
-// - Active browser windows
-// - Responder chain for actions
-// - User interaction simulation
-//
+@Suite("Menu undo routing", .tags(.menuBarManager), .serialized)
+@MainActor
+struct MenuUndoRoutingTests {
+    @Test
+    func `The focused editor takes precedence then browser history supplies undo`() throws {
+        let env = try TabManagerTestEnvironment()
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 300), styleMask: .titled, backing: .buffered, defer: false)
+        let editor = UndoEditor()
+        window.contentView = editor
+        window.makeFirstResponder(editor)
+        let menuManager = MenuBarManager(windowManager: env.windowManager, undoRedoManager: env.undoRedoManager, focusedWindow: { window })
+        let browser = env.undoRedoManager.undoManager
+        for (manager, name) in [(editor.history, "Typing"), (browser, "Float Tab")] {
+            manager.groupsByEvent = false
+            manager.beginUndoGrouping()
+            manager.registerUndo(withTarget: editor) { _ in }
+            manager.setActionName(name)
+            manager.endUndoGrouping()
+        }
+        let menu = try #require(menuManager.createEditMenu().submenu)
+        menuManager.updateEditMenu(menu)
+        #expect(menu.items.first?.title == "Undo Typing")
+        #expect(menu.items.filter { $0.keyEquivalent == "z" }.count == 2)
+        #expect(menuManager.editingUndoManager(redo: false) === editor.history)
+        menuManager.browserUndo(nil)
+        #expect(editor.history.canUndo == false)
+        #expect(browser.canUndo)
+        menuManager.updateEditMenu(menu)
+        #expect(menu.items.first?.title == "Undo Float Tab")
+        #expect(menuManager.editingUndoManager(redo: false) === browser)
+        menuManager.browserUndo(nil)
+        #expect(browser.canUndo == false)
+        #expect(menuManager.validateMenuItem(menu.items[0]) == false)
+    }
+}

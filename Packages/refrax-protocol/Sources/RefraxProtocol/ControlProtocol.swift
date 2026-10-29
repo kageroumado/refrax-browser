@@ -699,6 +699,10 @@ public extension ControlRequest {
             case unpin
             /// A new island from `tab`.
             case newIsland = "new-island"
+            /// Present `island` as a compact vertical icon rail.
+            case iconRail = "icon-rail"
+            /// Present `island` as a list of tab titles.
+            case titles
             /// Move `island` so its top-left corner is at `x`,`y`.
             case move
         }

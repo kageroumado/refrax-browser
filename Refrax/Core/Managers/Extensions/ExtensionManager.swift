@@ -1209,7 +1209,7 @@ final class ExtensionManager {
     ///
     /// - Parameter tabPage: The closed tab page.
     func removeTabAdapter(for tabPage: TabPage) {
-        tabAdapters.removeValue(forKey: tabPage.id)
+        tabAdapters.removeValue(forKey: tabPage.id)?.tabPage = nil
     }
 
     /// Gets or creates an extension window adapter.
@@ -1340,13 +1340,20 @@ final class ExtensionManager {
     ///   - tab: The closed tab.
     ///   - windowClosing: Whether the window is also closing.
     func dispatchTabClosed(_ tab: Tab, windowClosing: Bool) {
-        guard let tabPage = tab.pages.first else { return }
+        for tabPage in tab.pages {
+            dispatchPageClosed(tabPage, windowClosing: windowClosing)
+        }
+    }
 
+    /// Releases a page's extension identity before transferring or deleting its model.
+    func dispatchPageClosed(_ tabPage: TabPage, windowClosing: Bool = false) {
+        guard let tab = tabPage.tab else { return }
+        let controller = controller(for: tab)
         tabsWithoutWebView.remove(tabPage.id)
         if let adapter = tabAdapters[tabPage.id] {
-            controller(for: tab).didCloseTab(adapter, windowIsClosing: windowClosing)
-            removeTabAdapter(for: tabPage)
+            controller.didCloseTab(adapter, windowIsClosing: windowClosing)
         }
+        removeTabAdapter(for: tabPage)
     }
 
     /// Notifies extensions that a tab was activated.

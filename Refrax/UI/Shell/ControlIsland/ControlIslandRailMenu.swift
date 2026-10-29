@@ -25,12 +25,11 @@ nonisolated enum ControlIslandRailMenuItem: CaseIterable {
 
 /// Favorites, then the rail's setup: right-click the thing to set up the thing.
 struct ControlIslandRailMenu: View {
-    @Binding var showsFavorites: Bool
     @Environment(WindowState.self) private var windowState
 
     var body: some View {
         Button(ControlIslandRailMenuItem.favorites.title, systemImage: ControlIslandRailMenuItem.favorites.symbol) {
-            showsFavorites = true
+            windowState.toggleDetailTray(.favorites)
         }
         Divider()
         Button(ControlIslandRailMenuItem.customizeControls.title, systemImage: ControlIslandRailMenuItem.customizeControls.symbol) {

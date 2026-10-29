@@ -42,7 +42,11 @@ struct FileIslandTests {
     func `a release near the bottom edge and a side snaps to the corner`() {
         let height = FileIslandLayout.height(downloads: 2, shelf: 0, showsDropCell: false)
         var placement = ControlIslandPlacement()
-        placement.move(to: CGPoint(x: area.maxX - 70, y: area.maxY - height - 30), in: area, height: height)
+        let origin = CGPoint(
+            x: area.maxX - ControlIslandPlacement.margin - ControlIslandPlacement.railWidth - 20,
+            y: area.maxY - ControlIslandPlacement.margin - height - 20,
+        )
+        placement.move(to: origin, in: area, height: height)
         #expect(placement.snapped(in: area, height: height) == ControlIslandPlacement(x: 1, y: 1))
     }
 

@@ -2602,6 +2602,9 @@ final class RefraxControlServer {
             }
         case .newIsland:
             islands.makeIsland(from: try tab(params.tab).id)
+        case .iconRail, .titles:
+            let target = try island(params.island)
+            islands.setIconsOnly(params.action == .iconRail, for: target.id)
         case .move:
             let target = try island(params.island)
             guard let x = params.x, let y = params.y else { throw ControlError.invalidParams("--to X,Y is required") }
