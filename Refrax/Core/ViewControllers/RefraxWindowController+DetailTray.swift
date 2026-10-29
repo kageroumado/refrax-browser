@@ -120,6 +120,9 @@ extension RefraxWindowController {
         let hostingView = NSHostingView(rootView: LibraryDrawerSurface().refraxEnvironment(environment))
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         hostingView.sizingOptions = []
+        // The title bar is hidden behind the islands; its safe area would push the drawer down
+        // and past the window's bottom edge, out of line with the other islands.
+        hostingView.safeAreaRegions = []
         container.addSubview(hostingView)
         NSLayoutConstraint.activate([
             hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
