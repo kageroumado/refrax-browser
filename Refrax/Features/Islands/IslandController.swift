@@ -776,20 +776,22 @@ final class IslandController {
     /// island and the page's sides, the row's own island shows where it would land, or, with
     /// `asCard` (⇧ held), the row leaves as a card.
     func updateRowDrag(_ tabID: UUID, at point: CGPoint, asCard: Bool = false) {
-        draggedTabID = tabID
-        rowGhost = RowGhost(tabID: tabID, point: point)
+        // Every write below re-evaluates the whole layer; a value that did not change is not written.
+        update(\.draggedTabID, to: tabID)
+        update(\.rowGhost, to: RowGhost(tabID: tabID, point: point))
         let reach = IslandGeometry.padding
         guard let target = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else {
-            drop = nil
-            sideDrop = sideZone(at: point, dragging: tabID)
-            dropsAsCard = sideDrop == nil && asCard
-            islandGhost = sideDrop == nil && !asCard ? ghost(for: tabID, at: point) : nil
+            update(\.drop, to: nil)
+            let side = sideZone(at: point, dragging: tabID)
+            update(\.sideDrop, to: side)
+            update(\.dropsAsCard, to: side == nil && asCard)
+            update(\.islandGhost, to: side == nil && !asCard ? ghost(for: tabID, at: point) : nil)
             updateJoinDwell(candidate: nil, point: point)
             return
         }
-        sideDrop = nil
-        islandGhost = nil
-        dropsAsCard = false
+        update(\.sideDrop, to: nil)
+        update(\.islandGhost, to: nil)
+        update(\.dropsAsCard, to: false)
         let frame = frame(of: target)
         let local = rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: target)
         let geometry = geometry(for: target)
@@ -798,7 +800,15 @@ final class IslandController {
             canJoin(tabID, with: target.tabIDs[index]) ? target.tabIDs[index] : nil
         }
         updateJoinDwell(candidate: candidate, point: point)
-        drop = IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count), joins: joinDwell.ready())
+        update(\.drop, to: IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count), joins: joinDwell.ready()))
+    }
+
+    /// Writes `value` only when it differs from what is there: an observed property notifies
+    /// its observers on every write, equal or not.
+    private func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<IslandController, Value>, to value: Value) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
     }
 
     private func updateJoinDwell(candidate: UUID?, point: CGPoint) {
@@ -1046,9 +1056,14 @@ final class IslandController {
         let size = frame(of: islands[index]).size
         let x = min(max(area.minX, origin.x), max(area.minX, area.maxX - size.width))
         let y = min(max(area.minY, origin.y), max(area.minY, area.maxY - size.height))
-        islands[index].placement.x = (x - area.minX) / max(1, area.width)
-        islands[index].placement.y = (y - area.minY) / max(1, area.height)
-        state.islands[islandID] = islands[index].placement
+        var placement = islands[index].placement
+        placement.x = (x - area.minX) / max(1, area.width)
+        placement.y = (y - area.minY) / max(1, area.height)
+        // One write to the islands and one to the state per frame, and none when the pointer
+        // has not moved the island: each write re-evaluates every island on the layer.
+        guard placement != islands[index].placement else { return }
+        islands[index].placement = placement
+        state.islands[islandID] = placement
     }
 
     /// The move is over: the island's place is kept, and the others keep clear of it.

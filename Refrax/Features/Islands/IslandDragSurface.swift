@@ -16,8 +16,12 @@ struct IslandDragSurface: View {
                 .onChanged { value in
                     guard let island = islands.island(islandID) else { return }
                     let start = origin ?? islands.frame(of: island).origin
-                    origin = start
-                    islands.draggedIslandID = islandID
+                    if origin == nil {
+                        origin = start
+                    }
+                    if islands.draggedIslandID != islandID {
+                        islands.draggedIslandID = islandID
+                    }
                     islands.moveIsland(islandID, to: CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height))
                 }
                 .onEnded { _ in
