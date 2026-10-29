@@ -77,8 +77,9 @@ struct ArmedCrossing: Equatable {
 @Observable
 final class IslandController {
     enum Layout {
-        /// Full-window renders kept in memory: the current page, the last few, the neighbors.
-        static let snapshotLimit = 6
+        /// Full-window renders kept in memory: the current page, the one it came from, and
+        /// the pages one step away in each direction, loaded ahead of a step.
+        static let snapshotLimit = 8
         /// A render landed this recently stands for the next one asked for by a load's end.
         static let captureCoalescing: TimeInterval = 2
         /// How long after a push against an edge a second push crosses it.
@@ -737,6 +738,7 @@ final class IslandController {
     /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot. A page
     /// still live is rendered first, through WebKit, while it stays on screen.
     private func travel(to tab: Tab, style: TravelStyle) {
+        requestStoredSnapshot(for: tab)
         guard liveIsVisible, let current = windowState.activeTab else {
             start(PageTravel(outgoing: windowState.activeTab.flatMap { snapshot(for: $0.id) }, style: style), to: tab)
             return
@@ -758,6 +760,7 @@ final class IslandController {
         if let island = island(holding: tab.id) {
             lastTab[island.id] = tab.id
         }
+        prefetchNeighbourSnapshots()
     }
 
     /// The page view finished the move.
@@ -1346,12 +1349,24 @@ final class IslandController {
         let id = tab.id
         capturing.insert(id)
         Task(name: "Load island snapshot") { [weak self] in
-            let data = await CanvasSnapshotStore.load(for: id)
+            let decoded = await CanvasSnapshotStore.loadImage(for: id)
             guard let self, !Task.isCancelled else { return }
-            if let data, let image = NSImage(data: data), captures[id] == nil {
-                store(image, for: id)
+            if let decoded, captures[id] == nil {
+                store(NSImage(cgImage: decoded, size: .zero), for: id)
             }
             capturing.remove(id)
+        }
+    }
+
+    /// Loads the stored images of the pages one step away in each direction, so a step shows
+    /// the page's picture from its first frame rather than a placeholder that fills in later.
+    func prefetchNeighbourSnapshots() {
+        for direction in TableDirection.allCases {
+            if let tab = destination(toward: direction) {
+                requestStoredSnapshot(for: tab)
+            } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.tabIDs.first, let tab = tab(for: tabID) {
+                requestStoredSnapshot(for: tab)
+            }
         }
     }
 

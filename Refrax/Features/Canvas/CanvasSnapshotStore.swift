@@ -31,6 +31,18 @@ nonisolated enum CanvasSnapshotStore {
         }.value
     }
 
+    /// Reads and decodes the stored snapshot for a tab off the main actor, so its first draw
+    /// on screen is a copy of pixels and not a JPEG decode in the middle of an animation.
+    static func loadImage(for tabID: UUID) async -> CGImage? {
+        let source = url(for: tabID)
+        return await Task.detached(priority: .userInitiated) {
+            guard let data = try? Data(contentsOf: source),
+                  let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+            let options = [kCGImageSourceShouldCacheImmediately: true, kCGImageSourceShouldCache: true] as CFDictionary
+            return CGImageSourceCreateImageAtIndex(imageSource, 0, options)
+        }.value
+    }
+
     /// Reads the stored snapshot bytes for a tab, if any.
     static func load(for tabID: UUID) async -> Data? {
         let source = url(for: tabID)
