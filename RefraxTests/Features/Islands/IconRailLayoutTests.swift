@@ -34,4 +34,22 @@ struct IconRailLayoutTests {
         #expect(bounds.insetBy(dx: 8, dy: 8).contains(drawer))
         #expect(!drawer.intersects(rail))
     }
+
+    @Test(arguments: [false, true])
+    func `Drawer opens on the controls' side`(_ right: Bool) {
+        let placement = ControlIslandPlacement(x: right ? 1 : 0, y: 0)
+        let rail = placement.railFrame(in: bounds, height: 282)
+        let x = DetailTrayLayout.leading(in: bounds, controlRail: rail, onRight: placement.opensLeft(in: bounds), width: 320)
+        let drawer = CGRect(x: x, y: 8, width: 320, height: bounds.height - 16)
+        #expect(bounds.insetBy(dx: 8, dy: 8).contains(drawer))
+        #expect(!drawer.intersects(rail))
+        #expect((drawer.midX > bounds.midX) == right)
+        #expect(abs((right ? rail.minX - drawer.maxX : drawer.minX - rail.maxX) - ControlIslandPlacement.adjacentGap) < 0.5)
+    }
+
+    @Test
+    func `Drawer hugs the right edge while the controls hide past it`() {
+        let x = DetailTrayLayout.leading(in: bounds, controlRail: .zero, onRight: true, width: 320)
+        #expect(x == bounds.maxX - ControlIslandPlacement.margin - 320)
+    }
 }

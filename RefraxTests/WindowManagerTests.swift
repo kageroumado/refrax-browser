@@ -300,6 +300,20 @@ struct WindowStateDetailTrayTests {
     }
 
     @Test
+    func `Opening a favorite closes the favorites drawer and leaves other drawers open`() throws {
+        let env = try TabManagerTestEnvironment()
+        let windowState = env.makeWindowState()
+
+        windowState.showDetailTray(.favorites)
+        windowState.closeFavoritesDrawer()
+        #expect(windowState.detailTrayMode == .hidden)
+
+        windowState.showDetailTray(.history)
+        windowState.closeFavoritesDrawer()
+        #expect(windowState.detailTrayMode == .history)
+    }
+
+    @Test
     func `Toggle with hidden mode is no-op`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()

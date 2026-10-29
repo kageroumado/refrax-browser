@@ -29,6 +29,7 @@ extension RefraxWindowController {
             state.encode(placement.x as NSNumber, forKey: "fileIslandX")
             state.encode(placement.y as NSNumber, forKey: "fileIslandY")
         }
+        state.encode(windowState.fileIsland.isCoupled as NSNumber, forKey: "fileIslandCoupled")
         // Encode window frame for explicit restoration.
         // AppKit's default NSWindow.restoreState doesn't reliably restore frame
         // when the window is created with .zero contentRect via NSWindowRestoration.
@@ -73,6 +74,7 @@ extension RefraxWindowController {
            let y = state.decodeObject(of: NSNumber.self, forKey: "fileIslandY")?.doubleValue {
             windowState.fileIsland.placement = ControlIslandPlacement(x: x, y: y)
         }
+        windowState.fileIsland.isCoupled = state.decodeObject(of: NSNumber.self, forKey: "fileIslandCoupled")?.boolValue ?? false
 
         if let frameX = state.decodeObject(of: NSNumber.self, forKey: "windowFrameX")?.doubleValue,
            let frameY = state.decodeObject(of: NSNumber.self, forKey: "windowFrameY")?.doubleValue,

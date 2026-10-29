@@ -1880,6 +1880,39 @@ final class ExtensionManager {
         #endif
     }
 
+    /// Whether a loaded extension declares an options page (`options_ui` or `options_page`).
+    func hasOptionsPage(_ extension_: InstalledExtension) -> Bool {
+        loadedContexts[extension_.uniqueIdentifier]?.optionsPageURL != nil
+    }
+
+    /// Opens an extension's options page as `runtime.openOptionsPage()` does: selects a tab
+    /// already showing it, or opens one in the active window's space.
+    ///
+    /// uBlock Origin's dashboard (filter lists, "Update now", My filters) is its options page.
+    func openOptionsPage(for extension_: InstalledExtension) async {
+        guard let context = loadedContexts[extension_.uniqueIdentifier] else {
+            Logger.warning(
+                "Cannot open options of '\(extension_.displayName)': not loaded",
+                category: Logger.extensions,
+            )
+            return
+        }
+        do {
+            try await openOptionsPage(for: context)
+        } catch {
+            Logger.warning(
+                "Cannot open options of '\(extension_.displayName)': \(error)",
+                category: Logger.extensions,
+            )
+        }
+    }
+
+    /// Opens the options page of an extension loaded in the default controller.
+    func openOptionsPage(for context: WKWebExtensionContext) async throws {
+        guard let controllerDelegate else { throw ExtensionError.notInstalled }
+        try await controllerDelegate.webExtensionController(defaultController, openOptionsPageFor: context)
+    }
+
     /// Opens Web Inspector for an extension's background page.
     ///
     /// Only works in debug builds where `isInspectable` is enabled.

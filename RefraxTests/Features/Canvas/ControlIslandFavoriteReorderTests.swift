@@ -70,6 +70,47 @@ struct ControlIslandFavoriteReorderTests {
         }
     }
 
+    @Test
+    func `the drawer moves any favorite, renumbers every slot, and persists the order`() throws {
+        let environment = try TabManagerTestEnvironment()
+        let manager = environment.bookmarksManager
+        let a = try favorite("A", manager: manager)
+        let shortcut = try favorite("Shortcut", manager: manager, live: false)
+        let b = try favorite("B", manager: manager)
+        let folder = try manager.createFolder(name: "Folder")
+        manager.addFolderToFavorites(folder)
+        let c = try favorite("C", manager: manager)
+        manager.refreshFavoritesCache()
+
+        #expect(manager.moveFavorite(folder.id, before: a.id))
+        #expect(manager.moveFavorite(shortcut.id, before: nil))
+        let expected: [UUID] = [folder.id, a.id, b.id, c.id, shortcut.id]
+        #expect(manager.favorites.map(\.id) == expected)
+        for (index, favorite) in manager.favorites.enumerated() {
+            #expect(favorite.position.row == index / 4)
+            #expect(favorite.position.column == index % 4)
+        }
+        try environment.modelContext.save()
+        manager.refreshFavoritesCache()
+        #expect(manager.favorites.map(\.id) == expected)
+    }
+
+    @Test
+    func `the drawer leaves the order alone for a drop in place or an unknown favorite`() throws {
+        let environment = try TabManagerTestEnvironment()
+        let manager = environment.bookmarksManager
+        let a = try favorite("A", manager: manager)
+        let b = try favorite("B", manager: manager, live: false)
+        manager.refreshFavoritesCache()
+        let original = manager.favorites.map(\.id)
+        #expect(!manager.moveFavorite(a.id, before: a.id))
+        #expect(!manager.moveFavorite(a.id, before: b.id))
+        #expect(!manager.moveFavorite(b.id, before: nil))
+        #expect(!manager.moveFavorite(UUID(), before: a.id))
+        #expect(!manager.moveFavorite(a.id, before: UUID()))
+        #expect(manager.favorites.map(\.id) == original)
+    }
+
     private func favorite(_ title: String, manager: BookmarksManager, live: Bool = true) throws -> Bookmark {
         manager.createBookmark(url: try #require(URL(string: "about:blank#\(UUID())")), title: title,
                                isFavorite: true, favoriteMode: live ? .liveFavorite : .shortcut)

@@ -121,7 +121,7 @@ struct ControlIsland: View {
     /// The strip along the window edge that brings the hidden rail back.
     private var revealStrip: CGRect {
         guard let edge = state.hiddenEdge else { return .zero }
-        return Layout.revealStrip(for: frame, at: edge, in: area)
+        return Layout.revealStrip(for: state.companionFrame.isEmpty ? frame : frame.union(state.companionFrame), at: edge, in: area)
     }
     /// VoiceOver keeps a hidden rail reachable and says where it went.
     private var accessibilityTitle: String {
@@ -283,6 +283,7 @@ struct ControlIsland: View {
         .onAppear { state.pointerMoved = { hoverChanged(state.tracksPointer($0)) } }
         .onChange(of: interactionRegions, initial: true) { _, regions in state.hitRegions = regions }
         .onChange(of: isHiddenAtEdge ? .zero : frame, initial: true) { _, frame in state.railFrame = frame }
+        .onChange(of: frame, initial: true) { _, frame in state.railLayoutFrame = frame }
         .onChange(of: revealStrip, initial: true) { _, strip in state.revealStrip = strip }
         .onChange(of: area, initial: true) { _, area in state.areaBounds = area }
         .onChange(of: railIsNeeded, initial: true) { _, needed in state.setNeededOnScreen(needed) }
@@ -501,7 +502,7 @@ struct ControlIsland: View {
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
             ControlIslandFavoriteTabs(
-                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.showDetailTray(.favorites) }, focusedControl: $focusedControl,
+                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.toggleDetailTray(.favorites) }, focusedControl: $focusedControl,
             )
         case .reload:
             control(

@@ -23,7 +23,18 @@ struct ExtensionShimTests {
     var clearTimeout = function() {};
     var webkit = { messageHandlers: { refraxShim: { postMessage() { return Promise.resolve({ success: true }); } } } };
 
-    class NativeEvent { addListener() {} removeListener() {} hasListener() { return false; } }
+    class NativeEvent {
+        constructor() { this.listeners = []; }
+        addListener(listener, filter) { this.listeners.push({ listener, filter }); }
+        removeListener(listener) { this.listeners = this.listeners.filter(entry => entry.listener !== listener); }
+        hasListener(listener) { return this.listeners.some(entry => entry.listener === listener); }
+        fire(details) {
+            for (const { listener, filter } of this.listeners) {
+                if (filter && filter.types && !filter.types.includes(details.type)) { continue; }
+                listener(details);
+            }
+        }
+    }
     const nativeFunctions = {
         runtime: {
             getURL(path) { return this && this.__kind === 'runtime' ? 'webkit-extension://test/' + path : undefined; },
@@ -54,6 +65,7 @@ struct ExtensionShimTests {
             Object.defineProperty(object, name, { value: fn, configurable: true, writable: true, enumerable: true });
         }
         object.onCommitted = new NativeEvent();
+        if (kind === 'webRequest') { object.onBeforeRequest = new NativeEvent(); }
         wrapperCache.set(kind, object);
         return object;
     }
@@ -95,6 +107,32 @@ struct ExtensionShimTests {
         #expect(evaluate("typeof browser.webRequest.handlerBehaviorChanged", in: context)?.toString() == "function")
         #expect(evaluate("typeof browser.webNavigation.onCreatedNavigationTarget.addListener", in: context)?.toString() == "function")
         #expect(evaluate("browser.menus === browser.menus", in: context)?.toBool() == true)
+    }
+
+    @Test("webRequest reports a frame other than the main frame as sub_frame")
+    func subframeRequestType() throws {
+        let context = try makeContext()
+        let result = evaluate("""
+        (() => {
+            const all = [];
+            const subframes = [];
+            const listener = details => all.push(details.type + ':' + details.frameId);
+            browser.webRequest.onBeforeRequest.addListener(listener, { urls: ['<all_urls>'] });
+            browser.webRequest.onBeforeRequest.addListener(
+                details => subframes.push(details.frameId),
+                { urls: ['<all_urls>'], types: ['sub_frame'] },
+            );
+            collectGarbage();
+            const event = browser.webRequest.onBeforeRequest;
+            event.fire({ type: 'main_frame', frameId: 0 });
+            event.fire({ type: 'main_frame', frameId: 7 });
+            const registered = event.hasListener(listener);
+            event.removeListener(listener);
+            event.fire({ type: 'main_frame', frameId: 8 });
+            return [all.join(','), subframes.join(','), registered, event.hasListener(listener)].join('|');
+        })()
+        """, in: context)
+        #expect(result?.toString() == "main_frame:0,sub_frame:7|7,8|true|false")
     }
 
     @Test("Detached and re-homed API functions still reach their namespace")

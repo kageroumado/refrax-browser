@@ -255,6 +255,87 @@
     }
 
     /**
+     * WebKit's webRequest reports a frame's document as `main_frame` whatever the frame:
+     * an iframe's request arrives with `type: 'main_frame'` and its own nonzero `frameId`.
+     * Chrome and Firefox call it `sub_frame`, and extensions act on the difference: uBlock
+     * Origin answers a blocked `main_frame` by replacing the whole tab with its
+     * "page blocked" warning, so a blocked tracking iframe (Pinterest's
+     * `ct.pinterest.com/ct.html`) took over the tab. A main frame's `frameId` is always 0,
+     * so listeners get `sub_frame` for any other frame. A filter asking for `sub_frame`
+     * also asks WebKit for `main_frame`, and the listener only sees the types it asked for.
+     */
+    const webRequestEventNames = [
+        'onBeforeRequest',
+        'onBeforeSendHeaders',
+        'onSendHeaders',
+        'onHeadersReceived',
+        'onAuthRequired',
+        'onResponseStarted',
+        'onBeforeRedirect',
+        'onCompleted',
+        'onErrorOccurred',
+    ];
+
+    function withFrameType(details) {
+        if (details && details.type === 'main_frame' && details.frameId !== 0) {
+            return Object.assign({}, details, { type: 'sub_frame' });
+        }
+        return details;
+    }
+
+    function wrapFrameTypes(event) {
+        if (event.__refraxFrameTypes) {
+            return;
+        }
+        const addListener = event.addListener.bind(event);
+        const removeListener = event.removeListener.bind(event);
+        const hasListener = event.hasListener.bind(event);
+        const listeners = new Map();
+        defineRetained(event, '__refraxFrameTypes', true);
+        defineRetained(event, 'addListener', function(callback, filter, extraInfoSpec) {
+            if (listeners.has(callback)) {
+                return;
+            }
+            const types = filter && Array.isArray(filter.types) ? filter.types : null;
+            let nativeFilter = filter;
+            if (types && types.includes('sub_frame') && !types.includes('main_frame')) {
+                nativeFilter = Object.assign({}, filter, { types: [...types, 'main_frame'] });
+            }
+            const listener = function(details, ...rest) {
+                const corrected = withFrameType(details);
+                if (types && corrected && !types.includes(corrected.type)) {
+                    return undefined;
+                }
+                return callback.call(this, corrected, ...rest);
+            };
+            listeners.set(callback, listener);
+            return extraInfoSpec === undefined
+                ? addListener(listener, nativeFilter)
+                : addListener(listener, nativeFilter, extraInfoSpec);
+        });
+        defineRetained(event, 'removeListener', function(callback) {
+            const listener = listeners.get(callback);
+            listeners.delete(callback);
+            return removeListener(listener ?? callback);
+        });
+        defineRetained(event, 'hasListener', function(callback) {
+            const listener = listeners.get(callback);
+            return listener ? hasListener(listener) : false;
+        });
+    }
+
+    // The event objects themselves cannot be replaced: WebKit's own member wins over a
+    // defined one. Their functions can, as with the namespaces' functions above.
+    if (typeof browser !== 'undefined' && browser.webRequest) {
+        for (const name of webRequestEventNames) {
+            const event = browser.webRequest[name];
+            if (event && typeof event.addListener === 'function') {
+                wrapFrameTypes(event);
+            }
+        }
+    }
+
+    /**
      * Menu items whose URL patterns WebKit cannot match: it accepts only these schemes, and
      * rejects the whole `menus.create` call otherwise (uBlock Origin's `abp:*` item for
      * filter-list subscription links). Such patterns are dropped; an item left with none is

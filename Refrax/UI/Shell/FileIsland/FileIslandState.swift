@@ -19,6 +19,10 @@ final class FileIslandState {
     /// Where the island sits once it has been moved; until then it takes the bottom corner
     /// opposite the Control Island.
     var placement: ControlIslandPlacement?
+    /// Coupled under the Control Island: placed by the rail's bottom edge, moving and hiding with it.
+    var isCoupled = false
+    /// A drag would couple the island under the rail if released now.
+    var couplesOnRelease = false
     var isHovered = false
     /// A popover or menu of the island's is open.
     var isPresenting = false
@@ -30,6 +34,10 @@ final class FileIslandState {
     private(set) var isQuiet = false
     /// The island's frame in window content coordinates while it shows; zero while it is away.
     var frame: CGRect = .zero
+    /// The window side the island hides past: the side it is snapped to, while Hide at the Edge is on.
+    var hiddenEdge: ControlIslandPlacement.Edge?
+    /// The strip along the window edge that brings a hidden island back, in window content coordinates.
+    @ObservationIgnored var revealStrip: CGRect = .zero
     @ObservationIgnored var hitRegions: [CGRect] = []
     /// The drag session started from one of the island's own items, which it does not keep twice.
     @ObservationIgnored var outgoingDragStarted = Date.distantPast
@@ -45,6 +53,12 @@ final class FileIslandState {
     /// Work in progress on the island, which keeps the glass present.
     var isEngaged: Bool {
         isHovered || isPresenting || isDragging || showsAll || drop != .none || Date() < awakeUntil
+    }
+
+    /// Away past its window edge: the pointer has left or rested and nothing on the island is in
+    /// progress. A download or drop arriving, a drag, or the full lists bring it back.
+    var isHiddenAtEdge: Bool {
+        hiddenEdge != nil && isQuiet && !isEngaged
     }
 
     /// Moves the drop phase, touching observers only when it changes: drags update many times a second.
@@ -78,15 +92,22 @@ final class FileIslandState {
     @discardableResult
     func tracksPointer(_ point: CGPoint, now: Date = Date()) -> ControlIslandHoverPath.Phase {
         lastPointerMovement = now
+        let reachedEdge = reachesRevealStrip(point)
         let phase = hoverPath.phase(at: point, regions: hitRegions, now: now)
         let reach = isQuiet ? ControlIslandState.nearDistance : ControlIslandState.farDistance
-        let near = phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
+        let near = reachedEdge || phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
         setQuiet(!near)
         if near {
             watchForStillness()
         }
         isHovered = phase == .inside
         return phase
+    }
+
+    /// Whether `point` is on the reveal strip or past it beyond the window's edge, at the strip's height.
+    private func reachesRevealStrip(_ point: CGPoint) -> Bool {
+        guard let edge = hiddenEdge, !revealStrip.isEmpty, point.y >= revealStrip.minY, point.y <= revealStrip.maxY else { return false }
+        return edge == .left ? point.x <= revealStrip.maxX : point.x >= revealStrip.minX
     }
 
     func wake() {

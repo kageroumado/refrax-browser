@@ -523,6 +523,8 @@ private struct ScriptEditorSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 700, height: 600)
+        // Typed code is work worth keeping: a stray click beside the sheet leaves it open.
+        .keepsOpenOnOutsideClick(source != (script?.source ?? ""))
         .onAppear {
             loadScript()
             focusedField = .name
@@ -690,6 +692,8 @@ struct StyleEditorSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 600, height: 550)
+        // Typed CSS is work worth keeping: a stray click beside the sheet leaves it open.
+        .keepsOpenOnOutsideClick(css != (style?.css ?? ""))
         .onAppear {
             loadStyle()
             focusedField = .name

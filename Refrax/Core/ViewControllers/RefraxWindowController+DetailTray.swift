@@ -87,7 +87,7 @@ final class DetailTrayContainerView: NSView {
 
 /// AppKit-level setup and animation for the detail tray panel.
 ///
-/// The detail tray is a glass panel that slides in from the window's leading edge,
+/// The detail tray is a glass panel that slides in from the window edge on the control island's side,
 /// providing quick access to downloads, bookmarks, history, back/forward lists,
 /// tab snapshots, and the Lightboard.
 ///
@@ -120,6 +120,9 @@ extension RefraxWindowController {
         let hostingView = NSHostingView(rootView: LibraryDrawerSurface().refraxEnvironment(environment))
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         hostingView.sizingOptions = []
+        // The title bar is hidden behind the islands; its safe area would push the drawer down
+        // and past the window's bottom edge, out of line with the other islands.
+        hostingView.safeAreaRegions = []
         container.addSubview(hostingView)
         NSLayoutConstraint.activate([
             hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -160,9 +163,11 @@ extension RefraxWindowController {
         let task = Task(name: "Follow the library drawer") { [weak self] in
             guard let self else { return }
 
-            let modeChanges = Observations { (self.windowState.detailTrayMode, self.windowState.controlIsland.railFrame) }
+            let modeChanges = Observations {
+                (self.windowState.detailTrayMode, self.windowState.controlIsland.railFrame, self.windowState.controlIsland.placement)
+            }
 
-            for await (mode, _) in modeChanges {
+            for await (mode, _, _) in modeChanges {
                 updateDetailTrayPosition()
                 if mode != .hidden {
                     showDetailTray()
@@ -183,6 +188,7 @@ extension RefraxWindowController {
 
         detailTrayHideTask?.cancel()
         detailTrayHideTask = nil
+        registerDetailTrayDismissal()
 
         // If already visible, skip animation - content updates automatically via SwiftUI
         if isDetailTrayVisible {
@@ -192,22 +198,16 @@ extension RefraxWindowController {
         container.isHidden = false
         window?.invalidateCursorRects(for: container)
 
-        // Calculate how far off-screen the tray needs to go (its entire visible extent)
-        let padding = Constants.DetailTray.glassEffectPadding
-        let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = detailTrayLeading + trayWidth
-        let hiddenTransform = CATransform3DMakeTranslation(-trayMaxX, 0, 0)
+        let hiddenTransform = detailTrayHiddenTransform
         let visibleTransform = CATransform3DIdentity
 
-        // If current transform is identity, layout reset it - snap to hidden first
-        var fromTransform = layer.presentation()?.transform ?? layer.transform
-        if CATransform3DIsIdentity(fromTransform) {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.transform = hiddenTransform
-            CATransaction.commit()
-            fromTransform = hiddenTransform
-        }
+        // Start past the edge on the tray's current side: the rail may have changed sides
+        // since the tray last hid, and layout may have reset the transform.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = hiddenTransform
+        CATransaction.commit()
+        let fromTransform = hiddenTransform
 
         let animation = CABasicAnimation(keyPath: "transform")
         animation.fromValue = fromTransform
@@ -230,6 +230,9 @@ extension RefraxWindowController {
         guard let container = detailTrayContainer,
               let layer = container.layer else { return }
 
+        OutsideClickDismissal.shared.unregister(detailTrayDismissal)
+        detailTrayDismissal = nil
+
         // Clear trailing edge for SwiftUI views
         windowState.detailTrayTrailingEdge = 0
 
@@ -237,11 +240,7 @@ extension RefraxWindowController {
         isCursorInDetailTray = false
         updateOverlayEventBlocking()
 
-        // Calculate how far off-screen the tray needs to go (its entire visible extent)
-        let padding = Constants.DetailTray.glassEffectPadding
-        let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = detailTrayLeading + trayWidth
-        let hiddenTransform = CATransform3DMakeTranslation(-trayMaxX, 0, 0)
+        let hiddenTransform = detailTrayHiddenTransform
 
         let currentTransform = layer.presentation()?.transform ?? layer.transform
 
@@ -268,6 +267,9 @@ extension RefraxWindowController {
         guard let container = detailTrayContainer,
               let layer = container.layer else { return }
 
+        OutsideClickDismissal.shared.unregister(detailTrayDismissal)
+        detailTrayDismissal = nil
+
         // Clear trailing edge for SwiftUI views
         windowState.detailTrayTrailingEdge = 0
 
@@ -275,16 +277,23 @@ extension RefraxWindowController {
         isCursorInDetailTray = false
         updateOverlayEventBlocking()
 
-        // Calculate how far off-screen the tray needs to go
-        let padding = Constants.DetailTray.glassEffectPadding
-        let trayWidth = Constants.DetailTray.width + padding * 2
-        let trayMaxX = detailTrayLeading + trayWidth
-
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.transform = CATransform3DMakeTranslation(-trayMaxX, 0, 0)
+        layer.transform = detailTrayHiddenTransform
         CATransaction.commit()
         container.isHidden = true
+    }
+
+    /// A click outside the drawer's glass, or Esc, puts the drawer away; that click does nothing else.
+    private func registerDetailTrayDismissal() {
+        guard detailTrayDismissal == nil, let window else { return }
+        detailTrayDismissal = OutsideClickDismissal.shared.register(in: window) { [weak self] in
+            guard let container = self?.detailTrayContainer, !container.isHidden else { return nil }
+            let padding = Constants.DetailTray.glassEffectPadding
+            return container.convert(container.bounds, to: nil).insetBy(dx: padding, dy: padding)
+        } dismiss: { [weak self] in
+            self?.windowState.hideDetailTray()
+        }
     }
 
     // MARK: - Positioning
@@ -296,9 +305,33 @@ extension RefraxWindowController {
         detailTrayLeadingConstraint?.constant ?? Self.defaultDetailTrayLeading
     }
 
+    /// The tray's container width: the glass and its padding on both sides.
+    private var detailTrayWidth: CGFloat {
+        Constants.DetailTray.width + Constants.DetailTray.glassEffectPadding * 2
+    }
+
+    /// The tray opens on the control island's side, so a rail on the right brings it in from the right.
+    private var detailTrayOpensOnRight: Bool {
+        guard let content = window?.contentView else { return false }
+        return detailTrayLeading + detailTrayWidth / 2 > content.bounds.midX
+    }
+
+    /// Where the tray waits while hidden: wholly past the window edge on its side.
+    private var detailTrayHiddenTransform: CATransform3D {
+        guard detailTrayOpensOnRight, let content = window?.contentView else {
+            return CATransform3DMakeTranslation(-(detailTrayLeading + detailTrayWidth), 0, 0)
+        }
+        return CATransform3DMakeTranslation(content.bounds.maxX - detailTrayLeading, 0, 0)
+    }
+
     private func updateDetailTrayPosition() {
         guard let content = window?.contentView else { return }
-        let glassLeading = DetailTrayLayout.leading(in: content.bounds, controlRail: windowState.controlIsland.railFrame, width: Constants.DetailTray.width)
+        let glassLeading = DetailTrayLayout.leading(
+            in: content.bounds,
+            controlRail: windowState.controlIsland.railFrame,
+            onRight: windowState.controlIsland.placement.opensLeft(in: content.bounds),
+            width: Constants.DetailTray.width,
+        )
         detailTrayLeadingConstraint?.constant = glassLeading - Constants.DetailTray.glassEffectPadding
         content.layoutSubtreeIfNeeded()
         updateDetailTrayTrailingEdge()
@@ -311,14 +344,13 @@ extension RefraxWindowController {
     /// Called whenever the tray position changes. SwiftUI views like `LinkHoverPreviewView`
     /// use this value to avoid overlapping with the tray.
     private func updateDetailTrayTrailingEdge() {
-        guard isDetailTrayVisible else {
+        // A tray on the right leaves the leading side, where link previews sit, clear.
+        guard isDetailTrayVisible, !detailTrayOpensOnRight else {
             windowState.detailTrayTrailingEdge = 0
             return
         }
 
-        let padding = Constants.DetailTray.glassEffectPadding
-        let trayWidth = Constants.DetailTray.width + padding * 2
-        windowState.detailTrayTrailingEdge = detailTrayLeading + trayWidth
+        windowState.detailTrayTrailingEdge = detailTrayLeading + detailTrayWidth
     }
 
     // MARK: - Mouse Event Blocking

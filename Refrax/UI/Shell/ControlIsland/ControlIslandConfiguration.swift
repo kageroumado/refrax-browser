@@ -10,6 +10,7 @@ final class ControlIslandConfiguration {
     static let restKey = "controlIsland.restsWhenIdle"
     static let tintKey = "controlIsland.tintsWithSpaceColor"
     static let edgeHidingKey = "controlIsland.hidesAtEdge"
+    static let fileIslandEdgeHidingKey = "fileIsland.hidesAtEdge"
 
     private(set) var items: [ControlIslandItemPreference]
     private(set) var avoidsPageControls: Bool
@@ -20,6 +21,9 @@ final class ControlIslandConfiguration {
     /// Snapped to the window's left or right edge, the rail slides past it and returns when the
     /// pointer reaches that edge, as the Dock hides.
     private(set) var hidesAtEdge: Bool
+    /// Snapped to the window's left or right edge, the File Island slides past it while nothing
+    /// on it needs attention, and returns when the pointer reaches that edge or a file arrives.
+    private(set) var fileIslandHidesAtEdge: Bool
     @ObservationIgnored private let defaults: UserDefaults?
 
     static var defaultItems: [ControlIslandItemPreference] {
@@ -32,6 +36,7 @@ final class ControlIslandConfiguration {
         self.restsWhenIdle = defaults?.object(forKey: Self.restKey) as? Bool ?? true
         self.tintsWithSpaceColor = defaults?.object(forKey: Self.tintKey) as? Bool ?? true
         self.hidesAtEdge = defaults?.object(forKey: Self.edgeHidingKey) as? Bool ?? false
+        self.fileIslandHidesAtEdge = defaults?.object(forKey: Self.fileIslandEdgeHidingKey) as? Bool ?? true
         let records = defaults?.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([StoredItem].self, from: $0) } ?? []
         let known = records.compactMap { record in
@@ -69,6 +74,11 @@ final class ControlIslandConfiguration {
     func setHidesAtEdge(_ hides: Bool) {
         hidesAtEdge = hides
         defaults?.set(hides, forKey: Self.edgeHidingKey)
+    }
+
+    func setFileIslandHidesAtEdge(_ hides: Bool) {
+        fileIslandHidesAtEdge = hides
+        defaults?.set(hides, forKey: Self.fileIslandEdgeHidingKey)
     }
 
     private func saveItems() {

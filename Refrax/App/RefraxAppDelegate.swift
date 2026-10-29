@@ -591,6 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerURLHandler()
         registerServices()
         setupSwizzling()
+        OutsideClickDismissal.shared.install()
         startUtilitySetup()
         historyActivityManager.start()
         browserState.spaceLockManager.start()

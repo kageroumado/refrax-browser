@@ -38,6 +38,12 @@ nonisolated enum FileIslandLayout {
         ControlIslandPlacement.gripGap + ControlIslandPlacement.gripSize.height + ControlIslandPlacement.gripBottomInset
     }
 
+    /// The compact column, coupled under a rail with no room for files: one cell with an icon and
+    /// a count, and the grip.
+    static var compactHeight: CGFloat {
+        ControlIslandPlacement.contentInset + cellSize + gripHeight
+    }
+
     /// How many file cells fit in `bounds` beside the fixed rows, never more than ``maximumVisibleItems``.
     static func visibleLimit(in bounds: CGRect, showsDropCell: Bool) -> Int {
         let available = bounds.height - ControlIslandPlacement.margin * 2

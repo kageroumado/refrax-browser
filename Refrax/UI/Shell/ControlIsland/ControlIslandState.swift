@@ -23,6 +23,14 @@ final class ControlIslandState {
     var pageFocusRequest = 0
     /// The rail's frame in window content coordinates, for anything that points at it.
     var railFrame: CGRect = .zero
+    /// The rail's frame where it rests, kept while it hides at the edge: a coupled File Island
+    /// is placed under it.
+    var railLayoutFrame: CGRect = .zero
+    /// A File Island coupled under the rail, zero while there is none: the pointer near it is
+    /// near the rail, the edge beside it brings the rail back, and the rail stays on screen while
+    /// the island is in use, so the two hide and return together.
+    var companionFrame: CGRect = .zero
+    @ObservationIgnored var companionIsEngaged = false
     /// Each visible control's frame in window content coordinates.
     private(set) var itemFrames: [ControlIslandItem: CGRect] = [:]
     /// The page card's frame in window content coordinates while it is unfolded; zero while it is away.
@@ -124,6 +132,7 @@ final class ControlIslandState {
 
     func clearFrames() {
         railFrame = .zero
+        railLayoutFrame = .zero
         itemFrames = [:]
         pageCardFrame = .zero
     }
@@ -142,7 +151,8 @@ final class ControlIslandState {
         }
         let phase = hoverPath.phase(at: point, regions: hitRegions, now: now)
         let reach = isQuiet ? Self.nearDistance : Self.farDistance
-        let near = reachedEdge || phase != .outside || hitRegions.contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
+        let near = reachedEdge || phase != .outside
+            || (companionFrame.isEmpty || isHiddenAtEdge ? hitRegions : hitRegions + [companionFrame]).contains { $0.insetBy(dx: -reach, dy: -reach).contains(point) }
         setQuiet(!near)
         pointerIsNear = near
         if near {
@@ -238,7 +248,7 @@ final class ControlIslandState {
                 guard hiddenEdge != nil, !isTuckedAway else {
                     edgeHideTask = nil; return
                 }
-                if pointerIsNear || isEngaged || isNeededOnScreen {
+                if pointerIsNear || isEngaged || isNeededOnScreen || companionIsEngaged {
                     lastNearPointer = Date()
                 } else if Date().timeIntervalSince(lastNearPointer) >= Self.stillDelay {
                     edgeHideTask = nil

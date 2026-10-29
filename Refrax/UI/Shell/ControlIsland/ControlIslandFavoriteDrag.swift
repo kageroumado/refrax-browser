@@ -2,7 +2,7 @@ import CoreTransferable
 import Foundation
 import UniformTypeIdentifiers
 
-/// A live favorite identity scoped to native dragging inside the control rail.
+/// A favorite's identity for native dragging inside the control rail and the favorites drawer.
 nonisolated struct ControlIslandFavoriteDrag: Codable, Transferable {
     let id: UUID
 
