@@ -21,6 +21,9 @@ nonisolated struct MenuGroupID: Hashable, Sendable {
     static let tab = MenuGroupID(id: "tab", title: "Tab", symbol: "rectangle", rank: 0)
     /// Look, Open in New Tab, Open Link in New Window.
     static let open = MenuGroupID(id: "open", title: "Open", symbol: "arrow.up.right.square", rank: 10)
+    /// New Island with This Tab, New Island from N Tabs: the one door to islands in every tab menu,
+    /// right under the page's essentials.
+    static let island = MenuGroupID(id: "island", title: "Island", symbol: "plus.rectangle.on.rectangle", rank: 15)
     /// A favorite's Go to Home and Set Current Page as Home, history entries.
     static let go = MenuGroupID(id: "go", title: "Go", symbol: "house", rank: 20)
     static let reload = MenuGroupID(id: "reload", title: "Reload", symbol: "arrow.clockwise", rank: 30)

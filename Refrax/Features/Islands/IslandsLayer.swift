@@ -663,71 +663,10 @@ private struct IslandTabRow: View, Equatable {
     /// The page's actions and the tab's, with a rename that edits the row's title in place
     /// and the island this row can leave for.
     private var menuTree: MenuTree {
-        let page = PageActions(tab: tab, windowState: windowState, tabs: tabManager, sharing: sharing)
-        let object = TabActions(
-            tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas, area: area,
-            onRename: { canvas.renamingTabID = tab.id },
-        )
-        let chosen = islands.actionTabs(for: tab.id)
-        if chosen.count > 1 {
-            return MenuComposer.compose(selectionActions(chosen), groupOrder: PageActionsMenu.groupOrder)
-        }
-        return MenuComposer.compose(page.actions() + object.actions() + islandActions, groupOrder: PageActionsMenu.groupOrder)
-    }
-
-    /// What a row can do within its island: make an island, float, move, leave, close around it.
-    private var islandActions: [MenuAction] {
-        var actions = [
-            MenuAction("island.new", "New Island with This Tab", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
-            MenuAction("island.float", "Open as Card", symbol: "rectangle.on.rectangle", group: .move) {
-                islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY))
-            },
-        ]
-        let others = islands.islands.filter { $0.id != island.id }
-        if !others.isEmpty {
-            actions.append(MenuAction("island.moveTo", "Move to Island", symbol: "arrow.right.square", group: .move, children: others.map { other in
-                MenuAction("island.moveTo.\(other.id)", other.title, symbol: "circle.fill", group: .move) {
-                    islands.moveTab(tab.id, to: Int.max, in: other.id)
-                }
-            }))
-        }
-        if !island.isDefault {
-            actions.append(MenuAction("island.leave", "Remove from Island", symbol: "minus.square", group: .move) { islands.removeFromIsland(tab.id) })
-        }
-        if tabManager.state.settings.archiveEnabled {
-            actions.append(MenuAction("island.archive", "Archive Tab", symbol: "archivebox", group: .close) { islands.archive([tab]) })
-        }
-        actions.append(MenuAction("island.closeOthers", "Close Other Tabs in Island", symbol: "xmark.rectangle", group: .close) { islands.closeOthers(than: tab.id) })
-        actions.append(MenuAction("island.closeAbove", "Close Tabs Above", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tab.id) })
-        actions.append(MenuAction("island.closeBelow", "Close Tabs Below", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tab.id) })
-        return actions
-    }
-
-    /// What several chosen rows can do together.
-    private func selectionActions(_ chosen: [Tab]) -> [MenuAction] {
-        let n = chosen.count
-        var actions = [
-            MenuAction("island.selection.new", "New Island from \(n) Tabs", symbol: "plus.rectangle.on.rectangle", group: .move) {
-                islands.makeIsland(from: chosen.map(\.id))
-            },
-        ]
-        if let current = tab.space {
-            let targets = tabManager.spaceManager.spaces.filter { $0.id != current.id }.map { space in
-                MenuAction("island.selection.space.\(space.id)", space.name, symbol: space.isEmoji ? nil : space.iconName, group: .move) {
-                    Task(name: "Move tabs to space") { await tabManager.moveTabsUnlocking(chosen, to: space, confirmingIn: windowState) }
-                }
-            }
-            if !targets.isEmpty {
-                actions.append(MenuAction("island.selection.space", "Move \(n) Tabs to Space", symbol: "square.stack.3d.up", group: .move, children: targets))
-            }
-        }
-        if tabManager.state.settings.archiveEnabled {
-            actions.append(MenuAction("island.selection.archive", "Archive \(n) Tabs", symbol: "archivebox", group: .close) { islands.archive(chosen) })
-        }
-        actions.append(MenuAction("island.selection.close", "Close \(n) Tabs", symbol: "xmark", group: .close, isDestructive: true) {
-            tabManager.requestCloseTabs(chosen)
-        })
-        return actions
+        IslandRowMenu(
+            tab: tab, island: island, islands: islands, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas,
+            sharing: sharing, area: area, onRename: { canvas.renamingTabID = tab.id },
+        ).tree()
     }
 
     /// Where the row would land while it is dragged, and what happens when it is let go. The
