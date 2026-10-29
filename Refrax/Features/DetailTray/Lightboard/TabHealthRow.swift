@@ -119,17 +119,8 @@ struct TabHealthRow: View {
 
     // MARK: - Favicon
 
-    @ViewBuilder
     private var faviconView: some View {
-        if let faviconData = snapshot.tabPage.faviconData,
-           let faviconImage = NSImage(data: faviconData) {
-            Image(nsImage: faviconImage)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: Constants.iconSize, height: Constants.iconSize)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-        } else {
-            // Fallback: domain-based icon
+        FaviconView(data: snapshot.tabPage.faviconData, size: Constants.iconSize) {
             ZStack {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(domainColor.opacity(0.15))
@@ -140,6 +131,7 @@ struct TabHealthRow: View {
             }
             .frame(width: Constants.iconSize, height: Constants.iconSize)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: - Activity Badges

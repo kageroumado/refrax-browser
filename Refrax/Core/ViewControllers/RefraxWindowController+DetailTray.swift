@@ -168,8 +168,8 @@ extension RefraxWindowController {
             }
 
             for await (mode, _, _) in modeChanges {
-                updateDetailTrayPosition()
                 if mode != .hidden {
+                    updateDetailTrayPosition()
                     showDetailTray()
                 } else {
                     hideDetailTray()
@@ -185,29 +185,20 @@ extension RefraxWindowController {
     func showDetailTray() {
         guard let container = detailTrayContainer,
               let layer = container.layer else { return }
-
-        detailTrayHideTask?.cancel()
-        detailTrayHideTask = nil
         registerDetailTrayDismissal()
+        guard detailTrayPresentation.transition(toVisible: true) != nil else { return }
 
-        // If already visible, skip animation - content updates automatically via SwiftUI
-        if isDetailTrayVisible {
-            return
-        }
-
+        let fromTransform = container.isHidden ? detailTrayHiddenTransform : (layer.presentation()?.transform ?? layer.transform)
         container.isHidden = false
         window?.invalidateCursorRects(for: container)
 
-        let hiddenTransform = detailTrayHiddenTransform
         let visibleTransform = CATransform3DIdentity
 
-        // Start past the edge on the tray's current side: the rail may have changed sides
-        // since the tray last hid, and layout may have reset the transform.
+        // A hidden drawer starts on its current side; an interrupted close resumes in place.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.transform = hiddenTransform
+        layer.transform = fromTransform
         CATransaction.commit()
-        let fromTransform = hiddenTransform
 
         let animation = CABasicAnimation(keyPath: "transform")
         animation.fromValue = fromTransform
@@ -228,7 +219,8 @@ extension RefraxWindowController {
     /// Hides the detail tray with animation.
     func hideDetailTray() {
         guard let container = detailTrayContainer,
-              let layer = container.layer else { return }
+              let layer = container.layer,
+              let generation = detailTrayPresentation.transition(toVisible: false) else { return }
 
         OutsideClickDismissal.shared.unregister(detailTrayDismissal)
         detailTrayDismissal = nil
@@ -252,36 +244,15 @@ extension RefraxWindowController {
         animation.isRemovedOnCompletion = true
 
         CATransaction.begin()
-        CATransaction.setCompletionBlock {
+        CATransaction.setCompletionBlock { [weak self, weak container] in
             MainActor.assumeIsolated {
-                container.isHidden = true
+                guard let self, self.detailTrayPresentation.canFinishHiding(generation) else { return }
+                container?.isHidden = true
             }
         }
         layer.add(animation, forKey: "detailTrayAnimation")
         layer.transform = hiddenTransform
         CATransaction.commit()
-    }
-
-    /// Hides the detail tray instantly without animation.
-    func hideDetailTrayInstantly() {
-        guard let container = detailTrayContainer,
-              let layer = container.layer else { return }
-
-        OutsideClickDismissal.shared.unregister(detailTrayDismissal)
-        detailTrayDismissal = nil
-
-        // Clear trailing edge for SwiftUI views
-        windowState.detailTrayTrailingEdge = 0
-
-        // Cursor is no longer in tray once it's hidden
-        isCursorInDetailTray = false
-        updateOverlayEventBlocking()
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.transform = detailTrayHiddenTransform
-        CATransaction.commit()
-        container.isHidden = true
     }
 
     /// A click outside the drawer's glass, or Esc, puts the drawer away; that click does nothing else.
@@ -332,7 +303,9 @@ extension RefraxWindowController {
             onRight: windowState.controlIsland.placement.opensLeft(in: content.bounds),
             width: Constants.DetailTray.width,
         )
-        detailTrayLeadingConstraint?.constant = glassLeading - Constants.DetailTray.glassEffectPadding
+        let leading = glassLeading - Constants.DetailTray.glassEffectPadding
+        guard let constraint = detailTrayLeadingConstraint, constraint.constant != leading else { return }
+        constraint.constant = leading
         content.layoutSubtreeIfNeeded()
         updateDetailTrayTrailingEdge()
     }
