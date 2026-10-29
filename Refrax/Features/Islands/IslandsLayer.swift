@@ -27,20 +27,36 @@ struct IslandsLayer: View {
                             .frame(width: frame.width, height: frame.height)
                             .offset(x: frame.minX, y: frame.minY)
                     }
+                    if let ghost = islands.islandGhost {
+                        IslandGhostView(ghost: ghost)
+                            .frame(width: ghost.frame.width, height: ghost.frame.height)
+                            .offset(x: ghost.frame.minX, y: ghost.frame.minY)
+                            .zIndex(5)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
                     if let ghost = islands.rowGhost, let tab = islands.tab(for: ghost.tabID) {
                         VStack(spacing: 4) {
                             RowGhostView(tab: tab)
                             if islands.drop?.joins != nil {
-                                Text("Combine into split view")
-                                    .font(.caption)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(.regularMaterial, in: .capsule)
+                                DragWord("Combine into split view")
+                            } else if islands.dropsAsCard {
+                                DragWord("Drop to open as a card")
                             }
                         }
                         .position(ghost.point)
                         .zIndex(6)
                         .allowsHitTesting(false)
+                    }
+                    if let island = islands.startHintIsland {
+                        let origin = IslandDropPlacement.hintOrigin(
+                            beside: islands.fullFrame(of: island), size: IslandStartHint.Layout.size, gap: IslandStartHint.Layout.gap, in: bounds,
+                        )
+                        IslandStartHint()
+                            .frame(height: IslandStartHint.Layout.size.height)
+                            .offset(x: origin.x, y: origin.y)
+                            .zIndex(4)
+                            .transition(.opacity)
                     }
                     if let side = islands.sideDrop {
                         SideDropZone(side: side, bounds: islands.pageArea)
@@ -53,6 +69,8 @@ struct IslandsLayer: View {
                     }
                 }
                 .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
+                .animation(.easeOut(duration: 0.15), value: islands.islandGhost == nil)
+                .animation(.easeOut(duration: 0.2), value: islands.startHintIsland?.id)
                 .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .coordinateSpace(name: "islands")
@@ -448,9 +466,123 @@ private struct RowGhostView: View {
     }
 }
 
+/// The word under a traveling row on what a drop does.
+private struct DragWord: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: .capsule)
+    }
+}
+
+/// The island a dragged row is about to make, drawn where it will land: a header with the
+/// name it will take, a column with room for its rows, both outlined in the accent, and the
+/// word on what a drop does under it. The row's ghost travels in its first row.
+private struct IslandGhostView: View {
+    let ghost: IslandGhost
+
+    private enum Layout {
+        static let fill: Double = 0.08
+        static let stroke: Double = 0.5
+        static let dash: [CGFloat] = [5, 4]
+        static let wordGap: CGFloat = 8
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+        VStack(alignment: .leading, spacing: IslandGeometry.headerGap) {
+            HStack {
+                if !ghost.iconsOnly {
+                    Text(ghost.title)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.leading, 14)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(width: ghost.frame.width, height: IslandGeometry.headerHeight)
+            .background(outline(shape))
+            outline(shape)
+                .frame(width: ghost.frame.width, height: ghost.frame.height - IslandGeometry.headerReserve)
+        }
+        .overlay(alignment: .top) {
+            Text(ghost.rows > 1 ? "Drop to make an island of \(ghost.rows) tabs" : "Drop to make an island")
+                .font(.caption)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: .capsule)
+                .fixedSize()
+                .offset(y: ghost.frame.height + Layout.wordGap)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func outline(_ shape: RoundedRectangle) -> some View {
+        shape
+            .fill(Color.appAccentColor.opacity(Layout.fill))
+            .overlay {
+                shape
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: Layout.dash))
+                    .foregroundStyle(Color.appAccentColor.opacity(Layout.stroke))
+                    .padding(0.5)
+            }
+    }
+}
+
+/// The one-time word beside the loose tabs' island, while a space has no other island: how
+/// to start one. Its close puts it away for good; so does the first island.
+struct IslandStartHint: View {
+    @Environment(IslandController.self) private var islands
+
+    enum Layout {
+        /// The room the hint is placed with; the capsule itself takes its text's width.
+        static let size = CGSize(width: 250, height: 28)
+        static let gap: CGFloat = 10
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Drag a tab here to start an island")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Button {
+                islands.dismissStartHint()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.default)
+            .help("Don't show this again")
+            .accessibilityLabel("Dismiss hint")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: Layout.size.height)
+        .fixedSize()
+        .glassEffect(.regular, in: .capsule)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Drag a tab here to start an island")
+    }
+}
+
 /// One tab as a row: its favicon with the loading ring, its title, its state, and under the
 /// pointer its close. A click opens the page; a drag moves the row within its island, into
-/// another, or, let go on the page, out of its island as a live card. Its menu is the page's.
+/// another, or, let go on empty space, out as a new island of its own (a live card with ⇧).
+/// Its menu is the page's.
 private struct IslandTabRow: View, Equatable {
     let tab: Tab
     let island: Island
@@ -670,14 +802,15 @@ private struct IslandTabRow: View, Equatable {
     }
 
     /// Where the row would land while it is dragged, and what happens when it is let go. The
-    /// row's ghost travels over the page; the row itself stays, dimmed, in its window.
+    /// row's ghost travels over the page; the row itself stays, dimmed, in its window. ⇧ held
+    /// at the drop opens the row as a card instead of a new island.
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
             .onChanged { value in
-                islands.updateRowDrag(tab.id, at: value.location)
+                islands.updateRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
             }
             .onEnded { value in
-                islands.finishRowDrag(tab.id, at: value.location)
+                islands.finishRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
             }
     }
 }
