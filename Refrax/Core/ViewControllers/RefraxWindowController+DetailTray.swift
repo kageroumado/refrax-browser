@@ -188,6 +188,7 @@ extension RefraxWindowController {
 
         detailTrayHideTask?.cancel()
         detailTrayHideTask = nil
+        registerDetailTrayDismissal()
 
         // If already visible, skip animation - content updates automatically via SwiftUI
         if isDetailTrayVisible {
@@ -229,6 +230,9 @@ extension RefraxWindowController {
         guard let container = detailTrayContainer,
               let layer = container.layer else { return }
 
+        OutsideClickDismissal.shared.unregister(detailTrayDismissal)
+        detailTrayDismissal = nil
+
         // Clear trailing edge for SwiftUI views
         windowState.detailTrayTrailingEdge = 0
 
@@ -263,6 +267,9 @@ extension RefraxWindowController {
         guard let container = detailTrayContainer,
               let layer = container.layer else { return }
 
+        OutsideClickDismissal.shared.unregister(detailTrayDismissal)
+        detailTrayDismissal = nil
+
         // Clear trailing edge for SwiftUI views
         windowState.detailTrayTrailingEdge = 0
 
@@ -275,6 +282,18 @@ extension RefraxWindowController {
         layer.transform = detailTrayHiddenTransform
         CATransaction.commit()
         container.isHidden = true
+    }
+
+    /// A click outside the drawer's glass, or Esc, puts the drawer away; that click does nothing else.
+    private func registerDetailTrayDismissal() {
+        guard detailTrayDismissal == nil, let window else { return }
+        detailTrayDismissal = OutsideClickDismissal.shared.register(in: window) { [weak self] in
+            guard let container = self?.detailTrayContainer, !container.isHidden else { return nil }
+            let padding = Constants.DetailTray.glassEffectPadding
+            return container.convert(container.bounds, to: nil).insetBy(dx: padding, dy: padding)
+        } dismiss: { [weak self] in
+            self?.windowState.hideDetailTray()
+        }
     }
 
     // MARK: - Positioning

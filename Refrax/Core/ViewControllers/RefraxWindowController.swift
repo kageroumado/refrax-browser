@@ -57,6 +57,8 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
     var detailTrayLeadingConstraint: NSLayoutConstraint?
     var detailTrayHideTask: Task<Void, any Error>?
     var isCursorInDetailTray = false
+    /// The library drawer's registration with ``OutsideClickDismissal`` while it is out.
+    var detailTrayDismissal: UUID?
 
     /// The reading state decoded by AppKit restoration, applied once tabs load.
     var restoredReadingState: WindowReadingState?
