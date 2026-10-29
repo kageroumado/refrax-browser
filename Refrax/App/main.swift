@@ -85,6 +85,16 @@ if arguments.showHelp {
     exit(0)
 }
 
+// Web content gets Safari's text substitutions: smart dashes and quotes off. Without these keys
+// WebKit falls back to the system-wide setting, and smart dashes then rewrite text that pages
+// insert themselves — GitHub's `<!-- Uploading … -->` placeholder becomes `—>`, the uploader
+// never finds it again, and the attachment hangs at "Uploading". WebKit reads these once per
+// process, so they are registered before anything creates a web view.
+UserDefaults.standard.register(defaults: [
+    "WebAutomaticDashSubstitutionEnabled": false,
+    "WebAutomaticQuoteSubstitutionEnabled": false,
+])
+
 let app = NSApplication.shared
 let appDelegate = AppDelegate(arguments: arguments)
 app.delegate = appDelegate
