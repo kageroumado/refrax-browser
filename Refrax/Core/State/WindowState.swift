@@ -778,6 +778,13 @@ final class WindowState {
     func hideDetailTray() {
         detailTrayMode = .hidden
     }
+
+    /// Puts the favorites drawer away once a favorite from it has opened; another drawer stays.
+    func closeFavoritesDrawer() {
+        if detailTrayMode == .favorites {
+            detailTrayMode = .hidden
+        }
+    }
     
     // MARK: - Page Search Actions
     

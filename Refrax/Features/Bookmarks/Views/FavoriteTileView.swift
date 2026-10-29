@@ -343,10 +343,12 @@ struct FavoriteTileView: View {
                     tabManager.createTab(url: bookmark.url)
                 }
                 bookmarksManager.recordVisit(for: bookmark)
+                windowState.closeFavoritesDrawer()
 
             case let .liveFavorite(bookmark, tab):
                 tabManager.setActiveTab(tab, in: windowState)
                 bookmarksManager.recordVisit(for: bookmark)
+                windowState.closeFavoritesDrawer()
 
             case .folder:
                 break
@@ -451,6 +453,7 @@ private struct FolderMenuTile<Content: View>: View {
         }
 
         bookmarksManager.recordVisit(for: bookmark)
+        windowState.closeFavoritesDrawer()
     }
 }
 
