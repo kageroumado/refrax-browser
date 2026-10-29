@@ -677,12 +677,25 @@ struct ControlIsland: View {
         return CGPoint(x: location.x, y: content.isFlipped ? location.y : content.bounds.height - location.y)
     }
 
+    /// Each frame of the drag writes the placement once, and only when it moved: every write
+    /// to the state re-evaluates the rail and whatever follows it (the File Island, the
+    /// islands' obstacles), so same-value writes are skipped.
     private func movePanel(by translation: CGSize) {
         let origin = dragOrigin ?? effectivePlacement.railFrame(in: area, height: height).origin
-        avoidancePlacement = nil
-        dragOrigin = origin
-        state.isDragging = true
-        state.placement.move(to: CGPoint(x: origin.x + translation.width, y: origin.y + translation.height), in: area, height: height)
+        if avoidancePlacement != nil {
+            avoidancePlacement = nil
+        }
+        if dragOrigin == nil {
+            dragOrigin = origin
+        }
+        if !state.isDragging {
+            state.isDragging = true
+        }
+        var next = state.placement
+        next.move(to: CGPoint(x: origin.x + translation.width, y: origin.y + translation.height), in: area, height: height)
+        if next != state.placement {
+            state.placement = next
+        }
     }
 
     private func finishPanelDrag() {

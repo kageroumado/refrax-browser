@@ -542,8 +542,12 @@ struct FileIsland: View {
             .updating($isDraggingIsland) { _, dragging, _ in dragging = true }
             .onChanged { value in
                 let origin = dragOrigin ?? frame.origin
-                dragOrigin = origin
-                state.isDragging = true
+                if dragOrigin == nil {
+                    dragOrigin = origin
+                }
+                if !state.isDragging {
+                    state.isDragging = true
+                }
                 let point = CGPoint(x: origin.x + value.translation.width, y: origin.y + value.translation.height)
                 if couplingRail != nil {
                     // Held by the rail: it gives a little, then pops free under the pointer.
@@ -562,8 +566,14 @@ struct FileIsland: View {
                 }
                 var next = placement
                 next.move(to: point, in: area, height: height)
-                state.placement = next
-                state.couplesOnRelease = FileIslandCoupling.isAtSeam(next.railFrame(in: area, height: height), rail: rail.railLayoutFrame)
+                // Same-value writes are skipped: each one re-evaluates the island and the rail.
+                if state.placement != next {
+                    state.placement = next
+                }
+                let couples = FileIslandCoupling.isAtSeam(next.railFrame(in: area, height: height), rail: rail.railLayoutFrame)
+                if state.couplesOnRelease != couples {
+                    state.couplesOnRelease = couples
+                }
             }
             .onEnded { _ in finishIslandDrag() }
     }
