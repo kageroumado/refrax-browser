@@ -501,7 +501,7 @@ struct ControlIsland: View {
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
         case .favoriteTabs:
             ControlIslandFavoriteTabs(
-                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.showDetailTray(.favorites) }, focusedControl: $focusedControl,
+                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.toggleDetailTray(.favorites) }, focusedControl: $focusedControl,
             )
         case .reload:
             control(

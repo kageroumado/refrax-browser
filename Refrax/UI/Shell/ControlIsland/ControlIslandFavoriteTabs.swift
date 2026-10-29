@@ -7,6 +7,7 @@ struct ControlIslandFavoriteTabs: View {
     let favorites: [FavoriteItem]
     /// Whether the grid holds favorites without a tab, which the column leaves out.
     let overflows: Bool
+    /// Opens the favorites drawer, or closes it when it is already open.
     let onShowAll: () -> Void
     var focusedControl: FocusState<String?>.Binding
 
