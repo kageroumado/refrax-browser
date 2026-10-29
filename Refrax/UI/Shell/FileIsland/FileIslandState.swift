@@ -19,6 +19,10 @@ final class FileIslandState {
     /// Where the island sits once it has been moved; until then it takes the bottom corner
     /// opposite the Control Island.
     var placement: ControlIslandPlacement?
+    /// Coupled under the Control Island: placed by the rail's bottom edge, moving and hiding with it.
+    var isCoupled = false
+    /// A drag would couple the island under the rail if released now.
+    var couplesOnRelease = false
     var isHovered = false
     /// A popover or menu of the island's is open.
     var isPresenting = false
