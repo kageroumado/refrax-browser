@@ -122,6 +122,55 @@ struct FileIslandTests {
         #expect(!FileIslandLayout.isRecent(now.addingTimeInterval(-61 * 60), now: now))
     }
 
+    // MARK: - Hiding at the edge
+
+    @Test @MainActor
+    func `the island hides at the edge by default, and the setting survives relaunch`() throws {
+        let suite = "FileIslandTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let configuration = ControlIslandConfiguration(defaults: defaults)
+        #expect(configuration.fileIslandHidesAtEdge)
+        #expect(!configuration.hidesAtEdge)
+        configuration.setFileIslandHidesAtEdge(false)
+        #expect(!ControlIslandConfiguration(defaults: defaults).fileIslandHidesAtEdge)
+    }
+
+    @Test @MainActor
+    func `an idle island hides past its edge and the pointer at that edge brings it back`() {
+        let state = FileIslandState()
+        let island = CGRect(x: area.maxX - 8 - 36, y: 700, width: 36, height: 200)
+        state.hitRegions = [island]
+        state.hiddenEdge = .right
+        state.revealStrip = ControlIslandPlacement.revealStrip(for: island, at: .right, in: area)
+        #expect(!state.isHiddenAtEdge)
+
+        state.tracksPointer(CGPoint(x: 200, y: 200))
+        #expect(state.isHiddenAtEdge)
+
+        state.hitRegions = []
+        state.tracksPointer(CGPoint(x: area.maxX - 2, y: 800))
+        #expect(!state.isHiddenAtEdge)
+    }
+
+    @Test @MainActor
+    func `a download arriving brings a hidden island back`() {
+        let state = FileIslandState()
+        state.hiddenEdge = .left
+        state.tracksPointer(CGPoint(x: 800, y: 500))
+        #expect(state.isHiddenAtEdge)
+        state.holdAwake(for: FileIslandState.arrivalHold)
+        #expect(!state.isHiddenAtEdge)
+    }
+
+    @Test @MainActor
+    func `an island away from the side edges never hides`() {
+        let state = FileIslandState()
+        state.tracksPointer(CGPoint(x: 800, y: 500))
+        #expect(!state.isHiddenAtEdge)
+        #expect(ControlIslandPlacement(x: 0.5, y: 1).horizontalEdge == nil)
+    }
+
     private func isClose(_ a: CGFloat, _ b: CGFloat) -> Bool {
         abs(a - b) < 0.001
     }

@@ -7,7 +7,8 @@ import SwiftUI
 /// A small sibling of the Control Island in the same 48-point column, glass, tint, rest and
 /// wake, grip, and snapping. It exists only while it holds something, while its full list is
 /// open, or while a file, image, text, or link is dragged over the window, when it shows itself
-/// as the place to drop and brightens as the drag reaches it.
+/// as the place to drop and brightens as the drag reaches it. Snapped to the window's left or
+/// right edge it hides past that edge while idle, by default, and comes back to the pointer.
 struct FileIsland: View {
     let area: CGRect
 
@@ -95,6 +96,30 @@ struct FileIsland: View {
         placement.opensLeft(in: area)
     }
 
+    // MARK: - Hiding at the Edge
+
+    /// The window side the island hides past: the side it is snapped to, while Hide at the Edge is on.
+    private var hiddenEdge: ControlIslandPlacement.Edge? {
+        windowState.controlIsland.configuration.fileIslandHidesAtEdge ? placement.horizontalEdge : nil
+    }
+
+    private var isHiddenAtEdge: Bool {
+        isShown && state.isHiddenAtEdge
+    }
+
+    /// Where the island draws: its frame, or past the window edge while hidden there. Under
+    /// Reduce Motion it stays in place and fades instead.
+    private var displayFrame: CGRect {
+        guard isHiddenAtEdge, !reduceMotion, let edge = state.hiddenEdge else { return frame }
+        return Placement.hiddenFrame(for: frame, at: edge, in: area)
+    }
+
+    /// The strip along the window edge that brings the hidden island back.
+    private var revealStrip: CGRect {
+        guard isShown, let edge = hiddenEdge else { return .zero }
+        return Placement.revealStrip(for: frame, at: edge, in: area)
+    }
+
     // MARK: - Rest
 
     private var isResting: Bool {
@@ -132,8 +157,12 @@ struct FileIsland: View {
                         FileIslandAllFiles(actions: actions)
                             .readablePopoverBackground()
                     }
-                    .offset(x: frame.minX, y: frame.minY)
+                    .opacity(isHiddenAtEdge && reduceMotion ? 0 : 1)
+                    .offset(x: displayFrame.minX, y: displayFrame.minY)
                     .transition(.opacity)
+                if isHiddenAtEdge, let edge = state.hiddenEdge {
+                    flap(at: edge)
+                }
                 if state.isDragging {
                     snapGuide
                 }
@@ -142,10 +171,12 @@ struct FileIsland: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .font(.system(size: 13, weight: Placement.symbolWeight))
         .buttonStyle(ControlIslandButtonStyle())
-        .onChange(of: isShown ? frame : .zero, initial: true) { _, frame in
+        .onChange(of: isShown && !isHiddenAtEdge ? frame : .zero, initial: true) { _, frame in
             state.frame = frame
             state.hitRegions = frame.isEmpty ? [] : [frame]
         }
+        .onChange(of: hiddenEdge, initial: true) { _, edge in state.hiddenEdge = edge }
+        .onChange(of: revealStrip, initial: true) { _, strip in state.revealStrip = strip }
         .onChange(of: isDraggingIsland) { _, dragging in
             state.isDragging = dragging
             if !dragging {
@@ -179,6 +210,7 @@ struct FileIsland: View {
         .onDisappear {
             state.frame = .zero
             state.hitRegions = []
+            state.revealStrip = .zero
             state.isHovered = false
             state.isDragging = false
             state.setDrop(.none)
@@ -188,6 +220,7 @@ struct FileIsland: View {
         .accessibilityLabel("File Island")
         .accessibilityIdentifier("browser-file-island")
         .animation(restAnimation, value: isResting)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy(duration: 0.28), value: isHiddenAtEdge)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: isShown)
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: height)
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: state.drop)
@@ -277,6 +310,11 @@ struct FileIsland: View {
         .contentShape(Rectangle())
         .gesture(moveGesture)
         .contextMenu {
+            Toggle(Placement.edgeHidingTitle, isOn: Binding(
+                get: { windowState.controlIsland.configuration.fileIslandHidesAtEdge },
+                set: { windowState.controlIsland.configuration.setFileIslandHidesAtEdge($0) },
+            ))
+            .help("Against the window's left or right edge, the File Island slides away while nothing on it is in progress; it returns when the pointer reaches that edge or a download starts")
             Button("Reset Position") { resetPlacement() }
         }
         .help("Move the File Island")
@@ -286,6 +324,26 @@ struct FileIsland: View {
         .accessibilityAction(named: "Move right") { moveBy(dx: 32, dy: 0) }
         .accessibilityAction(named: "Move up") { moveBy(dx: 0, dy: -32) }
         .accessibilityAction(named: "Move down") { moveBy(dx: 0, dy: 32) }
+    }
+
+    /// The sliver of glass on the edge that marks where the hidden island is, as the rail's does.
+    private func flap(at edge: ControlIslandPlacement.Edge) -> some View {
+        let flap = CGRect(
+            x: edge == .left ? area.minX : area.maxX - Placement.flapWidth,
+            y: min(max(area.minY, frame.midY - Placement.flapHeight / 2), area.maxY - Placement.flapHeight),
+            width: Placement.flapWidth, height: Placement.flapHeight,
+        )
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: edge == .left ? 0 : Placement.flapWidth, bottomLeadingRadius: edge == .left ? 0 : Placement.flapWidth,
+            bottomTrailingRadius: edge == .left ? Placement.flapWidth : 0, topTrailingRadius: edge == .left ? Placement.flapWidth : 0,
+        )
+        return shape.fill(windowState.controlIslandTint)
+            .glassEffect(.regular, in: shape)
+            .frame(width: flap.width, height: flap.height)
+            .offset(x: flap.minX, y: flap.minY)
+            .transition(.opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// The dashed outline of where the island will settle when released.
