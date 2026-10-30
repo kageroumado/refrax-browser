@@ -89,6 +89,21 @@ final class ControlIslandState {
         isTuckedAway && hiddenEdge != nil
     }
 
+    /// Where light that comes from the rail starts, in window content coordinates: the rail
+    /// itself, or, while it hides at the edge, the flap that marks it on that edge. Zero
+    /// before the rail has been laid out.
+    var lightSource: CGRect {
+        guard isHiddenAtEdge, let edge = hiddenEdge else { return railFrame }
+        guard !railLayoutFrame.isEmpty, !areaBounds.isEmpty else { return .zero }
+        return ControlIslandPlacement.flapFrame(for: railLayoutFrame, at: edge, in: areaBounds)
+    }
+
+    /// The window side the rail is on, from its saved placement, for light that must pick a
+    /// side before the rail has reported a frame.
+    var side: ControlIslandPlacement.Edge {
+        placement.x > 0.5 ? .right : .left
+    }
+
     /// Work in progress on the controls, which keeps the glass present and the pointer grace alive.
     var isEngaged: Bool {
         isHovered || hasKeyboardFocus || isPresenting || isDragging || showsAddress || showsCustomization

@@ -49,6 +49,18 @@ nonisolated extension ControlIslandPlacement {
         return visible.isNull ? .zero : visible
     }
 
+    /// The flap that marks a rail hidden past `edge`: `flapWidth` by `flapHeight` on the edge,
+    /// centered on the rail's resting height and kept inside `bounds`. Anything that points
+    /// at a hidden rail, like the empty page's light, starts here.
+    static func flapFrame(for rail: CGRect, at edge: Edge, in bounds: CGRect) -> CGRect {
+        CGRect(
+            x: edge == .left ? bounds.minX : bounds.maxX - flapWidth,
+            y: min(max(bounds.minY, rail.midY - flapHeight / 2), max(bounds.minY, bounds.maxY - flapHeight)),
+            width: flapWidth,
+            height: flapHeight,
+        )
+    }
+
     /// Where a rail at `rail` waits while hidden: wholly past `edge`, shadow included.
     static func hiddenFrame(for rail: CGRect, at edge: Edge, in bounds: CGRect) -> CGRect {
         var frame = rail

@@ -243,11 +243,7 @@ struct ControlIsland: View {
                     .accessibilityLabel("Show islands: hold \(revealKey.title)")
                 }
                 if isHiddenAtEdge, let edge = state.hiddenEdge {
-                    let flap = CGRect(
-                        x: edge == .left ? area.minX : area.maxX - Layout.flapWidth,
-                        y: min(max(area.minY, frame.midY - Layout.flapHeight / 2), area.maxY - Layout.flapHeight),
-                        width: Layout.flapWidth, height: Layout.flapHeight,
-                    )
+                    let flap = Layout.flapFrame(for: frame, at: edge, in: area)
                     let shape = UnevenRoundedRectangle(
                         topLeadingRadius: edge == .left ? 0 : Layout.flapWidth, bottomLeadingRadius: edge == .left ? 0 : Layout.flapWidth,
                         bottomTrailingRadius: edge == .left ? Layout.flapWidth : 0, topTrailingRadius: edge == .left ? Layout.flapWidth : 0,
