@@ -9,6 +9,8 @@ import AppKit
 ///   visible.
 /// - **The reveal key + scroll** steps between the islands' rows; over an island or the
 ///   Control Island the scroll is theirs. Either way it never ends the hold.
+/// - **A scroll on the Control Island's page icon** steps the same way with no key, and
+///   holds the islands revealed until the pointer leaves the icon.
 @MainActor
 final class CanvasPageGestures {
     private enum Constants {
@@ -50,7 +52,7 @@ final class CanvasPageGestures {
                 self.canvas.dismissFloatingTabs()
             }
         }
-        self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
+        self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .mouseMoved, .mouseExited, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
             guard let self else { return event }
             return handle(event)
         }
@@ -72,18 +74,27 @@ final class CanvasPageGestures {
         if event.type == .flagsChanged, event.window !== window, event.window == nil || event.window?.parent === window {
             return handleFlags(event)
         }
+        // The pointer leaving the page icon ends the hold a scroll on it keeps.
+        if event.type == .mouseMoved || event.type == .mouseExited {
+            if event.window === window, let islandInput, islandInput.holdsOnTabIcon {
+                islandInput.pointerMoved(to: contentPoint(event.locationInWindow), keyHeld: revealKeyHeld(event))
+            }
+            return event
+        }
         guard event.window === window else { return event }
-        // With the reveal key down, a scroll anywhere over the page steps between chips; over
-        // an island or the Control Island it is theirs. Either way it never ends the hold.
+        // With the reveal key down, a scroll anywhere over the page steps between chips, and
+        // a scroll on the page icon does with or without it; over an island or the rest of the
+        // Control Island it is theirs. Either way it never ends the hold.
         if event.type == .scrollWheel, let islandInput {
-            let keyHeld = FloatingRevealKey.current.matchesHold(event.modifierFlags.intersection([.control, .option, .command]))
             if islandInput.route(
                 event,
-                canStart: floatingEligible() && !floatingContains(event.locationInWindow),
+                at: contentPoint(event.locationInWindow),
+                eligible: floatingEligible(),
+                overControls: floatingContains(event.locationInWindow),
             ) {
                 return nil
             }
-            if keyHeld {
+            if revealKeyHeld(event) {
                 return event
             }
         }
@@ -188,5 +199,17 @@ final class CanvasPageGestures {
     private func interruptControl() {
         islandInput?.interrupt()
         canvas.releaseFloatingTabs()
+    }
+
+    private func revealKeyHeld(_ event: NSEvent) -> Bool {
+        FloatingRevealKey.current.matchesHold(event.modifierFlags.intersection([.control, .option, .command]))
+    }
+
+    /// A point in the window, in the content view's coordinates with the origin at the top
+    /// left, as the rail and the islands report their frames.
+    private func contentPoint(_ locationInWindow: CGPoint) -> CGPoint {
+        guard let content = window?.contentView else { return locationInWindow }
+        let local = content.convert(locationInWindow, from: nil)
+        return CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
     }
 }
