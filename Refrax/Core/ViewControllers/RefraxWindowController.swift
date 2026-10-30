@@ -316,7 +316,13 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
             }
         })
         canvasPageGestures?.islands = islandController
-        canvasPageGestures?.islandInput = IslandInput(islands: islandController)
+        canvasPageGestures?.islandInput = IslandInput(islands: islandController, canvas: tabCanvasManager, tabIcon: { [unowned self] in
+            // The rail's page icon, while the rail is on screen and shows one.
+            let rail = windowState.controlIsland
+            guard tabCanvasManager.showsFloatingControls, !rail.isHiddenAtEdge, windowState.activePage != nil,
+                  rail.configuration.visibleItems.contains(.page), let row = rail.itemFrames[.page], !row.isEmpty else { return nil }
+            return row
+        })
     }
 
     private func setupOverlayView(contentView: NSView) {
