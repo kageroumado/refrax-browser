@@ -25,6 +25,7 @@ struct FavoriteTileView: View {
     @Environment(WindowState.self) private var windowState
     @Environment(WebPagePool.self) private var pagePool
     @Environment(ModifierKeysState.self) private var modifierKeysState
+    @Environment(\.favoriteTapsSuppressedUntil) private var tapsSuppressedUntil
 
     let item: FavoriteItem
     let shouldShowTitle: Bool
@@ -312,6 +313,9 @@ struct FavoriteTileView: View {
     // MARK: - Actions
 
     private func handleTap() {
+        // A drag's mouse-up in the favorites grid is not an open.
+        guard Date() >= tapsSuppressedUntil else { return }
+
         // Option+Click shows preview instead of activating
         if modifierKeysState.isOptionPressed, canShowPreview {
             showPreview()
