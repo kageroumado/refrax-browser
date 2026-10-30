@@ -125,7 +125,10 @@ final class FileIslandState {
         if near {
             watchForStillness()
         }
-        isHovered = phase == .inside
+        // Written only on a change: every write re-evaluates the island, and this runs per pointer move.
+        if isHovered != (phase == .inside) {
+            isHovered = phase == .inside
+        }
         return phase
     }
 

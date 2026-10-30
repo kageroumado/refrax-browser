@@ -30,6 +30,8 @@ struct FileIsland: View {
     @State private var pull = CGSize.zero
     /// The clock recent downloads are judged by, advanced as each one expires.
     @State private var now = Date()
+    /// The listed downloads, read from the store once per change rather than once per read.
+    @State private var downloadsCache = FileIslandDownloadsCache()
 
     private typealias Placement = ControlIslandPlacement
     private typealias Layout = FileIslandLayout
@@ -46,25 +48,12 @@ struct FileIsland: View {
 
     /// Downloads in progress, newest first, then those finished within the hour, most recent first.
     private var downloads: [Download] {
-        let all = downloadManager.downloads
-        let inProgress = all.filter { $0.state.isActive || $0.state == .paused }
-            .sorted { $0.createdAt > $1.createdAt }
-        let finished = all.filter { ($0.state == .completed || $0.state == .failed) && Layout.isRecent(finishDate(of: $0), now: now) }
-            .sorted { finishDate(of: $0) > finishDate(of: $1) }
-        return inProgress + finished
-    }
-
-    private func finishDate(of download: Download) -> Date {
-        download.completedAt ?? download.modifiedAt
+        downloadsCache.downloads(from: downloadManager, now: now)
     }
 
     /// When the next finished download leaves the island.
     private var nextExpiry: Date? {
-        downloadManager.downloads
-            .filter { $0.state == .completed || $0.state == .failed }
-            .map { finishDate(of: $0).addingTimeInterval(Layout.recentInterval) }
-            .filter { $0 > now }
-            .min()
+        downloadsCache.nextExpiry(from: downloadManager, now: now)
     }
 
     private var showsDropCell: Bool {
