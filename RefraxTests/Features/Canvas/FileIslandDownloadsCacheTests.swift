@@ -6,7 +6,8 @@ import Testing
 /// The island's list of downloads is read from the store once per change, and follows changes.
 @MainActor
 struct FileIslandDownloadsCacheTests {
-    private func makeManager(downloads count: Int) throws -> (DownloadManager, ModelContext) {
+    /// The container is returned with the manager: the models it holds are only valid while it lives.
+    private func makeManager(downloads count: Int) throws -> (DownloadManager, ModelContainer) {
         let schema = Schema(versionedSchema: SchemaV1.self)
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
@@ -30,13 +31,15 @@ struct FileIslandDownloadsCacheTests {
         }
         try context.save()
         let manager = DownloadManager(modelContext: context)
+        manager.performDeferredSetup()
         #expect(manager.downloads.count == count)
-        return (manager, context)
+        return (manager, container)
     }
 
     @Test
     func `lists downloads in progress first, then recent ones, and follows a change`() throws {
-        let (manager, _) = try makeManager(downloads: 200)
+        let (manager, container) = try makeManager(downloads: 200)
+        defer { withExtendedLifetime(container) {} }
         let cache = FileIslandDownloadsCache()
         let now = Date(timeIntervalSince1970: 1_700_000_000 + 200 + 30 + 60)
 
@@ -67,7 +70,8 @@ struct FileIslandDownloadsCacheTests {
 
     @Test
     func `a cached read costs a small fraction of a reading of the store`() throws {
-        let (manager, _) = try makeManager(downloads: 2_000)
+        let (manager, container) = try makeManager(downloads: 2_000)
+        defer { withExtendedLifetime(container) {} }
         let cache = FileIslandDownloadsCache()
         let now = Date(timeIntervalSince1970: 1_700_000_000 + 2_000 + 60)
         let clock = ContinuousClock()
