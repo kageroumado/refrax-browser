@@ -63,6 +63,13 @@ final class TabCanvasManager {
     /// The side a dragged card docks to if it is let go now; the layer draws its silhouette.
     var dockTarget: FloatingDockTarget?
 
+    /// Bumped when the docked pages or their widths may have changed, so a view that laid out
+    /// from ``dockState`` evaluates again.
+    var dockStateVersion: UInt64 = 0
+    /// The docked pages, derived once per change: the layer asks on every hit test and every
+    /// rail frame, and the answer walks every tab's stored placement.
+    @ObservationIgnored var dockStateCache: DockState?
+
     /// The window area floating tabs are placed in, in the layer's coordinates.
     var floatingArea: CGRect {
         guard let bounds = windowState.window?.contentView?.bounds, !bounds.isEmpty else { return Layout.nominalFloatingArea }
@@ -115,6 +122,7 @@ final class TabCanvasManager {
         var stored = placement
         stored.tableOrigin = placement.frame(in: floatingArea).origin
         windowState.floatingPlacements[tab.id] = stored
+        invalidateDockState()
         guard persisting else { return }
         windowState.window?.invalidateRestorableState()
         if tab.space?.dataStoreMode != .private {

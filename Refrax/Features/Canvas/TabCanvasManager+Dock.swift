@@ -23,11 +23,63 @@ extension TabCanvasManager {
         return rail.isEmpty ? nil : rail
     }
 
+    /// A page docked to a side and the fraction of the window its column takes.
+    struct DockedColumn {
+        let tab: Tab
+        let fraction: Double
+    }
+
+    /// The pages docked to each side.
+    struct DockState {
+        var leading: DockedColumn?
+        var trailing: DockedColumn?
+
+        subscript(edge: FloatingDockEdge) -> DockedColumn? {
+            switch edge {
+            case .leading: leading
+            case .trailing: trailing
+            }
+        }
+    }
+
+    /// The docked pages, read from the tabs once and kept until one of the values they were
+    /// read from changes.
+    var dockState: DockState {
+        _ = dockStateVersion
+        if let dockStateCache { return dockStateCache }
+        let state = withObservationTracking {
+            DockState(leading: dockedColumn(on: .leading), trailing: dockedColumn(on: .trailing))
+        } onChange: { [weak self] in
+            // Called as the first tracked value changes, on the changing thread.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.invalidateDockState() }
+            } else {
+                Task { @MainActor [weak self] in self?.invalidateDockState() }
+            }
+        }
+        dockStateCache = state
+        return state
+    }
+
+    /// Forgets the docked pages, so the next question reads them again.
+    func invalidateDockState() {
+        guard dockStateCache != nil else { return }
+        dockStateCache = nil
+        dockStateVersion &+= 1
+    }
+
     /// The page docked to `edge` in this window's space. The current page fills the window, so
     /// it never shows docked.
     func dockedTab(on edge: FloatingDockEdge) -> Tab? {
+        dockState[edge]?.tab
+    }
+
+    private func dockedColumn(on edge: FloatingDockEdge) -> DockedColumn? {
         guard !windowState.isSpaceLocked else { return nil }
-        return floatingTabs.first { $0.id != windowState.activeTabID && storedFloatingPlacement(for: $0)?.dock == edge }
+        guard let tab = floatingTabs.first(where: { $0.id != windowState.activeTabID && storedFloatingPlacement(for: $0)?.dock == edge }) else {
+            return nil
+        }
+        return DockedColumn(tab: tab, fraction: floatingPlacement(for: tab).dockWidthFraction)
     }
 
     /// The docked columns, with `target`'s column in place of what is docked on its side while
@@ -38,7 +90,7 @@ extension TabCanvasManager {
                 return floatingTabs.first { $0.id == target.tabID }.map { floatingPlacement(for: $0).dockWidthFraction }
                     ?? FloatingDockLayout.defaultFraction
             }
-            return dockedTab(on: edge).map { floatingPlacement(for: $0).dockWidthFraction }
+            return dockState[edge]?.fraction
         }
         return FloatingDockLayout.columns(leading: fraction(.leading), trailing: fraction(.trailing), in: bounds, rail: dockRail)
     }
