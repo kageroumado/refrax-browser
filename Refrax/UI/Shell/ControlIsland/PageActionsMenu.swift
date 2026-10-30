@@ -5,8 +5,10 @@ import SwiftUI
 /// composed and shown as a native menu so the card's hover and "menu is up" state hold while
 /// it tracks. The page card beside the rail opens ``PageCardOptionsPopover`` instead.
 struct PageActionsMenu: NSViewRepresentable {
-    /// Group order on the cards: the page's own verbs first, then placement, then the tab as an object.
-    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .preview, .move, .tab, .window, .close]
+    /// Group order on the cards and island rows: the page's own verbs first, then making an
+    /// island (the one island door in the menu, kept near the top), then placement, then the
+    /// tab as an object.
+    static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .island, .preview, .move, .tab, .window, .close]
 
     let tab: Tab
     let surface: MenuSurface

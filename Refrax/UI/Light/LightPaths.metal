@@ -18,11 +18,14 @@ constant int segmentStride = 8;
 // Angle between the center band and each outer band at full dispersion (6°).
 constant float fanAngle = 0.104719755;
 // Halo brightness relative to the core.
-constant float glowGain = 0.7;
+constant float glowGain = 0.5;
+// How far the core is turned toward white from the path's color: the core stays the color's
+// own light, brightened, instead of a white line through it.
+constant float coreWhiteness = 0.6;
 // Brightness of the halo around the tip spot.
-constant float spotHaloGain = 0.8;
-// Smallest radius of the tip spot's white center, in points.
-constant float minimumSpotRadius = 4.0;
+constant float spotHaloGain = 0.4;
+// Smallest radius of the tip spot's bright center, in points.
+constant float minimumSpotRadius = 2.0;
 // Beyond this many sigmas a Gaussian adds nothing visible.
 constant float reach = 4.0;
 
@@ -61,8 +64,9 @@ static half4 shade(float2 position, device const float *data, int count) {
             continue;
         }
         float3 baseColor = float3(path[4], path[5], path[6]);
-        // The core's full width spans about ±1.2σ, the halo's full width ±2σ.
-        float coreSigma = max(path[8] * 0.6, 0.5);
+        // The core's full width spans about ±1.2σ, the halo's full width ±2σ. Both Gaussians
+        // are sampled per pixel, so the edges fall off smoothly at any width.
+        float coreSigma = max(path[8] * 0.6, 0.4);
         float glowSigma = max(path[9] * 0.25, 0.5);
         float dispersion = path[10];
         float spotScale = max(path[11], 0.01);
@@ -71,8 +75,9 @@ static half4 shade(float2 position, device const float *data, int count) {
         float pulseCenter = path[20];
         float pulseSigma = max(path[21], 0.5);
         float pulseGain = path[22];
-        float spotRadius = max(coreSigma * 4.0, minimumSpotRadius) * spotScale;
-        float spotHaloSigma = glowSigma * 2.0 * spotScale;
+        // The tip spot is a small bright point in a halo barely wider than the beam's own.
+        float spotRadius = max(coreSigma * 3.0, minimumSpotRadius) * spotScale;
+        float spotHaloSigma = glowSigma * 1.5 * spotScale;
         float cutoff = max(glowSigma, spotHaloSigma) * reach;
 
         for (int s = 0; s < segmentCount; s++) {
@@ -115,9 +120,9 @@ static half4 shade(float2 position, device const float *data, int count) {
                 float spotCore = holdsTip ? gaussian(spotDistance, spotRadius) : 0;
 
                 float colored = (glow + spotHalo) * weight;
-                float white = (core + spotCore) * weight;
-                tint += bandColor * colored + float3(1.0) * white;
-                energy += colored + white;
+                float bright = (core + spotCore) * weight;
+                tint += bandColor * colored + mix(bandColor, float3(1.0), coreWhiteness) * bright;
+                energy += colored + bright;
             }
         }
     }

@@ -47,8 +47,9 @@ nonisolated struct LightPath: Equatable, Sendable {
     var pulse: Pulse?
 
     enum Layout {
-        static let coreWidth: CGFloat = 2
-        static let glowWidth: CGFloat = 24
+        /// A fine core with a narrow halo: a beam reads as light, not as a drawn line.
+        static let coreWidth: CGFloat = 1.2
+        static let glowWidth: CGFloat = 14
         /// Hue distance of the two outer dispersion bands from the beam's color, in degrees.
         static let hueOffset: Double = 34
         /// Angle between the center band and each outer band at full dispersion, in degrees.

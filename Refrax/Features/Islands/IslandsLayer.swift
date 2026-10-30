@@ -27,20 +27,36 @@ struct IslandsLayer: View {
                             .frame(width: frame.width, height: frame.height)
                             .offset(x: frame.minX, y: frame.minY)
                     }
+                    if let ghost = islands.islandGhost {
+                        IslandGhostView(ghost: ghost)
+                            .frame(width: ghost.frame.width, height: ghost.frame.height)
+                            .offset(x: ghost.frame.minX, y: ghost.frame.minY)
+                            .zIndex(5)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
                     if let ghost = islands.rowGhost, let tab = islands.tab(for: ghost.tabID) {
                         VStack(spacing: 4) {
                             RowGhostView(tab: tab)
                             if islands.drop?.joins != nil {
-                                Text("Combine into split view")
-                                    .font(.caption)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(.regularMaterial, in: .capsule)
+                                DragWord("Combine into split view")
+                            } else if islands.dropsAsCard {
+                                DragWord("Drop to open as a card")
                             }
                         }
                         .position(ghost.point)
                         .zIndex(6)
                         .allowsHitTesting(false)
+                    }
+                    if let island = islands.startHintIsland {
+                        let origin = IslandDropPlacement.hintOrigin(
+                            beside: islands.fullFrame(of: island), size: IslandStartHint.Layout.size, gap: IslandStartHint.Layout.gap, in: bounds,
+                        )
+                        IslandStartHint()
+                            .frame(height: IslandStartHint.Layout.size.height)
+                            .offset(x: origin.x, y: origin.y)
+                            .zIndex(4)
+                            .transition(.opacity)
                     }
                     if let side = islands.sideDrop {
                         SideDropZone(side: side, bounds: islands.pageArea)
@@ -53,6 +69,8 @@ struct IslandsLayer: View {
                     }
                 }
                 .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
+                .animation(.easeOut(duration: 0.15), value: islands.islandGhost == nil)
+                .animation(.easeOut(duration: 0.2), value: islands.startHintIsland?.id)
                 .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .coordinateSpace(name: "islands")
@@ -448,9 +466,123 @@ private struct RowGhostView: View {
     }
 }
 
+/// The word under a traveling row on what a drop does.
+private struct DragWord: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: .capsule)
+    }
+}
+
+/// The island a dragged row is about to make, drawn where it will land: a header with the
+/// name it will take, a column with room for its rows, both outlined in the accent, and the
+/// word on what a drop does under it. The row's ghost travels in its first row.
+private struct IslandGhostView: View {
+    let ghost: IslandGhost
+
+    private enum Layout {
+        static let fill: Double = 0.08
+        static let stroke: Double = 0.5
+        static let dash: [CGFloat] = [5, 4]
+        static let wordGap: CGFloat = 8
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: IslandGeometry.cornerRadius, style: .continuous)
+        VStack(alignment: .leading, spacing: IslandGeometry.headerGap) {
+            HStack {
+                if !ghost.iconsOnly {
+                    Text(ghost.title)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.leading, 14)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(width: ghost.frame.width, height: IslandGeometry.headerHeight)
+            .background(outline(shape))
+            outline(shape)
+                .frame(width: ghost.frame.width, height: ghost.frame.height - IslandGeometry.headerReserve)
+        }
+        .overlay(alignment: .top) {
+            Text(ghost.rows > 1 ? "Drop to make an island of \(ghost.rows) tabs" : "Drop to make an island")
+                .font(.caption)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: .capsule)
+                .fixedSize()
+                .offset(y: ghost.frame.height + Layout.wordGap)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func outline(_ shape: RoundedRectangle) -> some View {
+        shape
+            .fill(Color.appAccentColor.opacity(Layout.fill))
+            .overlay {
+                shape
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: Layout.dash))
+                    .foregroundStyle(Color.appAccentColor.opacity(Layout.stroke))
+                    .padding(0.5)
+            }
+    }
+}
+
+/// The one-time word beside the loose tabs' island, while a space has no other island: how
+/// to start one. Its close puts it away for good; so does the first island.
+struct IslandStartHint: View {
+    @Environment(IslandController.self) private var islands
+
+    enum Layout {
+        /// The room the hint is placed with; the capsule itself takes its text's width.
+        static let size = CGSize(width: 250, height: 28)
+        static let gap: CGFloat = 10
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Drag a tab here to start an island")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Button {
+                islands.dismissStartHint()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.default)
+            .help("Don't show this again")
+            .accessibilityLabel("Dismiss hint")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: Layout.size.height)
+        .fixedSize()
+        .glassEffect(.regular, in: .capsule)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Drag a tab here to start an island")
+    }
+}
+
 /// One tab as a row: its favicon with the loading ring, its title, its state, and under the
 /// pointer its close. A click opens the page; a drag moves the row within its island, into
-/// another, or, let go on the page, out of its island as a live card. Its menu is the page's.
+/// another, or, let go on empty space, out as a new island of its own (a live card with ⇧).
+/// Its menu is the page's.
 private struct IslandTabRow: View, Equatable {
     let tab: Tab
     let island: Island
@@ -663,82 +795,22 @@ private struct IslandTabRow: View, Equatable {
     /// The page's actions and the tab's, with a rename that edits the row's title in place
     /// and the island this row can leave for.
     private var menuTree: MenuTree {
-        let page = PageActions(tab: tab, windowState: windowState, tabs: tabManager, sharing: sharing)
-        let object = TabActions(
-            tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas, area: area,
-            onRename: { canvas.renamingTabID = tab.id },
-        )
-        let chosen = islands.actionTabs(for: tab.id)
-        if chosen.count > 1 {
-            return MenuComposer.compose(selectionActions(chosen), groupOrder: PageActionsMenu.groupOrder)
-        }
-        return MenuComposer.compose(page.actions() + object.actions() + islandActions, groupOrder: PageActionsMenu.groupOrder)
-    }
-
-    /// What a row can do within its island: make an island, float, move, leave, close around it.
-    private var islandActions: [MenuAction] {
-        var actions = [
-            MenuAction("island.new", "New Island with This Tab", symbol: "plus.rectangle.on.rectangle", group: .move) { islands.makeIsland(from: tab.id) },
-            MenuAction("island.float", "Open as Card", symbol: "rectangle.on.rectangle", group: .move) {
-                islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY))
-            },
-        ]
-        let others = islands.islands.filter { $0.id != island.id }
-        if !others.isEmpty {
-            actions.append(MenuAction("island.moveTo", "Move to Island", symbol: "arrow.right.square", group: .move, children: others.map { other in
-                MenuAction("island.moveTo.\(other.id)", other.title, symbol: "circle.fill", group: .move) {
-                    islands.moveTab(tab.id, to: Int.max, in: other.id)
-                }
-            }))
-        }
-        if !island.isDefault {
-            actions.append(MenuAction("island.leave", "Remove from Island", symbol: "minus.square", group: .move) { islands.removeFromIsland(tab.id) })
-        }
-        if tabManager.state.settings.archiveEnabled {
-            actions.append(MenuAction("island.archive", "Archive Tab", symbol: "archivebox", group: .close) { islands.archive([tab]) })
-        }
-        actions.append(MenuAction("island.closeOthers", "Close Other Tabs in Island", symbol: "xmark.rectangle", group: .close) { islands.closeOthers(than: tab.id) })
-        actions.append(MenuAction("island.closeAbove", "Close Tabs Above", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tab.id) })
-        actions.append(MenuAction("island.closeBelow", "Close Tabs Below", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tab.id) })
-        return actions
-    }
-
-    /// What several chosen rows can do together.
-    private func selectionActions(_ chosen: [Tab]) -> [MenuAction] {
-        let n = chosen.count
-        var actions = [
-            MenuAction("island.selection.new", "New Island from \(n) Tabs", symbol: "plus.rectangle.on.rectangle", group: .move) {
-                islands.makeIsland(from: chosen.map(\.id))
-            },
-        ]
-        if let current = tab.space {
-            let targets = tabManager.spaceManager.spaces.filter { $0.id != current.id }.map { space in
-                MenuAction("island.selection.space.\(space.id)", space.name, symbol: space.isEmoji ? nil : space.iconName, group: .move) {
-                    Task(name: "Move tabs to space") { await tabManager.moveTabsUnlocking(chosen, to: space, confirmingIn: windowState) }
-                }
-            }
-            if !targets.isEmpty {
-                actions.append(MenuAction("island.selection.space", "Move \(n) Tabs to Space", symbol: "square.stack.3d.up", group: .move, children: targets))
-            }
-        }
-        if tabManager.state.settings.archiveEnabled {
-            actions.append(MenuAction("island.selection.archive", "Archive \(n) Tabs", symbol: "archivebox", group: .close) { islands.archive(chosen) })
-        }
-        actions.append(MenuAction("island.selection.close", "Close \(n) Tabs", symbol: "xmark", group: .close, isDestructive: true) {
-            tabManager.requestCloseTabs(chosen)
-        })
-        return actions
+        IslandRowMenu(
+            tab: tab, island: island, islands: islands, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas,
+            sharing: sharing, area: area, onRename: { canvas.renamingTabID = tab.id },
+        ).tree()
     }
 
     /// Where the row would land while it is dragged, and what happens when it is let go. The
-    /// row's ghost travels over the page; the row itself stays, dimmed, in its window.
+    /// row's ghost travels over the page; the row itself stays, dimmed, in its window. ⇧ held
+    /// at the drop opens the row as a card instead of a new island.
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
             .onChanged { value in
-                islands.updateRowDrag(tab.id, at: value.location)
+                islands.updateRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
             }
             .onEnded { value in
-                islands.finishRowDrag(tab.id, at: value.location)
+                islands.finishRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
             }
     }
 }

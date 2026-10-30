@@ -30,6 +30,8 @@ struct FileIsland: View {
     @State private var pull = CGSize.zero
     /// The clock recent downloads are judged by, advanced as each one expires.
     @State private var now = Date()
+    /// The listed downloads, read from the store once per change rather than once per read.
+    @State private var downloadsCache = FileIslandDownloadsCache()
 
     private typealias Placement = ControlIslandPlacement
     private typealias Layout = FileIslandLayout
@@ -46,25 +48,12 @@ struct FileIsland: View {
 
     /// Downloads in progress, newest first, then those finished within the hour, most recent first.
     private var downloads: [Download] {
-        let all = downloadManager.downloads
-        let inProgress = all.filter { $0.state.isActive || $0.state == .paused }
-            .sorted { $0.createdAt > $1.createdAt }
-        let finished = all.filter { ($0.state == .completed || $0.state == .failed) && Layout.isRecent(finishDate(of: $0), now: now) }
-            .sorted { finishDate(of: $0) > finishDate(of: $1) }
-        return inProgress + finished
-    }
-
-    private func finishDate(of download: Download) -> Date {
-        download.completedAt ?? download.modifiedAt
+        downloadsCache.downloads(from: downloadManager, now: now)
     }
 
     /// When the next finished download leaves the island.
     private var nextExpiry: Date? {
-        downloadManager.downloads
-            .filter { $0.state == .completed || $0.state == .failed }
-            .map { finishDate(of: $0).addingTimeInterval(Layout.recentInterval) }
-            .filter { $0 > now }
-            .min()
+        downloadsCache.nextExpiry(from: downloadManager, now: now)
     }
 
     private var showsDropCell: Bool {
@@ -542,8 +531,12 @@ struct FileIsland: View {
             .updating($isDraggingIsland) { _, dragging, _ in dragging = true }
             .onChanged { value in
                 let origin = dragOrigin ?? frame.origin
-                dragOrigin = origin
-                state.isDragging = true
+                if dragOrigin == nil {
+                    dragOrigin = origin
+                }
+                if !state.isDragging {
+                    state.isDragging = true
+                }
                 let point = CGPoint(x: origin.x + value.translation.width, y: origin.y + value.translation.height)
                 if couplingRail != nil {
                     // Held by the rail: it gives a little, then pops free under the pointer.
@@ -562,8 +555,14 @@ struct FileIsland: View {
                 }
                 var next = placement
                 next.move(to: point, in: area, height: height)
-                state.placement = next
-                state.couplesOnRelease = FileIslandCoupling.isAtSeam(next.railFrame(in: area, height: height), rail: rail.railLayoutFrame)
+                // Same-value writes are skipped: each one re-evaluates the island and the rail.
+                if state.placement != next {
+                    state.placement = next
+                }
+                let couples = FileIslandCoupling.isAtSeam(next.railFrame(in: area, height: height), rail: rail.railLayoutFrame)
+                if state.couplesOnRelease != couples {
+                    state.couplesOnRelease = couples
+                }
             }
             .onEnded { _ in finishIslandDrag() }
     }
@@ -582,6 +581,7 @@ struct FileIsland: View {
                 state.isCoupled = true
             }
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -595,6 +595,7 @@ struct FileIsland: View {
             }
             state.isCoupled = coupled
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -605,6 +606,7 @@ struct FileIsland: View {
         var next = placement
         next.move(to: CGPoint(x: frame.minX + dx, y: frame.minY + dy), in: area, height: height)
         state.placement = next
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -613,6 +615,7 @@ struct FileIsland: View {
             state.isCoupled = false
             state.placement = nil
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 }

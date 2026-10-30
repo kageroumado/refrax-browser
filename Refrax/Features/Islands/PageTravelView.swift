@@ -76,7 +76,13 @@ struct PageTravelView: View {
             ZStack {
                 background
                 if let tab = windowState.activeTab {
-                    livePage(tab, size: geometry.size)
+                    // While a slab stands in for the page, or a move is under way, the live page
+                    // is not mounted: mounting a page (its web view, and for a page not opened
+                    // yet, its load) is the heaviest work of a step, and it landed on the first
+                    // frames of the slide. It mounts when the key is let go, under its snapshot.
+                    if showsLive {
+                        livePage(tab, size: geometry.size)
+                    }
                     if showsSlab, !isTraveling {
                         slab(image: islands.snapshot(for: tab.id), tab: tab, scale: slabScale)
                             .offset(bumpOffset)
@@ -280,6 +286,7 @@ struct PageTravelView: View {
     /// turns around.
     private func beginInspecting() {
         guard let tab = windowState.activeTab else { return }
+        islands.prefetchNeighbourSnapshots()
         guard !showsSlab else {
             stepBack()
             return

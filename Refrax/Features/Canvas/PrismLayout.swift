@@ -7,9 +7,9 @@ import SwiftUI
 /// ending on that page's outline.
 ///
 /// Every frame is in window coordinates, top-left origin. The entry beam leaves the rail
-/// row (or the rail, or the window's left edge at the lens's height when no rail frame
-/// is known) from the edge that faces the lens and enters the lens on the edge that faces
-/// the rail. Bands leave the lens from the edge facing each page and end where the line
+/// row (or the rail, or the window edge on the rail's side at the lens's height when no
+/// rail frame is known) from the edge that faces the lens and enters the lens on the edge
+/// that faces the rail. Bands leave the lens from the edge facing each page and end where the line
 /// toward the page's center meets its outline. Band hues spread evenly across the
 /// dispersion range in angular order, so the bands read as one spectrum fanning out.
 nonisolated struct PrismLayout: Equatable, Sendable {
@@ -42,25 +42,30 @@ nonisolated struct PrismLayout: Equatable, Sendable {
     let bounds: CGRect
 
     private enum Layout {
-        static let entryGlowWidth: CGFloat = 36
-        static let entryGlowWidthTightened: CGFloat = 16
-        static let bandGlowWidth: CGFloat = 28
-        static let coreWidth: CGFloat = 1.5
+        /// A fine core and a halo about half as wide as a rail row: the beams read as light
+        /// in the page, not as lines drawn over it.
+        static let entryGlowWidth: CGFloat = 18
+        static let entryGlowWidthTightened: CGFloat = 10
+        static let bandGlowWidth: CGFloat = 14
+        static let coreWidth: CGFloat = 1
         static let entryIntensity: Double = 0.55
         static let entryIntensityTightened: Double = 0.8
         static let bandIntensity: Double = 0.5
         static let pulseWidth: Double = 0.12
-        static let pulseGain: Double = 1.2
+        static let pulseGain: Double = 0.9
         static let placeholderPlacements: [(x: Double, y: Double)] = [(0.97, 0.36), (0.99, 0.56), (0.97, 0.76)]
     }
 
-    init(railLensFrame: CGRect, railFrame: CGRect, lensFrame: CGRect, pageFrames: [CGRect], bounds: CGRect) {
+    /// `railFrame` is the rail, or whatever stands for it: the flap on the window edge while
+    /// the rail hides there. With no frame at all the beam leaves the window edge on
+    /// `fallbackEdge`, the side the rail's placement puts it on.
+    init(railLensFrame: CGRect, railFrame: CGRect, lensFrame: CGRect, pageFrames: [CGRect], bounds: CGRect, fallbackEdge: ControlIslandPlacement.Edge = .left) {
         self.bounds = bounds
         let source: CGRect? = !railLensFrame.isEmpty ? railLensFrame : (!railFrame.isEmpty ? railFrame : nil)
         let origin: CGPoint = if let source {
             Self.edgePoint(of: source, toward: Self.facingPoint(of: lensFrame, toward: CGPoint(x: source.midX, y: source.midY)))
         } else {
-            CGPoint(x: bounds.minX, y: lensFrame.midY)
+            CGPoint(x: fallbackEdge == .left ? bounds.minX : bounds.maxX, y: lensFrame.midY)
         }
         let entryPoint = Self.facingPoint(of: lensFrame, toward: origin)
         self.entry = [origin, entryPoint].map { Self.clamp($0, to: bounds) }

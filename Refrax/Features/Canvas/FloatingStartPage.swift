@@ -67,15 +67,19 @@ struct FloatingStartPage: View {
     var body: some View {
         let island = windowState.controlIsland
         let bounds = windowBounds
-        let places = outlines(in: bounds, railFrame: island.railFrame)
+        // The light starts where the rail is: on the rail, or on the flap that marks it while
+        // it hides at the edge, so the beam keeps coming from the rail's side.
+        let source = island.lightSource
+        let places = outlines(in: bounds, railFrame: source)
         let layout = PrismLayout(
             railLensFrame: .zero,
-            railFrame: island.railFrame,
+            railFrame: source,
             lensFrame: lensCapsule,
             pageFrames: places.map(\.frame),
             bounds: bounds,
+            fallbackEdge: island.side,
         )
-        let sourceCenter = island.railFrame.isEmpty ? layout.entry[0] : CGPoint(x: island.railFrame.midX, y: island.railFrame.midY)
+        let sourceCenter = source.isEmpty ? layout.entry[0] : CGPoint(x: source.midX, y: source.midY)
         ZStack(alignment: .topLeading) {
             field(around: sourceCenter)
             if !lensFrame.isEmpty {

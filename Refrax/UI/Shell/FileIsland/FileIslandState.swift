@@ -47,8 +47,33 @@ final class FileIslandState {
     private var awakeUntil = Date.distantPast
     @ObservationIgnored private var awakeHoldTask: Task<Void, Never>?
 
+    @ObservationIgnored private let defaults: UserDefaults?
+    private static let placementKey = "fileIsland.placement"
+    private static let coupledKey = "fileIsland.coupled"
+
     /// How long the island stays awake after something arrives on it.
     static let arrivalHold: TimeInterval = 2.5
+
+    /// Starts from the placement last saved in `defaults`, like the Control Island: window
+    /// restorable state is replayed only when the system restores windows, so the defaults are
+    /// what brings the island back after an ordinary relaunch.
+    init(defaults: UserDefaults? = .standard) {
+        self.defaults = defaults
+        placement = defaults?.data(forKey: Self.placementKey)
+            .flatMap { try? JSONDecoder().decode(ControlIslandPlacement.self, from: $0) }
+        isCoupled = defaults?.bool(forKey: Self.coupledKey) ?? false
+    }
+
+    /// Keeps the current placement and coupling for the next launch.
+    func savePlacement() {
+        guard let defaults else { return }
+        if let placement, let data = try? JSONEncoder().encode(placement) {
+            defaults.set(data, forKey: Self.placementKey)
+        } else {
+            defaults.removeObject(forKey: Self.placementKey)
+        }
+        defaults.set(isCoupled, forKey: Self.coupledKey)
+    }
 
     /// Work in progress on the island, which keeps the glass present.
     var isEngaged: Bool {
@@ -100,7 +125,10 @@ final class FileIslandState {
         if near {
             watchForStillness()
         }
-        isHovered = phase == .inside
+        // Written only on a change: every write re-evaluates the island, and this runs per pointer move.
+        if isHovered != (phase == .inside) {
+            isHovered = phase == .inside
+        }
         return phase
     }
 

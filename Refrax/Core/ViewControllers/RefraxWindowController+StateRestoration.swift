@@ -74,7 +74,9 @@ extension RefraxWindowController {
            let y = state.decodeObject(of: NSNumber.self, forKey: "fileIslandY")?.doubleValue {
             windowState.fileIsland.placement = ControlIslandPlacement(x: x, y: y)
         }
-        windowState.fileIsland.isCoupled = state.decodeObject(of: NSNumber.self, forKey: "fileIslandCoupled")?.boolValue ?? false
+        if let coupled = state.decodeObject(of: NSNumber.self, forKey: "fileIslandCoupled")?.boolValue {
+            windowState.fileIsland.isCoupled = coupled
+        }
 
         if let frameX = state.decodeObject(of: NSNumber.self, forKey: "windowFrameX")?.doubleValue,
            let frameY = state.decodeObject(of: NSNumber.self, forKey: "windowFrameY")?.doubleValue,

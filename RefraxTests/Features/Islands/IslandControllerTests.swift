@@ -10,21 +10,39 @@ private final class IslandFixture {
     let window: WindowState
     let canvas: TabCanvasManager
     let islands: IslandController
+    /// The controller's own defaults, apart from the app's: what the hint keeps goes here.
+    let defaults: UserDefaults
+    let bounds = CGRect(x: 0, y: 0, width: 1_440, height: 1_080)
+    let sharing = SharingCoordinator()
+    private let suite = "IslandControllerTests.\(UUID().uuidString)"
 
-    init() throws {
+    init(defaults: UserDefaults? = nil) throws {
         self.env = try TabManagerTestEnvironment()
         self.space = env.makeSpace()
         self.window = env.makeActiveWindowState(with: space)
         self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
-        self.islands = IslandController(windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool)
+        self.defaults = try defaults ?? #require(UserDefaults(suiteName: suite))
+        self.islands = IslandController(
+            windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool,
+            defaults: self.defaults,
+        )
         window.islandController = islands
         islands.start()
-        let bounds = CGRect(x: 0, y: 0, width: 1_440, height: 1_080)
         islands.updateArea(bounds.insetBy(dx: 16, dy: 16), in: bounds)
         env.undoRedoManager.undoManager.groupsByEvent = false
     }
 
     isolated deinit { islands.stop() }
+
+    /// A row's menu, as a person reads its top level: titles only, no dividers or submenu rows.
+    func rowMenu(_ tab: Refrax.Tab) throws -> [String] {
+        let island = try #require(islands.island(holding: tab.id))
+        let tree = IslandRowMenu(
+            tab: tab, island: island, islands: islands, windowState: window, tabs: env.tabManager, bookmarks: env.bookmarksManager,
+            canvas: canvas, sharing: sharing, area: bounds,
+        ).tree()
+        return tree.outline.filter { !$0.hasPrefix(" ") && $0 != "——" }
+    }
 
     func tab(_ title: String, group: TabGroup? = nil) -> Refrax.Tab {
         let tab = env.tabManager.createTab(url: .blank, in: space, groupID: group?.id, makeActive: false, loadImmediately: false)
@@ -239,5 +257,212 @@ struct IslandControllerTests {
         parent.contentView = editor
         parent.makeFirstResponder(editor)
         #expect(gestures.handle(event) != nil)
+    }
+}
+
+/// A row dragged off its island: on empty space it makes an island where its ghost stood; on
+/// another island it joins; with ⇧ it leaves as a card.
+@Suite("Making islands by dropping", .serialized)
+@MainActor
+struct IslandDropTests {
+    private func firstRowMiddle(of frame: CGRect) -> CGPoint {
+        CGPoint(x: frame.midX, y: frame.minY + IslandGeometry.headerReserve + IslandGeometry.padding + IslandGeometry.rowHeight / 2)
+    }
+
+    @Test
+    func `A row let go on empty space makes an island where its ghost stood`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        let point = CGPoint(x: 900, y: 500)
+        fixture.islands.updateRowDrag(b.id, at: point)
+        let ghost = try #require(fixture.islands.islandGhost)
+        #expect(fixture.islands.drop == nil)
+        #expect(fixture.islands.sideDrop == nil)
+        #expect(!fixture.islands.dropsAsCard)
+        #expect(ghost.rows == 1)
+        #expect(ghost.title == fixture.islands.islandName(for: b))
+        let middle = firstRowMiddle(of: ghost.frame)
+        #expect(abs(middle.x - point.x) < 0.5 && abs(middle.y - point.y) < 0.5)
+
+        fixture.edit { fixture.islands.finishRowDrag(b.id, at: point) }
+        #expect(fixture.islands.islands.count == 2)
+        let island = try #require(fixture.islands.island(holding: b.id))
+        #expect(!island.isDefault)
+        #expect(island.tabIDs == [b.id])
+        let landed = fixture.islands.fullFrame(of: island)
+        #expect(abs(landed.minX - ghost.frame.minX) < 0.5 && abs(landed.minY - ghost.frame.minY) < 0.5)
+        #expect(!fixture.islands.state.detached.contains(b.id))
+        #expect(fixture.islands.islandGhost == nil)
+        #expect(fixture.islands.draggedTabID == nil)
+    }
+
+    @Test
+    func `A ghost at the window's corner is held inside the area and the island lands there`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        let area = fixture.bounds.insetBy(dx: 16, dy: 16)
+        let point = CGPoint(x: fixture.bounds.maxX - 2, y: fixture.bounds.maxY - 2)
+        fixture.islands.updateRowDrag(b.id, at: point)
+        let ghost = try #require(fixture.islands.islandGhost)
+        #expect(area.contains(ghost.frame))
+        #expect(abs(ghost.frame.maxX - area.maxX) < 0.5 && abs(ghost.frame.maxY - area.maxY) < 0.5)
+        fixture.edit { fixture.islands.finishRowDrag(b.id, at: point) }
+        let island = try #require(fixture.islands.island(holding: b.id))
+        let landed = fixture.islands.fullFrame(of: island)
+        #expect(abs(landed.minX - ghost.frame.minX) < 0.5 && abs(landed.minY - ghost.frame.minY) < 0.5)
+    }
+
+    @Test
+    func `With shift the row leaves as a card instead`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        let point = CGPoint(x: 900, y: 500)
+        fixture.islands.updateRowDrag(b.id, at: point, asCard: true)
+        #expect(fixture.islands.islandGhost == nil)
+        #expect(fixture.islands.dropsAsCard)
+        fixture.edit { fixture.islands.finishRowDrag(b.id, at: point, asCard: true) }
+        #expect(fixture.islands.state.detached.contains(b.id))
+        #expect(fixture.islands.islands.count == 1)
+        #expect(!fixture.islands.dropsAsCard)
+    }
+
+    @Test
+    func `A row let go over another island joins it with no ghost`() throws {
+        let fixture = try IslandFixture()
+        let a = fixture.tab("A")
+        let b = fixture.tab("B")
+        fixture.edit { fixture.islands.makeIsland(from: b.id) }
+        fixture.canvas.toggleFloatingTabs()
+        let target = try #require(fixture.islands.island(holding: a.id))
+        let point = firstRowMiddle(of: fixture.islands.fullFrame(of: target))
+        fixture.islands.updateRowDrag(b.id, at: point)
+        #expect(fixture.islands.drop?.island == target.id)
+        #expect(fixture.islands.islandGhost == nil)
+        fixture.edit { fixture.islands.finishRowDrag(b.id, at: point) }
+        #expect(fixture.islands.island(holding: b.id)?.id == target.id)
+    }
+
+    @Test
+    func `A selection let go on empty space makes one island of every chosen row`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        let c = fixture.tab("C")
+        fixture.canvas.toggleFloatingTabs()
+        fixture.islands.select(b.id, extending: false, toggling: false)
+        fixture.islands.select(c.id, extending: true, toggling: false)
+        let point = CGPoint(x: 900, y: 500)
+        fixture.islands.updateRowDrag(c.id, at: point)
+        #expect(fixture.islands.islandGhost?.rows == 2)
+        #expect(fixture.islands.islandGhost?.title == fixture.islands.islandName(for: b))
+        fixture.edit { fixture.islands.finishRowDrag(c.id, at: point) }
+        let island = try #require(fixture.islands.island(holding: c.id))
+        // The rows keep the tab list's order, whatever it is for two tabs made at once.
+        #expect(Set(island.tabIDs) == [b.id, c.id])
+        #expect(fixture.islands.islands.count == 2)
+    }
+}
+
+/// The one-time hint on starting an island, and where New Island sits in the menus.
+@Suite("Island doors", .serialized)
+@MainActor
+struct IslandDoorTests {
+    @Test
+    func `The hint stands by the loose tabs' island while a space has no other and tabs to spare`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.startHintIsland == nil)
+        let b = fixture.tab("B")
+        let island = try #require(fixture.islands.startHintIsland)
+        #expect(island.isDefault)
+        fixture.islands.updateRowDrag(b.id, at: CGPoint(x: 900, y: 500))
+        #expect(fixture.islands.startHintIsland == nil)
+        fixture.islands.cancelRowDrag()
+        #expect(fixture.islands.startHintIsland != nil)
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.startHintIsland == nil)
+    }
+
+    @Test
+    func `Dismissing the hint keeps it away in every later controller on the same defaults`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        _ = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.startHintIsland != nil)
+        fixture.islands.dismissStartHint()
+        #expect(fixture.islands.startHintIsland == nil)
+        #expect(fixture.defaults.bool(forKey: IslandController.startHintKey))
+        let later = try IslandFixture(defaults: fixture.defaults)
+        _ = later.tab("A")
+        _ = later.tab("B")
+        later.canvas.toggleFloatingTabs()
+        #expect(later.islands.startHintDismissed)
+        #expect(later.islands.startHintIsland == nil)
+    }
+
+    @Test
+    func `The first island puts the hint away for good`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        _ = fixture.tab("C")
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.startHintIsland != nil)
+        fixture.edit { fixture.islands.makeIsland(from: b.id) }
+        #expect(fixture.islands.startHintDismissed)
+        let made = try #require(fixture.islands.island(holding: b.id))
+        fixture.edit { fixture.islands.dissolve(made.id) }
+        #expect(fixture.islands.islands.count == 1)
+        #expect(fixture.islands.startHintIsland == nil)
+    }
+
+    @Test
+    func `New Island with This Tab sits once under the page's essentials in a row's menu`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        let rows = try fixture.rowMenu(b)
+        let island = try #require(rows.firstIndex(of: "New Island with This Tab"))
+        let copy = try #require(rows.firstIndex(of: "Copy Address"))
+        let share = try #require(rows.firstIndex(of: "Share…"))
+        #expect(copy < island && share < island)
+        #expect(island <= 4)
+        #expect(rows.filter { $0 == "New Island with This Tab" }.count == 1)
+        #expect(rows.contains("Open as Card") || rows.contains { $0.hasPrefix("Move ▸") })
+    }
+
+    @Test
+    func `A selection's menu leads with New Island from N Tabs`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        let c = fixture.tab("C")
+        fixture.islands.select(b.id, extending: false, toggling: false)
+        fixture.islands.select(c.id, extending: true, toggling: false)
+        let rows = try fixture.rowMenu(c)
+        #expect(rows.first == "New Island from 2 Tabs")
+    }
+
+    @Test
+    func `The page card's menu shows New Island once, near the top`() throws {
+        let fixture = try IslandFixture()
+        let active = try fixture.env.createActiveTab(url: #require(URL(string: "https://example.com/active")), in: fixture.space, for: fixture.window)
+        fixture.islands.refresh()
+        let tree = PageActionsMenu.tree(
+            for: active, surface: .pageCard, area: fixture.bounds, windowState: fixture.window, tabs: fixture.env.tabManager,
+            bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas, sharing: fixture.sharing,
+        )
+        let rows = tree.outline.filter { !$0.hasPrefix(" ") && $0 != "——" }
+        let island = try #require(rows.firstIndex(of: "New Island with This Tab"))
+        #expect(island <= 4)
+        #expect(tree.outline.filter { $0.contains("New Island") }.count == 1)
     }
 }

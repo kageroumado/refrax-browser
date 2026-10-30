@@ -41,6 +41,53 @@ struct PrismLayoutTests {
     }
 
     @Test
+    func `with the rail hidden at the right edge the beam comes in from the right flap`() {
+        let resting = CGRect(x: 1_540, y: 250, width: 48, height: 500)
+        let flap = ControlIslandPlacement.flapFrame(for: resting, at: .right, in: bounds)
+        let layout = PrismLayout(railLensFrame: .zero, railFrame: flap, lensFrame: lens, pageFrames: pages(4), bounds: bounds, fallbackEdge: .right)
+        #expect(onEdge(layout.entry[0], of: flap))
+        #expect(abs(layout.entry[0].x - flap.minX) < 0.01, "it leaves the flap's inner edge")
+        #expect(layout.entry[0].x > bounds.midX, "from the right half of the window")
+        #expect(abs(layout.entry[1].x - lens.maxX) < 0.01 && abs(layout.entry[1].y - lens.midY) < 0.01, "and enters the lens on its right edge")
+        #expect(layout.entry.allSatisfy { bounds.insetBy(dx: -0.01, dy: -0.01).contains($0) })
+
+        let leftFlap = ControlIslandPlacement.flapFrame(for: rail, at: .left, in: bounds)
+        let mirrored = PrismLayout(railLensFrame: .zero, railFrame: leftFlap, lensFrame: lens, pageFrames: [], bounds: bounds, fallbackEdge: .left)
+        #expect(abs(mirrored.entry[0].x - leftFlap.maxX) < 0.01)
+        #expect(abs(mirrored.entry[1].x - lens.minX) < 0.01)
+    }
+
+    @Test
+    func `with no rail frame at all the beam leaves the window edge on the rail's side`() {
+        let right = PrismLayout(railLensFrame: .zero, railFrame: .zero, lensFrame: lens, pageFrames: [], bounds: bounds, fallbackEdge: .right)
+        #expect(right.entry[0] == CGPoint(x: bounds.maxX, y: lens.midY))
+        #expect(abs(right.entry[1].x - lens.maxX) < 0.01)
+        let left = PrismLayout(railLensFrame: .zero, railFrame: .zero, lensFrame: lens, pageFrames: [], bounds: bounds, fallbackEdge: .left)
+        #expect(left.entry[0] == CGPoint(x: bounds.minX, y: lens.midY))
+        #expect(left == PrismLayout(railLensFrame: .zero, railFrame: .zero, lensFrame: lens, pageFrames: [], bounds: bounds), "left is the default")
+    }
+
+    @Test
+    func `the placeholder outlines move to the left when the hidden rail's flap is on the right`() {
+        let resting = CGRect(x: 1_540, y: 250, width: 48, height: 500)
+        let flap = ControlIslandPlacement.flapFrame(for: resting, at: .right, in: bounds)
+        let frames = PrismLayout.placeholderFrames(in: bounds, railFrame: flap)
+        #expect(frames.allSatisfy { $0.midX < bounds.midX && bounds.contains($0) })
+    }
+
+    @Test
+    func `the beams are finer than a rail row and their halo stays narrow`() {
+        let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: pages(3), bounds: bounds)
+        let paths = layout.paths(color: violet, time: 0, tightened: false, reduceMotion: true)
+        for path in paths {
+            #expect(path.coreWidth <= 1.2)
+            #expect(path.glowWidth <= ControlIslandPlacement.rowHeight, "the halo is at most one rail row wide")
+            #expect(path.glowWidth > path.coreWidth)
+        }
+        #expect(LightPath.Layout.coreWidth <= 1.2 && LightPath.Layout.glowWidth <= ControlIslandPlacement.rowHeight, "the guide, trail and displaced beams too")
+    }
+
+    @Test
     func `each band leaves the lens and ends on its page's outline edge`() {
         let frames = pages(5)
         let layout = PrismLayout(railLensFrame: railLens, railFrame: rail, lensFrame: lens, pageFrames: frames, bounds: bounds)

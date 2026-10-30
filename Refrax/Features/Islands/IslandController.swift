@@ -20,6 +20,18 @@ struct RowGhost: Equatable {
     var point: CGPoint
 }
 
+/// The island a dragged row makes when let go on empty space, drawn where it will land.
+struct IslandGhost: Equatable {
+    let tabID: UUID
+    /// The island's full frame, header included, in the layer.
+    var frame: CGRect
+    /// The name the island will take.
+    let title: String
+    /// One row per tab: the row alone, or its selection.
+    let rows: Int
+    let iconsOnly: Bool
+}
+
 /// Where a dragged row would land: an island and the row it goes before, or the tab on that
 /// island it joins as a second pane.
 struct IslandDrop: Equatable {
@@ -65,8 +77,9 @@ struct ArmedCrossing: Equatable {
 @Observable
 final class IslandController {
     enum Layout {
-        /// Full-window renders kept in memory: the current page, the last few, the neighbors.
-        static let snapshotLimit = 6
+        /// Full-window renders kept in memory: the current page, the one it came from, and
+        /// the pages one step away in each direction, loaded ahead of a step.
+        static let snapshotLimit = 8
         /// A render landed this recently stands for the next one asked for by a load's end.
         static let captureCoalescing: TimeInterval = 2
         /// How long after a push against an edge a second push crosses it.
@@ -105,11 +118,23 @@ final class IslandController {
     private(set) var bump: EdgeBump?
     /// The edge the last push leaned on: the next push the same way crosses.
     private(set) var armedCrossing: ArmedCrossing?
-    /// The row being dragged, and where it would land; nowhere means it leaves as a card.
+    /// The row being dragged, and where it would land: an island, the page's side, or, on
+    /// empty space, a new island of its own (a card instead while the card key is held).
     var draggedTabID: UUID?
     var drop: IslandDrop?
     /// The side of the page a dragged row would join the current tab on, as a pane.
     var sideDrop: PanePosition?
+    /// The island the dragged row makes if let go here, on empty space.
+    var islandGhost: IslandGhost?
+    /// The dragged row leaves as a live card instead, while ⇧ is held.
+    var dropsAsCard = false
+    /// The island just made by a drop: it stays where it was put while the others clear it.
+    @ObservationIgnored private var placingIslandID: UUID?
+    /// Whether the one-time hint on starting an island has been put away, for good: once
+    /// dismissed, or once any island was made.
+    private(set) var startHintDismissed: Bool
+    @ObservationIgnored private let defaults: UserDefaults
+    static let startHintKey = "islands.startHintDismissed"
     /// Rows chosen with ⇧ or ⌘, on one island, for actions on several tabs at once.
     private(set) var selectedTabIDs: Set<UUID> = []
     /// The row the pointer has rested on, whose page shows as a preview beside its island.
@@ -167,12 +192,17 @@ final class IslandController {
     @ObservationIgnored private unowned let canvas: TabCanvasManager
     @ObservationIgnored private unowned let pagePool: WebPagePool
 
-    init(windowState: WindowState, tabManager: TabManager, groupManager: TabGroupManager, canvas: TabCanvasManager, pagePool: WebPagePool) {
+    init(
+        windowState: WindowState, tabManager: TabManager, groupManager: TabGroupManager, canvas: TabCanvasManager, pagePool: WebPagePool,
+        defaults: UserDefaults = .standard,
+    ) {
         self.windowState = windowState
         self.tabManager = tabManager
         self.groupManager = groupManager
         self.canvas = canvas
         self.pagePool = pagePool
+        self.defaults = defaults
+        self.startHintDismissed = defaults.bool(forKey: Self.startHintKey)
     }
 
     // MARK: - Lifecycle
@@ -267,6 +297,21 @@ final class IslandController {
 
     func geometry(for island: Island) -> IslandGeometry {
         IslandGeometry(iconsOnly: island.placement.iconsOnly)
+    }
+
+    /// The loose tabs' island the one-time hint stands beside: while the space has no island
+    /// but that one, with tabs enough to pull one out, it shows, and no row is on its way.
+    var startHintIsland: Island? {
+        guard !startHintDismissed, draggedTabID == nil, islands.count == 1, let island = visibleIslands.first,
+              island.isDefault, island.tabIDs.count >= 2 else { return nil }
+        return island
+    }
+
+    /// Puts the hint away for good.
+    func dismissStartHint() {
+        guard !startHintDismissed else { return }
+        startHintDismissed = true
+        defaults.set(true, forKey: Self.startHintKey)
     }
 
     /// An island's frame in the layer: its corner where it was put, as a share of the area, held
@@ -527,6 +572,10 @@ final class IslandController {
             islands = built
             resolveOverlaps()
         }
+        // An island exists: the hint has nothing left to teach.
+        if !startHintDismissed, built.contains(where: { !$0.isDefault }) {
+            dismissStartHint()
+        }
     }
 
     private func persist() {
@@ -689,6 +738,7 @@ final class IslandController {
     /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot. A page
     /// still live is rendered first, through WebKit, while it stays on screen.
     private func travel(to tab: Tab, style: TravelStyle) {
+        requestStoredSnapshot(for: tab)
         guard liveIsVisible, let current = windowState.activeTab else {
             start(PageTravel(outgoing: windowState.activeTab.flatMap { snapshot(for: $0.id) }, style: style), to: tab)
             return
@@ -710,6 +760,7 @@ final class IslandController {
         if let island = island(holding: tab.id) {
             lastTab[island.id] = tab.id
         }
+        prefetchNeighbourSnapshots()
     }
 
     /// The page view finished the move.
@@ -724,18 +775,26 @@ final class IslandController {
 
     // MARK: - Editing islands
 
-    /// Moves the drag image and insertion point; a stationary pause arms combining.
-    func updateRowDrag(_ tabID: UUID, at point: CGPoint) {
-        draggedTabID = tabID
-        rowGhost = RowGhost(tabID: tabID, point: point)
+    /// Moves the drag image and insertion point; a stationary pause arms combining. Off every
+    /// island and the page's sides, the row's own island shows where it would land, or, with
+    /// `asCard` (⇧ held), the row leaves as a card.
+    func updateRowDrag(_ tabID: UUID, at point: CGPoint, asCard: Bool = false) {
+        // Every write below re-evaluates the whole layer; a value that did not change is not written.
+        update(\.draggedTabID, to: tabID)
+        update(\.rowGhost, to: RowGhost(tabID: tabID, point: point))
         let reach = IslandGeometry.padding
         guard let target = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else {
-            drop = nil
-            sideDrop = sideZone(at: point, dragging: tabID)
+            update(\.drop, to: nil)
+            let side = sideZone(at: point, dragging: tabID)
+            update(\.sideDrop, to: side)
+            update(\.dropsAsCard, to: side == nil && asCard)
+            update(\.islandGhost, to: side == nil && !asCard ? ghost(for: tabID, at: point) : nil)
             updateJoinDwell(candidate: nil, point: point)
             return
         }
-        sideDrop = nil
+        update(\.sideDrop, to: nil)
+        update(\.islandGhost, to: nil)
+        update(\.dropsAsCard, to: false)
         let frame = frame(of: target)
         let local = rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: target)
         let geometry = geometry(for: target)
@@ -744,7 +803,15 @@ final class IslandController {
             canJoin(tabID, with: target.tabIDs[index]) ? target.tabIDs[index] : nil
         }
         updateJoinDwell(candidate: candidate, point: point)
-        drop = IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count), joins: joinDwell.ready())
+        update(\.drop, to: IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count), joins: joinDwell.ready()))
+    }
+
+    /// Writes `value` only when it differs from what is there: an observed property notifies
+    /// its observers on every write, equal or not.
+    private func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<IslandController, Value>, to value: Value) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
     }
 
     private func updateJoinDwell(candidate: UUID?, point: CGPoint) {
@@ -760,7 +827,9 @@ final class IslandController {
         }
     }
 
-    func finishRowDrag(_ tabID: UUID, at point: CGPoint) {
+    /// The row is let go: into an island, onto the page's side, or, on empty space, as a new
+    /// island where its ghost stood; as a card instead with `asCard` (⇧ held).
+    func finishRowDrag(_ tabID: UUID, at point: CGPoint, asCard: Bool = false) {
         guard draggedTabID == tabID else { return }
         defer { cancelRowDrag() }
         if let drop {
@@ -771,8 +840,10 @@ final class IslandController {
             }
         } else if let sideDrop {
             joinPage(tabID, at: sideDrop)
-        } else {
+        } else if asCard {
             detach(tabID, at: point)
+        } else {
+            makeIsland(from: tabID, at: point)
         }
     }
 
@@ -782,8 +853,23 @@ final class IslandController {
         joinDwell = IslandJoinDwell()
         drop = nil
         sideDrop = nil
+        islandGhost = nil
+        dropsAsCard = false
         draggedTabID = nil
         rowGhost = nil
+    }
+
+    /// The island `tabID`'s row, or its selection, makes if let go at `point`: a row per tab,
+    /// in the source island's shape, its first row under the pointer, held inside the area.
+    func ghost(for tabID: UUID, at point: CGPoint) -> IslandGhost? {
+        guard let source = island(holding: tabID) else { return nil }
+        let members = actionTabs(for: tabID)
+        guard let first = members.first else { return nil }
+        let iconsOnly = source.placement.iconsOnly
+        let frame = IslandDropPlacement.frame(
+            at: point, rows: members.count, geometry: geometry(for: source), area: area, window: iconsOnly ? bounds.size : area.size,
+        )
+        return IslandGhost(tabID: tabID, frame: frame, title: islandName(for: first), rows: members.count, iconsOnly: iconsOnly)
     }
 
     /// Puts `tabID` before row `row` of island `islandID`, or after its last row, moving it
@@ -973,9 +1059,14 @@ final class IslandController {
         let size = frame(of: islands[index]).size
         let x = min(max(area.minX, origin.x), max(area.minX, area.maxX - size.width))
         let y = min(max(area.minY, origin.y), max(area.minY, area.maxY - size.height))
-        islands[index].placement.x = (x - area.minX) / max(1, area.width)
-        islands[index].placement.y = (y - area.minY) / max(1, area.height)
-        state.islands[islandID] = islands[index].placement
+        var placement = islands[index].placement
+        placement.x = (x - area.minX) / max(1, area.width)
+        placement.y = (y - area.minY) / max(1, area.height)
+        // One write to the islands and one to the state per frame, and none when the pointer
+        // has not moved the island: each write re-evaluates every island on the layer.
+        guard placement != islands[index].placement else { return }
+        islands[index].placement = placement
+        state.islands[islandID] = placement
     }
 
     /// The move is over: the island's place is kept, and the others keep clear of it.
@@ -1019,7 +1110,7 @@ final class IslandController {
     /// there is no room below. The island being moved, or the current tab's, stays put.
     func resolveOverlaps(keeping keptID: UUID? = nil) {
         guard draggedIslandID == nil, !area.isEmpty else { return }
-        let kept = keptID ?? currentTab.flatMap { island(holding: $0.id)?.id }
+        let kept = keptID ?? placingIslandID ?? currentTab.flatMap { island(holding: $0.id)?.id }
         let visible = islands.sorted { ($0.id == kept ? 0 : 1, $0.placement.y) < ($1.id == kept ? 0 : 1, $1.placement.y) }
         var frames = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, fullFrame(of: $0)) })
         let gap = Layout.islandGap
@@ -1137,24 +1228,53 @@ final class IslandController {
         makeIsland(from: actionTabs(for: tabID).map(\.id))
     }
 
-    /// Makes a new island from `tabIDs`, in their order, beside the island the first came from.
-    func makeIsland(from tabIDs: [UUID]) {
+    /// Makes a new island from `tabID`'s row, or its selection, where a drag let it go: it
+    /// lands where its ghost stood at `point`.
+    func makeIsland(from tabID: UUID, at point: CGPoint) {
+        guard let ghost = ghost(for: tabID, at: point) else { return }
+        makeIsland(from: actionTabs(for: tabID).map(\.id), frame: ghost.frame)
+    }
+
+    /// The name a new island takes from its first tab: the page's domain, else its title.
+    func islandName(for tab: Tab) -> String {
+        tab.activePage.url.safeDisplayDomain.isEmpty ? tab.displayTitle : tab.activePage.url.safeDisplayDomain
+    }
+
+    /// Makes a new island from `tabIDs`, in their order: at `frame` (header included) when a
+    /// drop chose one, else beside the island the first came from.
+    func makeIsland(from tabIDs: [UUID], frame: CGRect? = nil) {
         let members = tabIDs.compactMap(tab(for:))
         guard let first = members.first, let space = first.space, let source = island(holding: first.id) else { return }
-        let name = first.activePage.url.safeDisplayDomain.isEmpty ? first.displayTitle : first.activePage.url.safeDisplayDomain
-        guard let group = try? groupManager.createGroup(in: space, name: name) else { return }
-        state.islands[group.id] = freePlacement(near: source, rows: members.count, iconsOnly: source.placement.iconsOnly)
+        guard let group = try? groupManager.createGroup(in: space, name: islandName(for: first)) else { return }
+        // The id is read once: the group may be gone again (ungrouped, undone) before the unfold ends,
+        // and a deleted model's fields are not to be read.
+        let islandID = group.id
+        let iconsOnly = source.placement.iconsOnly
+        if let frame {
+            var placement = IslandDropPlacement.placement(for: frame, in: area)
+            placement.iconsOnly = iconsOnly
+            if iconsOnly {
+                var rail = ControlIslandPlacement()
+                rail.move(to: frame.origin, in: bounds, height: frame.height)
+                placement.railPlacement = rail
+            }
+            state.islands[islandID] = placement
+        } else {
+            state.islands[islandID] = freePlacement(near: source, rows: members.count, iconsOnly: iconsOnly)
+        }
         for member in members {
             groupManager.moveTabToGroup(member, group: group, in: space, skipReordering: true)
         }
         clearSelection()
-        emergingIslandID = group.id
+        emergingIslandID = islandID
+        placingIslandID = frame == nil ? nil : islandID
         rebuild()
-        holdControls(group.id, true)
-        renameRequest = group.id
+        placingIslandID = nil
+        holdControls(islandID, true)
+        renameRequest = islandID
         Task(name: "Finish an island's unfold") { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
-            if self?.emergingIslandID == group.id {
+            if self?.emergingIslandID == islandID {
                 self?.emergingIslandID = nil
             }
         }
@@ -1229,12 +1349,24 @@ final class IslandController {
         let id = tab.id
         capturing.insert(id)
         Task(name: "Load island snapshot") { [weak self] in
-            let data = await CanvasSnapshotStore.load(for: id)
+            let decoded = await CanvasSnapshotStore.loadImage(for: id)
             guard let self, !Task.isCancelled else { return }
-            if let data, let image = NSImage(data: data), captures[id] == nil {
-                store(image, for: id)
+            if let decoded, captures[id] == nil {
+                store(NSImage(cgImage: decoded, size: .zero), for: id)
             }
             capturing.remove(id)
+        }
+    }
+
+    /// Loads the stored images of the pages one step away in each direction, so a step shows
+    /// the page's picture from its first frame rather than a placeholder that fills in later.
+    func prefetchNeighbourSnapshots() {
+        for direction in TableDirection.allCases {
+            if let tab = destination(toward: direction) {
+                requestStoredSnapshot(for: tab)
+            } else if let island = island(toward: direction), let tabID = lastTab[island.id] ?? island.tabIDs.first, let tab = tab(for: tabID) {
+                requestStoredSnapshot(for: tab)
+            }
         }
     }
 

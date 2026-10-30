@@ -20,9 +20,12 @@ struct LightLayerTests {
             #expect(pixel.alpha > 0.6, "\(along) sits on the core")
             #expect(pixel.red <= pixel.alpha + 0.01 && pixel.green <= pixel.alpha + 0.01 && pixel.blue <= pixel.alpha + 0.01, "premultiplied")
         }
-        let halo = pixels[CGPoint(x: 64 + 5, y: 64 - 5)]
+        let halo = pixels[CGPoint(x: 64 + 3, y: 64 - 3)]
         #expect(halo.alpha > 0.05 && halo.alpha < pixels[CGPoint(x: 64, y: 64)].alpha, "the halo is dimmer than the core")
         #expect(halo.blue > halo.red, "the halo carries the path's color")
+        let core = pixels[CGPoint(x: 64, y: 64)]
+        #expect(core.blue > core.red, "the core is the path's color brightened, not white")
+        #expect(pixels[CGPoint(x: 64 + 8, y: 64 - 8)].alpha < 0.02, "the halo stays narrow")
         for far in [CGPoint(x: 112, y: 16), CGPoint(x: 16, y: 112), CGPoint(x: 4, y: 64), CGPoint(x: 124, y: 60)] {
             #expect(pixels[far].alpha == 0, "\(far) is far from the beam")
         }
