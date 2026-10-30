@@ -592,6 +592,7 @@ struct FileIsland: View {
                 state.isCoupled = true
             }
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -605,6 +606,7 @@ struct FileIsland: View {
             }
             state.isCoupled = coupled
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -615,6 +617,7 @@ struct FileIsland: View {
         var next = placement
         next.move(to: CGPoint(x: frame.minX + dx, y: frame.minY + dy), in: area, height: height)
         state.placement = next
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 
@@ -623,6 +626,7 @@ struct FileIsland: View {
             state.isCoupled = false
             state.placement = nil
         }
+        state.savePlacement()
         windowState.window?.invalidateRestorableState()
     }
 }

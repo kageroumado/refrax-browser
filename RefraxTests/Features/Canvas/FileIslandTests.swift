@@ -138,7 +138,7 @@ struct FileIslandTests {
 
     @Test @MainActor
     func `an idle island hides past its edge and the pointer at that edge brings it back`() {
-        let state = FileIslandState()
+        let state = FileIslandState(defaults: nil)
         let island = CGRect(x: area.maxX - 8 - 36, y: 700, width: 36, height: 200)
         state.hitRegions = [island]
         state.hiddenEdge = .right
@@ -155,7 +155,7 @@ struct FileIslandTests {
 
     @Test @MainActor
     func `a download arriving brings a hidden island back`() {
-        let state = FileIslandState()
+        let state = FileIslandState(defaults: nil)
         state.hiddenEdge = .left
         state.tracksPointer(CGPoint(x: 800, y: 500))
         #expect(state.isHiddenAtEdge)
@@ -165,7 +165,7 @@ struct FileIslandTests {
 
     @Test @MainActor
     func `an island away from the side edges never hides`() {
-        let state = FileIslandState()
+        let state = FileIslandState(defaults: nil)
         state.tracksPointer(CGPoint(x: 800, y: 500))
         #expect(!state.isHiddenAtEdge)
         #expect(ControlIslandPlacement(x: 0.5, y: 1).horizontalEdge == nil)
