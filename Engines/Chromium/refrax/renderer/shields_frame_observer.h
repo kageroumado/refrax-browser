@@ -13,6 +13,7 @@
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "refrax/common/mojom/engine.mojom.h"
+#include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
 #include "v8/include/v8-forward.h"
 
@@ -22,8 +23,8 @@ namespace refrax {
 // pushes a document's resources before it commits. When the document element is created this
 // hides with a user stylesheet (user origin and !important outrank the page's own CSS); blink
 // forbids scripts at that moment, so at document start, before any of the page's scripts run,
-// it runs the scriptlets in the main world and starts the procedural filters and, in aggressive
-// mode, the generic class/id collector in the Shields world. Owned by its frame.
+// it runs the scriptlets in the main world and starts the procedural filters and the generic
+// class/id collector in the Shields world. Owned by its frame.
 class ShieldsFrameObserver : public content::RenderFrameObserver,
                              public content::RenderFrameObserverTracker<ShieldsFrameObserver>,
                              public mojom::ShieldsFrame {
@@ -48,6 +49,8 @@ class ShieldsFrameObserver : public content::RenderFrameObserver,
 
   // content::RenderFrameObserver:
   void DidCreateDocumentElement() override;
+  void DidCreateScriptContext(v8::Local<v8::Context> context, int32_t world_id) override;
+  void DidCommitProvisionalLoad(ui::PageTransition transition) override;
   void OnDestruct() override;
 
  private:
@@ -66,6 +69,8 @@ class ShieldsFrameObserver : public content::RenderFrameObserver,
   explicit ShieldsFrameObserver(content::RenderFrame* render_frame);
 
   void StartShieldsWorld(const std::string& procedural_actions, bool collect);
+  void RunScriptlets(const std::string& scriptlets);
+  void InheritParentRules();
   void InsertStylesheet(const std::string& css);
 
   // The Shields world's report(classes, ids): asks the host which of them generic rules hide.
@@ -77,6 +82,12 @@ class ShieldsFrameObserver : public content::RenderFrameObserver,
   std::optional<Pending> document_;
   // The current document's ShieldsHost, for generic hiding.
   mojo::Remote<mojom::ShieldsHost> host_;
+  // The current document's stylesheet and scriptlets, which a child frame's initial empty
+  // document takes on.
+  std::string current_stylesheet_;
+  std::string current_scriptlets_;
+  // Set once the current document has its rules: the host's, or its parent's.
+  bool document_rules_applied_ = false;
 
   base::WeakPtrFactory<ShieldsFrameObserver> weak_factory_{this};
 };

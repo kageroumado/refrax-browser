@@ -50,6 +50,12 @@ enum FindTests {
             try expectEqual(restarted.active, 1, "active match after stopFinding")
             let empty = try await find(page, "")
             try expectEqual(empty.matches, 0, "matches for empty text")
+            // Results belong to their document: a new one reports none.
+            _ = try await find(page, "needle")
+            let mark = page.events.count
+            try await page.load(context.url("/html/basic"))
+            let reset = try await page.waitForEvent("findResultChanged", after: mark)
+            try expectEqual(reset["matches"] as? Int, 0, "matches after navigating away")
         },
     ]
 }

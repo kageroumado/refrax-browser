@@ -12,10 +12,13 @@
 namespace refrax {
 
 // A page's content-blocking decisions, newest last, for Refrax to pull (CONTRACT.md §4.7). Keeps
-// the newest kCapacity entries; sequence numbers keep counting across the ones dropped.
+// the newest kCapacity entries within kMaxBytes of JSON; sequence numbers keep counting across the
+// ones dropped. One answer carries at most kMaxReplyBytes; the rest comes with the next pull.
 class RequestLog {
  public:
   static constexpr size_t kCapacity = 2000;
+  static constexpr size_t kMaxBytes = 2 * 1024 * 1024;
+  static constexpr size_t kMaxReplyBytes = 3 * 1024 * 1024;
 
   RequestLog();
   RequestLog(const RequestLog&) = delete;
@@ -25,11 +28,18 @@ class RequestLog {
   // Numbers `entry` (its `seq`) and appends it.
   void Add(base::DictValue entry);
 
-  // {"entries": [entries with seq > since, oldest first], "nextSequence": the next seq}.
+  // {"entries": [entries with seq > since, oldest first], "nextSequence": the seq to ask after
+  // next time}: the last entry's, or `since` when there are none.
   std::string Since(int64_t since) const;
 
  private:
-  base::circular_deque<base::DictValue> entries_;
+  struct Entry {
+    int64_t seq;
+    std::string json;
+  };
+
+  base::circular_deque<Entry> entries_;
+  size_t bytes_ = 0;
   int64_t next_sequence_ = 1;
 };
 

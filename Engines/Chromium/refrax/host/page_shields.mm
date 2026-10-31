@@ -2,10 +2,13 @@
 
 #include "refrax/host/page_shields.h"
 
+#include <set>
 #include <utility>
 
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
+#include "base/no_destructor.h"
+#include "base/task/thread_pool.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
@@ -46,10 +49,36 @@ std::string HidingStylesheet(const base::ListValue& selectors) {
 PageShields::Document::Document() = default;
 PageShields::Document::~Document() = default;
 
-PageShields::PageShields(content::WebContents* web_contents)
-    : content::WebContentsObserver(web_contents) {}
+// Every live PageShields, for attributing workers' requests to a page.
+static std::set<PageShields*>& AllPageShields() {
+  static base::NoDestructor<std::set<PageShields*>> all;
+  return *all;
+}
 
-PageShields::~PageShields() = default;
+PageShields::PageShields(content::WebContents* web_contents)
+    : content::WebContentsObserver(web_contents) {
+  AllPageShields().insert(this);
+}
+
+PageShields::~PageShields() {
+  AllPageShields().erase(this);
+}
+
+// static
+void PageShields::LogForWorker(const content::BrowserContext* browser_context,
+                               const url::Origin& origin,
+                               base::DictValue entry) {
+  for (PageShields* shields : AllPageShields()) {
+    content::WebContents* contents = shields->web_contents();
+    if (!contents || (browser_context && contents->GetBrowserContext() != browser_context)) {
+      continue;
+    }
+    if (contents->GetPrimaryMainFrame()->GetLastCommittedOrigin() == origin) {
+      shields->log().Add(std::move(entry));
+      return;
+    }
+  }
+}
 
 // static
 void PageShields::LogFor(content::RenderFrameHost* frame, base::DictValue entry) {
@@ -68,9 +97,25 @@ void PageShields::ReadyToCommitNavigation(content::NavigationHandle* navigation)
   if (navigation->IsSameDocument() || navigation->IsErrorPage()) {
     return;
   }
-  const GURL& url = navigation->GetURL();
+  const GURL& document_url = navigation->GetURL();
   content::RenderFrameHost* frame = navigation->GetRenderFrameHost();
-  if (!frame || !url.SchemeIsHTTPOrHTTPS()) {
+  if (!frame) {
+    return;
+  }
+  // The rules of the page that made the document: an about:blank or about:srcdoc frame, or a
+  // data:, blob: or javascript: one, gets its parent's (uBO's match_about_blank), so a page
+  // can't escape its scriptlets through a frame of its own.
+  GURL url = document_url;
+  if (!url.SchemeIsHTTPOrHTTPS()) {
+    if (url.SchemeIsBlob()) {
+      url = url::Origin::Create(url).GetURL();
+    } else if (content::RenderFrameHost* parent = frame->GetParentOrOuterDocument()) {
+      url = parent->GetLastCommittedURL();
+    } else if (navigation->GetInitiatorOrigin() && !navigation->GetInitiatorOrigin()->opaque()) {
+      url = navigation->GetInitiatorOrigin()->GetURL();
+    }
+  }
+  if (!url.SchemeIsHTTPOrHTTPS()) {
     return;
   }
   const GURL top_url = navigation->IsInOutermostMainFrame()
@@ -109,12 +154,10 @@ void PageShields::ReadyToCommitNavigation(content::NavigationHandle* navigation)
   }
   const std::string* scriptlets = resources->FindString("injected_script");
 
-  // Generic class/id hiding: aggressive mode only, and never under $generichide.
+  // Generic class/id hiding, except under $generichide.
   mojo::PendingRemote<mojom::ShieldsHost> host;
-  if (ShieldsService::Get().mode() == ShieldsService::Mode::kAggressive &&
-      !resources->FindBool("generichide").value_or(false)) {
+  if (!resources->FindBool("generichide").value_or(false)) {
     auto document = std::make_unique<Document>();
-    document->engine = engine;
     if (const base::ListValue* exceptions = resources->FindList("exceptions")) {
       document->exceptions = exceptions->Clone();
     }
@@ -123,16 +166,20 @@ void PageShields::ReadyToCommitNavigation(content::NavigationHandle* navigation)
 
   mojo::AssociatedRemote<mojom::ShieldsFrame> shields_frame;
   frame->GetRemoteAssociatedInterfaces()->GetInterface(&shields_frame);
-  shields_frame->Apply(url, stylesheet, scriptlets ? *scriptlets : std::string(), procedural,
-                       std::move(host));
+  shields_frame->Apply(document_url, stylesheet, scriptlets ? *scriptlets : std::string(),
+                       procedural, std::move(host));
 }
 
 void PageShields::HiddenClassIdSelectors(const std::vector<std::string>& classes,
                                          const std::vector<std::string>& ids,
                                          HiddenClassIdSelectorsCallback callback) {
-  const std::unique_ptr<Document>& document = receivers_.current_context();
-  // A renderer asks in batches; one that sends an absurd batch gets nothing.
-  if (!document || classes.size() + ids.size() > 50'000) {
+  constexpr size_t kMaxCalls = 1000;
+  constexpr size_t kMaxNames = 50'000;
+  Document* document = receivers_.current_context().get();
+  scoped_refptr<ShieldsEngineRef> engine = ShieldsService::Get().engine();
+  // A renderer asks in batches as its page grows; one that asks without end gets nothing more.
+  if (!document || !engine || ++document->calls > kMaxCalls ||
+      (document->names += classes.size() + ids.size()) > kMaxNames) {
     std::move(callback).Run(std::string());
     return;
   }
@@ -150,18 +197,24 @@ void PageShields::HiddenClassIdSelectors(const std::vector<std::string>& classes
                               .Set("ids", std::move(id_list))
                               .Set("exceptions", document->exceptions.Clone()),
                           &query);
-  ShieldsBuffer buffer{};
-  if (shields_engine_hidden_class_id_selectors(document->engine->engine(),
-                                               reinterpret_cast<const uint8_t*>(query.data()),
-                                               query.size(), &buffer) != SHIELDS_OK) {
-    shields_buffer_free(&buffer);
-    std::move(callback).Run(std::string());
-    return;
-  }
-  std::optional<base::Value> selectors = TakeJSON(buffer);
-  std::move(callback).Run(selectors && selectors->is_list()
-                              ? HidingStylesheet(selectors->GetList())
-                              : std::string());
+  // Matched off the UI thread, with the engine current when the page asks.
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE, {base::TaskPriority::USER_VISIBLE},
+      base::BindOnce(
+          [](scoped_refptr<ShieldsEngineRef> engine, std::string query) {
+            ShieldsBuffer buffer{};
+            if (shields_engine_hidden_class_id_selectors(
+                    engine->engine(), reinterpret_cast<const uint8_t*>(query.data()),
+                    query.size(), &buffer) != SHIELDS_OK) {
+              shields_buffer_free(&buffer);
+              return std::string();
+            }
+            std::optional<base::Value> selectors = TakeJSON(buffer);
+            return selectors && selectors->is_list() ? HidingStylesheet(selectors->GetList())
+                                                     : std::string();
+          },
+          std::move(engine), std::move(query)),
+      std::move(callback));
 }
 
 }  // namespace refrax

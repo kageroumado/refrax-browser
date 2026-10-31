@@ -68,6 +68,7 @@ enum Fixtures {
         "media": """
         <!doctype html><title>media</title>
         <audio id=player src="/asset/tone.wav" loop></audio>
+        <audio id=muted src="/asset/tone.wav" loop muted></audio>
         """,
 
         "spa": spa,

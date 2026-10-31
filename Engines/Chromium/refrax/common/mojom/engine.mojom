@@ -70,8 +70,9 @@ interface Page {
   RequestLog(int64 since) => (string log);
 
   // Accessibility. An assistive technology reached the page's container: build the pages'
-  // accessibility trees from now on.
-  EnableAccessibility();
+  // accessibility trees from now on, in full while `screen_reader` (VoiceOver is on), else the
+  // basic tree other assistive technologies read.
+  EnableAccessibility(bool screen_reader);
   // The token of the page's root accessibility element in the host, and the host's pid, which
   // the client turns into an NSAccessibilityRemoteUIElement for the container's child. An empty
   // token while the page has nothing rendered.
@@ -109,6 +110,10 @@ interface PageClient {
   ShowDevToolsWindow(uint64 container_ns_view_id, string title) => ();
   // Closes the DevTools window. The user closing it sends the contract's devTools `hide`.
   CloseDevToolsWindow();
+
+  // A key-down the DevTools frontend didn't handle (ui::EventToData of its NSEvent): ⌘W closes
+  // the DevTools window, anything else goes to Refrax's menus.
+  RedispatchDevToolsKeyEvent(array<uint8> native_event_data);
 
   // The page's root accessibility element was replaced (a new renderer): a token from
   // GetAccessibilityToken is stale.

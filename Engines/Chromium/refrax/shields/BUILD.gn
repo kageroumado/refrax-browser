@@ -10,7 +10,10 @@ import("//build/rust/rust_static_library.gni")
 rust_static_library("shields") {
   crate_name = "shields"
   crate_root = "src/lib.rs"
-  sources = [ "src/lib.rs" ]
+  sources = [
+    "src/lib.rs",
+    "src/stats.rs",
+  ]
   public = [ "include/shields.h" ]
   allow_unsafe = true
   edition = "2021"

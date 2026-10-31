@@ -12,6 +12,7 @@
 #include "content/public/browser/web_contents_delegate.h"
 #include "ui/base/cocoa/views_hostable.h"
 #include "ui/gfx/geometry/size.h"
+#include "url/gurl.h"
 
 class Profile;
 
@@ -34,13 +35,18 @@ class DevToolsFrontend : public content::WebContentsDelegate,
  public:
   enum class Panel { kDefault, kConsole, kElementSelection };
 
-  // `on_closed` runs when the frontend asks to close (its close button, or the page it
-  // inspects going away); the owner then deletes this.
-  DevToolsFrontend(content::WebContents* inspected,
-                   remote_cocoa::mojom::Application* application,
-                   uint64_t container_ns_view_id,
-                   Panel panel,
-                   base::OnceClosure on_closed);
+  // `on_closed` runs when the frontend asks to close (its close button, the page it inspects
+  // going away, its renderer gone); the owner then deletes this. `open_url` takes the links it
+  // opens in a new tab; `unhandled_key` the key-downs it doesn't handle, returning whether it
+  // took them.
+  DevToolsFrontend(
+      content::WebContents* inspected,
+      remote_cocoa::mojom::Application* application,
+      uint64_t container_ns_view_id,
+      Panel panel,
+      base::OnceClosure on_closed,
+      base::RepeatingCallback<void(const GURL&)> open_url,
+      base::RepeatingCallback<bool(const input::NativeWebKeyboardEvent&)> unhandled_key);
   DevToolsFrontend(const DevToolsFrontend&) = delete;
   DevToolsFrontend& operator=(const DevToolsFrontend&) = delete;
   ~DevToolsFrontend() override;
@@ -70,6 +76,7 @@ class DevToolsFrontend : public content::WebContentsDelegate,
   ui::ViewsHostableView* hostable_view() const;
   void OnLoaded();
   void RequestClose();
+  void OpenURL(const std::string& url);
 
   const raw_ptr<content::WebContents> inspected_;
   const raw_ptr<remote_cocoa::mojom::Application> application_;
@@ -81,6 +88,8 @@ class DevToolsFrontend : public content::WebContentsDelegate,
   bool attached_ = false;
   gfx::Size size_;
   base::OnceClosure on_closed_;
+  base::RepeatingCallback<void(const GURL&)> open_url_;
+  base::RepeatingCallback<bool(const input::NativeWebKeyboardEvent&)> unhandled_key_;
 
   base::WeakPtrFactory<DevToolsFrontend> weak_factory_{this};
 };

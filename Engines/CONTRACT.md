@@ -124,6 +124,7 @@ since 1970, optional fields may be omitted or `null`.
 | `rendererHealthChanged` | `health`: `{"running":{}}` \| `{"unresponsive":{"since":<date>}}` \| `{"terminated":{"reason":…}}` \| `{"suspended":{}}` | Reasons: `crashed`, `sharedProcessCrashed`, `exceededMemoryLimit`, `exceededCPULimit`, `requestedByBrowser`, `unknown` |
 | `findResultChanged` (2.0) | `matches`, `activeMatch`, `isFinal` | Results of the latest `find`: the number of matches in the page and the 1-based index of the selected one (0 when there is none). Counting may take several events; the last of a search has `isFinal` true. An empty `text` answers `0`, `0`, `true` |
 | `devToolsChanged` (2.0) | `isShown` | The page's developer tools opened or closed, including when the user closed them |
+| `loadedUnfiltered` (2.0) | `url` | Content blocking is on, but its first engine wasn't loaded in time (the engine waits up to 1.5 s): the page at `url` loaded without it |
 
 `failure` = `{ "kind", "url?", "isProvisional", "engineCode", "description" }` where `kind` is one
 of `cancelled`, `cannotFindHost`, `cannotConnectToHost`, `notConnectedToInternet`,
@@ -259,12 +260,18 @@ previous engine until then. `lists` maps each list's `sourceIndex` in that engin
 `siteSettings` rule with `contentBlockingEnabled: false` are not filtered.
 
 What filtering covers: network requests of every kind (documents, subresources, workers,
-WebSockets), blocked, answered with a redirect resource (`$redirect`), or redirected without the
-parameters `$removeparam` removes; `$csp` policies added to document responses; a top-level page a
-`$document` rule names replaced by a page saying so (`navigationFailed` with `blockedByPolicy`);
-and cosmetic filtering in every frame: hiding, scriptlets, procedural filters. `mode` is
-`standard` or `aggressive`: standard spares a site's own (first-party) requests unless the rule
-is `$important`, and applies no generic class/id hiding; aggressive applies every rule.
+prefetches, WebSockets, WebTransport), blocked, answered with a redirect resource (`$redirect`),
+or redirected without the parameters `$removeparam` removes, at every redirect; `$csp` policies
+added to document responses; a top-level page a `$document` rule names replaced by a page saying
+so (`navigationFailed` with `blockedByPolicy`); and cosmetic filtering in every frame: hiding,
+scriptlets, procedural filters. A frame showing `about:blank`, `about:srcdoc` or a `data:`,
+`blob:` or `javascript:` document, a frame's initial empty document included, gets the rules of
+the page that made it. Not filtered: downloads (the user asked for the file), and responses a
+service worker answers from its own cache (its network requests are filtered). A page whose
+first engine is still loading waits for it, up to 1.5 s, then loads unfiltered and says so
+(`loadedUnfiltered`). `mode` is
+`standard`: every network and cosmetic rule applies, first-party requests and generic class and
+id hiding included.
 
 `notifications` is the only source of notification permission in the engine: `Notification.permission`
 and permission queries read it (`granted`, `denied`, or for other origins `default` when
@@ -283,7 +290,7 @@ What happens outside any page travels between the engine and Refrax directly
 |---|---|---|
 | `notificationShown` | `profile` (the page spec's profile), `notification` (as in §4.1) | A service worker showed a notification, or a page did and the engine can't name the page |
 | `notificationClosed` | `id` | The worker or page closed it |
-| `contentBlockingStatus` (2.0) | `status`: `applied` \| `unfiltered`, `sha256?`, `reason?` | Once per `contentBlocking` policy: the engine loaded the named engine file (`applied`, with its `sha256`), or pages stay unfiltered (`reason` says why; none when `isEnabled` is false) |
+| `contentBlockingStatus` (2.0) | `status`: `applied` \| `unfiltered`, `sha256?`, `reason?` | Once per `contentBlocking` policy: the engine filters with the engine file `sha256` (`applied`), or pages are unfiltered (`reason` says why; none when `isEnabled` is false). `applied` with a `reason` means the new file failed and the engine kept filtering with the previous one, named by `sha256` |
 
 | Command (Refrax → engine) | Fields |
 |---|---|
@@ -310,7 +317,10 @@ either direction.
 An engine declaring `requestLog` keeps each page's newest 2,000 content-blocking decisions, and
 Refrax pulls them (`requestLogSince:completion:` in `RFXEngine.h`) when it shows them; nothing
 streams. The answer is `{ "entries": [...], "nextSequence" }`: the entries numbered after the
-sequence asked for, oldest first, and the number the next entry will get. An entry:
+sequence asked for, oldest first, and the sequence to ask after next time (the last entry's, or
+the one asked for when there are none; an answer is at most 3 MB, and the rest comes with the
+next pull). The log keeps at most
+2 MB of entries; a URL or rule longer than 2 KB is cut short and its entry marked `truncated`. An entry:
 
 ```json
 { "seq": 1812, "time": 1793450000.25, "frameURL": "https://news.example/", "url": "https://ads.example/a.js",
@@ -321,8 +331,7 @@ sequence asked for, oldest first, and the number the next entry will get. An ent
 `decision` is `blocked`, `redirected`, `rewritten` (with `rewrittenURL`), `allowed`, `excepted`
 (an exception rule lifted a block) or `csp` (with the `csp` added). `type` is adblock-rust's
 request type. `rule`, `list` (a `lists[].id` of the policy) and `line` (zero-based, in that list)
-name the rule that matched; `sparedFirstParty` is true when standard mode let a first-party
-request through that a rule matched. `exactness` is `exact` when the engine recorded the decision
+name the rule that matched. `exactness` is `exact` when the engine recorded the decision
 as it made it, `attributed` when it was reconstructed afterwards.
 
 ### 4.8 Accessibility

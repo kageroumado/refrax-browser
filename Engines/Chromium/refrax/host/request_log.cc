@@ -4,6 +4,7 @@
 
 #include <utility>
 
+#include "base/strings/string_number_conversions.h"
 #include "refrax/host/contract_json.h"
 
 namespace refrax {
@@ -12,24 +13,34 @@ RequestLog::RequestLog() = default;
 RequestLog::~RequestLog() = default;
 
 void RequestLog::Add(base::DictValue entry) {
-  entry.Set("seq", static_cast<double>(next_sequence_++));
-  if (entries_.size() == kCapacity) {
+  const int64_t seq = next_sequence_++;
+  entry.Set("seq", static_cast<double>(seq));
+  std::string json = contract::Serialize(entry);
+  bytes_ += json.size();
+  entries_.push_back({seq, std::move(json)});
+  while (entries_.size() > kCapacity || (bytes_ > kMaxBytes && entries_.size() > 1)) {
+    bytes_ -= entries_.front().json.size();
     entries_.pop_front();
   }
-  entries_.push_back(std::move(entry));
 }
 
 std::string RequestLog::Since(int64_t since) const {
-  base::ListValue entries;
-  for (const base::DictValue& entry : entries_) {
-    if (entry.FindDouble("seq").value_or(0) > static_cast<double>(since)) {
-      entries.Append(entry.Clone());
+  std::string entries;
+  int64_t last = since;
+  for (const Entry& entry : entries_) {
+    if (entry.seq <= since) {
+      continue;
     }
+    if (!entries.empty() && entries.size() + entry.json.size() > kMaxReplyBytes) {
+      break;
+    }
+    if (!entries.empty()) {
+      entries += ',';
+    }
+    entries += entry.json;
+    last = entry.seq;
   }
-  return contract::Serialize(
-      base::DictValue()
-          .Set("entries", std::move(entries))
-          .Set("nextSequence", static_cast<double>(next_sequence_)));
+  return "{\"entries\":[" + entries + "],\"nextSequence\":" + base::NumberToString(last) + "}";
 }
 
 }  // namespace refrax

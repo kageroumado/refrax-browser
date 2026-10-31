@@ -123,8 +123,8 @@ nonisolated struct RequestLogEntry: Codable, Hashable, Sendable {
     var rewrittenURL: URL?
     /// The policy added, for `csp`.
     var csp: String?
-    /// Standard mode let a first-party request through that a filter matched (`allowed`).
-    var sparedFirstParty: Bool?
+    /// The engine cut a URL or rule in the entry short.
+    var truncated: Bool?
     let exactness: Exactness
 }
 

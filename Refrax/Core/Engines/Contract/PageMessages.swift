@@ -52,6 +52,9 @@ nonisolated enum PageEvent: Codable, Hashable, Sendable {
     case findResultChanged(matches: Int, activeMatch: Int, isFinal: Bool)
     /// The engine's developer tools for the page opened or closed, the user's closing included.
     case devToolsChanged(isShown: Bool)
+    /// Content blocking is on but its engine wasn't ready in time: the document at `url` loaded
+    /// unfiltered.
+    case loadedUnfiltered(url: URL)
 }
 
 /// A notification an engine page showed, for Refrax to put in Notification Center.

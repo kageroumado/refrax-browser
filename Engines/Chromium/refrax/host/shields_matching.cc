@@ -22,6 +22,26 @@ std::string TakeString(ShieldsBuffer& buffer) {
   return std::string(reinterpret_cast<const char*>(buffer.data), buffer.len);
 }
 
+// Longest URL or rule text a log entry keeps; longer ones are cut and the entry marked
+// `truncated`, so one data: URL can't crowd out the rest of the log.
+constexpr size_t kMaxLoggedText = 2048;
+
+// `text` cut to kMaxLoggedText (URL specs and filter text are ASCII, so a byte cut is safe).
+std::string Logged(const std::string& text, bool& truncated) {
+  if (text.size() <= kMaxLoggedText) {
+    return text;
+  }
+  truncated = true;
+  return text.substr(0, kMaxLoggedText);
+}
+
+base::Value LoggedURL(const GURL& url, bool& truncated) {
+  if (!url.is_valid() || url.is_empty()) {
+    return base::Value();
+  }
+  return base::Value(Logged(url.spec(), truncated));
+}
+
 bool IsThirdParty(const GURL& url, const GURL& source) {
   return !net::registry_controlled_domains::SameDomainOrHost(
       url, source, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
@@ -81,9 +101,7 @@ std::string RequestType(network::mojom::RequestDestination destination,
   }
 }
 
-Decision Match(const ShieldsEngineRef& engine,
-               ShieldsService::Mode mode,
-               const Request& request) {
+Decision Match(const ShieldsEngineRef& engine, const Request& request) {
   Decision decision;
   if (!engine.engine() || !request.url.SchemeIsHTTPOrHTTPS()) {
     return decision;
@@ -118,16 +136,6 @@ Decision Match(const ShieldsEngineRef& engine,
   decision.exception_rule = TakeString(result.exception_rule);
   shields_decision_free(&result);
 
-  // Standard mode spares a site's own requests unless the rule is $important; a main-frame
-  // request is always the site's own, and only $document rules match it.
-  if (mode == ShieldsService::Mode::kStandard && !third_party &&
-      request.type != "main_frame" && !decision.important &&
-      (decision.should_block || decision.rewritten_url.is_valid())) {
-    decision.should_block = false;
-    decision.redirect.clear();
-    decision.rewritten_url = GURL();
-    decision.spared_first_party = true;
-  }
   if (!decision.should_block) {
     decision.redirect.clear();
   }
@@ -135,15 +143,15 @@ Decision Match(const ShieldsEngineRef& engine,
 }
 
 void MatchOnPool(scoped_refptr<ShieldsEngineRef> engine,
-                 ShieldsService::Mode mode,
                  Request request,
                  base::OnceCallback<void(Decision)> reply) {
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE, {base::TaskPriority::USER_BLOCKING},
       base::BindOnce(
-          [](scoped_refptr<ShieldsEngineRef> engine, ShieldsService::Mode mode,
-             Request request) { return Match(*engine, mode, request); },
-          std::move(engine), mode, std::move(request)),
+          [](scoped_refptr<ShieldsEngineRef> engine, Request request) {
+            return Match(*engine, request);
+          },
+          std::move(engine), std::move(request)),
       std::move(reply));
 }
 
@@ -182,14 +190,15 @@ base::DictValue LogEntry(const ShieldsEngineRef& engine,
                          const Decision& decision,
                          std::string_view what) {
   base::DictValue entry;
+  bool truncated = false;
   entry.Set("time", base::Time::Now().InSecondsFSinceUnixEpoch());
-  entry.Set("frameURL", contract::URLValue(request.frame_url));
-  entry.Set("url", contract::URLValue(request.url));
+  entry.Set("frameURL", LoggedURL(request.frame_url, truncated));
+  entry.Set("url", LoggedURL(request.url, truncated));
   entry.Set("type", request.type);
   entry.Set("method", request.method.empty() ? "GET" : request.method);
   entry.Set("decision", what);
   if (!decision.rule.empty()) {
-    entry.Set("rule", decision.rule);
+    entry.Set("rule", Logged(decision.rule, truncated));
   }
   if (std::optional<std::string> list = engine.ListID(decision.rule_source_index)) {
     entry.Set("list", *list);
@@ -198,13 +207,13 @@ base::DictValue LogEntry(const ShieldsEngineRef& engine,
     entry.Set("line", decision.rule_line);
   }
   if (!decision.exception_rule.empty()) {
-    entry.Set("exceptionRule", decision.exception_rule);
+    entry.Set("exceptionRule", Logged(decision.exception_rule, truncated));
   }
   if (decision.rewritten_url.is_valid()) {
-    entry.Set("rewrittenURL", contract::URLValue(decision.rewritten_url));
+    entry.Set("rewrittenURL", LoggedURL(decision.rewritten_url, truncated));
   }
-  if (decision.spared_first_party) {
-    entry.Set("sparedFirstParty", true);
+  if (truncated) {
+    entry.Set("truncated", true);
   }
   entry.Set("exactness", "exact");
   return entry;

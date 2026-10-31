@@ -275,15 +275,19 @@ vendor_crates() {
         --manifest-path "$work/Cargo.toml" "$work/vendor" >/dev/null
     [[ -e "$dest/vendor" ]] && trash "$dest/vendor"
     mkdir -p "$dest/vendor"
-    local crate base version major minor epoch
+    # Name and version from each crate's own manifest: a version may carry a prerelease
+    # (1.0.0-rc.1) whose dashes a directory name can't be split on. gnrt's epochs: v<major>,
+    # v0_<minor>, or v0_0_<patch>.
+    local crate name version major minor patch epoch
     for crate in "$work/vendor"/*; do
-        base=$(basename "$crate")
-        version=${base##*-}
-        major=${version%%.*}
-        minor=${version#*.}
-        minor=${minor%%.*}
-        if ((major > 0)); then epoch="v$major"; else epoch="v0_$minor"; fi
-        mv "$crate" "$dest/vendor/${base%-*}-$epoch"
+        name=$(sed -n '/^\[package\]/,/^\[/s/^name = "\(.*\)"/\1/p' "$crate/Cargo.toml" | head -1)
+        version=$(sed -n '/^\[package\]/,/^\[/s/^version = "\(.*\)"/\1/p' "$crate/Cargo.toml" | head -1)
+        version=${version%%[-+]*}
+        IFS=. read -r major minor patch <<<"$version"
+        if ((major > 0)); then epoch="v$major"
+        elif ((minor > 0)); then epoch="v0_$minor"
+        else epoch="v0_0_$patch"; fi
+        mv "$crate" "$dest/vendor/$name-$epoch"
     done
     trash "$work"
     touch "$dest/.vendored-$lock_hash"

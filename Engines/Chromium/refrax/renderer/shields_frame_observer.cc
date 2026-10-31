@@ -134,24 +134,29 @@ constexpr char kShieldsWorldScript[] = R"JS(
   operators['matches-css-before'] = cssMatcher('::before');
   operators['matches-css-after'] = cssMatcher('::after');
 
+  // Through the CSSOM, which a page's CSP doesn't govern, unlike a style attribute.
   const done = new WeakMap();
+  const tokens = (arg) => String(arg || '').split('|').map((token) => token.trim()).filter(Boolean);
   const act = (node, filter) => {
     const seen = done.get(node) || new Set();
     if (seen.has(filter)) return;
     seen.add(filter);
     done.set(node, seen);
     const action = filter.action;
-    if (!action) {
-      node.style.setProperty('display', 'none', 'important');
-    } else if (action.type === 'remove') {
-      node.remove();
-    } else if (action.type === 'style') {
-      node.setAttribute('style', (node.getAttribute('style') || '') + ';' + action.arg);
-    } else if (action.type === 'remove-attr') {
-      for (const name of action.arg.split('|')) node.removeAttribute(name);
-    } else if (action.type === 'remove-class') {
-      node.classList.remove(...action.arg.split('|'));
-    }
+    try {
+      if (!action) {
+        node.style.setProperty('display', 'none', 'important');
+      } else if (action.type === 'remove') {
+        node.remove();
+      } else if (action.type === 'style') {
+        node.style.cssText += ';' + action.arg;
+      } else if (action.type === 'remove-attr') {
+        for (const name of tokens(action.arg)) node.removeAttribute(name);
+      } else if (action.type === 'remove-class') {
+        const names = tokens(action.arg);
+        if (names.length) node.classList.remove(...names);
+      }
+    } catch (e) {}
   };
   const runFilters = () => {
     for (const filter of filters) {
@@ -262,6 +267,64 @@ void ShieldsFrameObserver::Apply(const GURL& url,
   pending_ = std::move(pending);
 }
 
+void ShieldsFrameObserver::RunScriptlets(const std::string& scriptlets) {
+  if (scriptlets.empty()) {
+    return;
+  }
+  // uBO's scriptlets keep shared state in `scriptletGlobals`, which adblock-rust leaves for the
+  // embedder to declare.
+  render_frame()->GetWebFrame()->ExecuteScript(blink::WebScriptSource(blink::WebString::FromUtf8(
+      "(function(){const scriptletGlobals={};\n" + scriptlets + "\n})();")));
+}
+
+void ShieldsFrameObserver::DidCreateScriptContext(v8::Local<v8::Context> context,
+                                                  int32_t world_id) {
+  if (world_id == 0 && !pending_ && !document_) {
+    InheritParentRules();
+  }
+}
+
+void ShieldsFrameObserver::InheritParentRules() {
+  // A document the host never sees commit (a frame's initial empty document, or the
+  // about:blank it commits in the renderer) gets no push, and a page could take untouched
+  // globals from it (`iframe.contentWindow`). It gets its parent's rules, while the parent is a
+  // frame of this process, as soon as it has a document or a main world, whichever is first.
+  if (document_rules_applied_) {
+    return;
+  }
+  blink::WebLocalFrame* frame = render_frame()->GetWebFrame();
+  const GURL url(frame->GetDocument().Url());
+  if (!url.is_empty() && !url.IsAboutBlank()) {
+    return;
+  }
+  blink::WebFrame* parent = frame->Parent();
+  if (!parent || !parent->IsWebLocalFrame()) {
+    return;
+  }
+  content::RenderFrame* parent_frame =
+      content::RenderFrame::FromWebFrame(parent->ToWebLocalFrame());
+  ShieldsFrameObserver* parent_shields =
+      parent_frame ? ShieldsFrameObserver::Get(parent_frame) : nullptr;
+  if (!parent_shields || (parent_shields->current_stylesheet_.empty() &&
+                          parent_shields->current_scriptlets_.empty())) {
+    return;
+  }
+  document_rules_applied_ = true;
+  current_stylesheet_ = parent_shields->current_stylesheet_;
+  current_scriptlets_ = parent_shields->current_scriptlets_;
+  if (!frame->GetDocument().IsNull()) {
+    InsertStylesheet(current_stylesheet_);
+  }
+  RunScriptlets(current_scriptlets_);
+}
+
+void ShieldsFrameObserver::DidCommitProvisionalLoad(ui::PageTransition transition) {
+  // A new document: its own rules (or its parent's), none yet.
+  document_rules_applied_ = false;
+  current_stylesheet_.clear();
+  current_scriptlets_.clear();
+}
+
 void ShieldsFrameObserver::DidCreateDocumentElement() {
   host_.reset();
   document_.reset();
@@ -280,16 +343,15 @@ void ShieldsFrameObserver::DidCreateDocumentElement() {
 
 void ShieldsFrameObserver::RunScriptsAtDocumentStart() {
   if (!document_) {
+    InheritParentRules();
     return;
   }
   Pending document = std::move(*document_);
   document_.reset();
-  if (!document.scriptlets.empty()) {
-    // uBO's scriptlets keep shared state in `scriptletGlobals`, which adblock-rust leaves for
-    // the embedder to declare.
-    render_frame()->GetWebFrame()->ExecuteScript(blink::WebScriptSource(blink::WebString::FromUtf8(
-        "(function(){const scriptletGlobals={};\n" + document.scriptlets + "\n})();")));
-  }
+  document_rules_applied_ = true;
+  current_stylesheet_ = document.stylesheet;
+  current_scriptlets_ = document.scriptlets;
+  RunScriptlets(document.scriptlets);
   const bool collect = document.host.is_valid();
   if (collect) {
     host_.Bind(std::move(document.host));

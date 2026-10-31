@@ -340,15 +340,18 @@ std::optional<base::DictValue> EngineHostImpl::ProfileSpec(Profile* profile) {
   return std::nullopt;
 }
 
-void EngineHostImpl::EnableAccessibility() {
-  if (accessibility_mode_) {
+void EngineHostImpl::EnableAccessibility(bool screen_reader) {
+  if (accessibility_mode_ && accessibility_screen_reader_ == screen_reader) {
     return;
   }
   // The trees are read from the client's process through remote elements, as an app shim's
   // windows are; macOS needs this process marked as one serving remote UI.
   [NSAccessibilityRemoteUIElement setRemoteUIApp:YES];
+  accessibility_screen_reader_ = screen_reader;
+  // The new mode is in force before the previous one is released.
+  std::unique_ptr<content::ScopedAccessibilityMode> previous = std::move(accessibility_mode_);
   accessibility_mode_ = content::BrowserAccessibilityState::GetInstance()->CreateScopedModeForProcess(
-      ui::kAXModeComplete | ui::AXMode::kFromPlatform);
+      (screen_reader ? ui::kAXModeComplete : ui::kAXModeBasic) | ui::AXMode::kFromPlatform);
 }
 
 void EngineHostImpl::EmitEngineEvent(std::string event) {
