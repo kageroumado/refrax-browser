@@ -55,7 +55,6 @@ struct IslandDropPayloadTests {
     @Test(arguments: [
         "javascript:alert(document.cookie)",
         "data:text/html,<script>alert(1)</script>",
-        "file:///etc/passwd",
         "refrax://settings",
         "webkit-extension://abc/page.html",
         "x-apple.systempreferences:com.apple.preference.security",

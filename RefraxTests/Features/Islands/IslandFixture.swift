@@ -46,7 +46,8 @@ final class IslandFixture {
     }
 
     func tab(_ title: String, group: TabGroup? = nil) -> Refrax.Tab {
-        let tab = env.tabManager.createTab(url: .blank, in: space, groupID: group?.id, makeActive: false, loadImmediately: false)
+        let address = URL(string: "https://\(UUID().uuidString.lowercased()).test/")!
+        let tab = env.tabManager.createTab(url: address, in: space, groupID: group?.id, makeActive: false, loadImmediately: false)
         tab.activePage.title = title
         islands.refresh()
         return tab
