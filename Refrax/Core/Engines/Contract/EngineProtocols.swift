@@ -41,11 +41,9 @@ nonisolated extension PolicyUpdate {
 /// match with the same adblock-rust build, so both engines decide alike.
 nonisolated struct ContentBlockingPolicy: Codable, Hashable, Sendable {
     nonisolated enum Mode: String, Codable, Hashable, Sendable {
-        /// First-party requests are blocked only by `$important` and `$document` filters, and
-        /// first-party generic cosmetics are skipped.
+        /// Every network filter applies, first-party requests included, as WebKit's rule lists
+        /// apply them, so a page is filtered alike in both engines.
         case standard
-        /// Every filter applies.
-        case aggressive
     }
 
     /// A file Refrax wrote and will not rewrite while a policy names it.
