@@ -381,8 +381,13 @@ nonisolated struct PaneGrid: Equatable, Sendable {
         }
     }
 
-    /// The side of `span` that `cell` lies at: across columns first, then rows.
+    /// The side of `span` that `cell` lies at. A pane both wide and tall splits along the axis
+    /// on which `cell` leaves its anchor, so the cell below the anchor stacks and the cell
+    /// beside it sits side by side; across columns first when it leaves on both or neither.
     private static func edge(of span: PaneSpan, toward cell: GridCell) -> PaneEdge? {
+        if span.isWide, span.isTall, cell.column == span.anchor.column, cell.row != span.anchor.row {
+            return .bottom
+        }
         if span.isWide {
             return cell.column == 0 ? .leading : .trailing
         }

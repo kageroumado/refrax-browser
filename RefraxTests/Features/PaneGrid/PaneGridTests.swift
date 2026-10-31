@@ -132,6 +132,20 @@ struct PaneGridTests {
     }
 
     @Test
+    func `A page put below a lone page stacks under it`() throws {
+        let joined = try #require(PaneGrid(spans: [a: .whole]).inserting(b, at: .cell(.bottomLeft)))
+        #expect(joined.span(of: a)?.isWide == true)
+        #expect(joined.span(of: b)?.isWide == true)
+        #expect(joined.span(of: b)?.anchor == .bottomLeft)
+    }
+
+    @Test
+    func `A page put diagonally from a lone page sits beside it`() throws {
+        let joined = try #require(PaneGrid(spans: [a: .whole]).inserting(b, at: .cell(.bottomRight)))
+        #expect(joined.span(of: b) == Fixtures.rightColumn)
+    }
+
+    @Test
     func `A page put on an empty cell takes that cell alone`() throws {
         let grid = PaneGrid(spans: [a: PaneSpan(.topLeft), b: PaneSpan(.topRight)])
         let joined = try #require(grid.inserting(c, at: .cell(.bottomRight)))
