@@ -511,13 +511,18 @@ nonisolated enum ZipExtractor {
                 while true {
                     stream.pointee.dst_ptr = buffer
                     stream.pointee.dst_size = Layout.bufferSize
+                    let remaining = stream.pointee.src_size
                     let status = compression_stream_process(stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
                     let produced = Layout.bufferSize - stream.pointee.dst_size
                     if produced > 0 {
                         try output(Data(bytes: buffer, count: produced))
                     }
                     switch status {
-                    case COMPRESSION_STATUS_OK: continue
+                    case COMPRESSION_STATUS_OK:
+                        // A pass that neither reads nor writes would repeat forever on a truncated stream.
+                        guard produced > 0 || stream.pointee.src_size < remaining else {
+                            throw ExtensionError.invalidArchiveFormat
+                        }
                     case COMPRESSION_STATUS_END: return
                     default: throw ExtensionError.invalidArchiveFormat
                     }

@@ -356,6 +356,41 @@ struct ExtensionArchiveTests {
         #expect(!FileManager.default.fileExists(atPath: destination.path))
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func `A deflated entry whose stream breaks off is refused, never inflated forever`() async throws {
+        let folder = try ExtensionFixture(files: [
+            "manifest.json": #"{"manifest_version": 3, "name": "Cut", "version": "1.0"}"#,
+            "cut.js": (0 ..< 20_000).map { "var v\($0) = \($0 * 7_919 % 104_729);" }.joined(separator: "\n"),
+        ]).write()
+        var zip = try TestArchives.zip(folder)
+        // Blank the second half of cut.js's compressed bytes, behind its local header.
+        let name = Data("cut.js".utf8)
+        let signature = Data([0x50, 0x4B, 0x03, 0x04])
+        var search = zip.startIndex
+        var cut = false
+        while let range = zip.range(of: signature, in: search ..< zip.endIndex) {
+            let start = range.lowerBound
+            let compressedSize = Int(zip[start + 18]) | Int(zip[start + 19]) << 8 | Int(zip[start + 20]) << 16 | Int(zip[start + 21]) << 24
+            let nameLength = Int(zip[start + 26]) | Int(zip[start + 27]) << 8
+            let extraLength = Int(zip[start + 28]) | Int(zip[start + 29]) << 8
+            if zip[start + 30 ..< start + 30 + nameLength] == name, compressedSize > 2 {
+                let body = start + 30 + nameLength + extraLength
+                zip.replaceSubrange(body + compressedSize / 2 ..< body + compressedSize, with: Data(count: compressedSize - compressedSize / 2))
+                cut = true
+            }
+            search = range.upperBound
+        }
+        #expect(cut)
+
+        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).xpi")
+        try zip.write(to: archive)
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        await #expect(throws: (any Error).self) {
+            try await ExtensionArchive.extract(archive, into: destination)
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+    }
+
     @Test
     func `An honest archive unpacks, and an unpacked tree with a link in it is refused`() async throws {
         let folder = try ExtensionFixture(files: [
