@@ -27,6 +27,8 @@
 - (void)showDevToolsWindowWithID:(uint64_t)viewID title:(NSString*)title;
 - (void)closeDevToolsWindow;
 - (void)accessibilityElementChanged;
+- (void)containerDidMoveToWindow;
+- (void)devToolsKeyDown:(NSEvent*)event;
 @end
 
 namespace {
@@ -108,6 +110,13 @@ class PageClientImpl : public refrax::mojom::PageClient {
 
   void AccessibilityElementChanged() override { [page_ accessibilityElementChanged]; }
 
+  void RedispatchDevToolsKeyEvent(const std::vector<uint8_t>& native_event_data) override {
+    NSEvent* event = ui::EventFromData(native_event_data);
+    if (event.type == NSEventTypeKeyDown) {
+      [page_ devToolsKeyDown:event];
+    }
+  }
+
   void OnScriptMessage(const std::string& message,
                        OnScriptMessageCallback callback) override {
     RFXChromiumPage* page = page_;
@@ -140,12 +149,21 @@ class PageClientImpl : public refrax::mojom::PageClient {
 @property(nonatomic, copy) void (^sizeDidChange)(NSSize size);
 // The remote root element, or nil while there is none yet; asking starts fetching it.
 @property(nonatomic, copy) id (^accessibilityRoot)(void);
+@property(nonatomic, copy) void (^didMoveToWindow)(void);
 @end
 
 @implementation RFXChromiumContainerView
 
 @synthesize sizeDidChange = _sizeDidChange;
 @synthesize accessibilityRoot = _accessibilityRoot;
+@synthesize didMoveToWindow = _didMoveToWindow;
+
+- (void)viewDidMoveToWindow {
+  [super viewDidMoveToWindow];
+  if (_didMoveToWindow) {
+    _didMoveToWindow();
+  }
+}
 
 - (id)remoteRoot {
   return _accessibilityRoot ? _accessibilityRoot() : nil;
@@ -211,6 +229,8 @@ class PageClientImpl : public refrax::mojom::PageClient {
   // Accessibility: whether an assistive technology has asked, the remote root element once
   // the host has sent its token, and whether a token request is outstanding.
   BOOL _accessibilityStarted;
+  // Whether the host was last asked for the full tree (VoiceOver on) or the basic one.
+  BOOL _accessibilityScreenReader;
   NSAccessibilityRemoteUIElement* _accessibilityRoot;
   BOOL _fetchingAccessibilityToken;
 }
@@ -232,6 +252,9 @@ class PageClientImpl : public refrax::mojom::PageClient {
     _container.accessibilityRoot = ^id {
       return [weakSelf accessibilityRoot];
     };
+    _container.didMoveToWindow = ^{
+      [weakSelf containerDidMoveToWindow];
+    };
   }
   return self;
 }
@@ -242,10 +265,15 @@ class PageClientImpl : public refrax::mojom::PageClient {
   if (_closed) {
     return nil;
   }
+  // The host builds accessibility trees only once something reads them: the basic tree for
+  // most assistive technologies, the full one while VoiceOver is on.
+  const BOOL screenReader = NSWorkspace.sharedWorkspace.voiceOverEnabled;
+  if (!_accessibilityStarted || _accessibilityScreenReader != screenReader) {
+    _page->EnableAccessibility(screenReader);
+    _accessibilityScreenReader = screenReader;
+  }
   if (!_accessibilityStarted) {
-    // The host builds accessibility trees only once something reads them.
     _accessibilityStarted = YES;
-    _page->EnableAccessibility();
     _page->SetAccessibilityParent(getpid(),
                                   ui::RemoteAccessibility::GetTokenForLocalElement(_container));
   }
@@ -280,6 +308,14 @@ class PageClientImpl : public refrax::mojom::PageClient {
   _accessibilityRoot.windowUIElement = _container.window;
   _accessibilityRoot.topLevelUIElement = _container.window;
   NSAccessibilityPostNotification(_container, NSAccessibilityLayoutChangedNotification);
+}
+
+// The remote root's window is the container's, which changes as Refrax re-parents the page.
+- (void)containerDidMoveToWindow {
+  if (_accessibilityRoot) {
+    _accessibilityRoot.windowUIElement = _container.window;
+    _accessibilityRoot.topLevelUIElement = _container.window;
+  }
 }
 
 - (void)accessibilityElementChanged {
@@ -340,6 +376,21 @@ class PageClientImpl : public refrax::mojom::PageClient {
   [_devToolsWindow close];
   _devToolsWindow = nil;
   _devToolsContainer.sizeDidChange = nil;
+}
+
+// A key the DevTools frontend left: ⌘W closes its window, as in any window; the rest go to
+// Refrax's menus.
+- (void)devToolsKeyDown:(NSEvent*)event {
+  const NSEventModifierFlags flags =
+      event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  if (flags == NSEventModifierFlagCommand &&
+      [event.charactersIgnoringModifiers isEqualToString:@"w"]) {
+    if (_devToolsWindow) {
+      [self windowShouldClose:_devToolsWindow];
+    }
+    return;
+  }
+  [NSApp.mainMenu performKeyEquivalent:event];
 }
 
 - (BOOL)windowShouldClose:(NSWindow*)window {

@@ -44,7 +44,11 @@ class DevToolsFrontend::BindingsDelegate : public DevToolsUIBindings::Delegate {
   void SetInspectedPageBounds(const gfx::Rect& rect) override {}
   void InspectElementCompleted() override {}
   void SetIsDocked(bool is_docked) override {}
-  void OpenInNewTab(const std::string& url) override {}
+  void OpenInNewTab(const std::string& url) override {
+    if (frontend_) {
+      frontend_->OpenURL(url);
+    }
+  }
   void OpenSearchResultsInNewTab(const std::string& query) override {}
   void SetWhitelistedShortcuts(const std::string& message) override {}
   void SetEyeDropperActive(bool active) override {}
@@ -63,7 +67,12 @@ class DevToolsFrontend::BindingsDelegate : public DevToolsUIBindings::Delegate {
   void ConnectionReady() override {}
   void SetOpenNewWindowForPopups(bool value) override {}
   infobars::ContentInfoBarManager* GetInfoBarManager() override { return nullptr; }
-  void RenderProcessGone(bool crashed) override {}
+  void RenderProcessGone(bool crashed) override {
+    // A frontend without its renderer is a blank window: closed, to be opened afresh.
+    if (frontend_) {
+      frontend_->RequestClose();
+    }
+  }
   void ShowCertificateViewer(const std::string& cert_chain) override {}
   int GetDockStateForLogging() override { return 0; }
   int GetOpenedByForLogging() override { return 0; }
@@ -78,12 +87,17 @@ DevToolsFrontend::DevToolsFrontend(content::WebContents* inspected,
                                    remote_cocoa::mojom::Application* application,
                                    uint64_t container_ns_view_id,
                                    Panel panel,
-                                   base::OnceClosure on_closed)
+                                   base::OnceClosure on_closed,
+                                   base::RepeatingCallback<void(const GURL&)> open_url,
+                                   base::RepeatingCallback<bool(const input::NativeWebKeyboardEvent&)>
+                                       unhandled_key)
     : inspected_(inspected),
       application_(application),
       container_ns_view_id_(container_ns_view_id),
       pending_panel_(panel),
-      on_closed_(std::move(on_closed)) {
+      on_closed_(std::move(on_closed)),
+      open_url_(std::move(open_url)),
+      unhandled_key_(std::move(unhandled_key)) {
   Profile* profile = Profile::FromBrowserContext(inspected->GetBrowserContext());
   frontend_ = content::WebContents::Create(content::WebContents::CreateParams(profile));
   frontend_->SetDelegate(this);
@@ -174,8 +188,14 @@ void DevToolsFrontend::RequestClose() {
 
 bool DevToolsFrontend::HandleKeyboardEvent(content::WebContents* source,
                                            const input::NativeWebKeyboardEvent& event) {
-  // Refrax's menus act on the page, not on its DevTools window.
-  return false;
+  return unhandled_key_.Run(event);
+}
+
+void DevToolsFrontend::OpenURL(const std::string& url) {
+  GURL target(url);
+  if (target.SchemeIsHTTPOrHTTPS()) {
+    open_url_.Run(target);
+  }
 }
 
 ui::Layer* DevToolsFrontend::GetUiLayer() const {

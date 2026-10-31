@@ -16,6 +16,7 @@ source_set("renderer") {
     "//mojo/public/cpp/bindings",
     "//refrax/common/mojom",
     "//third_party/blink/public:blink",
+    "//ui/base",
     "//url",
     "//v8",
   ]

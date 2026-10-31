@@ -51,6 +51,13 @@ class HostContentBrowserClient : public ChromeContentBrowserClient {
                        mojo::PendingRemote<network::mojom::WebSocketHandshakeClient>
                            handshake_client,
                        WebSocketOptions options) override;
+  void WillCreateWebTransport(
+      int process_id,
+      int frame_routing_id,
+      const GURL& url,
+      const url::Origin& initiator_origin,
+      mojo::PendingRemote<network::mojom::WebTransportHandshakeClient> handshake_client,
+      WillCreateWebTransportCallback callback) override;
 };
 
 }  // namespace refrax

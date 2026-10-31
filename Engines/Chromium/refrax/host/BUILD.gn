@@ -63,7 +63,7 @@ source_set("host") {
     "refrax_browser_main_extra_parts.h",
     "secret_key_provider.cc",
     "secret_key_provider.h",
-    "shields_document_throttle.cc",
+    "shields_document_throttle.mm",
     "shields_document_throttle.h",
     "shields_matching.cc",
     "shields_matching.h",

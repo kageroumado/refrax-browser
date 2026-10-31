@@ -29,12 +29,15 @@ class ShieldsEngineRef : public base::RefCountedThreadSafe<ShieldsEngineRef> {
  public:
   ShieldsEngineRef(ShieldsEngine* engine,
                    std::string sha256,
+                   std::string resources_sha256,
                    std::vector<std::string> list_ids);
   ShieldsEngineRef(const ShieldsEngineRef&) = delete;
   ShieldsEngineRef& operator=(const ShieldsEngineRef&) = delete;
 
   const ShieldsEngine* engine() const { return engine_; }
   const std::string& sha256() const { return sha256_; }
+  // "" when the policy named no resources.
+  const std::string& resources_sha256() const { return resources_sha256_; }
 
   // The policy's list id for a decision's rule_source_index, or nullopt.
   std::optional<std::string> ListID(int32_t source_index) const;
@@ -45,6 +48,7 @@ class ShieldsEngineRef : public base::RefCountedThreadSafe<ShieldsEngineRef> {
 
   raw_ptr<ShieldsEngine> engine_;
   const std::string sha256_;
+  const std::string resources_sha256_;
   const std::vector<std::string> list_ids_;
 };
 
@@ -54,13 +58,6 @@ class ShieldsEngineRef : public base::RefCountedThreadSafe<ShieldsEngineRef> {
 // SHA-256, off the UI thread. One per host process, on the UI thread.
 class ShieldsService {
  public:
-  enum class Mode {
-    // Every network and cosmetic rule, as WebKit applies them.
-    kStandard,
-    // Standard, plus generic hiding of the classes and ids pages use.
-    kAggressive,
-  };
-
   static ShieldsService& Get();
 
   ShieldsService(const ShieldsService&) = delete;
@@ -79,11 +76,16 @@ class ShieldsService {
 
   // Whether a page whose top frame shows `top_url` is filtered.
   bool IsActiveFor(const GURL& top_url) const;
+  // Whether the policy filters such a page once an engine is loaded.
+  bool Covers(const GURL& top_url) const;
 
   // The current engine, or null when there is none or blocking is off.
   scoped_refptr<ShieldsEngineRef> engine() const;
 
-  Mode mode() const { return mode_; }
+  // Whether blocking is on and the first engine is still loading: nothing filters yet.
+  bool IsLoadingFirstEngine() const;
+  // Runs `done` once no engine is loading (at once when none is).
+  void WhenLoaded(base::OnceClosure done);
 
  private:
   friend class base::NoDestructor<ShieldsService>;
@@ -96,13 +98,16 @@ class ShieldsService {
                 std::vector<std::string> list_ids,
                 std::optional<std::string> failure,
                 ShieldsEngine* engine,
-                std::string sha256);
+                std::string sha256,
+                std::string resources_sha256);
+  void SetLoading(bool loading);
 
   bool enabled_ = false;
-  Mode mode_ = Mode::kStandard;
   std::set<std::string> allowlisted_hosts_;
   std::set<std::string> site_exceptions_;
   scoped_refptr<ShieldsEngineRef> engine_;
+  bool loading_ = false;
+  std::vector<base::OnceClosure> load_waiters_;
   // Bumped by every Apply, so a slow load can't replace a newer policy's engine.
   uint64_t generation_ = 0;
 

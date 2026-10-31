@@ -58,8 +58,9 @@ class EngineHostImpl : public mojom::EngineHost, public Notifications::Delegate 
   void DestroyPage(HostPage* page);
 
   // An assistive technology reached one of the client's pages: every page builds its
-  // accessibility tree from now on, while the host runs.
-  void EnableAccessibility();
+  // accessibility tree from now on, while the host runs; in full while a screen reader is on,
+  // else the basic tree.
+  void EnableAccessibility(bool screen_reader);
 
   // mojom::EngineHost:
   void Start(const std::string& configuration,
@@ -103,6 +104,7 @@ class EngineHostImpl : public mojom::EngineHost, public Notifications::Delegate 
   WorldRegistry worlds_;
   base::ListValue scripts_;
   std::unique_ptr<content::ScopedAccessibilityMode> accessibility_mode_;
+  bool accessibility_screen_reader_ = false;
 
   // Isolated spaces, kept loaded while the client runs.
   std::map<std::string, std::unique_ptr<ScopedProfileKeepAlive>> isolated_spaces_;

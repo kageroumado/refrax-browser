@@ -12,6 +12,8 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "net/base/net_errors.h"
+#include "refrax/host/contract_json.h"
+#include "refrax/host/host_page.h"
 #include "refrax/host/page_shields.h"
 #include "refrax/host/shields_service.h"
 
@@ -67,6 +69,15 @@ const char* ShieldsDocumentThrottle::GetNameForLogging() {
 
 content::NavigationThrottle::ThrottleCheckResult ShieldsDocumentThrottle::Decide() {
   const GURL& url = navigation_handle()->GetURL();
+  if (ShieldsService::Get().IsLoadingFirstEngine() && ShieldsService::Get().Covers(url)) {
+    waiting_for_engine_ = true;
+    ShieldsService::Get().WhenLoaded(base::BindOnce(&ShieldsDocumentThrottle::OnEngineReady,
+                                                    weak_factory_.GetWeakPtr()));
+    wait_timeout_.Start(FROM_HERE, kFirstEngineWait,
+                        base::BindOnce(&ShieldsDocumentThrottle::OnWaitTimedOut,
+                                       weak_factory_.GetWeakPtr()));
+    return DEFER;
+  }
   if (!ShieldsService::Get().IsActiveFor(url)) {
     return PROCEED;
   }
@@ -84,6 +95,29 @@ content::NavigationThrottle::ThrottleCheckResult ShieldsDocumentThrottle::Decide
       engine, request,
       base::BindOnce(&ShieldsDocumentThrottle::OnDecided, weak_factory_.GetWeakPtr(), request));
   return DEFER;
+}
+
+void ShieldsDocumentThrottle::OnEngineReady() {
+  if (!waiting_for_engine_) {
+    return;
+  }
+  waiting_for_engine_ = false;
+  wait_timeout_.Stop();
+  if (Decide().action() == PROCEED) {
+    Resume();
+  }
+}
+
+void ShieldsDocumentThrottle::OnWaitTimedOut() {
+  if (!waiting_for_engine_) {
+    return;
+  }
+  waiting_for_engine_ = false;
+  if (HostPage* page = HostPage::FromWebContents(navigation_handle()->GetWebContents())) {
+    page->Emit("loadedUnfiltered",
+               base::DictValue().Set("url", contract::URLValue(navigation_handle()->GetURL())));
+  }
+  Resume();
 }
 
 void ShieldsDocumentThrottle::OnDecided(shields::Request request, shields::Decision decision) {

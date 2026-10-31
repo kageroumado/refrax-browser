@@ -18,6 +18,10 @@
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "url/origin.h"
 
+namespace content {
+class BrowserContext;
+}
+
 namespace network {
 class URLLoaderFactoryBuilder;
 }
@@ -34,8 +38,10 @@ namespace refrax {
 // last request are gone. On the UI thread.
 class ShieldsURLLoaderFactory : public network::mojom::URLLoaderFactory {
  public:
-  // Puts a factory in front of `factory_builder`'s (WillCreateURLLoaderFactory).
-  static void Install(content::RenderFrameHost* frame,
+  // Puts a factory in front of `factory_builder`'s (WillCreateURLLoaderFactory). Downloads go
+  // around Shields: the user asked for the file.
+  static void Install(content::BrowserContext* browser_context,
+                      content::RenderFrameHost* frame,
                       content::ContentBrowserClient::URLLoaderFactoryType type,
                       const url::Origin& request_initiator,
                       network::URLLoaderFactoryBuilder& factory_builder);
@@ -57,7 +63,9 @@ class ShieldsURLLoaderFactory : public network::mojom::URLLoaderFactory {
  private:
   class InProgressRequest;
 
-  ShieldsURLLoaderFactory(std::optional<content::GlobalRenderFrameHostId> frame,
+  ShieldsURLLoaderFactory(const content::BrowserContext* browser_context,
+                          std::optional<content::GlobalRenderFrameHostId> frame,
+                          bool is_navigation,
                           const url::Origin& request_initiator,
                           mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
                           mojo::PendingRemote<network::mojom::URLLoaderFactory> target);
@@ -67,13 +75,19 @@ class ShieldsURLLoaderFactory : public network::mojom::URLLoaderFactory {
   GURL TopFrameURL(const network::ResourceRequest& request) const;
   // The URL of the frame the factory belongs to, for the log.
   GURL FrameURL() const;
-  // Appends `entry` to the request log of the frame's Refrax page, if it has one.
+  // Appends `entry` to the request log of the frame's Refrax page, or for a worker's request, of
+  // a page of the worker's origin.
   void Log(base::DictValue entry) const;
 
   void RemoveRequest(InProgressRequest* request);
   void MaybeDestroy();
 
+  // Compared, never used: which profile a worker's request belongs to.
+  const raw_ptr<const content::BrowserContext> browser_context_;
   const std::optional<content::GlobalRenderFrameHostId> frame_;
+  // Whether the factory loads navigations, whose blocked documents ShieldsDocumentThrottle
+  // answers.
+  const bool is_navigation_;
   const url::Origin request_initiator_;
   mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
   mojo::Remote<network::mojom::URLLoaderFactory> target_;
@@ -82,14 +96,17 @@ class ShieldsURLLoaderFactory : public network::mojom::URLLoaderFactory {
   base::WeakPtrFactory<ShieldsURLLoaderFactory> weak_factory_{this};
 };
 
-// The WebSocket half: a connection Shields blocks is never opened.
-// Whether Shields filters `frame`'s WebSockets.
-bool ShieldsFiltersWebSockets(content::RenderFrameHost* frame);
-// Decides a WebSocket connection from `frame` to `url`; `done` runs on the UI thread with
-// whether it may open.
-void ShieldsDecideWebSocket(content::RenderFrameHost* frame,
-                            const GURL& url,
-                            base::OnceCallback<void(bool allowed)> done);
+// WebSockets and WebTransport: a connection Shields blocks is never opened.
+// Whether Shields may filter connections of `frame`, or with no frame (a shared or service
+// worker), any connection.
+bool ShieldsFiltersConnections(content::RenderFrameHost* frame);
+// Decides a connection to `url` of adblock-rust's `type`, from `frame`, or with no frame from
+// a worker of `origin`; `done` runs on the UI thread with whether it may open.
+void ShieldsDecideConnection(content::RenderFrameHost* frame,
+                             const url::Origin& origin,
+                             const GURL& url,
+                             std::string_view type,
+                             base::OnceCallback<void(bool allowed)> done);
 
 }  // namespace refrax
 

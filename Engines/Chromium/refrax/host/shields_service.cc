@@ -25,8 +25,8 @@ namespace refrax {
 namespace {
 
 // Larger files are refused: a debug DAT of every default list is tens of megabytes.
-constexpr int64_t kMaxEngineBytes = 512 * 1024 * 1024;
-constexpr int64_t kMaxResourcesBytes = 64 * 1024 * 1024;
+constexpr size_t kMaxEngineBytes = 512 * 1024 * 1024;
+constexpr size_t kMaxResourcesBytes = 64 * 1024 * 1024;
 
 // adblock-rust asks the embedder for registrable domains: Chromium's registry, private
 // registries included, as Brave's resolver does.
@@ -77,17 +77,12 @@ std::optional<FileSpec> ParseFileSpec(const base::DictValue* fields) {
 }
 
 // The file's contents when its SHA-256 is `spec.sha256`; otherwise a reason.
-base::expected<std::string, std::string> ReadVerified(const FileSpec& spec, int64_t limit) {
-  std::optional<int64_t> size = base::GetFileSize(spec.path);
-  if (!size) {
-    return base::unexpected("cannot read " + spec.path.value());
-  }
-  if (*size > limit) {
-    return base::unexpected(spec.path.value() + " is too large");
-  }
+base::expected<std::string, std::string> ReadVerified(const FileSpec& spec, size_t limit) {
   std::string contents;
-  if (!base::ReadFileToString(spec.path, &contents)) {
-    return base::unexpected("cannot read " + spec.path.value());
+  if (!base::ReadFileToStringWithMaxSize(spec.path, &contents, limit)) {
+    return base::unexpected(contents.size() >= limit
+                                ? spec.path.value() + " is too large"
+                                : "cannot read " + spec.path.value());
   }
   if (base::HexEncodeLower(crypto::hash::Sha256(contents)) != spec.sha256) {
     return base::unexpected("the SHA-256 of " + spec.path.value() + " does not match");
@@ -148,8 +143,12 @@ std::string StatusEvent(std::string_view status,
 
 ShieldsEngineRef::ShieldsEngineRef(ShieldsEngine* engine,
                                    std::string sha256,
+                                   std::string resources_sha256,
                                    std::vector<std::string> list_ids)
-    : engine_(engine), sha256_(std::move(sha256)), list_ids_(std::move(list_ids)) {}
+    : engine_(engine),
+      sha256_(std::move(sha256)),
+      resources_sha256_(std::move(resources_sha256)),
+      list_ids_(std::move(list_ids)) {}
 
 ShieldsEngineRef::~ShieldsEngineRef() {
   shields_engine_free(engine_.ExtractAsDangling());
@@ -182,8 +181,7 @@ bool ShieldsService::Apply(const base::DictValue& policy,
   const uint64_t generation = ++generation_;
   enabled_ = policy.FindBool("isEnabled").value_or(true);
 
-  const std::string* mode = policy.FindString("mode");
-  mode_ = mode && *mode == "aggressive" ? Mode::kAggressive : Mode::kStandard;
+  // `mode` has one value, `standard`: every rule applies.
 
   allowlisted_hosts_.clear();
   if (const base::ListValue* hosts = policy.FindList("allowlistedHosts")) {
@@ -196,6 +194,7 @@ bool ShieldsService::Apply(const base::DictValue& policy,
 
   if (!enabled_) {
     engine_ = nullptr;
+    SetLoading(false);
     std::move(status).Run(StatusEvent("unfiltered", nullptr, nullptr));
     return true;
   }
@@ -234,16 +233,23 @@ bool ShieldsService::Apply(const base::DictValue& policy,
   if (!format || *format != shields_engine_format()) {
     const std::string reason = "the engine's format is " + (format ? *format : "missing") +
                                "; this engine reads " + shields_engine_format();
+    // Nothing this engine could load: pages go unfiltered, as the status says.
+    engine_ = nullptr;
+    SetLoading(false);
     std::move(status).Run(StatusEvent("unfiltered", nullptr, &reason));
     return true;
   }
 
   // The engine already loaded: only the hosts or the mode changed. A DAT's lists are part of
   // its hash, so the list ids are the same too.
-  if (engine_ && engine_->sha256() == engine_spec->sha256) {
+  const std::string resources_sha256 = resources_spec ? resources_spec->sha256 : std::string();
+  if (engine_ && engine_->sha256() == engine_spec->sha256 &&
+      engine_->resources_sha256() == resources_sha256) {
+    SetLoading(false);
     std::move(status).Run(StatusEvent("applied", &engine_spec->sha256, nullptr));
     return true;
   }
+  SetLoading(true);
 
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE,
@@ -253,7 +259,8 @@ bool ShieldsService::Apply(const base::DictValue& policy,
       base::BindOnce(
           [](base::WeakPtr<ShieldsService> self, uint64_t generation,
              base::OnceCallback<void(std::string)> status,
-             std::vector<std::string> list_ids, std::string sha256, LoadResult result) {
+             std::vector<std::string> list_ids, std::string sha256,
+             std::string resources_sha256, LoadResult result) {
             if (!self) {
               if (result.engine) {
                 shields_engine_free(result.engine);
@@ -261,10 +268,11 @@ bool ShieldsService::Apply(const base::DictValue& policy,
               return;
             }
             self->OnLoaded(generation, std::move(status), std::move(list_ids),
-                           std::move(result.failure), result.engine, std::move(sha256));
+                           std::move(result.failure), result.engine, std::move(sha256),
+                           std::move(resources_sha256));
           },
           weak_factory_.GetWeakPtr(), generation, std::move(status), std::move(list_ids),
-          engine_spec->sha256));
+          engine_spec->sha256, resources_sha256));
   return true;
 }
 
@@ -273,7 +281,8 @@ void ShieldsService::OnLoaded(uint64_t generation,
                               std::vector<std::string> list_ids,
                               std::optional<std::string> failure,
                               ShieldsEngine* engine,
-                              std::string sha256) {
+                              std::string sha256,
+                              std::string resources_sha256) {
   if (generation != generation_) {
     // A newer policy replaced this one while it loaded; that one reports its own status.
     if (engine) {
@@ -281,13 +290,21 @@ void ShieldsService::OnLoaded(uint64_t generation,
     }
     return;
   }
+  SetLoading(false);
   if (!engine) {
-    LOG(ERROR) << "Content blocking: " << failure.value_or("the engine did not load");
-    engine_ = nullptr;
-    std::move(status).Run(StatusEvent("unfiltered", nullptr, &*failure));
+    const std::string reason = failure.value_or("the engine did not load");
+    LOG(ERROR) << "Content blocking: " << reason;
+    if (engine_) {
+      // The engine already in use keeps filtering: better the previous lists than none.
+      const std::string kept = "kept the previous engine: " + reason;
+      std::move(status).Run(StatusEvent("applied", &engine_->sha256(), &kept));
+      return;
+    }
+    std::move(status).Run(StatusEvent("unfiltered", nullptr, &reason));
     return;
   }
-  engine_ = base::MakeRefCounted<ShieldsEngineRef>(engine, sha256, std::move(list_ids));
+  engine_ = base::MakeRefCounted<ShieldsEngineRef>(engine, sha256, std::move(resources_sha256),
+                                                   std::move(list_ids));
   std::move(status).Run(StatusEvent("applied", &sha256, nullptr));
 }
 
@@ -297,11 +314,39 @@ void ShieldsService::SetSiteExceptions(std::set<std::string> hosts) {
 }
 
 bool ShieldsService::IsActiveFor(const GURL& top_url) const {
-  if (!enabled_ || !engine_ || !engine_->engine() || !top_url.SchemeIsHTTPOrHTTPS()) {
+  return engine_ && engine_->engine() && Covers(top_url);
+}
+
+bool ShieldsService::Covers(const GURL& top_url) const {
+  if (!enabled_ || !top_url.SchemeIsHTTPOrHTTPS()) {
     return false;
   }
   return !url_matching::IsAllowlistedHost(allowlisted_hosts_, top_url.host()) &&
          !url_matching::IsAllowlistedHost(site_exceptions_, top_url.host());
+}
+
+void ShieldsService::SetLoading(bool loading) {
+  loading_ = loading;
+  if (loading_) {
+    return;
+  }
+  std::vector<base::OnceClosure> waiters;
+  waiters.swap(load_waiters_);
+  for (base::OnceClosure& waiter : waiters) {
+    std::move(waiter).Run();
+  }
+}
+
+bool ShieldsService::IsLoadingFirstEngine() const {
+  return enabled_ && loading_ && !engine_;
+}
+
+void ShieldsService::WhenLoaded(base::OnceClosure done) {
+  if (!loading_) {
+    std::move(done).Run();
+    return;
+  }
+  load_waiters_.push_back(std::move(done));
 }
 
 scoped_refptr<ShieldsEngineRef> ShieldsService::engine() const {

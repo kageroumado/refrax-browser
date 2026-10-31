@@ -18,7 +18,8 @@ base::DictValue Entry(const std::string& url) {
 }
 
 base::DictValue Read(const RequestLog& log, int64_t since) {
-  std::optional<base::Value> value = base::JSONReader::Read(log.Since(since), base::JSON_PARSE_RFC);
+  std::optional<base::Value> value =
+      base::JSONReader::Read(log.Since(since), base::JSON_PARSE_RFC);
   EXPECT_TRUE(value && value->is_dict());
   return value ? value->GetDict().Clone() : base::DictValue();
 }
@@ -31,12 +32,16 @@ TEST(RequestLogTest, NumbersEntriesAndReturnsThoseAfterASequence) {
 
   base::DictValue all = Read(log, 0);
   ASSERT_EQ(all.FindList("entries")->size(), 3u);
-  EXPECT_EQ(*all.FindInt("nextSequence"), 4);
+  EXPECT_EQ(*all.FindInt("nextSequence"), 3);
   EXPECT_EQ(*(*all.FindList("entries"))[0].GetDict().FindInt("seq"), 1);
 
   base::DictValue later = Read(log, 2);
   ASSERT_EQ(later.FindList("entries")->size(), 1u);
   EXPECT_EQ(*(*later.FindList("entries"))[0].GetDict().FindString("url"), "https://a.test/3");
+
+  base::DictValue none = Read(log, 3);
+  EXPECT_TRUE(none.FindList("entries")->empty());
+  EXPECT_EQ(*none.FindInt("nextSequence"), 3);
 }
 
 TEST(RequestLogTest, KeepsTheNewestEntriesAndKeepsCounting) {
@@ -48,7 +53,21 @@ TEST(RequestLogTest, KeepsTheNewestEntriesAndKeepsCounting) {
   const base::ListValue& entries = *all.FindList("entries");
   ASSERT_EQ(entries.size(), RequestLog::kCapacity);
   EXPECT_EQ(*entries[0].GetDict().FindInt("seq"), 6);
-  EXPECT_EQ(*all.FindInt("nextSequence"), static_cast<int>(RequestLog::kCapacity) + 6);
+  EXPECT_EQ(*all.FindInt("nextSequence"), static_cast<int>(RequestLog::kCapacity) + 5);
+}
+
+TEST(RequestLogTest, StaysWithinItsByteBudgetAndPagesLargeAnswers) {
+  RequestLog log;
+  const std::string big(100 * 1024, 'x');
+  for (int i = 0; i < 100; ++i) {
+    log.Add(Entry("https://a.test/" + big));
+  }
+  // 100 entries of 100 KB: the log keeps about 2 MB of them, the newest.
+  base::DictValue all = Read(log, 0);
+  const size_t kept = all.FindList("entries")->size();
+  EXPECT_LE(kept * big.size(), RequestLog::kMaxBytes);
+  EXPECT_GT(kept, 0u);
+  EXPECT_EQ(*all.FindInt("nextSequence"), 100);
 }
 
 }  // namespace

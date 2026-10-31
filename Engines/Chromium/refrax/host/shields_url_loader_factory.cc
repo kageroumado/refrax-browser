@@ -93,8 +93,14 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
     if (pending_network_redirect_.is_valid()) {
       request_.url = new_url.value_or(pending_network_redirect_);
       pending_network_redirect_ = GURL();
+      Retarget();
       if (target_loader_.is_bound()) {
-        target_loader_->FollowRedirect(std::move(headers_update_params), new_url);
+        // A rewrite of the redirect's target ($removeparam) is sent along as the URL to load.
+        std::optional<GURL> follow = new_url;
+        if (!follow && request_.url != redirect_target_) {
+          follow = request_.url;
+        }
+        target_loader_->FollowRedirect(std::move(headers_update_params), follow);
       }
     }
   }
@@ -126,7 +132,10 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
       Fail(net::ERR_TOO_MANY_REDIRECTS);
       return;
     }
-    if (!engine_) {
+    redirect_target_ = redirect_info.new_url;
+    // A page redirected to a site Shields spares is not filtered.
+    if (!engine_ || (shields_request_.type == "main_frame" &&
+                     !ShieldsService::Get().IsActiveFor(redirect_info.new_url))) {
       pending_network_redirect_ = redirect_info.new_url;
       client_->OnReceiveRedirect(redirect_info, std::move(head));
       return;
@@ -157,8 +166,9 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
   }
 
  private:
-  // Decides request_.url, then loads it, refuses it, serves a stub or redirects.
-  void Decide() {
+  // Points shields_request_ at request_.url: the URL decided and logged, and for a page's own
+  // document also its source and frame.
+  void Retarget() {
     shields_request_.url = request_.url;
     shields_request_.source =
         request_.request_initiator && !request_.request_initiator->opaque()
@@ -166,6 +176,23 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
             : factory_->TopFrameURL(request_);
     if (shields_request_.type == "main_frame") {
       shields_request_.source = request_.url;
+      shields_request_.frame_url = request_.url;
+    }
+  }
+
+  // A navigation's own document is ShieldsDocumentThrottle's to block, with the page that says
+  // so; any other document request (a prefetch) is blocked here.
+  bool BlocksDocument() const {
+    return shields_request_.type != "main_frame" || !factory_->is_navigation_;
+  }
+
+  // Decides request_.url, then loads it, refuses it, serves a stub or redirects.
+  void Decide() {
+    Retarget();
+    if (shields_request_.type == "main_frame" &&
+        !ShieldsService::Get().IsActiveFor(request_.url)) {
+      StartTarget();
+      return;
     }
     if (!engine_) {
       StartTarget();
@@ -177,8 +204,7 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
   }
 
   void OnDecided(shields::Decision decision) {
-    // ShieldsDocumentThrottle has already decided a main-frame navigation to block or not.
-    if (shields_request_.type == "main_frame" && decision.should_block) {
+    if (!BlocksDocument() && decision.should_block) {
       decision.should_block = false;
       decision.redirect.clear();
     }
@@ -203,11 +229,24 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
                          shields::Decision decision) {
     shields::Request next = shields_request_;
     next.url = redirect_info.new_url;
+    if (shields_request_.type == "main_frame") {
+      next.source = next.url;
+      next.frame_url = next.url;
+    }
+    if (!BlocksDocument() && decision.should_block) {
+      // ShieldsDocumentThrottle sees the redirect next and shows its page.
+      decision.should_block = false;
+      decision.redirect.clear();
+    }
     factory_->Log(
         shields::LogEntry(*engine_, next, decision, shields::DecisionName(decision)));
     if (decision.should_block) {
       Fail(net::ERR_BLOCKED_BY_CLIENT);
       return;
+    }
+    if (decision.rewritten_url.is_valid() &&
+        url::IsSameOriginWith(decision.rewritten_url, redirect_info.new_url)) {
+      redirect_info.new_url = decision.rewritten_url;
     }
     target_client_receiver_.Resume();
     pending_network_redirect_ = redirect_info.new_url;
@@ -329,6 +368,8 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
   // The location of a redirect the requester has been told about and not yet followed.
   GURL pending_shields_redirect_;
   GURL pending_network_redirect_;
+  // Where the network's last redirect pointed, before any rewrite.
+  GURL redirect_target_;
   int redirects_ = 0;
 
   base::WeakPtrFactory<InProgressRequest> weak_factory_{this};
@@ -336,26 +377,34 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
 
 // static
 void ShieldsURLLoaderFactory::Install(
+    content::BrowserContext* browser_context,
     content::RenderFrameHost* frame,
     content::ContentBrowserClient::URLLoaderFactoryType type,
     const url::Origin& request_initiator,
     network::URLLoaderFactoryBuilder& factory_builder) {
-  if (type == content::ContentBrowserClient::URLLoaderFactoryType::kDownload) {
+  using Type = content::ContentBrowserClient::URLLoaderFactoryType;
+  if (type == Type::kDownload) {
     return;
   }
   auto [receiver, target] = factory_builder.Append();
   // Owned by its receivers.
   new ShieldsURLLoaderFactory(
-      frame ? std::optional(frame->GetGlobalId()) : std::nullopt, request_initiator,
-      std::move(receiver), std::move(target));
+      browser_context, frame ? std::optional(frame->GetGlobalId()) : std::nullopt,
+      type == Type::kNavigation, request_initiator, std::move(receiver), std::move(target));
 }
 
 ShieldsURLLoaderFactory::ShieldsURLLoaderFactory(
+    const content::BrowserContext* browser_context,
     std::optional<content::GlobalRenderFrameHostId> frame,
+    bool is_navigation,
     const url::Origin& request_initiator,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
     mojo::PendingRemote<network::mojom::URLLoaderFactory> target)
-    : frame_(frame), request_initiator_(request_initiator), target_(std::move(target)) {
+    : browser_context_(browser_context),
+      frame_(frame),
+      is_navigation_(is_navigation),
+      request_initiator_(request_initiator),
+      target_(std::move(target)) {
   receivers_.Add(this, std::move(receiver));
   receivers_.set_disconnect_handler(base::BindRepeating(
       &ShieldsURLLoaderFactory::MaybeDestroy, weak_factory_.GetWeakPtr()));
@@ -420,6 +469,8 @@ GURL ShieldsURLLoaderFactory::FrameURL() const {
 void ShieldsURLLoaderFactory::Log(base::DictValue entry) const {
   if (content::RenderFrameHost* frame = FrameFor(frame_)) {
     PageShields::LogFor(frame, std::move(entry));
+  } else if (!frame_) {
+    PageShields::LogForWorker(browser_context_, request_initiator_, std::move(entry));
   }
 }
 
@@ -437,45 +488,58 @@ void ShieldsURLLoaderFactory::MaybeDestroy() {
   }
 }
 
-bool ShieldsFiltersWebSockets(content::RenderFrameHost* frame) {
-  return frame &&
-         ShieldsService::Get().IsActiveFor(frame->GetOutermostMainFrame()->GetLastCommittedURL());
+bool ShieldsFiltersConnections(content::RenderFrameHost* frame) {
+  if (!frame) {
+    return ShieldsService::Get().engine() != nullptr;
+  }
+  return ShieldsService::Get().IsActiveFor(
+      frame->GetOutermostMainFrame()->GetLastCommittedURL());
 }
 
-void ShieldsDecideWebSocket(content::RenderFrameHost* frame,
-                            const GURL& url,
-                            base::OnceCallback<void(bool allowed)> done) {
+void ShieldsDecideConnection(content::RenderFrameHost* frame,
+                             const url::Origin& origin,
+                             const GURL& url,
+                             std::string_view type,
+                             base::OnceCallback<void(bool allowed)> done) {
+  const GURL top = frame ? frame->GetOutermostMainFrame()->GetLastCommittedURL()
+                         : (origin.opaque() ? GURL() : origin.GetURL());
   scoped_refptr<ShieldsEngineRef> engine = ShieldsService::Get().engine();
-  if (!engine) {
+  if (!engine || !ShieldsService::Get().IsActiveFor(top)) {
     std::move(done).Run(true);
     return;
   }
   shields::Request request;
   request.url = url;
-  request.type = "websocket";
+  request.type = std::string(type);
   request.method = "GET";
-  request.source = frame->GetLastCommittedURL();
-  request.frame_url = frame->GetLastCommittedURL();
+  request.source = frame ? frame->GetLastCommittedURL() : top;
+  request.frame_url = frame ? frame->GetLastCommittedURL() : GURL();
   // adblock-rust matches ws: and wss: as their http equivalents.
   if (url.SchemeIs("ws") || url.SchemeIs("wss")) {
     GURL::Replacements replacements;
     replacements.SetSchemeStr(url.SchemeIs("wss") ? "https" : "http");
     request.url = url.ReplaceComponents(replacements);
   }
-  const content::GlobalRenderFrameHostId frame_id = frame->GetGlobalId();
+  const std::optional<content::GlobalRenderFrameHostId> frame_id =
+      frame ? std::optional(frame->GetGlobalId()) : std::nullopt;
+  const content::BrowserContext* browser_context = frame ? frame->GetBrowserContext() : nullptr;
   shields::MatchOnPool(
       engine, request,
       base::BindOnce(
           [](scoped_refptr<ShieldsEngineRef> engine, shields::Request request,
-             content::GlobalRenderFrameHostId frame_id,
+             std::optional<content::GlobalRenderFrameHostId> frame_id,
+             const content::BrowserContext* browser_context, url::Origin origin,
              base::OnceCallback<void(bool)> done, shields::Decision decision) {
-            if (content::RenderFrameHost* frame = content::RenderFrameHost::FromID(frame_id)) {
-              PageShields::LogFor(frame, shields::LogEntry(*engine, request, decision,
-                                                           shields::DecisionName(decision)));
+            base::DictValue entry =
+                shields::LogEntry(*engine, request, decision, shields::DecisionName(decision));
+            if (content::RenderFrameHost* frame = FrameFor(frame_id)) {
+              PageShields::LogFor(frame, std::move(entry));
+            } else if (!frame_id) {
+              PageShields::LogForWorker(browser_context, origin, std::move(entry));
             }
             std::move(done).Run(!decision.should_block);
           },
-          engine, request, frame_id, std::move(done)));
+          engine, request, frame_id, browser_context, origin, std::move(done)));
 }
 
 }  // namespace refrax

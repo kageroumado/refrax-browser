@@ -39,6 +39,7 @@
 #include "components/permissions/permission_request_manager.h"
 #include "refrax/host/page_scripts.h"
 #include "refrax/host/page_shields.h"
+#include "content/public/browser/media_player_id.h"
 #include "content/public/browser/media_session.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 #include "ui/base/cocoa/remote_accessibility_api.h"
@@ -446,12 +447,65 @@ void HostPage::FindReply(content::WebContents* web_contents,
 
 void HostPage::SetMediaSuspended(bool suspended) {
   media_suspended_ = suspended;
+  // The media session holds the audible players, in every frame, attached or not; the rest
+  // (muted or silent video) are paused in each document.
   content::MediaSession* session = content::MediaSession::Get(web_contents_.get());
   if (suspended) {
     session->Suspend(content::MediaSession::SuspendType::kSystem);
   } else {
     session->Resume(content::MediaSession::SuspendType::kSystem);
   }
+  web_contents_->ForEachRenderFrameHost(
+      [this](content::RenderFrameHost* frame) { ApplyMediaSuspension(frame); });
+}
+
+void HostPage::ApplyMediaSuspension(content::RenderFrameHost* frame) {
+  // In a world of Refrax's own: pauses the document's media elements and pauses any that
+  // starts while suspended; resuming plays again the ones it paused.
+  static constexpr char kScript[] = R"JS(
+(suspended => {
+  window.__refraxMediaSuspended = suspended;
+  if (!window.__refraxMediaHooked) {
+    window.__refraxMediaHooked = true;
+    window.__refraxMediaPaused = new Set();
+    document.addEventListener('play', event => {
+      if (window.__refraxMediaSuspended && event.target instanceof HTMLMediaElement) {
+        event.target.pause();
+        window.__refraxMediaPaused.add(event.target);
+      }
+    }, true);
+  }
+  if (suspended) {
+    for (const media of document.querySelectorAll('video, audio')) {
+      if (!media.paused) {
+        media.pause();
+        window.__refraxMediaPaused.add(media);
+      }
+    }
+  } else {
+    for (const media of window.__refraxMediaPaused) media.play().catch(() => {});
+    window.__refraxMediaPaused.clear();
+  }
+})
+)JS";
+  if (!frame->IsRenderFrameLive() || (!media_suspended_ && !frame->GetLastCommittedURL().is_valid())) {
+    return;
+  }
+  std::optional<int32_t> world =
+      engine_->worlds().WorldID(base::DictValue().Set(
+          "isolated", base::DictValue().Set("name", "refrax.media")));
+  if (!world) {
+    return;
+  }
+  mojo::AssociatedRemote<mojom::FrameScripts> frame_scripts;
+  frame->GetRemoteAssociatedInterfaces()->GetInterface(&frame_scripts);
+  mojom::FrameScripts* evaluator = frame_scripts.get();
+  evaluator->Evaluate(
+      std::string(kScript) + "(" + (media_suspended_ ? "true" : "false") + ")", *world,
+      /*user_gesture=*/false,
+      base::BindOnce([](mojo::AssociatedRemote<mojom::FrameScripts>, std::optional<base::Value>,
+                        const std::optional<std::string>&) {},
+                     std::move(frame_scripts)));
 }
 
 void HostPage::MediaStartedPlaying(const MediaPlayerInfo& video_type,
@@ -460,6 +514,9 @@ void HostPage::MediaStartedPlaying(const MediaPlayerInfo& video_type,
   if (media_suspended_) {
     content::MediaSession::Get(web_contents_.get())
         ->Suspend(content::MediaSession::SuspendType::kSystem);
+    if (content::RenderFrameHost* frame = content::RenderFrameHost::FromID(id.frame_routing_id)) {
+      ApplyMediaSuspension(frame);
+    }
   }
 }
 
@@ -483,7 +540,26 @@ void HostPage::ShowDevTools(DevToolsFrontend::Panel panel) {
   const uint64_t view_id = remote_cocoa::GetNewNSViewId();
   devtools_ = std::make_unique<DevToolsFrontend>(
       web_contents_.get(), engine_->application(), view_id, panel,
-      base::BindOnce(&HostPage::CloseDevTools, weak_factory_.GetWeakPtr()));
+      base::BindOnce(&HostPage::CloseDevTools, weak_factory_.GetWeakPtr()),
+      base::BindRepeating(
+          [](base::WeakPtr<HostPage> page, const GURL& url) {
+            // A link the frontend opens ("Open in new tab") goes to Refrax as the user's own.
+            if (page) {
+              page->RequestOpenURL(url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                                   /*user_gesture=*/true, /*is_new_window_request=*/false);
+            }
+          },
+          weak_factory_.GetWeakPtr()),
+      base::BindRepeating(
+          [](base::WeakPtr<HostPage> page, const input::NativeWebKeyboardEvent& event) {
+            if (!page || event.skip_if_unhandled || !event.os_event ||
+                event.os_event.Get().type != NSEventTypeKeyDown) {
+              return false;
+            }
+            page->client_->RedispatchDevToolsKeyEvent(ui::EventToData(event.os_event.Get()));
+            return true;
+          },
+          weak_factory_.GetWeakPtr()));
   const std::string title = base::UTF16ToUTF8(web_contents_->GetTitle());
   client_->ShowDevToolsWindow(
       view_id, title.empty() ? "Developer Tools" : "Developer Tools — " + title,
@@ -570,8 +646,8 @@ void HostPage::RequestLog(int64_t since, RequestLogCallback callback) {
   std::move(callback).Run(shields_->log().Since(since));
 }
 
-void HostPage::EnableAccessibility() {
-  engine_->EnableAccessibility();
+void HostPage::EnableAccessibility(bool screen_reader) {
+  engine_->EnableAccessibility(screen_reader);
 }
 
 void HostPage::GetAccessibilityToken(GetAccessibilityTokenCallback callback) {
@@ -667,6 +743,10 @@ void HostPage::ApplyZoom() {
 }
 
 void HostPage::DidFinishNavigation(content::NavigationHandle* navigation) {
+  // A document a suspended page loads, in any frame, starts suspended.
+  if (media_suspended_ && navigation->HasCommitted() && !navigation->IsSameDocument()) {
+    ApplyMediaSuspension(navigation->GetRenderFrameHost());
+  }
   if (!navigation->IsInPrimaryMainFrame()) {
     return;
   }
@@ -680,6 +760,17 @@ void HostPage::DidFinishNavigation(content::NavigationHandle* navigation) {
   }
   if (navigation->HasCommitted() && !navigation->IsSameDocument()) {
     ApplyZoom();
+    // Find results belong to the document they were found in.
+    if (!find_text_.empty() || find_matches_) {
+      find_text_.clear();
+      ++find_request_id_;
+      find_matches_ = 0;
+      find_active_match_ = 0;
+      Emit("findResultChanged", base::DictValue()
+                                    .Set("matches", 0)
+                                    .Set("activeMatch", 0)
+                                    .Set("isFinal", true));
+    }
   }
   const GURL& url = navigation->GetURL();
   const int error = navigation->GetNetErrorCode();

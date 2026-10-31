@@ -87,7 +87,7 @@ class HostPage : public mojom::Page,
                       EvaluateScriptCallback callback) override;
   void Snapshot(const gfx::Rect& rect, SnapshotCallback callback) override;
   void RequestLog(int64_t since, RequestLogCallback callback) override;
-  void EnableAccessibility() override;
+  void EnableAccessibility(bool screen_reader) override;
   void GetAccessibilityToken(GetAccessibilityTokenCallback callback) override;
   void SetAccessibilityParent(int32_t pid, const std::vector<uint8_t>& token) override;
   void SetDevToolsSize(const gfx::Size& size) override;
@@ -180,6 +180,8 @@ class HostPage : public mojom::Page,
   void CloseDevTools();
   // The contract's `setMediaSuspended`: pauses every player and keeps them from playing.
   void SetMediaSuspended(bool suspended);
+  // Pauses (or resumes) `frame`'s document's media elements as media_suspended_ says.
+  void ApplyMediaSuspension(content::RenderFrameHost* frame);
 
   raw_ptr<EngineHostImpl> engine_;
   const std::string id_;
