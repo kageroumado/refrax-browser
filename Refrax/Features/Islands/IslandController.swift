@@ -8,6 +8,8 @@ struct Island: Identifiable, Equatable {
     let id: UUID
     var title: String
     var colorString: String?
+    /// The group's icon: an SF Symbol name or an emoji.
+    var iconName: String?
     var tabIDs: [UUID]
     var placement: IslandPlacement
     /// The loose tabs' island, named after the space.
@@ -292,7 +294,7 @@ final class IslandController {
     /// The islands on screen now.
     var visibleIslands: [Island] {
         guard !windowState.isSpaceLocked, !windowState.showsCenteredLens, !windowState.isDetailTrayVisible else { return [] }
-        return islands.filter { isRevealed || $0.placement.isPinned || $0.id == emergingIslandID }
+        return islands.filter { isRevealed || $0.placement.isPinned || $0.id == emergingIslandID || $0.id == heldControlsIslandID }
     }
 
     func geometry(for island: Island) -> IslandGeometry {
@@ -542,12 +544,12 @@ final class IslandController {
         let onIslands = space.mainTabs.filter {
             !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
         }
-        var sources: [(id: UUID, title: String, color: String?, members: [UUID], isDefault: Bool)] = [
-            (space.id, "Tabs", nil, onIslands.filter { $0.group == nil }.map(\.id), true),
+        var sources: [(id: UUID, title: String, color: String?, icon: String?, members: [UUID], isDefault: Bool)] = [
+            (space.id, "Tabs", nil, nil, onIslands.filter { $0.group == nil }.map(\.id), true),
         ]
         for group in space.groups.filter({ !$0.isArchive }).sorted(by: { $0.position < $1.position }) {
             let members = onIslands.filter { $0.group?.id == group.id }.map(\.id)
-            sources.append((group.id, group.name, group.colorString, members, false))
+            sources.append((group.id, group.name, group.colorString, group.iconName, members, false))
         }
         var changed = false
         var built: [Island] = []
@@ -560,7 +562,10 @@ final class IslandController {
             }
             let placement = state.islands[source.id]!
             nextOrigin.x = min(0.9, placement.x + Layout.newIslandOffset)
-            built.append(Island(id: source.id, title: source.title, colorString: source.color, tabIDs: source.members, placement: placement, isDefault: source.isDefault))
+            built.append(Island(
+                id: source.id, title: source.title, colorString: source.color, iconName: source.icon, tabIDs: source.members,
+                placement: placement, isDefault: source.isDefault,
+            ))
         }
         let before = state
         // An island that is empty for a while keeps its place; only a group that is gone loses it.
@@ -704,10 +709,31 @@ final class IslandController {
 
     // MARK: - Acting on islands
 
-    func setColor(_ color: GroupColor, of islandID: UUID) {
-        guard let group = windowState.activeSpace?.groups.first(where: { $0.id == islandID }) else { return }
-        groupManager.updateGroupColor(group, to: color.rawValue)
+    /// A group island's name, icon, and color; the loose tabs' island has none to edit.
+    func appearance(of islandID: UUID) -> IslandAppearance? {
+        group(islandID).map { IslandAppearance(name: $0.name, iconName: $0.iconName, colorString: $0.colorString) }
+    }
+
+    /// Takes in an edit of a group island's name, icon, and color: what changed is written,
+    /// a blank name keeps the one there.
+    func setAppearance(_ edit: IslandAppearance, of islandID: UUID) {
+        guard let group = group(islandID), let current = appearance(of: islandID) else { return }
+        let next = current.applying(edit)
+        guard next != current else { return }
+        if next.name != current.name {
+            groupManager.renameGroup(group, to: next.name)
+        }
+        if next.iconName != current.iconName {
+            groupManager.updateGroupIcon(group, to: next.iconName)
+        }
+        if next.colorString != current.colorString {
+            groupManager.updateGroupColor(group, to: next.colorString)
+        }
         rebuild()
+    }
+
+    private func group(_ islandID: UUID) -> TabGroup? {
+        windowState.activeSpace?.groups.first { $0.id == islandID && !$0.isArchive }
     }
 
     func closeAll(in islandID: UUID) {
@@ -1157,7 +1183,7 @@ final class IslandController {
             }
         }
         for island in visible {
-            guard !island.placement.iconsOnly, let frame = frames[island.id], frame != self.fullFrame(of: island),
+            guard !island.placement.iconsOnly, let frame = frames[island.id], frame != fullFrame(of: island),
                   let index = islands.firstIndex(where: { $0.id == island.id }) else { continue }
             islands[index].placement.x = (frame.minX - area.minX) / max(1, area.width)
             islands[index].placement.y = (frame.minY + IslandGeometry.headerReserve - area.minY) / max(1, area.height)
@@ -1167,10 +1193,9 @@ final class IslandController {
 
     /// Renames a group's island; the space's own island carries the space's name.
     func rename(_ islandID: UUID, to name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let group = windowState.activeSpace?.groups.first(where: { $0.id == islandID }) else { return }
-        groupManager.renameGroup(group, to: trimmed)
-        rebuild()
+        guard var appearance = appearance(of: islandID) else { return }
+        appearance.name = name
+        setAppearance(appearance, of: islandID)
     }
 
     func togglePin(_ islandID: UUID) {

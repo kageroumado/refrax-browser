@@ -232,9 +232,10 @@ struct IslandView: View {
     }
 }
 
-/// An island's header: its name, which a double-click renames, then the pin, the menu and the
-/// plus, in rounded glass above the island. Kept visible for latched or pinned islands,
-/// and during pointer interaction; laid out always.
+/// An island's header: its icon, which opens the island's editor, its name, which a
+/// double-click renames, then the pin, the menu and the plus, in rounded glass above the
+/// island. Kept visible for latched or pinned islands, and during pointer interaction; laid
+/// out always.
 private struct IslandHeader: View {
     let island: Island
 
@@ -242,7 +243,8 @@ private struct IslandHeader: View {
     @Environment(WindowState.self) private var windowState
     @State private var isRenaming = false
     @State private var draftName = ""
-    @State private var renameAfterMenu = false
+    @State private var editAfterMenu = false
+    @State private var isEditing = false
     /// The menu button's bounds in the browser glass layer.
     @State private var menuButtonFrame: CGRect = .zero
 
@@ -258,6 +260,9 @@ private struct IslandHeader: View {
         static let controlSize = IslandGeometry.headerControlSize
         static let controlSpacing: CGFloat = 4
         static let fade: TimeInterval = 0.15
+        /// Pulls the icon's 24-pt box toward the header's edge, so its glyph sits where the
+        /// name's ink would.
+        static let iconLeadingOffset: CGFloat = -8
     }
 
     private var isShown: Bool {
@@ -287,13 +292,49 @@ private struct IslandHeader: View {
                 beginRename()
             }
         }
+        .popover(isPresented: $isEditing, arrowEdge: .bottom) {
+            IslandEditor(islandID: island.id)
+        }
+        .onChange(of: isEditing) { _, editing in
+            islands.holdControls(island.id, editing)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
         .accessibilityLabel("\(island.title) header")
+        .accessibilityAction(named: "Edit Island") { beginEdit() }
+    }
+
+    /// The group's icon, tinted with its color: a click opens the island's editor.
+    @ViewBuilder
+    private var iconButton: some View {
+        if let icon = island.iconName {
+            Button {
+                beginEdit()
+            } label: {
+                Group {
+                    if IslandAppearance.isEmoji(icon) {
+                        Text(icon)
+                            .font(.system(size: Layout.titleSize))
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: Layout.glyphSize))
+                            .foregroundStyle(islands.color(of: island))
+                    }
+                }
+                .frame(width: Layout.controlSize, height: Layout.controlSize)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.default)
+            .help("Edit name, icon, and color")
+            .accessibilityLabel("Edit \(island.title)")
+        }
     }
 
     private var fullHeader: some View {
         HStack(spacing: Layout.controlSpacing) {
+            iconButton
+                .padding(.leading, island.iconName == nil ? 0 : Layout.iconLeadingOffset)
             if isRenaming || islands.renameRequest == island.id {
                 IslandNameField(text: $draftName, fontSize: Layout.titleSize, onCommit: commitRename, onCancel: endRename)
             } else {
@@ -302,6 +343,12 @@ private struct IslandHeader: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .onTapGesture(count: 2) { beginRename() }
+                    .contextMenu {
+                        if !island.isDefault {
+                            Button("Edit Island…") { beginEdit() }
+                            Button("Rename") { beginRename() }
+                        }
+                    }
             }
             Spacer(minLength: 8)
             pinButton
@@ -367,7 +414,7 @@ private struct IslandHeader: View {
     /// the header stays while it tracks.
     private func showMenu() {
         guard let content = windowState.window?.contentView else { return }
-        renameAfterMenu = false
+        editAfterMenu = false
         let menu = NSMenu()
         menu.autoenablesItems = false
         func add(_ title: String, to menu: NSMenu, state: NSControl.StateValue = .off, _ execute: @escaping @MainActor () -> Void) {
@@ -390,15 +437,7 @@ private struct IslandHeader: View {
         add(island.placement.iconsOnly ? "Show Titles" : "Show as Icon Rail", to: menu) { islands.toggleIconsOnly(id) }
         add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
         if !island.isDefault {
-            add("Rename…", to: menu) { renameAfterMenu = true }
-            let colors = NSMenu(title: "Color")
-            let current = GroupColor(rawValue: island.colorString ?? "")
-            for color in GroupColor.allCases {
-                add(color.rawValue, to: colors, state: color == current ? .on : .off) { islands.setColor(color, of: id) }
-            }
-            let colorItem = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
-            colorItem.submenu = colors
-            menu.addItem(colorItem)
+            add("Edit Island…", to: menu) { editAfterMenu = true }
         }
         menu.addItem(.separator())
         add("Close All Tabs in Island", to: menu) { islands.closeAll(in: id) }
@@ -410,18 +449,31 @@ private struct IslandHeader: View {
         islands.holdControls(id, true)
         // Complete the button action before entering AppKit's menu tracking loop.
         DispatchQueue.main.async {
-            if content.window != nil { menu.popUp(positioning: nil, at: point, in: content) }
+            if content.window != nil {
+                menu.popUp(positioning: nil, at: point, in: content)
+            }
             islands.holdControls(id, false)
-            if renameAfterMenu {
-                renameAfterMenu = false
-                beginRename()
+            if editAfterMenu {
+                editAfterMenu = false
+                beginEdit()
             }
         }
     }
 
+    /// Opens the editor of the island's name, icon, and color, anchored to its header.
+    private func beginEdit() {
+        guard !island.isDefault else { return }
+        if island.placement.iconsOnly {
+            islands.setIconsOnly(false, for: island.id)
+        }
+        isEditing = true
+    }
+
     private func beginRename() {
         guard !island.isDefault else { return }
-        if island.placement.iconsOnly { islands.setIconsOnly(false, for: island.id) }
+        if island.placement.iconsOnly {
+            islands.setIconsOnly(false, for: island.id)
+        }
         (windowState.window as? RefraxWindow)?.lockedFirstResponder = nil
         draftName = island.title
         isRenaming = true
