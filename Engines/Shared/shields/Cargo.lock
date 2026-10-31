@@ -560,6 +560,8 @@ name = "shields"
 version = "0.1.0"
 dependencies = [
  "adblock",
+ "addr",
+ "idna",
  "serde",
  "serde_json",
 ]

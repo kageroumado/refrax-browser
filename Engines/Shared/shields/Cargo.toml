@@ -18,6 +18,11 @@ crate-type = ["staticlib", "rlib"]
 adblock = { version = "=0.13.3", default-features = false, features = ["full-regex-handling"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+idna = { version = "1", optional = true }
+
+[dev-dependencies]
+# The host-feature tests resolve eTLD+1 with the same public suffix list the app build embeds.
+addr = "0.15"
 
 [features]
 default = ["app"]
@@ -27,10 +32,14 @@ default = ["app"]
 # resolves eTLD+1 through Chromium's registry (shields_set_domain_resolver).
 app = ["embedded-domain-resolver", "content-blocking", "css-validation"]
 embedded-domain-resolver = ["adblock/embedded-domain-resolver"]
-content-blocking = ["adblock/content-blocking"]
+content-blocking = ["adblock/content-blocking", "dep:idna"]
 css-validation = ["adblock/css-validation"]
 
 [profile.release]
 lto = true
 codegen-units = 1
 debug = "line-tables-only"
+
+# Dependencies run optimized in tests: the parity suite matches thousands of requests.
+[profile.dev.package."*"]
+opt-level = 2

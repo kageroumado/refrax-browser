@@ -5,7 +5,7 @@
 //! together. Every entry point catches panics and reports `SHIELDS_PANIC`, so a bad filter
 //! list can fail a build without taking the calling process down.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, CStr};
 use std::mem::ManuallyDrop;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -14,9 +14,17 @@ use std::ptr;
 use adblock::blocker::BlockerResult;
 use adblock::lists::{FilterFormat, FilterSet, ParseOptions};
 use adblock::request::Request;
-use adblock::resources::{PermissionMask, Resource};
+use adblock::resources::{PermissionMask, Resource, ResourceType};
 use adblock::sourcemap::FilterRuleDebugInfo;
 use adblock::Engine;
+
+#[cfg(feature = "content-blocking")]
+mod bundles;
+pub mod stats;
+#[cfg(feature = "content-blocking")]
+pub mod syntax;
+#[cfg(feature = "content-blocking")]
+pub mod webkit;
 
 /// Bumped whenever a signature or struct layout in `shields.h` changes.
 pub const SHIELDS_ABI_VERSION: u32 = 1;
@@ -149,12 +157,16 @@ pub extern "C" fn shields_engine_format() -> *const c_char {
 /// Filter lists collected for one engine build.
 pub struct ShieldsFilterSet {
     set: FilterSet,
+    /// Each list's text again, for the passes adblock-rust's `FilterSet` does not expose
+    /// (per-list stats, the WebKit pass).
+    lists: Vec<(String, ParseOptions)>,
 }
 
 #[no_mangle]
 pub extern "C" fn shields_filter_set_new(debug: bool) -> *mut ShieldsFilterSet {
     Box::into_raw(Box::new(ShieldsFilterSet {
         set: FilterSet::new(debug),
+        lists: Vec::new(),
     }))
 }
 
@@ -189,6 +201,7 @@ pub unsafe extern "C" fn shields_filter_set_add_list(
             ..ParseOptions::default()
         };
         let record = set.set.add_filter_list(text.to_owned(), options);
+        set.lists.push((text.to_owned(), options));
         if let Some(out) = out_source_index.as_mut() {
             *out = record.source_index as u32;
         }
@@ -239,15 +252,182 @@ unsafe fn webkit_rules(_set: &FilterSet, _out_json: *mut ShieldsBuffer) -> Shiel
     SHIELDS_UNSUPPORTED
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shields_filter_set_stats(
+    set: *const ShieldsFilterSet,
+    out_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    guarded(|| {
+        let Some(set) = set.as_ref() else {
+            return SHIELDS_INVALID_ARGUMENT;
+        };
+        if out_json.is_null() {
+            return SHIELDS_INVALID_ARGUMENT;
+        }
+        out_json.write(ShieldsBuffer::EMPTY);
+        let stats: Vec<_> = set
+            .lists
+            .iter()
+            .enumerate()
+            .map(|(index, (text, options))| stats::list_stats(index, text, *options))
+            .collect();
+        write_json(&stats, out_json)
+    })
+}
+
+// MARK: - WebKit
+
+#[no_mangle]
+pub extern "C" fn shields_webkit_pass_version() -> u32 {
+    #[cfg(feature = "content-blocking")]
+    return webkit::PASS_VERSION;
+    #[cfg(not(feature = "content-blocking"))]
+    return 0;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shields_webkit_compile(
+    set: *const ShieldsFilterSet,
+    engine: *const ShieldsEngine,
+    options_json: *const u8,
+    options_len: usize,
+    directory: *const c_char,
+    out_summary_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    guarded(|| {
+        let (Some(set), Some(engine), Some(options), Some(directory)) = (
+            set.as_ref(),
+            engine.as_ref(),
+            byte_arg(options_json, options_len),
+            c_str_arg(directory),
+        ) else {
+            return SHIELDS_INVALID_ARGUMENT;
+        };
+        if out_summary_json.is_null() {
+            return SHIELDS_INVALID_ARGUMENT;
+        }
+        out_summary_json.write(ShieldsBuffer::EMPTY);
+        webkit_compile(
+            set,
+            engine,
+            options,
+            std::path::Path::new(directory),
+            out_summary_json,
+        )
+    })
+}
+
+#[cfg(feature = "content-blocking")]
+unsafe fn webkit_compile(
+    set: &ShieldsFilterSet,
+    engine: &ShieldsEngine,
+    options: &[u8],
+    directory: &std::path::Path,
+    out_summary_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Summary {
+        pass_version: u32,
+        network_lists: usize,
+        cosmetic_lists: usize,
+        scripts: usize,
+        counts: webkit::Counts,
+    }
+    fn write(path: std::path::PathBuf, value: &impl serde::Serialize) -> bool {
+        serde_json::to_vec(value).is_ok_and(|bytes| std::fs::write(path, bytes).is_ok())
+    }
+
+    let options = if options.is_empty() {
+        webkit::Options::default()
+    } else {
+        match serde_json::from_slice(options) {
+            Ok(options) => options,
+            Err(_) => return SHIELDS_INVALID_DATA,
+        }
+    };
+    let lists: Vec<_> = set
+        .lists
+        .iter()
+        .map(|(text, options)| webkit::ListText {
+            text,
+            options: *options,
+        })
+        .collect();
+    let output = webkit::compile(
+        &lists,
+        &redirect_urls(&engine.resources),
+        &engine.engine,
+        &engine.resources,
+        &options,
+    );
+
+    let mut written = std::fs::create_dir_all(directory).is_ok();
+    for (index, list) in output.network.iter().enumerate() {
+        written &= write(directory.join(format!("network-{index}.json")), list);
+    }
+    for (index, list) in output.cosmetic.iter().enumerate() {
+        written &= write(directory.join(format!("cosmetic-{index}.json")), list);
+    }
+    written &= write(directory.join("scripts.json"), &output.scripts);
+    if !written {
+        return SHIELDS_INVALID_DATA;
+    }
+    write_json(
+        &Summary {
+            pass_version: webkit::PASS_VERSION,
+            network_lists: output.network.len(),
+            cosmetic_lists: output.cosmetic.len(),
+            scripts: output.scripts.len(),
+            counts: output.counts,
+        },
+        out_summary_json,
+    )
+}
+
+#[cfg(not(feature = "content-blocking"))]
+unsafe fn webkit_compile(
+    _set: &ShieldsFilterSet,
+    _engine: &ShieldsEngine,
+    _options: &[u8],
+    _directory: &std::path::Path,
+    _out_summary_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    SHIELDS_UNSUPPORTED
+}
+
 // MARK: - Engines
 
 /// An immutable compiled engine. Safe to query from any number of threads at once.
 pub struct ShieldsEngine {
     engine: Engine,
+    /// The resources `shields_engine_use_resources` installed, for the WebKit pass.
+    resources: Vec<Resource>,
 }
 
 fn into_handle(engine: Engine) -> *mut ShieldsEngine {
-    Box::into_raw(Box::new(ShieldsEngine { engine }))
+    Box::into_raw(Box::new(ShieldsEngine {
+        engine,
+        resources: Vec::new(),
+    }))
+}
+
+/// Name and alias → `data:` URL for every resource adblock-rust would serve as a redirect.
+fn redirect_urls(resources: &[Resource]) -> HashMap<String, String> {
+    let mut urls = HashMap::new();
+    for resource in resources {
+        let ResourceType::Mime(mime) = &resource.kind else {
+            continue;
+        };
+        if resource.permission.to_bits() != 0 || !resource.kind.supports_redirect() {
+            continue;
+        }
+        let url = format!("data:{mime};base64,{}", resource.content);
+        for name in std::iter::once(&resource.name).chain(&resource.aliases) {
+            urls.insert(name.clone(), url.clone());
+        }
+    }
+    urls
 }
 
 #[no_mangle]
@@ -308,6 +488,7 @@ pub unsafe extern "C" fn shields_engine_use_resources(
         let Ok(resources) = serde_json::from_slice::<Vec<Resource>>(json) else {
             return SHIELDS_INVALID_DATA;
         };
+        engine.resources = resources.clone();
         engine.engine.use_resources(resources);
         SHIELDS_OK
     })
@@ -483,6 +664,133 @@ pub unsafe extern "C" fn shields_engine_csp_directives(
             engine.engine.get_csp_directives(&request),
         ));
         SHIELDS_OK
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shields_engine_explain(
+    engine: *const ShieldsEngine,
+    url: *const c_char,
+    source_url: *const c_char,
+    request_type: *const c_char,
+    method: *const c_char,
+    out_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Rule {
+        text: Option<String>,
+        source_index: Option<u32>,
+        line: Option<u32>,
+    }
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Explanation {
+        should_block: bool,
+        important: bool,
+        redirected: bool,
+        rewritten_url: Option<String>,
+        rule: Option<Rule>,
+        exception: Option<Rule>,
+        csp: Option<String>,
+    }
+    fn rule(info: Option<FilterRuleDebugInfo>) -> Option<Rule> {
+        info.map(|info| Rule {
+            source_index: info
+                .source_location
+                .as_ref()
+                .map(|location| location.source_index),
+            line: info
+                .source_location
+                .as_ref()
+                .map(|location| location.line_number),
+            text: info.raw_line,
+        })
+    }
+    guarded(|| {
+        let Some(engine) = engine.as_ref() else {
+            return SHIELDS_INVALID_ARGUMENT;
+        };
+        if out_json.is_null() {
+            return SHIELDS_INVALID_ARGUMENT;
+        }
+        out_json.write(ShieldsBuffer::EMPTY);
+        let (Some(url), Some(source_url), Some(request_type), Some(method)) = (
+            c_str_arg(url),
+            c_str_arg(source_url),
+            c_str_arg(request_type),
+            c_str_arg(method),
+        ) else {
+            return SHIELDS_INVALID_ARGUMENT;
+        };
+        let Ok(request) = Request::new(url, source_url, request_type, method) else {
+            return SHIELDS_INVALID_URL;
+        };
+        let result = engine
+            .engine
+            .check_network_request_subset(&request, false, true);
+        let should_block = result.should_block();
+        let explanation = Explanation {
+            should_block,
+            important: result.important,
+            redirected: should_block && result.redirect.is_some(),
+            rewritten_url: result.rewritten_url,
+            rule: rule(result.filter),
+            exception: rule(result.exception),
+            csp: engine.engine.get_csp_directives(&request),
+        };
+        write_json(&explanation, out_json)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shields_resources_check(
+    json: *const u8,
+    json_len: usize,
+    out_json: *mut ShieldsBuffer,
+) -> ShieldsStatus {
+    #[derive(serde::Serialize)]
+    struct Summary {
+        resources: usize,
+        redirects: usize,
+        scriptlets: usize,
+    }
+    guarded(|| {
+        let Some(json) = byte_arg(json, json_len) else {
+            return SHIELDS_INVALID_ARGUMENT;
+        };
+        if out_json.is_null() {
+            return SHIELDS_INVALID_ARGUMENT;
+        }
+        out_json.write(ShieldsBuffer::EMPTY);
+        let Ok(resources) = serde_json::from_slice::<Vec<Resource>>(json) else {
+            return SHIELDS_INVALID_DATA;
+        };
+        let names: HashSet<&str> = resources
+            .iter()
+            .flat_map(|resource| std::iter::once(&resource.name).chain(&resource.aliases))
+            .map(String::as_str)
+            .collect();
+        let complete = resources.iter().all(|resource| {
+            resource
+                .dependencies
+                .iter()
+                .all(|dependency| names.contains(dependency.as_str()))
+        });
+        if !complete {
+            return SHIELDS_INVALID_DATA;
+        }
+        write_json(
+            &Summary {
+                resources: resources.len(),
+                redirects: redirect_urls(&resources).len(),
+                scriptlets: resources
+                    .iter()
+                    .filter(|resource| resource.kind.supports_scriptlet_injection())
+                    .count(),
+            },
+            out_json,
+        )
     })
 }
 
@@ -732,3 +1040,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "app"))]
+#[path = "webkit_tests.rs"]
+mod webkit_tests;
