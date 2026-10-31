@@ -263,8 +263,8 @@ WebSockets), blocked, answered with a redirect resource (`$redirect`), or redire
 parameters `$removeparam` removes; `$csp` policies added to document responses; a top-level page a
 `$document` rule names replaced by a page saying so (`navigationFailed` with `blockedByPolicy`);
 and cosmetic filtering in every frame: hiding, scriptlets, procedural filters. `mode` is
-`standard` or `aggressive`: standard spares a site's own (first-party) requests unless the rule
-is `$important`, and applies no generic class/id hiding; aggressive applies every rule.
+`standard` or `aggressive`: both apply every network and cosmetic rule, first-party requests
+included; aggressive also hides the generic class and id selectors pages use.
 
 `notifications` is the only source of notification permission in the engine: `Notification.permission`
 and permission queries read it (`granted`, `denied`, or for other origins `default` when
@@ -321,8 +321,7 @@ sequence asked for, oldest first, and the number the next entry will get. An ent
 `decision` is `blocked`, `redirected`, `rewritten` (with `rewrittenURL`), `allowed`, `excepted`
 (an exception rule lifted a block) or `csp` (with the `csp` added). `type` is adblock-rust's
 request type. `rule`, `list` (a `lists[].id` of the policy) and `line` (zero-based, in that list)
-name the rule that matched; `sparedFirstParty` is true when standard mode let a first-party
-request through that a rule matched. `exactness` is `exact` when the engine recorded the decision
+name the rule that matched. `exactness` is `exact` when the engine recorded the decision
 as it made it, `attributed` when it was reconstructed afterwards.
 
 ### 4.8 Accessibility

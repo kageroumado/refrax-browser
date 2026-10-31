@@ -55,9 +55,9 @@ class ShieldsEngineRef : public base::RefCountedThreadSafe<ShieldsEngineRef> {
 class ShieldsService {
  public:
   enum class Mode {
-    // First-party requests are blocked only by $important rules, and first-party pages get no
-    // generic class/id hiding.
+    // Every network and cosmetic rule, as WebKit applies them.
     kStandard,
+    // Standard, plus generic hiding of the classes and ids pages use.
     kAggressive,
   };
 

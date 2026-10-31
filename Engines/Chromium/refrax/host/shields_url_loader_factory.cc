@@ -62,8 +62,7 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
         request_(request),
         client_(std::move(client)),
         traffic_annotation_(traffic_annotation),
-        engine_(std::move(engine)),
-        mode_(ShieldsService::Get().mode()) {
+        engine_(std::move(engine)) {
     loader_receiver_.set_disconnect_handler(
         base::BindOnce(&InProgressRequest::Finish, base::Unretained(this)));
     client_.set_disconnect_handler(
@@ -137,7 +136,7 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
     shields::Request next = shields_request_;
     next.url = redirect_info.new_url;
     shields::MatchOnPool(
-        engine_, mode_, std::move(next),
+        engine_, std::move(next),
         base::BindOnce(&InProgressRequest::OnRedirectDecided, weak_factory_.GetWeakPtr(),
                        redirect_info, std::move(head)));
   }
@@ -173,7 +172,7 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
       return;
     }
     shields::MatchOnPool(
-        engine_, mode_, shields_request_,
+        engine_, shields_request_,
         base::BindOnce(&InProgressRequest::OnDecided, weak_factory_.GetWeakPtr()));
   }
 
@@ -323,7 +322,6 @@ class ShieldsURLLoaderFactory::InProgressRequest : public network::mojom::URLLoa
   mojo::Remote<network::mojom::URLLoaderClient> client_;
   const net::MutableNetworkTrafficAnnotationTag traffic_annotation_;
   const scoped_refptr<ShieldsEngineRef> engine_;
-  const ShieldsService::Mode mode_;
   shields::Request shields_request_;
 
   mojo::Remote<network::mojom::URLLoader> target_loader_;
@@ -466,7 +464,7 @@ void ShieldsDecideWebSocket(content::RenderFrameHost* frame,
   }
   const content::GlobalRenderFrameHostId frame_id = frame->GetGlobalId();
   shields::MatchOnPool(
-      engine, ShieldsService::Get().mode(), request,
+      engine, request,
       base::BindOnce(
           [](scoped_refptr<ShieldsEngineRef> engine, shields::Request request,
              content::GlobalRenderFrameHostId frame_id,

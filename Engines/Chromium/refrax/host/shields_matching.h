@@ -50,8 +50,6 @@ struct Decision {
   bool excepted = false;
   bool important = false;
   bool should_block = false;
-  // Set when the mode let a first-party request through that a rule matched.
-  bool spared_first_party = false;
   int32_t rule_source_index = -1;
   int32_t rule_line = -1;
   // A data: URL served instead of the blocked resource.
@@ -62,15 +60,12 @@ struct Decision {
   std::string exception_rule;
 };
 
-// Decides `request` with `engine` under `mode`. Thread-safe; takes microseconds, but a rule's
+// Decides `request` with `engine`. Thread-safe; takes microseconds, but a rule's
 // first regex compiles for milliseconds, so the UI thread posts it (MatchOnPool).
-Decision Match(const ShieldsEngineRef& engine,
-               ShieldsService::Mode mode,
-               const Request& request);
+Decision Match(const ShieldsEngineRef& engine, const Request& request);
 
 // Matches on the thread pool and replies on the calling sequence.
 void MatchOnPool(scoped_refptr<ShieldsEngineRef> engine,
-                 ShieldsService::Mode mode,
                  Request request,
                  base::OnceCallback<void(Decision)> reply);
 

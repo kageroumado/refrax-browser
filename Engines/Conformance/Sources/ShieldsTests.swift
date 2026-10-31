@@ -3,7 +3,7 @@
 import Foundation
 
 /// What a `contentBlocking` engine does in pages (CONTRACT.md §4.5, §4.7): every kind of network
-/// decision, standard and aggressive mode, $document and $csp, cosmetic filtering in the main
+/// decision in both modes, generic hiding in aggressive mode only, $document and $csp, cosmetic filtering in the main
 /// frame and in a cross-site frame, the request log, and agreement with adblock-rust's own
 /// decisions for the same requests (shields-architecture §9, the Chromium leg).
 enum ShieldsTests {
@@ -40,14 +40,30 @@ enum ShieldsTests {
             try expectEqual(context.server.hits("/asset/blocked.png") - blockedBefore, 0, "requests for blocked images")
         },
 
-        ConformanceTest(name: "shields.standard-mode-spares-first-party", timeout: 90) { context in
+        ConformanceTest(name: "shields.standard-mode-blocks-first-party", timeout: 90) { context in
             let (page, results) = try await network(context, mode: "standard")
             defer { page.close() }
-            try expectEqual(results["firstParty"], "loaded", "a site's own listed image in standard mode")
+            try expectEqual(results["firstParty"], "blocked", "a site's own listed image in standard mode")
             try expectEqual(results["thirdParty"], "blocked", "another site's listed image in standard mode")
-            let log = try await page.requestLog()
-            let spared = log.entries.first { ($0["url"] as? String)?.hasSuffix("127.0.0.1:\(context.server.port)/asset/blocked.png") == true }
-            try expectEqual(spared?["sparedFirstParty"] as? Bool, true, "the log marks the spared request")
+            try expectEqual(results["script"], "blocked", "a site's own listed script in standard mode")
+            try expectEqual(results["fetch"], "blocked", "a site's own listed fetch() in standard mode")
+            try expectEqual(results["redirectedTo"], "stub", "a site's own $redirect script in standard mode")
+            let echo = results["echo"] ?? ""
+            try expect(echo.contains("keep=2") && !echo.contains("tracking"), "$removeparam on the site's own request in standard mode")
+        },
+
+        ConformanceTest(name: "shields.generic-hiding-is-aggressive-only", timeout: 60) { context in
+            try await context.contentBlockingApplied(mode: "standard")
+            let page = try await context.page("/html/shields-cosmetic")
+            defer { page.close() }
+            try await eventuallyAsync("the procedural filter to run", timeout: 10) {
+                try await page.evaluate("!!document.getElementById('procedural')") as? Bool == false ? true : nil
+            }
+            try await pause(0.5)
+            let generic = try await page.evaluate("getComputedStyle(document.getElementById('generic')).display") as? String
+            try expectEqual(generic, "block", "a generic class rule in standard mode")
+            let hidden = try await page.evaluate("getComputedStyle(document.getElementById('hidden')).display") as? String
+            try expectEqual(hidden, "none", "a site's ## rule in standard mode")
         },
 
         ConformanceTest(name: "shields.document-blocked", timeout: 60) { context in

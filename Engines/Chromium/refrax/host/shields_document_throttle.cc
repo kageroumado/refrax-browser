@@ -81,7 +81,7 @@ content::NavigationThrottle::ThrottleCheckResult ShieldsDocumentThrottle::Decide
   request.type = "main_frame";
   request.method = navigation_handle()->IsPost() ? "POST" : "GET";
   shields::MatchOnPool(
-      engine, ShieldsService::Get().mode(), request,
+      engine, request,
       base::BindOnce(&ShieldsDocumentThrottle::OnDecided, weak_factory_.GetWeakPtr(), request));
   return DEFER;
 }

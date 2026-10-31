@@ -81,9 +81,7 @@ std::string RequestType(network::mojom::RequestDestination destination,
   }
 }
 
-Decision Match(const ShieldsEngineRef& engine,
-               ShieldsService::Mode mode,
-               const Request& request) {
+Decision Match(const ShieldsEngineRef& engine, const Request& request) {
   Decision decision;
   if (!engine.engine() || !request.url.SchemeIsHTTPOrHTTPS()) {
     return decision;
@@ -118,16 +116,6 @@ Decision Match(const ShieldsEngineRef& engine,
   decision.exception_rule = TakeString(result.exception_rule);
   shields_decision_free(&result);
 
-  // Standard mode spares a site's own requests unless the rule is $important; a main-frame
-  // request is always the site's own, and only $document rules match it.
-  if (mode == ShieldsService::Mode::kStandard && !third_party &&
-      request.type != "main_frame" && !decision.important &&
-      (decision.should_block || decision.rewritten_url.is_valid())) {
-    decision.should_block = false;
-    decision.redirect.clear();
-    decision.rewritten_url = GURL();
-    decision.spared_first_party = true;
-  }
   if (!decision.should_block) {
     decision.redirect.clear();
   }
@@ -135,15 +123,15 @@ Decision Match(const ShieldsEngineRef& engine,
 }
 
 void MatchOnPool(scoped_refptr<ShieldsEngineRef> engine,
-                 ShieldsService::Mode mode,
                  Request request,
                  base::OnceCallback<void(Decision)> reply) {
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE, {base::TaskPriority::USER_BLOCKING},
       base::BindOnce(
-          [](scoped_refptr<ShieldsEngineRef> engine, ShieldsService::Mode mode,
-             Request request) { return Match(*engine, mode, request); },
-          std::move(engine), mode, std::move(request)),
+          [](scoped_refptr<ShieldsEngineRef> engine, Request request) {
+            return Match(*engine, request);
+          },
+          std::move(engine), std::move(request)),
       std::move(reply));
 }
 
@@ -202,9 +190,6 @@ base::DictValue LogEntry(const ShieldsEngineRef& engine,
   }
   if (decision.rewritten_url.is_valid()) {
     entry.Set("rewrittenURL", contract::URLValue(decision.rewritten_url));
-  }
-  if (decision.spared_first_party) {
-    entry.Set("sparedFirstParty", true);
   }
   entry.Set("exactness", "exact");
   return entry;
