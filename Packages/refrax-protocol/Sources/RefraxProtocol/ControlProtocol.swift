@@ -691,10 +691,25 @@ public extension ControlRequest {
             case moveRow = "move-row"
             /// Take `tab` out of its island as a live card, at `x`,`y` or the page's center.
             case detach
-            /// Join `tab` to `other` as its second pane.
+            /// Join `tab` to `other` as a pane, where `other`'s grid has room.
             case join
-            /// Join `tab` to the current page on `direction` left or right, as a pane.
+            /// Join `tab` to the current page as a pane on `direction` (left, right, up, down) of
+            /// `pane`, or of the focused pane.
             case joinPage = "join-page"
+            /// Lift the current tab's panes apart for editing (layout mode); lay them back.
+            case editPanes = "edit-panes"
+            case donePanes = "done-panes"
+            /// Move `pane` onto the cell `direction` names (top-left, top-right, bottom-left,
+            /// bottom-right), trading places with the pane there. Layout mode only.
+            case movePane = "move-pane"
+            /// Grow `pane` over the empty cells toward `direction`, or free its half there.
+            /// Layout mode only.
+            case growPane = "grow-pane"
+            case shrinkPane = "shrink-pane"
+            /// Take `pane` out of the current tab as a tab of its own, in its island.
+            case separatePane = "separate-pane"
+            /// Set where the columns and rows divide: `x` and `y` as shares of the page (0.2–0.8).
+            case splits
             case pin
             case unpin
             /// A new island from `tab`.
@@ -715,10 +730,13 @@ public extension ControlRequest {
         public let direction: String?
         public let x: Double?
         public let y: Double?
+        /// A pane of the current tab: its page id or a prefix of it, its index in reading
+        /// order, or part of its title.
+        public let pane: String?
 
         public init(
             action: Action, tab: String? = nil, other: String? = nil, island: String? = nil, row: Int? = nil,
-            direction: String? = nil, x: Double? = nil, y: Double? = nil,
+            direction: String? = nil, x: Double? = nil, y: Double? = nil, pane: String? = nil,
         ) {
             self.action = action
             self.tab = tab
@@ -728,6 +746,7 @@ public extension ControlRequest {
             self.direction = direction
             self.x = x
             self.y = y
+            self.pane = pane
         }
     }
 
@@ -2637,12 +2656,59 @@ public enum CTL {
         public let currentTabID: String?
         public let islands: [IslandInfo]
         public let cards: [FloatingTileInfo]
-        public init(isRevealed: Bool, isHeld: Bool, currentTabID: String?, islands: [IslandInfo], cards: [FloatingTileInfo]) {
+        /// The current tab's panes.
+        public let panes: PanesInfo?
+        public init(isRevealed: Bool, isHeld: Bool, currentTabID: String?, islands: [IslandInfo], cards: [FloatingTileInfo], panes: PanesInfo? = nil) {
             self.isRevealed = isRevealed
             self.isHeld = isHeld
             self.currentTabID = currentTabID
             self.islands = islands
             self.cards = cards
+            self.panes = panes
+        }
+    }
+
+    /// A tab's panes on the two-by-two grid.
+    public struct PanesInfo: Codable, Sendable {
+        public let tabID: String
+        /// Layout mode is editing this tab.
+        public let isEditing: Bool
+        /// Where the columns and rows divide, as shares of the page.
+        public let columnSplit: Double
+        public let rowSplit: Double
+        public let panes: [PaneInfo]
+        /// Cells no pane covers (layout mode only), by name.
+        public let emptyCells: [String]
+        public init(tabID: String, isEditing: Bool, columnSplit: Double, rowSplit: Double, panes: [PaneInfo], emptyCells: [String]) {
+            self.tabID = tabID
+            self.isEditing = isEditing
+            self.columnSplit = columnSplit
+            self.rowSplit = rowSplit
+            self.panes = panes
+            self.emptyCells = emptyCells
+        }
+    }
+
+    public struct PaneInfo: Codable, Sendable {
+        public let pageID: String
+        public let title: String
+        /// The cells covered, by name.
+        public let cells: [String]
+        public let isActive: Bool
+        /// The pane's frame in the window, in points.
+        public let x: Double
+        public let y: Double
+        public let width: Double
+        public let height: Double
+        public init(pageID: String, title: String, cells: [String], isActive: Bool, x: Double, y: Double, width: Double, height: Double) {
+            self.pageID = pageID
+            self.title = title
+            self.cells = cells
+            self.isActive = isActive
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
         }
     }
 

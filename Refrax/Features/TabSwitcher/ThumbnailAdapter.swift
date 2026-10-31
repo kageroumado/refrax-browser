@@ -12,16 +12,9 @@ import WebKit
 final class ThumbnailAdapter: NSView {
     // MARK: - Properties
 
-    private var thumbnailViews: [(view: _WKThumbnailView, position: PanePosition)] = []
-    private var layoutType: LayoutType = .single
-    private var horizontalDivider: CGFloat = 0.5
-    private var verticalDivider: CGFloat = 0.5
-
-    // MARK: - Constants
-
-    private enum Layout {
-        static let dividerThickness: CGFloat = 2
-    }
+    private var thumbnailViews: [(view: _WKThumbnailView, pageID: UUID?)] = []
+    private var grid = PaneGrid()
+    private var configuration: LayoutConfiguration?
 
     // MARK: - Initialization
 
@@ -36,6 +29,11 @@ final class ThumbnailAdapter: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Top-left origin, as the pane grid lays out.
+    override var isFlipped: Bool {
+        true
+    }
+
     // MARK: - Configuration
 
     /// Configures the adapter with a single thumbnail view.
@@ -44,29 +42,28 @@ final class ThumbnailAdapter: NSView {
     func configure(with thumbnailView: _WKThumbnailView) {
         clearThumbnails()
 
-        thumbnailViews = [(thumbnailView, .single)]
-        layoutType = .single
+        thumbnailViews = [(thumbnailView, nil)]
+        grid = PaneGrid()
+        configuration = nil
 
         addSubview(thumbnailView)
         thumbnailView.autoresizingMask = [.width, .height]
         thumbnailView.frame = bounds
     }
 
-    /// Configures the adapter with multiple thumbnail views for a multi-page tab.
+    /// Configures the adapter with one thumbnail view per pane of a multi-page tab, laid out
+    /// as the page lays them out.
     ///
     /// - Parameters:
-    ///   - views: Array of thumbnail views with their pane positions.
-    ///   - configuration: The layout configuration for arranging the views.
-    func configure(
-        with views: [(view: _WKThumbnailView, position: PanePosition)],
-        configuration: LayoutConfiguration,
-    ) {
+    ///   - views: Each pane's thumbnail view, by its page.
+    ///   - grid: The tab's panes.
+    ///   - configuration: The tab's stored layout, for its split ratios.
+    func configure(with views: [(view: _WKThumbnailView, pageID: UUID)], grid: PaneGrid, configuration: LayoutConfiguration?) {
         clearThumbnails()
 
-        thumbnailViews = views
-        layoutType = configuration.layoutType
-        horizontalDivider = CGFloat(configuration.horizontalDivider)
-        verticalDivider = CGFloat(configuration.verticalDivider)
+        thumbnailViews = views.map { ($0.view, $0.pageID) }
+        self.grid = grid
+        self.configuration = configuration
 
         for (view, _) in views {
             addSubview(view)
@@ -83,51 +80,12 @@ final class ThumbnailAdapter: NSView {
     }
 
     private func layoutThumbnails() {
-        for (view, position) in thumbnailViews {
-            view.frame = frameForPosition(position)
-        }
-    }
-
-    private func frameForPosition(_ position: PanePosition) -> CGRect {
-        let size = bounds.size
-        let divider = Layout.dividerThickness
-
-        switch layoutType {
-        case .single:
-            return bounds
-
-        case .split:
-            let splitX = size.width * horizontalDivider
-            let leftWidth = splitX - divider / 2
-            let rightWidth = size.width - splitX - divider / 2
-
-            switch position {
-            case .topLeft, .bottomLeft, .single:
-                return CGRect(x: 0, y: 0, width: leftWidth, height: size.height)
-            case .topRight, .bottomRight:
-                return CGRect(x: splitX + divider / 2, y: 0, width: rightWidth, height: size.height)
-            }
-
-        case .triple, .quad:
-            let splitX = size.width * horizontalDivider
-            let splitY = size.height * verticalDivider
-
-            let leftWidth = splitX - divider / 2
-            let rightWidth = size.width - splitX - divider / 2
-            let bottomHeight = splitY - divider / 2
-            let topHeight = size.height - splitY - divider / 2
-
-            switch position {
-            case .bottomLeft:
-                return CGRect(x: 0, y: 0, width: leftWidth, height: bottomHeight)
-            case .bottomRight:
-                return CGRect(x: splitX + divider / 2, y: 0, width: rightWidth, height: bottomHeight)
-            case .topLeft:
-                return CGRect(x: 0, y: splitY + divider / 2, width: leftWidth, height: topHeight)
-            case .topRight:
-                return CGRect(x: splitX + divider / 2, y: splitY + divider / 2, width: rightWidth, height: topHeight)
-            case .single:
-                return bounds
+        let geometry = PaneGridGeometry(size: bounds.size, configuration: configuration, metrics: .page)
+        for (view, pageID) in thumbnailViews {
+            if let pageID, let span = grid.span(of: pageID) {
+                view.frame = geometry.frame(of: span)
+            } else {
+                view.frame = bounds
             }
         }
     }

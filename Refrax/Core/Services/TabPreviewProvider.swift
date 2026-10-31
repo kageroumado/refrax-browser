@@ -276,21 +276,18 @@ final class TabPreviewProvider {
     private func createThumbnail(for tab: Tab) -> ThumbnailAdapter {
         let adapter = ThumbnailAdapter(frame: NSRect(origin: .zero, size: Constants.thumbnailSize))
 
-        if tab.isMultiPage, let config = tab.layoutConfiguration {
+        if tab.isMultiPage {
             // Multi-page tab: create thumbnail for each page
-            var thumbnailViews: [(view: _WKThumbnailView, position: PanePosition)] = []
+            let grid = tab.paneGrid
+            var thumbnailViews: [(view: _WKThumbnailView, pageID: UUID)] = []
 
             for page in tab.sortedPages {
-                guard let webPage = tabManager.pagePool.existingPage(for: page),
-                      let position = config.panePositions[page.id]
-                else { continue }
-
-                let thumbnailView = makeThumbnailView(for: webPage)
-                thumbnailViews.append((thumbnailView, position))
+                guard let webPage = tabManager.pagePool.existingPage(for: page) else { continue }
+                thumbnailViews.append((makeThumbnailView(for: webPage), page.id))
             }
 
             if !thumbnailViews.isEmpty {
-                adapter.configure(with: thumbnailViews, configuration: config)
+                adapter.configure(with: thumbnailViews, grid: grid, configuration: tab.layoutConfiguration)
             }
         } else {
             // Single-page tab

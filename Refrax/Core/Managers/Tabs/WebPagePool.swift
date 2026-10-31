@@ -482,6 +482,15 @@ final class WebPagePool {
         activePages[tabPage.id]
     }
 
+    /// The page shown for `tabPage`, without creating one, for a view's body: the view is
+    /// updated when the page is made, evicted, or replaced. Pages are made outside bodies
+    /// with ``page(for:)``.
+    func shownPage(for tabPage: TabPage) -> WebPage? {
+        _ = pagesVersion
+        _ = pageReplacements[tabPage.id]
+        return activePages[tabPage.id]
+    }
+
     /// Returns existing page by ID without creating one.
     ///
     /// - Parameter id: The tab page ID to look up.
@@ -742,15 +751,9 @@ final class WebPagePool {
 
         // Score all pages (synchronous - uses cached state)
         let scoredPages = scorer.scoreAll(pages: activePages.values)
-
-        // Filter out protected pages and sort by score (lowest first)
-        let evictable = scoredPages
-            .filter { !$0.isProtected }
-            .sorted { $0.score < $1.score }
-
-        // Calculate how many we can actually evict
-        let maxToEvict = min(count, activePageCount - minimumPages)
-        let toEvict = evictable.prefix(maxToEvict)
+        let toEvict = Self.evictionOrder(
+            scoredPages, shown: shownPageIDs, limit: min(count, activePageCount - minimumPages),
+        )
 
         // Perform eviction
         var evictedCount = 0
@@ -774,6 +777,31 @@ final class WebPagePool {
         }
 
         return evictedCount
+    }
+
+    /// The pages every window shows: all the panes of each window's current tab. Eviction
+    /// never closes one, since its web view is in a pane on screen.
+    private var shownPageIDs: Set<TabPage.ID> {
+        guard let windowManager else { return [] }
+        var shown: Set<TabPage.ID> = []
+        for windowState in windowManager.allWindowStates {
+            if let tab = windowState.activeTab {
+                shown.formUnion(tab.pages.map(\.id))
+            }
+        }
+        return shown
+    }
+
+    /// The pages to evict, first to last: never one on screen (`shown`) or one the scorer
+    /// protects (capture, sound, a visible preview); among the rest, the lowest score first.
+    static func evictionOrder<Page: EvictionCandidate>(_ candidates: [Page], shown: Set<UUID>, limit: Int) -> [Page] {
+        guard limit > 0 else { return [] }
+        return Array(
+            candidates
+                .filter { !$0.isProtected && !shown.contains($0.pageID) }
+                .sorted { $0.score < $1.score }
+                .prefix(limit),
+        )
     }
 
     /// Clears all inactive pages to free memory.
@@ -919,15 +947,9 @@ final class WebPagePool {
 
         // Score eligible pages
         let scoredPages = scorer.scoreAll(pages: eligiblePages)
-
-        // Filter out protected pages and sort by score (lowest first)
-        let evictable = scoredPages
-            .filter { !$0.isProtected }
-            .sorted { $0.score < $1.score }
-
-        // Calculate how many we can actually evict
-        let maxToEvict = min(count, activePageCount - minimumPages)
-        let toEvict = evictable.prefix(maxToEvict)
+        let toEvict = Self.evictionOrder(
+            scoredPages, shown: shownPageIDs, limit: min(count, activePageCount - minimumPages),
+        )
 
         // Perform eviction
         var evictedCount = 0
@@ -989,11 +1011,8 @@ final class WebPagePool {
         guard !idlePages.isEmpty else { return }
 
         // Score and evict only truly low-value idle pages (synchronous)
-        let scored = scorer.scoreAll(pages: idlePages)
-        let toEvict = scored
-            .filter { !$0.isProtected && $0.score < 200 } // Truly low value
-            .sorted { $0.score < $1.score }
-            .prefix(2) // Max 2 per cycle
+        let scored = scorer.scoreAll(pages: idlePages).filter { $0.score < 200 } // Truly low value
+        let toEvict = Self.evictionOrder(scored, shown: shownPageIDs, limit: 2) // Max 2 per cycle
 
         var evictedAny = false
         for scored in toEvict {
@@ -1030,47 +1049,11 @@ final class WebPagePool {
               pageArea.width > 0, pageArea.height > 0 else {
             return fallback
         }
-
-        let availableWidth = pageArea.width
-        let availableHeight = pageArea.height
-
-        let tab = tabPage.tab
-        let pageCount = tab?.pages.count ?? 1
-
-        if pageCount <= 1 {
-            return CGRect(x: 0, y: 0, width: availableWidth, height: availableHeight)
+        guard let tab = tabPage.tab, let span = tab.paneGrid.span(of: tabPage.id) else {
+            return CGRect(origin: .zero, size: pageArea)
         }
-
-        guard let config = tab?.layoutConfiguration else {
-            return CGRect(x: 0, y: 0, width: availableWidth, height: availableHeight)
-        }
-
-        let hDivider = CGFloat(config.horizontalDivider)
-        let vDivider = CGFloat(config.verticalDivider)
-
-        switch config.layoutType {
-        case .single:
-            return CGRect(x: 0, y: 0, width: availableWidth, height: availableHeight)
-
-        case .split:
-            // Determine if horizontal or vertical split from pane positions
-            let positions = Set(config.panePositions.values)
-            let isHorizontalSplit = (positions.contains(.topLeft) && positions.contains(.topRight))
-                || (positions.contains(.bottomLeft) && positions.contains(.bottomRight))
-                || (positions.contains(.topLeft) && positions.contains(.bottomRight))
-                || (positions.contains(.topRight) && positions.contains(.bottomLeft))
-            if isHorizontalSplit {
-                return CGRect(x: 0, y: 0, width: availableWidth * hDivider, height: availableHeight)
-            } else {
-                return CGRect(x: 0, y: 0, width: availableWidth, height: availableHeight * vDivider)
-            }
-
-        case .triple:
-            return CGRect(x: 0, y: 0, width: availableWidth * hDivider, height: availableHeight * vDivider)
-
-        case .quad:
-            return CGRect(x: 0, y: 0, width: availableWidth * hDivider, height: availableHeight * vDivider)
-        }
+        let geometry = PaneGridGeometry(size: pageArea, configuration: tab.layoutConfiguration, metrics: .page)
+        return CGRect(origin: .zero, size: geometry.frame(of: span).size)
     }
 
     /// Builds a WebPage and navigation decider for a tab page.
@@ -1228,5 +1211,18 @@ extension WebPagePool {
         for webPage in activePages.values where webPage.url?.host?.lowercased() == host.lowercased() {
             Task { _ = try? await webPage.evaluateJavaScript(script) }
         }
+    }
+}
+
+/// A page as eviction weighs it: its tab page, its importance, and whether the scorer keeps it.
+protocol EvictionCandidate {
+    var pageID: UUID { get }
+    var score: Int { get }
+    var isProtected: Bool { get }
+}
+
+extension PageImportanceScorer.ScoredPage: EvictionCandidate {
+    var pageID: UUID {
+        page.tabPage.id
     }
 }

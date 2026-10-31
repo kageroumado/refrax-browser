@@ -154,16 +154,35 @@ extension MenuBarManager {
 
         viewMenu.addItem(.separator())
 
-        // Enter Split View with Command Lens
+        // Split view: the current tab's panes on the two-by-two grid.
         let splitViewItem = NSMenuItem(
-            title: "Enter Split View",
-            action: #selector(enterSplitViewWithLens(_:)),
+            title: PaneCommand.toggleEditing.title,
+            action: #selector(toggleSplitViewEditing(_:)),
             keyEquivalent: "t",
         )
         splitViewItem.keyEquivalentModifierMask = [.command, .control]
-        splitViewItem.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
+        splitViewItem.image = NSImage(systemSymbolName: PaneCommand.toggleEditing.symbol, accessibilityDescription: nil)
         splitViewItem.target = self
         viewMenu.addItem(splitViewItem)
+
+        let besideItem = NSMenuItem(title: "Open Page Beside", action: nil, keyEquivalent: "")
+        besideItem.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
+        let besideMenu = NSMenu(title: "Open Page Beside")
+        for edge in PaneEdge.allCases {
+            let command = PaneCommand.openBeside(edge)
+            let item = NSMenuItem(title: command.title, action: #selector(openPageBeside(_:)), keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: command.symbol, accessibilityDescription: nil)
+            item.representedObject = edge.rawValue
+            item.target = self
+            besideMenu.addItem(item)
+        }
+        besideItem.submenu = besideMenu
+        viewMenu.addItem(besideItem)
+
+        let separateItem = NSMenuItem(title: PaneCommand.separate.title, action: #selector(separatePanes(_:)), keyEquivalent: "")
+        separateItem.image = NSImage(systemSymbolName: PaneCommand.separate.symbol, accessibilityDescription: nil)
+        separateItem.target = self
+        viewMenu.addItem(separateItem)
 
         let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "")
         floatingItem.target = self
@@ -348,18 +367,43 @@ extension MenuBarManager {
 
     // MARK: - Split View Actions
 
+    /// Lifts the current tab's panes apart for editing, or lays them back.
     @objc
-    func enterSplitViewWithLens(_: Any?) {
-        guard let windowState = activeWindowController?.windowState else { return }
+    func toggleSplitViewEditing(_: Any?) {
+        guard let controller = activeWindowController else { return }
+        PaneCommand.perform(.toggleEditing, in: controller.windowState, tabs: controller.tabManager)
+    }
 
-        // Enter layout mode if not already in it
-        if !windowState.isInLayoutMode {
-            windowState.enterLayoutMode()
+    /// Opens the Command Lens for a page beside the focused pane, on the item's edge.
+    @objc
+    func openPageBeside(_ sender: NSMenuItem) {
+        guard let controller = activeWindowController, let raw = sender.representedObject as? String, let edge = PaneEdge(rawValue: raw) else { return }
+        PaneCommand.perform(.openBeside(edge), in: controller.windowState, tabs: controller.tabManager)
+    }
+
+    /// Gives every pane of the current tab a tab of its own.
+    @objc
+    func separatePanes(_: Any?) {
+        guard let controller = activeWindowController else { return }
+        PaneCommand.perform(.separate, in: controller.windowState, tabs: controller.tabManager)
+    }
+
+    /// Enables the split view items for what the current tab can do, and names the toggle
+    /// for the way it goes; nil for every other item.
+    func validatePaneMenuItem(_ item: NSMenuItem) -> Bool? {
+        let windowState = activeWindowController?.windowState
+        switch item.action {
+        case #selector(toggleSplitViewEditing(_:)):
+            let editing = windowState?.isInLayoutMode == true
+            item.title = editing ? PaneCommand.finishEditing.title : PaneCommand.edit.title
+            return windowState?.activeTab != nil
+        case #selector(openPageBeside(_:)):
+            return windowState.map { PaneCommand.isAvailable(.openBeside(.trailing), in: $0) } ?? false
+        case #selector(separatePanes(_:)):
+            return windowState.map { PaneCommand.isAvailable(.separate, in: $0) } ?? false
+        default:
+            return nil
         }
-
-        // Set target position to top-right pane and open command lens
-        windowState.layoutModeTargetPosition = .topRight
-        windowState.openCommandLens()
     }
 
     @objc

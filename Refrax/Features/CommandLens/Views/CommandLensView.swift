@@ -40,7 +40,7 @@ struct CommandLensView: View {
                     textFieldCapsule
                     suggestionsArea
                     if !isSmallMode, fieldStyle == nil, windowState.activeTab != nil,
-                       windowState.commandLensEntrance?.editsCurrentPage != true, windowState.layoutModeTargetPosition == nil {
+                       windowState.commandLensEntrance?.editsCurrentPage != true, windowState.newPanePlacement == nil {
                         CommandLensScopeLabel()
                     }
                 }
@@ -69,7 +69,7 @@ struct CommandLensView: View {
         .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.3), value: providerSwitchScale)
         .animation(reduceMotion ? nil : .spring(duration: 0.5), value: hasSuggestions)
         .animation(reduceMotion ? nil : .spring(duration: 0.3), value: manager.showSearchEngineBadge)
-        .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.layoutModeTargetPosition)
+        .animation(reduceMotion ? nil : .spring(duration: 0.3), value: windowState.newPanePlacement)
         .task { await onAppear() }
         .task(id: tour.requestedPage) {
             guard !isSmallMode, manager.inputText.isEmpty else { return }
@@ -160,11 +160,11 @@ struct CommandLensView: View {
         }
     }
 
-    /// Shows a badge when the command lens is creating a tab in a layout pane.
+    /// Shows a badge while the lens opens a page as a pane of the current tab.
     @ViewBuilder
     private var layoutModeIndicator: some View {
-        if windowState.layoutModeTargetPosition != nil {
-            contextBadge(icon: "rectangle.split.2x1", color: .blue)
+        if windowState.newPanePlacement != nil {
+            contextBadge(icon: "rectangle.split.2x1", color: Color.appAccentColor)
         }
     }
 

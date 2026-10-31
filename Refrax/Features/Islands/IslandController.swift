@@ -128,8 +128,6 @@ final class IslandController {
         static let newIslandOffset: Double = 0.26
         /// Where under its top edge a card taken out of an island hangs from the pointer.
         static let cardGrab: CGFloat = 14
-        /// The share of the page's width at each side where a dragged row joins the page.
-        static let sideZoneShare: CGFloat = 0.28
     }
 
     private nonisolated struct SyncKey: Equatable, Sendable {
@@ -156,8 +154,8 @@ final class IslandController {
     /// empty space, a new island of its own (a card instead while the card key is held).
     var draggedTabID: UUID?
     var drop: IslandDrop?
-    /// The side of the page a dragged row would join the current tab on, as a pane.
-    var sideDrop: PanePosition?
+    /// Where on the page a dragged row would join the current tab, as a pane.
+    var sideDrop: PanePlacement?
     /// The island the dragged row makes if let go here, on empty space.
     var islandGhost: IslandGhost?
     /// The dragged row leaves as a live card instead, while ⇧ is held.
@@ -497,26 +495,11 @@ final class IslandController {
         }
     }
 
-    /// The side of the page a row dragged to `point` would join the current tab on: the
-    /// band at either side, when the row's tab can be its second pane.
-    func sideZone(at point: CGPoint, dragging tabID: UUID) -> PanePosition? {
+    /// Where a row dragged to `point` would join the current tab as a pane: beside the pane
+    /// under the point, or, in layout mode, in the empty cell there (``PaneDrop``).
+    func sideZone(at point: CGPoint, dragging tabID: UUID) -> PanePlacement? {
         guard let current = currentTab, canJoin(tabID, with: current.id) else { return nil }
-        let page = pageArea
-        guard page.contains(point) else { return nil }
-        let width = page.width * Layout.sideZoneShare
-        if point.x < page.minX + width {
-            return .topLeft
-        }
-        if point.x > page.maxX - width {
-            return .topRight
-        }
-        return nil
-    }
-
-    /// A single page can join a tab that has room for a second.
-    func canJoin(_ tabID: UUID, with otherID: UUID) -> Bool {
-        guard tabID != otherID, let source = tab(for: tabID), let target = tab(for: otherID) else { return false }
-        return source.pages.count == 1 && !source.isMultiPage && target.pages.count < 2
+        return Self.panePlacement(at: point, joining: current, editing: windowState.paneEditor.session, page: pageArea)
     }
 
     /// A group's color; the loose tabs' island is gray, so it reads as the one without a group.
@@ -1165,50 +1148,30 @@ final class IslandController {
         rebuild()
     }
 
-    /// Joins `tabID` to `otherID` as its second pane, beside it: one tab holding two pages.
+    /// Joins `tabID` to `otherID` as a pane, where the grid has room (``PanePlacement/automatic``).
     func join(_ tabID: UUID, with otherID: UUID) {
         guard canJoin(tabID, with: otherID), let source = tab(for: tabID), let target = tab(for: otherID) else { return }
         state.detached.remove(tabID)
-        place(target.pages, at: .topLeft)
-        tabManager.moveTabToLayout(source, into: target, at: .topRight)
+        tabManager.moveTabToLayout(source, into: target, at: .automatic)
         persist()
         rebuild()
     }
 
-    /// Joins `tabID` to the current tab as a pane on `side` of the page.
-    func joinPage(_ tabID: UUID, at side: PanePosition) {
+    /// Joins `tabID` to the current tab as a pane at `placement`.
+    func joinPage(_ tabID: UUID, at placement: PanePlacement) {
         guard let current = currentTab, canJoin(tabID, with: current.id), let source = tab(for: tabID) else { return }
         state.detached.remove(tabID)
-        place(current.pages, at: side == .topLeft ? .topRight : .topLeft)
-        tabManager.moveTabToLayout(source, into: current, at: side == .topLeft ? .topLeft : .topRight)
+        tabManager.moveTabToLayout(source, into: current, at: placement)
         persist()
         rebuild()
     }
 
-    /// Gives a tab's lone page its pane before a second joins it: a page without a position
-    /// is not laid out at all.
-    private func place(_ pages: [TabPage], at position: PanePosition) {
-        guard let page = pages.first, pages.count == 1, let tab = page.tab else { return }
-        page.position = position
-        var config = tab.layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
-        config.panePositions[page.id] = position
-        tab.layoutConfiguration = config
-    }
-
-    /// Tabs of two pages whose first page has no pane get one: left, or right when the other
-    /// page took the left.
+    /// Tabs of several pages whose stored layout misses a page get it stored complete.
     private func repairPanes(in space: Space) {
         for tab in space.mainTabs where tab.pages.count > 1 {
-            var config = tab.layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
-            let unplaced = tab.pages.filter { config.panePositions[$0.id] == nil }
-            guard !unplaced.isEmpty else { continue }
-            let taken = Set(config.panePositions.values)
-            for page in unplaced {
-                let position: PanePosition = taken.contains(.topLeft) ? .topRight : .topLeft
-                page.position = position
-                config.panePositions[page.id] = position
-            }
-            tab.layoutConfiguration = config
+            let stored = tab.layoutConfiguration?.panePositions ?? [:]
+            guard tab.pages.contains(where: { stored[$0.id] == nil }) else { continue }
+            tab.storePaneGrid(tab.paneGrid)
             tabManager.scheduleSave()
         }
     }

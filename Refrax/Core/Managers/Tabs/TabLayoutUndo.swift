@@ -58,15 +58,15 @@ extension TabManager {
         return windows
     }
 
-    func registerLayoutUndo(_ snapshot: TabLayoutUndo, joinedPageID: UUID, position: PanePosition) {
+    func registerLayoutUndo(_ snapshot: TabLayoutUndo, joinedPageID: UUID, placement: PanePlacement) {
         let undoManager = undoRedoManager.undoManager
         undoManager.registerUndo(withTarget: self) { target in
-            target.undoLayoutJoin(snapshot, joinedPageID: joinedPageID, position: position)
+            target.undoLayoutJoin(snapshot, joinedPageID: joinedPageID, placement: placement)
         }
         undoManager.setActionName("Combine Tabs")
     }
 
-    private func undoLayoutJoin(_ snapshot: TabLayoutUndo, joinedPageID: UUID, position: PanePosition) {
+    private func undoLayoutJoin(_ snapshot: TabLayoutUndo, joinedPageID: UUID, placement: PanePlacement) {
         guard let spaceID = snapshot.spaceID, let space = state.space(for: spaceID),
               let target = state.tab(for: snapshot.destinationID),
               let page = target.pages.first(where: { $0.id == joinedPageID }), target.pages.count > 1 else { return }
@@ -122,18 +122,18 @@ extension TabManager {
         state.extensionManager?.dispatchTabOpened(restored)
         let undoManager = undoRedoManager.undoManager
         undoManager.registerUndo(withTarget: self) { target in
-            target.redoLayoutJoin(snapshot, position: position)
+            target.redoLayoutJoin(snapshot, placement: placement)
         }
         undoManager.setActionName("Combine Tabs")
     }
 
-    private func redoLayoutJoin(_ snapshot: TabLayoutUndo, position: PanePosition) {
+    private func redoLayoutJoin(_ snapshot: TabLayoutUndo, placement: PanePlacement) {
         guard let source = state.tab(for: snapshot.sourceID), let destination = state.tab(for: snapshot.destinationID) else { return }
         destination.layoutConfiguration = snapshot.destinationLayout
         for page in destination.pages {
             page.position = snapshot.destinationLayout?.panePositions[page.id] ?? .single
         }
-        _ = moveTabToLayout(source, into: destination, at: position)
+        _ = moveTabToLayout(source, into: destination, at: placement)
         if let space = destination.space {
             var islands = IslandState.decode(space.tableLayoutData)
             islands.detached.remove(snapshot.sourceID)

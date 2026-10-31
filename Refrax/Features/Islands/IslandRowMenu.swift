@@ -29,7 +29,7 @@ struct IslandRowMenu {
             tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
             onRename: onRename,
         )
-        return MenuComposer.compose(page.actions() + object.actions() + islandActions(), groupOrder: PageActionsMenu.groupOrder)
+        return MenuComposer.compose(page.actions() + object.actions() + islandActions() + paneActions(), groupOrder: PageActionsMenu.groupOrder)
     }
 
     /// What a row can do within its island: float, move, leave, close around it. New Island

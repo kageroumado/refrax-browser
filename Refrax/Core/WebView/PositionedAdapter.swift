@@ -1,21 +1,11 @@
 import SwiftUI
 
-/// NSViewRepresentable that maintains a stable adapter at a fixed position.
+/// NSViewRepresentable hosting one pane's page in a ``CocoaWebViewAdapter``.
 ///
-/// Unlike `WebViewRepresentable` which requires a `WebPage`, this view accepts
-/// an optional page. When page is nil, the adapter exists but shows nothing.
-/// This enables a constant view structure (always 4 positions) so SwiftUI
-/// never recreates adapters during tab switches or mode transitions.
-///
-/// ## Architecture
-///
-/// The key insight is that SwiftUI view identity determines adapter lifecycle.
-/// By always having 4 views with position-based IDs, the structure never changes:
-/// - Single-pane: .topLeft has content, others are empty (zero size)
-/// - Multi-pane: Populated positions have content, empty ones have zero size
-/// - Layout mode: All 4 positions visible for editing
-///
-/// The adapters persist across all transitions. Only the webViews move between them.
+/// The page view keys each pane by its page, so the adapter lives as long as the page is a
+/// pane of the tab, whichever cell it covers: a web view never moves between adapters while
+/// panes trade places. The page is optional for the moment between a pane appearing and its
+/// page being made, when the adapter shows nothing.
 ///
 /// ## Dynamic Properties
 ///
@@ -40,6 +30,11 @@ struct PositionedAdapter: NSViewRepresentable {
     /// Expected frame size hint for zero-bounds scenarios.
     let expectedFrame: CGRect
 
+    /// The pane's corner radius, applied to the adapter's own layer with `masksToBounds`, so
+    /// WebKit's remote layers and the snapshot are clipped by Core Animation rather than by
+    /// a SwiftUI shape above them.
+    var cornerRadius: CGFloat = 0
+
     /// Whether the webView should ignore all events.
     /// Used during layout mode and space lock.
     var ignoresAllEvents: Bool = false
@@ -50,6 +45,13 @@ struct PositionedAdapter: NSViewRepresentable {
 
     func makeNSView(context _: Context) -> CocoaWebViewAdapter {
         CocoaWebViewAdapter()
+    }
+
+    /// Whole points, rounded down: WebKit lays out and composites a fractional size with
+    /// blurred edges, and a pane never grows past the space it was given.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView _: CocoaWebViewAdapter, context _: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: width.rounded(.down), height: height.rounded(.down))
     }
 
     func updateNSView(_ adapter: CocoaWebViewAdapter, context: Context) {
@@ -130,6 +132,8 @@ struct PositionedAdapter: NSViewRepresentable {
                 adapter.setInactiveMode()
             }
         }
+
+        adapter.setCornerRadius(cornerRadius)
 
         // Apply dynamic properties AFTER display mode is set.
         // This ensures the adapter is in active mode when topContentInset triggers applyTopContentInset().

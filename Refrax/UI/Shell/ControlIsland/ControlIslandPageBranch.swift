@@ -135,7 +135,7 @@ struct ControlIslandPageBranch: View {
                     .lineLimit(1)
                     .truncationMode(.head)
                 Spacer(minLength: 0)
-                Image(systemName: "rectangle.split.2x1")
+                Image(systemName: "rectangle.split.2x2")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
@@ -144,8 +144,27 @@ struct ControlIslandPageBranch: View {
             .frame(height: ControlIslandPlacement.paneRowHeight)
             .contentShape(Rectangle())
         }
-        .help("Show this pane on the card")
+        .help("Show this pane on the card · Control-click to edit the split")
         .accessibilityLabel("Pane: \(pane.title)")
+        .contextMenu { paneMenu(pane, of: tab) }
+    }
+
+    /// A pane row's menu: the split's editing, and the pane leaving it.
+    @ViewBuilder
+    private func paneMenu(_ pane: TabPage, of tab: Tab) -> some View {
+        Button(windowState.isInLayoutMode ? PaneCommand.finishEditing.title : PaneCommand.edit.title, systemImage: PaneCommand.edit.symbol) {
+            PaneCommand.perform(.toggleEditing, in: windowState, tabs: tabs)
+        }
+        Button("Open as Its Own Tab", systemImage: "rectangle.portrait.and.arrow.right") {
+            tabs.movePageToNewTab(pane, from: tab)
+        }
+        Button(PaneCommand.separate.title, systemImage: PaneCommand.separate.symbol) {
+            PaneCommand.perform(.separate, in: windowState, tabs: tabs)
+        }
+        Divider()
+        Button("Close Pane", systemImage: "xmark", role: .destructive) {
+            tabs.removePageFromTab(tab, page: pane)
+        }
     }
 
     private func identity(_ tab: Tab) -> some View {
