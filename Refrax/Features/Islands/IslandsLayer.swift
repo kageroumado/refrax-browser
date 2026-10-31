@@ -58,8 +58,8 @@ struct IslandsLayer: View {
                             .zIndex(4)
                             .transition(.opacity)
                     }
-                    if let side = islands.sideDrop {
-                        SideDropZone(side: side, bounds: islands.pageArea)
+                    if let placement = islands.sideDrop, let tab = islands.currentTab {
+                        PaneDropZone(placement: placement, tab: tab, session: windowState.paneEditor.session, page: islands.pageArea)
                             .transition(.opacity)
                     }
                     if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
@@ -410,7 +410,9 @@ private struct IslandHeader: View {
         islands.holdControls(id, true)
         // Complete the button action before entering AppKit's menu tracking loop.
         DispatchQueue.main.async {
-            if content.window != nil { menu.popUp(positioning: nil, at: point, in: content) }
+            if content.window != nil {
+                menu.popUp(positioning: nil, at: point, in: content)
+            }
             islands.holdControls(id, false)
             if renameAfterMenu {
                 renameAfterMenu = false
@@ -421,7 +423,9 @@ private struct IslandHeader: View {
 
     private func beginRename() {
         guard !island.isDefault else { return }
-        if island.placement.iconsOnly { islands.setIconsOnly(false, for: island.id) }
+        if island.placement.iconsOnly {
+            islands.setIconsOnly(false, for: island.id)
+        }
         (windowState.window as? RefraxWindow)?.lockedFirstResponder = nil
         draftName = island.title
         isRenaming = true
@@ -863,44 +867,6 @@ private struct RowPreview: View {
         .offset(x: x, y: y)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-}
-
-/// The side of the page a dragged row would join the current tab on: the band lights up
-/// with the split it makes.
-private struct SideDropZone: View {
-    let side: PanePosition
-    let bounds: CGRect
-
-    private enum Layout {
-        static let inset: CGFloat = 12
-        static let symbolSize: CGFloat = 30
-    }
-
-    var body: some View {
-        let width = bounds.width * IslandController.Layout.sideZoneShare
-        let zone = CGRect(x: side == .topLeft ? bounds.minX : bounds.maxX - width, y: bounds.minY, width: width, height: bounds.height)
-            .insetBy(dx: Layout.inset, dy: Layout.inset)
-        WindowCorner.concentric
-            .fill(Color.appAccentColor.opacity(0.14))
-            .overlay {
-                WindowCorner.concentric
-                    .stroke(Color.appAccentColor.opacity(0.5), lineWidth: 1)
-                    .padding(0.5)
-            }
-            .overlay {
-                VStack(spacing: 8) {
-                    Image(systemName: side == .topLeft ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled")
-                        .font(.system(size: Layout.symbolSize, weight: .regular))
-                    Text("Open beside the page")
-                        .font(.callout.weight(.medium))
-                }
-                .foregroundStyle(Color.appAccentColor)
-            }
-            .frame(width: zone.width, height: zone.height)
-            .offset(x: zone.minX, y: zone.minY)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

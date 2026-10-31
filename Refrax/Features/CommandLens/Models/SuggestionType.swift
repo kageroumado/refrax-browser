@@ -121,6 +121,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case newSpace
     /// Move around the table or reshape the current slab.
     case table(TableCommand)
+    /// Edit, add to, or separate the current tab's panes.
+    case panes(PaneCommand)
     /// Copy the current page's address, or its Markdown link.
     case copyCurrentAddress(asMarkdown: Bool)
     /// Download the PDF or image the current page shows.

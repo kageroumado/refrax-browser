@@ -2572,17 +2572,17 @@ final class RefraxControlServer {
         case .release:
             canvas.releaseFloatingTabs()
         case .step:
-            islands.step(try direction(params.direction))
+            try islands.step(direction(params.direction))
             await settleTravel(islands)
         case .open:
-            islands.open(try tab(params.tab))
+            try islands.open(tab(params.tab))
             await settleTravel(islands)
         case .moveRow:
             let target = try island(params.island)
-            islands.moveTab(try tab(params.tab).id, to: params.row ?? Int.max, in: target.id)
+            try islands.moveTab(tab(params.tab).id, to: params.row ?? Int.max, in: target.id)
         case .detach:
             let point = CGPoint(x: params.x ?? bounds.midX, y: params.y ?? bounds.midY)
-            islands.detach(try tab(params.tab).id, at: point)
+            try islands.detach(tab(params.tab).id, at: point)
         case .join:
             guard let other = params.other else { throw ControlError.invalidParams("--with is required") }
             let source = try tab(params.tab)
@@ -2592,16 +2592,16 @@ final class RefraxControlServer {
             }
             islands.join(source.id, with: target.id)
         case .joinPage:
-            let side = try direction(params.direction)
-            guard side == .left || side == .right else { throw ControlError.invalidParams("Direction must be left or right") }
-            islands.joinPage(try tab(params.tab).id, at: side == .left ? .topLeft : .topRight)
+            try PaneControl.perform(params, source: tab(params.tab), in: activeWindowState(), tabs: tabManager, islands: islands)
+        case .editPanes, .donePanes, .movePane, .growPane, .shrinkPane, .separatePane, .splits:
+            try PaneControl.perform(params, source: nil, in: activeWindowState(), tabs: tabManager, islands: islands)
         case .pin, .unpin:
             let target = try island(params.island)
             if target.placement.isPinned != (params.action == .pin) {
                 islands.togglePin(target.id)
             }
         case .newIsland:
-            islands.makeIsland(from: try tab(params.tab).id)
+            try islands.makeIsland(from: tab(params.tab).id)
         case .iconRail, .titles:
             let target = try island(params.island)
             islands.setIconsOnly(params.action == .iconRail, for: target.id)
@@ -2613,6 +2613,13 @@ final class RefraxControlServer {
         }
         islands.refresh()
         return islandsStateResponse(islands, canvas: canvas, bounds: bounds)
+    }
+
+    private func activeWindowState() throws -> WindowState {
+        guard let windowState = windowManager.activeWindowController?.windowState else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return windowState
     }
 
     private func islandsStateResponse(_ islands: IslandController, canvas: TabCanvasManager, bounds: CGRect) -> ControlResponse {
@@ -2642,6 +2649,7 @@ final class RefraxControlServer {
                     isPinned: placement.isPinned, isVisible: tab.id != current,
                 )
             },
+            panes: windowManager.activeWindowController.flatMap { PaneControl.info(in: $0.windowState, islands: islands) },
         ))
     }
 
