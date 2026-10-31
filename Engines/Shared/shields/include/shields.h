@@ -89,6 +89,21 @@ ShieldsStatus shields_filter_set_add_list(ShieldsFilterSet *set,
                                           uint8_t permissions,
                                           uint32_t *out_source_index);
 
+typedef uint32_t ShieldsListOptions;
+// Drop the list's scriptlet injections (`##+js(…)`; `#@#+js` exceptions stay). Every line
+// adblock-rust's own parser reads as an injection is removed, whatever the line endings.
+#define SHIELDS_LIST_NO_SCRIPTLETS (1u << 0)
+
+// shields_filter_set_add_list with `options` (SHIELDS_LIST_* bits; unknown bits are
+// SHIELDS_INVALID_ARGUMENT). shields_filter_set_add_list is this with 0.
+ShieldsStatus shields_filter_set_add_list_with_options(ShieldsFilterSet *set,
+                                                       const uint8_t *text,
+                                                       size_t text_len,
+                                                       ShieldsListFormat format,
+                                                       uint8_t permissions,
+                                                       ShieldsListOptions options,
+                                                       uint32_t *out_source_index);
+
 // Converts the set to Apple content-blocker rules with adblock-rust's converter:
 //   {"rules": [<WKContentRuleList rule>...], "convertedFilterCount": <int>}
 // Rules are ordered so ignore-previous-rules follow what they except. Filters the format

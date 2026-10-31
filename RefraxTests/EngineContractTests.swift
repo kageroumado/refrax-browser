@@ -162,7 +162,7 @@ struct EngineWireTests {
         // the feature off in Chromium pages.
         let blocking = PolicyUpdate.contentBlocking(policy: ContentBlockingPolicy(
             isEnabled: true,
-            mode: .aggressive,
+            mode: .standard,
             engine: .init(path: URL(filePath: "/tmp/k/engine.dat"), sha256: "ab", format: "adblock-0.13.3;shields-1"),
             resources: .init(path: URL(filePath: "/tmp/k/resources.json"), sha256: "cd"),
             lists: [.init(id: "easylist", sourceIndex: 0)],
@@ -171,7 +171,7 @@ struct EngineWireTests {
         let blockingObject = try JSONSerialization.jsonObject(with: EngineWire.encode(blocking)) as? [String: Any]
         let policy = (blockingObject?["contentBlocking"] as? [String: Any])?["policy"] as? [String: Any]
         #expect(policy?["isEnabled"] as? Bool == true)
-        #expect(policy?["mode"] as? String == "aggressive")
+        #expect(policy?["mode"] as? String == "standard")
         let engine = policy?["engine"] as? [String: Any]
         #expect(engine?["path"] as? String == "file:///tmp/k/engine.dat")
         #expect(engine?["sha256"] as? String == "ab")

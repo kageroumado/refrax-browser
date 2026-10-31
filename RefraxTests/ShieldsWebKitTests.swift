@@ -7,7 +7,7 @@ import WebKit
 
 /// A loopback HTTP/1.1 server that serves fixed bodies and records every path requested, the
 /// ground truth of what a page loaded.
-private final class LoopbackServer: @unchecked Sendable {
+final class LoopbackServer: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "shields.loopback")
     private let lock = NSLock()
@@ -79,7 +79,7 @@ private final class LoopbackServer: @unchecked Sendable {
 /// Finishes a navigation and sets its Shields preferences through
 /// ``ShieldsWebKit/configure(_:siteIsExempt:)``, as `WKNavigationDelegateAdapter` does.
 @MainActor
-private final class FixtureNavigationDelegate: NSObject, WKNavigationDelegate {
+final class FixtureNavigationDelegate: NSObject, WKNavigationDelegate {
     let webKit: ShieldsWebKit
     let siteIsExempt: Bool
     private var finished: CheckedContinuation<Void, any Error>?

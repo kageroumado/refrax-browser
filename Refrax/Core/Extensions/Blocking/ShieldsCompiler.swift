@@ -16,32 +16,41 @@ nonisolated struct ShieldsList: Sendable, Hashable {
     var format = Format.standard
     /// Lists Refrax trusts (uBlock Origin's own) may use scriptlets uBO marks `requiresTrust`.
     var isTrusted = false
+    /// Whether the list's scriptlet injections (`##+js(…)`) apply. The library drops them
+    /// otherwise, with adblock-rust's own line splitting and parser
+    /// (`SHIELDS_LIST_NO_SCRIPTLETS`).
+    var allowsScriptlets = true
 
     /// adblock-rust's permission mask for the list: bit 0 is uBO's trusted scriptlets.
     var permissions: UInt8 {
         isTrusted ? 1 : 0
     }
 
-    /// `text` without its scriptlet injections (`host##+js(…)`); exceptions (`#@#+js(…)`) stay,
-    /// since they only turn scriptlets off.
-    static func removingScriptlets(from text: Data) -> Data {
-        let lines = String(decoding: text, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
-        let kept = lines.filter { line in
-            guard let sharp = line.firstIndex(of: "#") else { return true }
-            let rest = line[sharp...]
-            return !(rest.hasPrefix("##+js(") || rest.hasPrefix("#?#+js(") || rest.hasPrefix("#$#+js("))
-        }
-        return Data(kept.joined(separator: "\n").utf8)
+    /// `shields_filter_set_add_list_with_options` options for the list.
+    var options: ShieldsListOptions {
+        allowsScriptlets ? 0 : ShieldsListOptions(SHIELDS_LIST_NO_SCRIPTLETS)
     }
 }
 
 /// Identifies one build: every input that changes what the compiler writes.
 ///
 /// `sha256(engine format ‖ ABI version ‖ WebKit pass version ‖ for each list in order: id ‖
-/// sha256(text) ‖ format ‖ permissions ‖ sha256(resources))`. A crate bump changes the
-/// engine format, so every cached DAT is rebuilt, which adblock-rust requires.
+/// sha256(filters) ‖ format ‖ permissions ‖ options ‖ sha256(resources))`. A crate bump
+/// changes the engine format, so every cached DAT is rebuilt, which adblock-rust requires.
+/// `filters` is the text with comment lines (`!`) emptied, so a list whose header alone changed
+/// (`! Version`, `! Last modified`, hourly on uBO's quick fixes) keeps its key; the line count,
+/// which the logger's line numbers depend on, still counts.
 nonisolated struct ShieldsKey: Hashable, Sendable, CustomStringConvertible {
     let hex: String
+
+    init(hex: String) {
+        self.hex = hex
+    }
+
+    /// Whether `name` has a key's form: 64 lowercase hex digits, as build directories are named.
+    static func isHex(_ name: String) -> Bool {
+        name.utf8.count == 64 && name.utf8.allSatisfy { (48 ... 57).contains($0) || (97 ... 102).contains($0) }
+    }
 
     init(lists: [ShieldsList], resources: Data, format: String = ShieldsEngine.format, passVersion: UInt32 = ShieldsEngine.webKitPassVersion) {
         var hasher = SHA256()
@@ -54,15 +63,28 @@ nonisolated struct ShieldsKey: Hashable, Sendable, CustomStringConvertible {
         feed("\(passVersion)")
         for list in lists {
             feed(list.id)
-            feed(SHA256.hash(data: list.text).hexString)
+            feed(SHA256.hash(data: Self.filterContent(of: list.text)).hexString)
             feed("\(list.format.rawValue)")
             feed("\(list.permissions)")
+            feed("\(list.options)")
         }
         feed(SHA256.hash(data: resources).hexString)
         self.hex = hasher.finalize().hexString
     }
 
-    /// The prefix WebKit rule list identifiers use (`shields.<prefix>.network-0`).
+    /// `text` with every comment line emptied.
+    static func filterContent(of text: Data) -> Data {
+        var content = Data(capacity: text.count)
+        for line in text.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false) {
+            if line.first != UInt8(ascii: "!") {
+                content.append(contentsOf: line)
+            }
+            content.append(UInt8(ascii: "\n"))
+        }
+        return content
+    }
+
+    /// A short form for logs.
     var shortForm: String {
         String(hex.prefix(12))
     }
@@ -89,6 +111,12 @@ nonisolated struct ShieldsManifest: Codable, Hashable, Sendable {
         let counts: ShieldsWebKitCounts
     }
 
+    /// A file of the build, checked before use.
+    nonisolated struct File: Codable, Hashable, Sendable {
+        let size: Int
+        let sha256: String
+    }
+
     let key: String
     let format: String
     let lists: [List]
@@ -96,6 +124,8 @@ nonisolated struct ShieldsManifest: Codable, Hashable, Sendable {
     let engineSHA256: String
     let resourcesSHA256: String
     let webKit: WebKit
+    /// Every file of the build by its path in the build directory.
+    let files: [String: File]
     let builtAt: Date
     /// Wall time of the build, for the Filters settings and measurements.
     let buildSeconds: Double
@@ -122,6 +152,7 @@ nonisolated struct ShieldsWebKitCounts: Codable, Hashable, Sendable {
     let genericHideRules: Int
     let specificHideRules: Int
     let bundleHosts: Int
+    let entities: Int
     /// Filters only the Chromium engine applies, by reason.
     let unsupported: [String: Int]
 
@@ -161,27 +192,67 @@ nonisolated struct ShieldsArtifacts: Sendable, Hashable {
     }
 
     func networkRulesURL(_ index: Int) -> URL {
-        webKitDirectory.appending(path: "network-\(index).json")
+        directory.appending(path: Self.networkRulesPath(index))
     }
 
     func cosmeticRulesURL(_ index: Int) -> URL {
-        webKitDirectory.appending(path: "cosmetic-\(index).json")
+        directory.appending(path: Self.cosmeticRulesPath(index))
+    }
+
+    static func networkRulesPath(_ index: Int) -> String {
+        "\(webKitDirectoryName)/network-\(index).json"
+    }
+
+    static func cosmeticRulesPath(_ index: Int) -> String {
+        "\(webKitDirectoryName)/cosmetic-\(index).json"
+    }
+
+    /// The WebKit rule list identifier for a rules file: its kind and a hash of its JSON, so a
+    /// list whose rules did not change between builds is found in WebKit's store.
+    func ruleListIdentifier(forPath path: String) -> String? {
+        guard let file = manifest.files[path] else { return nil }
+        let kind = path.contains("cosmetic") ? "cosmetic" : "network"
+        return "\(ShieldsWebKit.identifierPrefix)\(kind).\(file.sha256.prefix(24))"
     }
 
     var scriptsURL: URL {
-        webKitDirectory.appending(path: "scripts.json")
+        directory.appending(path: Self.scriptsPath)
     }
 
-    /// Reads a finished build, or nil when `directory` holds none for `key`.
+    static let scriptsPath = "\(webKitDirectoryName)/scripts.json"
+
+    /// Reads a finished build, or nil when `directory` holds none for `key` or one of its files
+    /// is missing or has another size than the manifest records. Contents are hashed where they
+    /// are read (``verifiedContents(ofPath:)``).
     init?(key: ShieldsKey, directory: URL) {
         let manifestURL = directory.appending(path: Self.manifestName)
         guard let data = try? Data(contentsOf: manifestURL),
               let manifest = try? ShieldsCompiler.decoder.decode(ShieldsManifest.self, from: data),
-              manifest.key == key.hex
+              manifest.key == key.hex, !manifest.files.isEmpty
         else { return nil }
+        for (path, file) in manifest.files {
+            let size = (try? FileManager.default.attributesOfItem(atPath: directory.appending(path: path).path)[.size]) as? Int
+            guard size == file.size else { return nil }
+        }
         self.key = key
         self.directory = directory
         self.manifest = manifest
+    }
+
+    /// The build in `directory` named by its manifest, when it is whole.
+    init?(directory: URL) {
+        let name = directory.lastPathComponent
+        guard ShieldsKey.isHex(name) else { return nil }
+        self.init(key: ShieldsKey(hex: name), directory: directory)
+    }
+
+    /// A file's bytes, when they hash to what the manifest records.
+    func verifiedContents(ofPath path: String) throws -> Data {
+        let data = try Data(contentsOf: directory.appending(path: path))
+        guard let file = manifest.files[path], SHA256.hash(data: data).hexString == file.sha256 else {
+            throw ShieldsError.status(SHIELDS_INVALID_DATA, operation: "verify \(path)")
+        }
+        return data
     }
 }
 
@@ -194,8 +265,9 @@ nonisolated struct ShieldsArtifacts: Sendable, Hashable {
 /// and Refrax attributes its log entries.
 actor ShieldsCompiler {
     private enum Constants {
-        /// Builds kept on disk: the current one and the one before it.
-        static let keptBuilds = 2
+        /// Builds kept on disk besides the protected ones (the new, installed and published
+        /// builds): the newest other one.
+        static let keptBuilds = 1
         static let buildingPrefix = ".building-"
     }
 
@@ -214,16 +286,22 @@ actor ShieldsCompiler {
 
     /// The build for `lists` and `resources` under `root`, from disk when one exists.
     ///
+    /// - Parameters:
+    ///   - reusingCache: False rebuilds even when a build for the same key is on disk, and
+    ///     replaces it: the caller found one of its files bad.
+    ///   - protecting: Build keys pruning keeps (the installed and published ones).
     /// - Returns: The artifacts and, for a fresh build, the engine it built (resources
     ///   installed), so the caller can keep it without reading the DAT back.
     func build(
         lists: [ShieldsList],
         resources: Data,
         into root: URL,
+        reusingCache: Bool = true,
+        protecting: Set<String> = [],
     ) throws -> (artifacts: ShieldsArtifacts, engine: ShieldsEngine?) {
         let key = ShieldsKey(lists: lists, resources: resources)
         let directory = root.appending(path: key.hex, directoryHint: .isDirectory)
-        if let cached = ShieldsArtifacts(key: key, directory: directory) {
+        if reusingCache, let cached = ShieldsArtifacts(key: key, directory: directory) {
             return (cached, nil)
         }
 
@@ -251,7 +329,7 @@ actor ShieldsCompiler {
         try resources.write(to: staging.appending(path: ShieldsArtifacts.resourcesName))
 
         let elapsed = ContinuousClock.now - start
-        let manifest = ShieldsManifest(
+        let manifest = try ShieldsManifest(
             key: key.hex,
             format: ShieldsEngine.format,
             lists: zip(lists, stats).map { list, stats in
@@ -265,6 +343,7 @@ actor ShieldsCompiler {
             engineSHA256: SHA256.hash(data: hostDAT).hexString,
             resourcesSHA256: SHA256.hash(data: resources).hexString,
             webKit: webKit,
+            files: Self.fileRecords(in: staging),
             builtAt: .now,
             buildSeconds: Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18,
         )
@@ -274,7 +353,7 @@ actor ShieldsCompiler {
             try fileManager.removeItem(at: directory)
         }
         try fileManager.moveItem(at: staging, to: directory)
-        pruneBuilds(in: root, keeping: key)
+        pruneBuilds(in: root, keeping: protecting.union([key.hex]))
 
         guard let artifacts = ShieldsArtifacts(key: key, directory: directory) else {
             throw ShieldsError.status(SHIELDS_INVALID_DATA, operation: "manifest")
@@ -282,8 +361,23 @@ actor ShieldsCompiler {
         return (artifacts, engine)
     }
 
-    /// Removes all but the newest builds (and abandoned staging directories).
-    private func pruneBuilds(in root: URL, keeping key: ShieldsKey) {
+    /// Sizes and hashes of every file under `directory`, by relative path.
+    private static func fileRecords(in directory: URL) throws -> [String: ShieldsManifest.File] {
+        var records: [String: ShieldsManifest.File] = [:]
+        let names = [ShieldsArtifacts.engineName, ShieldsArtifacts.debugEngineName, ShieldsArtifacts.resourcesName]
+        let webKitNames = try FileManager.default.contentsOfDirectory(
+            atPath: directory.appending(path: ShieldsArtifacts.webKitDirectoryName).path,
+        ).map { "\(ShieldsArtifacts.webKitDirectoryName)/\($0)" }
+        for path in names + webKitNames {
+            let data = try Data(contentsOf: directory.appending(path: path), options: .mappedIfSafe)
+            records[path] = ShieldsManifest.File(size: data.count, sha256: SHA256.hash(data: data).hexString)
+        }
+        return records
+    }
+
+    /// Removes all but the protected builds and the newest other one (and abandoned staging
+    /// directories).
+    private func pruneBuilds(in root: URL, keeping protected: Set<String>) {
         let fileManager = FileManager.default
         guard let entries = try? fileManager.contentsOfDirectory(
             at: root,
@@ -299,7 +393,11 @@ actor ShieldsCompiler {
         var kept = 0
         for build in builds {
             let name = build.lastPathComponent
-            if name == key.hex || (!name.hasPrefix(Constants.buildingPrefix) && kept < Constants.keptBuilds) {
+            let isStaging = name.hasPrefix(Constants.buildingPrefix)
+            guard isStaging || ShieldsKey.isHex(name), !protected.contains(name) else {
+                continue
+            }
+            if !isStaging, kept < Constants.keptBuilds {
                 kept += 1
                 continue
             }
@@ -321,12 +419,13 @@ private final nonisolated class FilterSet {
         self.handle = handle
         for list in lists {
             let status = list.text.withUnsafeBytes { bytes in
-                shields_filter_set_add_list(
+                shields_filter_set_add_list_with_options(
                     handle,
                     bytes.bindMemory(to: UInt8.self).baseAddress,
                     bytes.count,
                     list.format.rawValue,
                     list.permissions,
+                    list.options,
                     nil,
                 )
             }

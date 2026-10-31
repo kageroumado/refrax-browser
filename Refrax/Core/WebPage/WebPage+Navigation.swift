@@ -212,6 +212,7 @@ extension WebPage {
         httpErrorCode = nil
         httpErrorURL = nil
         crashError = nil
+        shieldsBlockedURL = nil
         return navigationGeneration
     }
 
@@ -732,7 +733,6 @@ extension WebPage {
 
         updateAutoFillURL(newURL)
         lastCommittedURL = newURL
-        shieldsLog.documentCommitted()
 
         if let siteSettingsCoordinator {
             siteSettingsCoordinator.apply(to: self, for: newURL)

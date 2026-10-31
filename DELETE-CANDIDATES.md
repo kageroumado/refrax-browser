@@ -46,7 +46,14 @@ Looks dead; scope or origin unverified.
 
 ## `Refrax/Core/Managers/Tabs/BrowserState.swift:243` — `isContentBlockingReady`
 - **What**: a flag set once Shields has started, reported through the API's state query
-- **Looks dead because**: nothing gates on it; Shields attaches its cached build or builds in the background and pages never wait
+- **Looks dead because**: nothing gates on it; page loads wait on `ShieldsStore.waitUntilReady(timeout:)`, which `ShieldsStore.isReady` answers
 - **Not deleted because**: `RefraxAPI` exposes it to API clients (`APIQuery.isContentBlockingReady`), which may read it
-- **To confirm**: check API clients (the MCP/agent side) for `isContentBlockingReady`, or ask Kiri
+- **To confirm**: check API clients (the MCP/agent side) for `isContentBlockingReady`, or ask Kiri; if one reads it, point it at `shields.isReady`
+- **Found**: 2026-10-31
+
+## `Refrax/Core/Extensions/Blocking/ShieldsWebKit.swift` — legacy per-list rule list removal
+- **What**: `isLegacyPerListIdentifier(_:)`, the `ShieldsRemovedPerListRuleLists` defaults flag, and their branch in `removeStaleLists()`
+- **Looks dead because**: it runs once per install, to delete the `<list id>-<n>` rule lists the pre-Shields compiler left in WebKit's store
+- **Not deleted because**: users updating from a pre-Shields build still have those lists (tens of MB each) until it has run once
+- **To confirm**: once every supported update path starts from a Shields build (a release or two after Shields ships), delete the three pieces and their test
 - **Found**: 2026-10-31

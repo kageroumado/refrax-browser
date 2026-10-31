@@ -297,11 +297,6 @@ final class BrowserSettings {
     /// Whether Shields filters pages (ads, trackers, annoyances) in every engine.
     var enableContentBlocking: Bool = true
 
-    /// Whether Shields also blocks first-party requests a filter matches. Standard mode spares
-    /// them unless the filter is `$important` or `$document`, as Brave does; the Chromium engine
-    /// applies the difference, WebKit's rule lists block first-party matches either way.
-    var aggressiveContentBlocking: Bool = false
-
     /// Whether websites may ask to send notifications. When off, requests are denied
     /// without asking; sites already allowed keep notifying.
     var allowWebsiteNotificationRequests: Bool = true
@@ -1019,7 +1014,6 @@ final class BrowserSettings {
         hideSignInPrompts = true
         enableFingerprintingProtection = true
         enableContentBlocking = true
-        aggressiveContentBlocking = false
         allowWebsiteNotificationRequests = true
         webpageDarkMode = .off
         pageFilter = .none

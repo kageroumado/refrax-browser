@@ -84,9 +84,12 @@ private struct ShieldsPagePopover: View {
         page.url?.safeDisplayDomain ?? ""
     }
 
-    /// Blocked and redirected loads, counted by host, most first.
+    /// The current document's blocked and redirected loads, counted by host, most first.
     private var blockedHosts: [(host: String, count: Int)] {
-        let blocked = (log?.entries ?? []).filter { $0.decision == .blocked || $0.decision == .redirected }
+        let documentStart = page.shieldsLog.documentStart
+        let blocked = (log?.entries ?? []).filter { entry in
+            entry.time >= documentStart && (entry.decision == .blocked || entry.decision == .redirected)
+        }
         let counts = Dictionary(grouping: blocked) { $0.url.host() ?? $0.url.absoluteString }.mapValues(\.count)
         return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, $0.value) }
     }
@@ -128,7 +131,7 @@ private struct ShieldsPagePopover: View {
             if let url = page.url {
                 isOnForSite = browserState.siteSettingsCoordinator.contentBlockersEnabled(for: url)
             }
-            log = try? await browserState.shields.requestLog(for: page)
+            log = try? await browserState.shields.requestLog(for: page, attributed: false)
         }
     }
 
@@ -154,7 +157,7 @@ private struct ShieldsPagePopover: View {
                 }
             }
         }
-        if log.entries.contains(where: { $0.exactness == .attributed }) {
+        if !log.entries.isEmpty {
             Text("refrax-ctl page requests lists each load with the filter that blocked it.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)

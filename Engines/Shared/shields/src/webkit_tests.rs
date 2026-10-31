@@ -239,6 +239,130 @@ fn scriptlets_become_per_function_scripts_with_host_tables() {
 }
 
 #[test]
+fn removeparam_follows_every_block_and_triggers_only_on_its_parameter() {
+    let list =
+        "||tracker.example^$removeparam=utm_id\n||tracker.example/pixel^\n||other.example^\n||third.example^\n||fourth.example^\n";
+    let built = Built::new(&[list]);
+    let output = built.compile(4);
+    assert!(output.network.len() > 1, "small lists force several chunks");
+    for chunk in &output.network {
+        let transform = position(chunk, |rule| {
+            rule["action"]["redirect"]["transform"].is_object()
+        })
+        .expect("every list carries the transform");
+        let filter = url_filter(&chunk[transform]);
+        assert!(
+            filter.contains("tracker") && filter.ends_with(".*[?&]utm_id="),
+            "{filter}"
+        );
+        let last_block = chunk
+            .iter()
+            .rposition(|rule| action(rule) == "block")
+            .unwrap();
+        let fp_documents = chunk
+            .iter()
+            .rposition(|rule| rule["trigger"]["load-type"] == serde_json::json!(["first-party"]))
+            .unwrap();
+        assert!(transform > last_block && transform > fp_documents);
+    }
+}
+
+#[test]
+fn page_exceptions_cover_every_load_of_the_page() {
+    let built = Built::new(&[
+        "##.ad\n@@||news.example^$generichide\n||ads.example^\n@@||shop.example^$document\n",
+    ]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    let page_wide = |rule: &Value, host: &str| {
+        action(rule) == "ignore-previous-rules"
+            && url_filter(rule) == ".*"
+            && rule["trigger"]["if-top-url"][0]
+                .as_str()
+                .is_some_and(|top| top.contains(host))
+            && rule["trigger"]["resource-type"].is_null()
+    };
+    let cosmetic = &output.cosmetic[0];
+    assert!(
+        position(cosmetic, |rule| page_wide(rule, "news")).is_some(),
+        "generichide"
+    );
+    assert!(
+        position(cosmetic, |rule| page_wide(rule, "shop")).is_some(),
+        "document, cosmetics"
+    );
+    let network = &output.network[0];
+    let lift = position(network, |rule| page_wide(rule, "shop")).expect("document, network");
+    let block = position(network, |rule| url_filter(rule).contains("ads")).unwrap();
+    assert!(lift > block);
+}
+
+#[test]
+fn a_redirect_without_its_resource_still_blocks() {
+    let built = Built::new(&["||ads.example/x.js$script,redirect=no-such-resource.js\n"]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    assert!(position(&output.network[0], |rule| {
+        action(rule) == "block" && url_filter(rule).contains("ads")
+    })
+    .is_some());
+}
+
+#[test]
+fn cosmetic_lists_stay_within_the_rule_cap() {
+    let mut list = String::from("@@||news.example^$generichide\n@@||shop.example^$document\n");
+    for index in 0..9 {
+        list.push_str(&format!(
+            "##.generic-{index}\nexample.com##.specific-{index}\n"
+        ));
+    }
+    let built = Built::new(&[&list]);
+    let output = built.compile(6);
+    assert!(output.cosmetic.len() > 1);
+    for chunk in &output.cosmetic {
+        assert!(chunk.len() <= 6, "{} rules", chunk.len());
+    }
+    let hides: usize = output
+        .cosmetic
+        .iter()
+        .map(|chunk| {
+            chunk
+                .iter()
+                .filter(|rule| action(rule) == "css-display-none")
+                .count()
+        })
+        .sum();
+    assert_eq!(hides, 18);
+}
+
+#[test]
+fn entity_filters_run_from_every_frame_keyed_by_label() {
+    let built = Built::new(&["example.*##+js(set-constant, entityAds, false)\nexample.*##.entity-banner\nexample.com#@#+js(set-constant, entityAds, false)\nexample.com##+js(set-constant, other, 1)\n"]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    assert_eq!(output.counts.entities, 1);
+    let entity_script = output
+        .scripts
+        .iter()
+        .find(|script| script.name == "set-constant.js" && script.includes == ["*://*/*"])
+        .expect("an entity script");
+    assert!(entity_script
+        .source
+        .contains(r#""example.*":[["entityAds","false"]]"#));
+    assert!(
+        entity_script.source.contains(r#""example.com":[]"#),
+        "the exception's host stops the walk"
+    );
+    assert!(entity_script
+        .source
+        .contains("Symbol.for(\"refrax.shields.pending\")"));
+    let procedural = output
+        .scripts
+        .iter()
+        .find(|script| script.name == "procedural" && script.includes == ["*://*/*"])
+        .expect("an entity hide script");
+    assert!(procedural.source.contains(".entity-banner"));
+    assert!(output.counts.unsupported.get("entity").is_none());
+}
+
+#[test]
 fn resources_serve_redirects_and_scriptlets() {
     let built = Built::new(&[
         "||ads.example/x.js$script,redirect=noop.js\nexample.com##+js(set-constant, ads, false)\n",
@@ -314,5 +438,76 @@ fn checks_resources() {
             shields_resources_check(broken.as_ptr(), broken.len(), &mut json),
             SHIELDS_INVALID_DATA
         );
+    }
+}
+
+/// The scriptlet and the number of hide selectors a list gives example.com.
+fn cosmetics_for(text: &str, options: ShieldsListOptions) -> (String, usize) {
+    let resources = resources();
+    unsafe {
+        let set = shields_filter_set_new(true);
+        assert_eq!(
+            shields_filter_set_add_list_with_options(
+                set,
+                text.as_ptr(),
+                text.len(),
+                SHIELDS_LIST_FORMAT_STANDARD,
+                0,
+                options,
+                ptr::null_mut()
+            ),
+            SHIELDS_OK
+        );
+        let engine = shields_engine_build(set);
+        shields_engine_use_resources(engine, resources.as_ptr(), resources.len());
+        let mut json = ShieldsBuffer::EMPTY;
+        shields_engine_url_cosmetic_resources(engine, c"https://example.com/".as_ptr(), &mut json);
+        let value: Value =
+            serde_json::from_slice(std::slice::from_raw_parts(json.data, json.len)).unwrap();
+        shields_buffer_free(&mut json);
+        shields_engine_free(engine);
+        shields_filter_set_free(set);
+        (
+            value["injected_script"].as_str().unwrap().to_string(),
+            value["hide_selectors"].as_array().unwrap().len(),
+        )
+    }
+}
+
+#[test]
+fn untrusted_lists_inject_no_scriptlets_whatever_their_line_endings() {
+    let scriptlet = "example.com##+js(set-constant, adsEnabled, false)";
+    let hide = "example.com##.banner";
+    for ending in ["\n", "\r\n", "\r"] {
+        let list = format!("! Title: custom{ending}{scriptlet}{ending}{hide}{ending}");
+        let (script, _) = cosmetics_for(&list, SHIELDS_LIST_NO_SCRIPTLETS);
+        assert!(script.is_empty(), "{ending:?}: {script}");
+    }
+    let mixed = format!("{hide}\r\n{scriptlet}\r{scriptlet}\n{scriptlet}\r\n");
+    assert!(cosmetics_for(&mixed, SHIELDS_LIST_NO_SCRIPTLETS)
+        .0
+        .is_empty());
+
+    // Control: the same CRLF list injects without the option, and the option keeps its hides.
+    let crlf = format!("{scriptlet}\r\n{hide}\r\n");
+    assert!(cosmetics_for(&crlf, 0).0.contains("setConstant("));
+    assert_eq!(cosmetics_for(&crlf, SHIELDS_LIST_NO_SCRIPTLETS).1, 1);
+
+    unsafe {
+        let set = shields_filter_set_new(false);
+        let status = shields_filter_set_add_list_with_options(
+            set,
+            crlf.as_ptr(),
+            crlf.len(),
+            SHIELDS_LIST_FORMAT_STANDARD,
+            0,
+            1 << 7,
+            ptr::null_mut(),
+        );
+        assert_eq!(
+            status, SHIELDS_INVALID_ARGUMENT,
+            "unknown options are refused"
+        );
+        shields_filter_set_free(set);
     }
 }

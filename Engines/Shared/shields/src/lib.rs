@@ -186,7 +186,58 @@ pub unsafe extern "C" fn shields_filter_set_add_list(
     permissions: u8,
     out_source_index: *mut u32,
 ) -> ShieldsStatus {
+    shields_filter_set_add_list_with_options(
+        set,
+        text,
+        text_len,
+        format,
+        permissions,
+        0,
+        out_source_index,
+    )
+}
+
+pub type ShieldsListOptions = u32;
+/// Drop the list's scriptlet injections (`##+js(…)`).
+pub const SHIELDS_LIST_NO_SCRIPTLETS: ShieldsListOptions = 1 << 0;
+
+/// The lines of `text` adblock-rust would read, with every line it parses as a scriptlet
+/// injection blanked. The engine's own line splitting and parser decide, so a line ending
+/// (`\r\n`, a lone `\r`) cannot hide a scriptlet from this pass and leave it to the engine.
+/// Blank lines keep the remaining filters' line numbers.
+fn without_scriptlets(text: &str, options: ParseOptions) -> String {
+    use adblock::filters::cosmetic::CosmeticFilterMask;
+    use adblock::lists::{parse_filter, ParsedLine};
+    let mut kept = String::with_capacity(text.len());
+    for line in text.lines() {
+        let injects = matches!(
+            parse_filter(line, false, options),
+            Ok(ParsedLine::Cosmetic(filter))
+                if filter.mask.contains(CosmeticFilterMask::SCRIPT_INJECT)
+                    && !filter.mask.contains(CosmeticFilterMask::UNHIDE)
+        );
+        if !injects {
+            kept.push_str(line);
+        }
+        kept.push('\n');
+    }
+    kept
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shields_filter_set_add_list_with_options(
+    set: *mut ShieldsFilterSet,
+    text: *const u8,
+    text_len: usize,
+    format: ShieldsListFormat,
+    permissions: u8,
+    list_options: ShieldsListOptions,
+    out_source_index: *mut u32,
+) -> ShieldsStatus {
     guarded(|| {
+        if list_options & !SHIELDS_LIST_NO_SCRIPTLETS != 0 {
+            return SHIELDS_INVALID_ARGUMENT;
+        }
         let (Some(set), Some(text)) = (set.as_mut(), text_arg(text, text_len)) else {
             return SHIELDS_INVALID_ARGUMENT;
         };
@@ -200,8 +251,13 @@ pub unsafe extern "C" fn shields_filter_set_add_list(
             permissions: PermissionMask::from_bits(permissions),
             ..ParseOptions::default()
         };
-        let record = set.set.add_filter_list(text.to_owned(), options);
-        set.lists.push((text.to_owned(), options));
+        let text = if list_options & SHIELDS_LIST_NO_SCRIPTLETS != 0 {
+            without_scriptlets(text, options)
+        } else {
+            text.to_owned()
+        };
+        let record = set.set.add_filter_list(text.clone(), options);
+        set.lists.push((text, options));
         if let Some(out) = out_source_index.as_mut() {
             *out = record.source_index as u32;
         }

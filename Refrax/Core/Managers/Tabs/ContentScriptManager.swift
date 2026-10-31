@@ -333,16 +333,14 @@ final class ContentScriptManager {
         let shields = state.shields
         let settings = state.settings
         shields.setEnabled(settings.enableContentBlocking)
-        shields.setMode(settings.aggressiveContentBlocking ? .aggressive : .standard)
         shields.setAllowlistedHosts(state.siteSettingsCoordinator.contentBlockingAllowlist)
         state.siteSettingsCoordinator.onContentBlockingAllowlistChange = { [weak shields] hosts in
             shields?.setAllowlistedHosts(hosts)
         }
-        let changes = Observations { (settings.enableContentBlocking, settings.aggressiveContentBlocking) }
+        let changes = Observations { settings.enableContentBlocking }
         shieldsSettingsTask = Task(name: "Shields settings") { [weak shields] in
-            for await (enabled, aggressive) in changes {
+            for await enabled in changes {
                 shields?.setEnabled(enabled)
-                shields?.setMode(aggressive ? .aggressive : .standard)
             }
         }
         await shields.start()

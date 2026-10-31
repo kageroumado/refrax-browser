@@ -8,9 +8,16 @@
 //!   holds at most 150,000 rules. Every network list therefore carries all exceptions, after its
 //!   share of the blocks, so an exception reaches every block it names.
 //! - `$important` blocks come after the exceptions, so no exception lifts them.
-//! - `$redirect` and `$removeparam` become WebKit `redirect` actions (a `data:` URL, a query
-//!   transform). Each redirect is preceded by an `ignore-previous-rules` with its own trigger and
-//!   repeated in every list, so a plain block in any list cannot pre-empt it.
+//! - `$redirect` becomes a WebKit `redirect` to a `data:` URL, preceded by an
+//!   `ignore-previous-rules` with its own trigger and repeated in every list, so a plain block in
+//!   any list cannot pre-empt it; a redirect whose resource is missing becomes a plain block.
+//! - `$removeparam` becomes a query transform that triggers only on URLs carrying the
+//!   parameter, placed after every block and after the first-party document exception in every
+//!   list: WebKit applies no block once a load is redirected, so a transform must never come
+//!   first.
+//! - `$generichide` and `$document` exceptions lift rules for every load of a page whose top URL
+//!   they match (`if-top-url`), not only for the document load: WebKit applies the global hide
+//!   style sheet on any load that saw no `ignore-previous-rules`.
 //! - Cosmetic hiding lives in separate lists, so it can be detached while uBlock Origin runs
 //!   without recompiling the network lists: generic selectors first (WebKit folds them into one
 //!   global style sheet), then `$generichide`/`$document` exceptions, then host-specific
@@ -32,7 +39,7 @@ use crate::bundles::{self, UserScript};
 use crate::syntax;
 
 /// Bumped whenever this pass's output changes for the same input; part of the app's cache key.
-pub const PASS_VERSION: u32 = 2;
+pub const PASS_VERSION: u32 = 3;
 
 /// WebKit's `maxRuleCount` (`ContentExtensionParser.cpp`).
 pub const MAX_RULES_PER_LIST: usize = 150_000;
@@ -69,6 +76,8 @@ pub struct Counts {
     pub specific_hide_rules: usize,
     /// Hosts the user scripts carry an entry for.
     pub bundle_hosts: usize,
+    /// Entities (`example.*`) the user scripts resolve at run time.
+    pub entities: usize,
     /// Filters WebKit cannot express, by reason. The Chromium engine applies all of them.
     pub unsupported: BTreeMap<&'static str, usize>,
 }
@@ -110,8 +119,9 @@ pub fn compile(
     network.convert(redirects, &mut cosmetic, &mut counts);
     let network_lists = network.into_lists(options.max_rules_per_list, &mut counts);
     let bundle_hosts = std::mem::take(&mut cosmetic.bundle_hosts);
+    let entities = std::mem::take(&mut cosmetic.entities);
     let cosmetic_lists = cosmetic.into_lists(options.max_rules_per_list, &mut counts);
-    let scripts = bundles::user_scripts(&bundle_hosts, engine, resources, &mut counts);
+    let scripts = bundles::user_scripts(&bundle_hosts, &entities, engine, resources, &mut counts);
 
     Output {
         network: network_lists,
@@ -132,6 +142,8 @@ struct NetworkPass<'a> {
     /// `ignore-previous-rules` + `redirect` pairs, repeated in every list.
     redirects: Vec<Value>,
     removeparams: Vec<Value>,
+    /// `$document` exceptions as page-wide `ignore-previous-rules`.
+    page_exceptions: Vec<Value>,
 }
 
 impl NetworkPass<'_> {
@@ -156,6 +168,17 @@ impl NetworkPass<'_> {
                 continue;
             };
             let is_exception = filter.mask.contains(NetworkFilterMask::IS_EXCEPTION);
+            let is_document_exception =
+                is_exception && filter.mask.contains(NetworkFilterMask::FROM_DOCUMENT);
+            if is_document_exception {
+                // Lifts every rule for the page's own loads, not only the document request.
+                let stripped =
+                    syntax::without_options(&raw, &["document", "doc"]).unwrap_or_default();
+                if let Some(rules) = page_exception(&stripped) {
+                    self.page_exceptions.extend(rules.iter().cloned());
+                    cosmetic.document_exceptions.extend(rules);
+                }
+            }
 
             if filter.is_csp() {
                 // WebKit parses modify-headers' response-headers but applies only request
@@ -168,25 +191,19 @@ impl NetworkPass<'_> {
             } else if filter.is_generic_hide() {
                 if is_exception {
                     let stripped = syntax::without_options(&raw, &["generichide", "ghide"]);
-                    if let Some(rules) = stripped.and_then(|line| document_exception(&line)) {
-                        cosmetic.generic_exceptions.extend(rules);
+                    match stripped.and_then(|line| page_exception(&line)) {
+                        Some(rules) => cosmetic.generic_exceptions.extend(rules),
+                        None => counts.unsupported("pageException"),
                     }
                 }
             } else {
-                let is_document_exception =
-                    is_exception && filter.mask.contains(NetworkFilterMask::FROM_DOCUMENT);
                 let is_important = filter.mask.contains(NetworkFilterMask::IS_IMPORTANT);
                 match CbRuleEquivalent::try_from(filter) {
                     Ok(equivalent) => {
                         for rule in equivalent {
                             let value = serde_json::to_value(&rule).expect("rules serialize");
                             match rule.action.typ {
-                                CbType::IgnorePreviousRules => {
-                                    if is_document_exception {
-                                        cosmetic.document_exceptions.push(value.clone());
-                                    }
-                                    self.exceptions.push(value);
-                                }
+                                CbType::IgnorePreviousRules => self.exceptions.push(value),
                                 _ if is_important => self.importants.push(value),
                                 _ => self.blocks.push(value),
                             }
@@ -220,11 +237,16 @@ impl NetworkPass<'_> {
             .modifier_option
             .map(|option| option.split(':').next().unwrap_or(option))
             .unwrap_or_default();
-        let Some(url) = redirect_urls.get(name) else {
-            counts.unsupported("redirectResource");
+        let Some(triggers) = stripped_triggers(raw, &["redirect", "rewrite"], counts) else {
             return;
         };
-        let Some(triggers) = stripped_triggers(raw, &["redirect", "rewrite"], counts) else {
+        let Some(url) = redirect_urls.get(name) else {
+            // Without the resource the filter still blocks, as adblock-rust does.
+            counts.unsupported("redirectResource");
+            for trigger in triggers {
+                self.blocks
+                    .push(json!({"trigger": trigger, "action": {"type": "block"}}));
+            }
             return;
         };
         for trigger in triggers {
@@ -258,11 +280,20 @@ impl NetworkPass<'_> {
         let Some(triggers) = stripped_triggers(raw, &["removeparam", "queryprune"], counts) else {
             return;
         };
+        let parameter_filter = format!("[?&]{}=", syntax::escape_regex(parameter));
         for mut trigger in triggers {
+            // Only URLs that carry the parameter: a transform on any other URL of the host
+            // would still count as a redirect and switch off WebKit's blocks for it.
             let url_filter = trigger["url-filter"].as_str().unwrap_or_default();
-            if matches!(url_filter, ".*" | "^https?://" | "^http://" | "^https://") {
-                trigger["url-filter"] = json!(format!("[?&]{}=", syntax::escape_regex(parameter)));
-            }
+            trigger["url-filter"] =
+                if matches!(url_filter, ".*" | "^https?://" | "^http://" | "^https://") {
+                    json!(parameter_filter)
+                } else {
+                    json!(format!(
+                        "{}.*{parameter_filter}",
+                        url_filter.trim_end_matches('$')
+                    ))
+                };
             self.removeparams.push(json!({
                 "trigger": trigger,
                 "action": {"type": "redirect", "redirect": {"transform": {
@@ -282,32 +313,33 @@ impl NetworkPass<'_> {
         let fp_documents =
             serde_json::to_value(adblock::content_blocking::ignore_previous_fp_documents())
                 .expect("rules serialize");
-        let shared = self.redirects.len() + self.exceptions.len() + 1;
+        // Every list: its share of blocks, all redirects, all exceptions, its share of
+        // importants, the first-party document exception, then all removeparam transforms.
+        let shared = self.redirects.len()
+            + self.exceptions.len()
+            + self.page_exceptions.len()
+            + 1
+            + self.removeparams.len();
         let capacity = max_rules.saturating_sub(shared).max(1);
-
-        // Blocks and importants are cut into the same number of lists; removeparams ride in the
-        // first one, because a query transform applies once wherever it sits.
-        let list_count = (self.blocks.len() + self.importants.len() + self.removeparams.len())
-            .div_ceil(capacity)
-            .max(1);
-        let mut blocks = self.blocks.into_iter();
-        let mut importants = self.importants.into_iter();
-        let mut removeparams = Some(self.removeparams);
-        (0..list_count)
-            .map(|_| {
-                let mut list = Vec::with_capacity(max_rules);
-                list.extend(removeparams.take().unwrap_or_default());
-                let room = capacity.saturating_sub(list.len());
-                list.extend(blocks.by_ref().take(room));
-                list.extend(self.redirects.iter().cloned());
-                list.extend(self.exceptions.iter().cloned());
-                let room = (capacity + self.redirects.len() + self.exceptions.len())
-                    .saturating_sub(list.len());
-                list.extend(importants.by_ref().take(room));
-                list.push(fp_documents.clone());
-                list
-            })
-            .collect()
+        let mut blocks = self.blocks.into_iter().peekable();
+        let mut importants = self.importants.into_iter().peekable();
+        let mut lists = Vec::new();
+        while lists.is_empty() || blocks.peek().is_some() || importants.peek().is_some() {
+            let own_blocks: Vec<Value> = blocks.by_ref().take(capacity).collect();
+            let own_importants: Vec<Value> = importants
+                .by_ref()
+                .take(capacity - own_blocks.len())
+                .collect();
+            let mut list = own_blocks;
+            list.extend(self.redirects.iter().cloned());
+            list.extend(self.exceptions.iter().cloned());
+            list.extend(self.page_exceptions.iter().cloned());
+            list.extend(own_importants);
+            list.push(fp_documents.clone());
+            list.extend(self.removeparams.iter().cloned());
+            lists.push(list);
+        }
+        lists
     }
 }
 
@@ -344,24 +376,29 @@ fn stripped_triggers(raw: &str, options: &[&str], counts: &mut Counts) -> Option
     }
 }
 
-/// `ignore-previous-rules` for the documents `line` (an exception filter without its
-/// cosmetic option) names.
-fn document_exception(line: &str) -> Option<Vec<Value>> {
-    let line = if syntax::options_start(line).is_some() {
-        format!("{line},document")
-    } else {
-        format!("{line}$document")
-    };
-    let Ok(ParsedLine::Network(filter)) = parse_filter(&line, true, ParseOptions::default()) else {
+/// `ignore-previous-rules` for every load of a page whose top URL `line` (an exception filter
+/// without its page option) matches: `url-filter` `.*` with the pattern as `if-top-url`.
+/// `None` when the filter does not convert or carries `domain=` (WebKit allows one condition).
+fn page_exception(line: &str) -> Option<Vec<Value>> {
+    let pattern = line.strip_prefix("@@").unwrap_or(line);
+    if pattern.is_empty() || syntax::has_option(line, "domain") || syntax::has_option(line, "from")
+    {
+        return None;
+    }
+    let Ok(ParsedLine::Network(filter)) = parse_filter(pattern, true, ParseOptions::default())
+    else {
         return None;
     };
     let equivalent = CbRuleEquivalent::try_from(filter).ok()?;
-    Some(
-        equivalent
-            .into_iter()
-            .map(|rule| serde_json::to_value(&rule).expect("rules serialize"))
-            .collect(),
-    )
+    let mut top_urls: Vec<String> = equivalent
+        .into_iter()
+        .map(|rule| rule.trigger.url_filter)
+        .collect();
+    top_urls.dedup();
+    Some(vec![json!({
+        "trigger": {"url-filter": ".*", "if-top-url": top_urls},
+        "action": {"type": "ignore-previous-rules"},
+    })])
 }
 
 fn failure_reason(failure: &CbRuleCreationFailure) -> &'static str {
@@ -395,6 +432,9 @@ struct CosmeticPass {
     /// Hosts named by any filter whose effect the rule lists cannot carry: scriptlets (and
     /// their exceptions), procedural and action filters.
     bundle_hosts: BTreeSet<String>,
+    /// Entity labels (`example` of `example.*`) any cosmetic filter names; the user scripts
+    /// apply their rules at run time.
+    entities: BTreeSet<String>,
 }
 
 impl CosmeticPass {
@@ -403,14 +443,18 @@ impl CosmeticPass {
             return;
         };
         let locations = syntax::cosmetic_locations(raw);
+        for _ in 0..locations.unsupported {
+            counts.unsupported("entity");
+        }
         let selector = filter.plain_css_selector().map(str::to_string);
         let needs_bundle = filter.mask.contains(CosmeticFilterMask::SCRIPT_INJECT)
             || filter.action.is_some()
             || selector.is_none();
+        let unhide = filter.mask.contains(CosmeticFilterMask::UNHIDE);
+        if !(unhide && !needs_bundle) {
+            self.entities.extend(locations.entities.iter().cloned());
+        }
         if needs_bundle {
-            if locations.hostnames.is_empty() && locations.entities > 0 {
-                counts.unsupported("entity");
-            }
             self.bundle_hosts.extend(locations.hostnames);
             self.bundle_hosts.extend(locations.not_hostnames);
             return;
@@ -422,10 +466,13 @@ impl CosmeticPass {
             counts.unsupported("nonASCII");
             return;
         }
-        let unhide = filter.mask.contains(CosmeticFilterMask::UNHIDE);
-
         if unhide {
-            if locations.hostnames.is_empty() && locations.entities == 0 {
+            if !locations.entities.is_empty() {
+                // `example.*#@#.ad` would need every generic hide to skip a set of hosts no
+                // domain list can name.
+                counts.unsupported("entityException");
+            }
+            if locations.hostnames.is_empty() && locations.entities.is_empty() {
                 self.unhidden_everywhere.insert(selector);
             } else {
                 self.unhidden
@@ -434,9 +481,8 @@ impl CosmeticPass {
                     .extend(locations.hostnames);
             }
         } else if locations.hostnames.is_empty() {
-            if locations.entities > 0 && locations.not_hostnames.is_empty() {
-                counts.unsupported("entity");
-                return;
+            if !locations.entities.is_empty() {
+                return; // applied by the entity user scripts
             }
             let index = *self
                 .generic_index
@@ -451,9 +497,6 @@ impl CosmeticPass {
                 self.generic[index].1.extend(locations.not_hostnames);
             }
         } else {
-            if locations.entities > 0 {
-                counts.unsupported("entity");
-            }
             self.specific.push((selector, locations.hostnames));
         }
     }
@@ -512,21 +555,22 @@ impl CosmeticPass {
 
         let shared = self.generic_exceptions.len() + 2 * self.document_exceptions.len();
         let capacity = max_rules.saturating_sub(shared).max(1);
-        let list_count = (generic.len() + specific.len()).div_ceil(capacity).max(1);
-        let generic_per_list = generic.len().div_ceil(list_count);
-        let specific_per_list = specific.len().div_ceil(list_count);
-        let mut generic = generic.into_iter();
-        let mut specific = specific.into_iter();
-        (0..list_count)
-            .map(|_| {
-                let mut list = Vec::new();
-                list.extend(generic.by_ref().take(generic_per_list));
-                list.extend(self.generic_exceptions.iter().cloned());
-                list.extend(self.document_exceptions.iter().cloned());
-                list.extend(specific.by_ref().take(specific_per_list));
-                list.extend(self.document_exceptions.iter().cloned());
-                list
-            })
-            .collect()
+        let mut generic = generic.into_iter().peekable();
+        let mut specific = specific.into_iter().peekable();
+        let mut lists = Vec::new();
+        while generic.peek().is_some() || specific.peek().is_some() {
+            let own_generic: Vec<Value> = generic.by_ref().take(capacity).collect();
+            let own_specific: Vec<Value> = specific
+                .by_ref()
+                .take(capacity - own_generic.len())
+                .collect();
+            let mut list = own_generic;
+            list.extend(self.generic_exceptions.iter().cloned());
+            list.extend(self.document_exceptions.iter().cloned());
+            list.extend(own_specific);
+            list.extend(self.document_exceptions.iter().cloned());
+            lists.push(list);
+        }
+        lists
     }
 }

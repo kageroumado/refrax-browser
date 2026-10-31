@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 // Builds Shields' resources.json from uBlock Origin's redirect resources and scriptlets.
 //
-// Usage: node Scripts/shields-resources.mjs <uBO source dir> <output resources.json>
+// Usage: node Scripts/shields-resources.mjs <uBO source dir> <output resources.json> <version> [<release.json>]
+//
+// <version> is a whole number above every earlier release's: it is written beside the output as
+// shields-resources.version (the bundled copy's version), and a downloaded release is used only
+// while its version is higher. With <release.json>, the release to publish is written too:
+// {"domain": "refrax-shields-resources", "version", "resources"}, to be signed whole with a
+// release key (<release.json>.sig) and uploaded to the shields-resources release.
 //
 // <uBO source dir> is either an unpacked uBO release (the directory holding manifest.json,
 // js/ and web_accessible_resources/, e.g. the unzipped Refrax/Resources/BundledExtensions xpi)
@@ -19,7 +25,7 @@
 // a data: URL cannot carry them.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve, extname } from 'node:path';
+import { join, resolve, extname, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const TRUSTED_PERMISSION = 1;
@@ -38,9 +44,10 @@ const MIME_BY_EXTENSION = new Map([
     ['', 'text/plain'],
 ]);
 
-const [, , sourceArgument, outputArgument] = process.argv;
-if (!sourceArgument || !outputArgument) {
-    console.error('usage: node Scripts/shields-resources.mjs <uBO source dir> <output resources.json>');
+const [, , sourceArgument, outputArgument, versionArgument, releaseArgument] = process.argv;
+const version = Number(versionArgument);
+if (!sourceArgument || !outputArgument || !Number.isInteger(version) || version < 1) {
+    console.error('usage: node Scripts/shields-resources.mjs <uBO source dir> <output resources.json> <version> [<release.json>]');
     process.exit(64);
 }
 
@@ -119,4 +126,8 @@ for (const resource of resources) {
 }
 
 writeFileSync(outputArgument, `${JSON.stringify(resources, null, 1)}\n`);
-console.log(`${redirects.length} redirect resources, ${scriptlets.length} scriptlets → ${outputArgument}`);
+writeFileSync(join(dirname(outputArgument), 'shields-resources.version'), `${version}\n`);
+if (releaseArgument) {
+    writeFileSync(releaseArgument, `${JSON.stringify({ domain: 'refrax-shields-resources', version, resources })}\n`);
+}
+console.log(`${redirects.length} redirect resources, ${scriptlets.length} scriptlets, version ${version} → ${outputArgument}`);

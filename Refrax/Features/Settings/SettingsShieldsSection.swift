@@ -20,17 +20,13 @@ struct ShieldsSettingsSections: View {
         Section {
             Toggle("Block ads and trackers", isOn: $settings.enableContentBlocking)
                 .highlightable(id: "privacy.shields", highlightedItemId: highlightedItemId)
-            Toggle("Aggressive blocking", isOn: $settings.aggressiveContentBlocking)
-                .disabled(!settings.enableContentBlocking)
-                .highlightable(id: "privacy.shieldsMode", highlightedItemId: highlightedItemId)
             status
         } header: {
             Text("Shields")
         } footer: {
             Text("""
             Shields applies the same filter lists in WebKit and Chromium pages: blocking, \
-            redirects, element hiding and uBlock Origin's scriptlets. Aggressive blocking also \
-            blocks first-party requests a filter matches, in Chromium pages.
+            redirects, element hiding and uBlock Origin's scriptlets.
             """)
             .font(.caption)
             .foregroundStyle(.secondary)

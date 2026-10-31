@@ -1,29 +1,34 @@
 //! WebKit user scripts for what content rule lists cannot express: scriptlets, procedural and
-//! action filters, `:style()` rules.
+//! action filters, `:style()` rules, and every filter on an entity (`example.*`).
 //!
 //! The engine decides what each host gets (`url_cosmetic_resources`, so exceptions, trusted
 //! scriptlets and entity rules follow adblock-rust exactly); this pass only repackages the
-//! answers. Grouping hosts by identical answer, as the design first proposed, measured 5,463
-//! distinct groups and 70 MB of script for the default lists, because every group repeats the
-//! scriptlet functions it calls. So the output is uBlock Origin Lite's shape instead:
+//! answers, in uBlock Origin Lite's shape:
 //!
 //! - one page-world script per scriptlet function, holding the function (with its
 //!   dependencies) once and a table of host → argument lists, injected only on hosts that use
 //!   it;
 //! - one isolated-world script for procedural and `:style()` filters: the runner
-//!   (`js/procedural.js`) and a table of host → filters.
+//!   (`js/procedural.js`) and a table of host → filters;
+//! - for entities, the same scripts keyed `label.*`, in every frame (no match pattern can name
+//!   an entity); an entity's plain hides travel as `display: none` style filters.
 //!
 //! At run time a script looks up the frame's hostname, then each parent domain, and applies the
-//! first entry it finds. Every entry holds the engine's full answer for that host, so the
-//! nearest listed host is the right one, and a host whose answer lacks a scriptlet its ancestor
-//! has gets an empty entry that stops the walk.
+//! first entry it finds, checking at each level the host and then its `label.*` entity. Every
+//! entry holds the engine's full answer for that host, so the nearest listed host is the right
+//! one, and a host whose answer lacks a scriptlet its ancestor or entity has gets an empty entry
+//! that stops the walk.
+//!
+//! No script runs by itself: each queues its work under `Symbol.for("refrax.shields.pending")`,
+//! and a dispatcher Refrax registers after them (`ShieldsWebKit`) runs the queue unless the site
+//! is exempt, before any page script. Exempting a site then replaces only the dispatcher.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use adblock::resources::{MimeType, Resource, ResourceType};
 use adblock::Engine;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::webkit::Counts;
 
@@ -36,6 +41,14 @@ const MAX_HOSTS_PER_SCRIPT: usize = 300;
 const INVOCATION_SUFFIX: &str = "\n} catch ( e ) { }\n";
 const INVOCATION_PREFIX: &str = "try {\n";
 
+/// A host under a top-level domain no list names, so the engine answers with an entity's
+/// rules and generic ones only.
+const ENTITY_PROBE_SUFFIX: &str = "shields-entity";
+const BASELINE_HOST: &str = "shields-baseline.invalid";
+
+/// The global the scripts queue their work in, run by Refrax's dispatcher.
+pub const PENDING_KEY: &str = "refrax.shields.pending";
+
 /// A user script to install in every frame at document start.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,11 +58,12 @@ pub struct UserScript {
     /// `page` (the page's main world) or `shields` (an isolated world).
     pub world: &'static str,
     pub source: String,
-    /// Match patterns: `*://host/*` and `*://*.host/*` for each host with an entry.
+    /// Match patterns: `*://host/*` and `*://*.host/*` for each host with an entry, or
+    /// `*://*/*` for entity entries.
     pub includes: Vec<String>,
 }
 
-/// Host → this script's entries for it (argument lists, or procedural filters).
+/// Host (or `label.*`) → this script's entries for it (argument lists, or procedural filters).
 type Table = BTreeMap<String, Vec<Value>>;
 
 #[derive(Default)]
@@ -59,19 +73,60 @@ struct Answer {
     procedural: Vec<Value>,
 }
 
+/// The `label.*` key a frame's walk checks at `host`'s level, if `host` has a dot.
+fn entity_key(host: &str) -> Option<String> {
+    host.find('.')
+        .filter(|&dot| dot > 0)
+        .map(|dot| format!("{}.*", &host[..dot]))
+}
+
 pub fn user_scripts(
     hosts: &BTreeSet<String>,
+    entities: &BTreeSet<String>,
     engine: &Engine,
     resources: &[Resource],
     counts: &mut Counts,
 ) -> Vec<UserScript> {
-    let hosts: Vec<&String> = hosts.iter().collect();
-    let answers = answers(&hosts, engine, counts);
+    let host_list: Vec<String> = hosts.iter().cloned().collect();
+    let probes: Vec<String> = entities
+        .iter()
+        .map(|label| format!("{label}.{ENTITY_PROBE_SUFFIX}"))
+        .collect();
+    let baseline_hides: HashSet<String> = engine
+        .url_cosmetic_resources(&format!("https://{BASELINE_HOST}/"))
+        .hide_selectors
+        .into_iter()
+        .collect();
+    let mut answers = answers(&host_list, engine, None, counts);
+    let probe_answers = answers_for_entities(&probes, engine, &baseline_hides, counts);
+    let entity_answers: BTreeMap<String, Answer> = entities
+        .iter()
+        .zip(probe_answers)
+        .map(|(label, answer)| (format!("{label}.*"), answer))
+        .collect();
+    // A listed host's entry stops its walk, so it carries its entity's hides as well.
+    for (host, answer) in &mut answers {
+        let mut suffix = host.as_str();
+        loop {
+            if let Some(entity) = entity_key(suffix).and_then(|key| entity_answers.get(&key)) {
+                let hides = entity
+                    .procedural
+                    .iter()
+                    .filter(|filter| is_entity_hide(filter));
+                answer.procedural.extend(hides.cloned());
+                break;
+            }
+            match suffix.find('.') {
+                Some(dot) => suffix = &suffix[dot + 1..],
+                None => break,
+            }
+        }
+    }
     let functions = FunctionLibrary::new(resources);
 
     let mut scripts = Vec::new();
     let mut function_names: BTreeSet<&str> = BTreeSet::new();
-    for answer in answers.values() {
+    for answer in answers.values().chain(entity_answers.values()) {
         function_names.extend(answer.invocations.keys().map(String::as_str));
     }
     for function in function_names {
@@ -79,51 +134,77 @@ pub fn user_scripts(
             counts.unsupported("scriptletFunction");
             continue;
         };
-        let table = table(&answers, |answer| answer.invocations.get(function).cloned());
+        let (hosts, entities) = tables(&answers, &entity_answers, |answer| {
+            answer.invocations.get(function).cloned()
+        });
         let call = format!(
             "for (const args of entry) {{ try {{ {function}(...args); }} catch (e) {{ }} }}"
         );
-        for shard in shards(table) {
+        let shards = shards(hosts)
+            .into_iter()
+            .map(|shard| (includes(&shard), shard));
+        for (includes, shard) in shards.chain(entity_shard(entities)) {
             scripts.push(UserScript {
                 name: resource_name.to_string(),
                 world: "page",
-                includes: includes(&shard),
-                source: format!(
-                    "(function() {{\nconst scriptletGlobals = {{}};\n{code}\nconst table = {};\n{}\n}})();\n",
+                includes,
+                source: queued(&format!(
+                    "const scriptletGlobals = {{}};\n{code}\nconst table = {};\n{}",
                     serde_json::to_string(&shard).expect("tables serialize"),
                     lookup(&call),
-                ),
+                )),
             });
         }
     }
 
-    let procedural = table(&answers, |answer| {
+    let (hosts, entities) = tables(&answers, &entity_answers, |answer| {
         (!answer.procedural.is_empty()).then(|| answer.procedural.clone())
     });
-    for shard in shards(procedural) {
+    let shards = shards(hosts)
+        .into_iter()
+        .map(|shard| (includes(&shard), shard));
+    for (includes, shard) in shards.chain(entity_shard(entities)) {
         scripts.push(UserScript {
             name: "procedural".to_string(),
             world: "shields",
-            includes: includes(&shard),
-            source: format!(
-                "(function() {{\n{PROCEDURAL_RUNNER}\nconst table = {};\n{}\n}})();\n",
+            includes,
+            source: queued(&format!(
+                "{PROCEDURAL_RUNNER}\nconst table = {};\n{}",
                 serde_json::to_string(&shard).expect("tables serialize"),
                 lookup("if (entry.length > 0) { shieldsApplyProcedural(entry); }"),
-            ),
+            )),
         });
     }
     counts.bundle_hosts = answers.len();
+    counts.entities = entity_answers.len();
     scripts
 }
 
-/// JavaScript that finds `table`'s entry for the frame's host or its nearest listed parent
-/// domain and runs `body` with it bound to `entry`.
+/// Wraps a script body so it runs when Refrax's dispatcher runs the queue.
+fn queued(body: &str) -> String {
+    format!(
+        "(function() {{\nconst run = () => {{\n{body}\n}};\n\
+         (globalThis[Symbol.for({key})] ||= []).push(run);\n}})();\n",
+        key = serde_json::to_string(PENDING_KEY).expect("strings serialize"),
+    )
+}
+
+/// JavaScript that finds `table`'s entry for the frame's host, its nearest listed parent
+/// domain, or the first matching `label.*` entity on the way, and runs `body` with it bound to
+/// `entry`.
+///
+/// A frame without a host of its own (`about:blank`, `about:srcdoc`, a `javascript:` frame),
+/// which Refrax's dispatcher reaches through its creator, takes the host of the nearest
+/// same-origin ancestor that has one: it shares that document's origin.
 fn lookup(body: &str) -> String {
     format!(
-        "let host = location.hostname;\n\
+        "const has = (key) => Object.prototype.hasOwnProperty.call(table, key);\n\
+         let host = location.hostname;\n\
+         try {{ for (let w = window; !host && w !== w.parent; w = w.parent) {{ host = w.parent.location.hostname; }} }} catch (e) {{ }}\n\
          while (host) {{\n\
-         if (Object.prototype.hasOwnProperty.call(table, host)) {{ const entry = table[host]; {body} break; }}\n\
          const dot = host.indexOf('.');\n\
+         const key = has(host) ? host : (dot > 0 && has(host.slice(0, dot) + '.*') ? host.slice(0, dot) + '.*' : null);\n\
+         if (key !== null) {{ const entry = table[key]; {body} break; }}\n\
          if (dot < 0) {{ break; }}\n\
          host = host.slice(dot + 1);\n\
          }}"
@@ -131,7 +212,12 @@ fn lookup(body: &str) -> String {
 }
 
 /// The engine's answer for every host, computed on all cores (the engine is `Sync`).
-fn answers(hosts: &[&String], engine: &Engine, counts: &mut Counts) -> BTreeMap<String, Answer> {
+fn answers(
+    hosts: &[String],
+    engine: &Engine,
+    entity_hides: Option<&HashSet<String>>,
+    counts: &mut Counts,
+) -> BTreeMap<String, Answer> {
     let threads = std::thread::available_parallelism().map_or(4, usize::from);
     let chunk = hosts.len().div_ceil(threads).max(1);
     let results: Vec<(String, Answer, usize)> = std::thread::scope(|scope| {
@@ -149,14 +235,29 @@ fn answers(hosts: &[&String], engine: &Engine, counts: &mut Counts) -> BTreeMap<
                             let mut procedural: Vec<String> =
                                 resources.procedural_actions.into_iter().collect();
                             procedural.sort();
-                            let answer = Answer {
-                                invocations,
-                                procedural: procedural
-                                    .iter()
-                                    .filter_map(|filter| serde_json::from_str(filter).ok())
-                                    .collect(),
-                            };
-                            (host.to_string(), answer, malformed)
+                            let mut procedural: Vec<Value> = procedural
+                                .iter()
+                                .filter_map(|filter| serde_json::from_str(filter).ok())
+                                .collect();
+                            if let Some(baseline) = entity_hides {
+                                let mut hides: Vec<String> = resources
+                                    .hide_selectors
+                                    .into_iter()
+                                    .filter(|selector| !baseline.contains(selector))
+                                    .collect();
+                                hides.sort();
+                                procedural.extend(
+                                    hides.into_iter().map(|selector| entity_hide(&selector)),
+                                );
+                            }
+                            (
+                                host.clone(),
+                                Answer {
+                                    invocations,
+                                    procedural,
+                                },
+                                malformed,
+                            )
                         })
                         .collect::<Vec<_>>()
                 })
@@ -175,6 +276,21 @@ fn answers(hosts: &[&String], engine: &Engine, counts: &mut Counts) -> BTreeMap<
         answers.insert(host, answer);
     }
     answers
+}
+
+/// The answers for entity probe hosts, in probe order, with the entity's plain hides (what the
+/// probe hides beyond the generic baseline) as style filters.
+fn answers_for_entities(
+    probes: &[String],
+    engine: &Engine,
+    baseline_hides: &HashSet<String>,
+    counts: &mut Counts,
+) -> Vec<Answer> {
+    let mut answers = answers(probes, engine, Some(baseline_hides), counts);
+    probes
+        .iter()
+        .map(|probe| answers.remove(probe).unwrap_or_default())
+        .collect()
 }
 
 /// Splits an assembled `injected_script` into `function(args…)` invocations. Returns them by
@@ -215,24 +331,42 @@ fn parse_invocations(script: &str) -> (BTreeMap<String, Vec<Value>>, usize) {
     (invocations, malformed)
 }
 
-/// Host → entry for every host whose answer has one, plus an empty entry for each host whose
-/// nearest listed ancestor has one but it does not.
-fn table(
+const ENTITY_HIDE_STYLE: &str = "display: none !important";
+
+fn entity_hide(selector: &str) -> Value {
+    json!({
+        "selector": [{"type": "css-selector", "arg": selector}],
+        "action": {"type": "style", "arg": ENTITY_HIDE_STYLE},
+    })
+}
+
+fn is_entity_hide(filter: &Value) -> bool {
+    filter["action"]["arg"] == ENTITY_HIDE_STYLE
+}
+
+/// The host table and the entity table for one script.
+///
+/// The host table has an entry for every host whose answer has one, plus an empty entry for
+/// each host whose nearest listed ancestor has one but it does not. The entity table has the
+/// `label.*` entries, plus an empty entry for every listed host whose walk would reach one: the
+/// host scripts carry that host's full answer, entity rules included.
+fn tables(
     answers: &BTreeMap<String, Answer>,
+    entity_answers: &BTreeMap<String, Answer>,
     entry: impl Fn(&Answer) -> Option<Vec<Value>>,
-) -> Table {
-    let mut table: Table = answers
+) -> (Table, Table) {
+    let mut hosts: Table = answers
         .iter()
         .filter_map(|(host, answer)| entry(answer).map(|value| (host.clone(), value)))
         .collect();
     let blocked: Vec<String> = answers
         .keys()
-        .filter(|host| !table.contains_key(*host))
+        .filter(|host| !hosts.contains_key(*host))
         .filter(|host| {
             let mut suffix = host.as_str();
             while let Some(dot) = suffix.find('.') {
                 suffix = &suffix[dot + 1..];
-                if table.contains_key(suffix) {
+                if hosts.contains_key(suffix) {
                     return true;
                 }
                 if answers.contains_key(suffix) {
@@ -244,9 +378,45 @@ fn table(
         .cloned()
         .collect();
     for host in blocked {
-        table.insert(host, Vec::new());
+        hosts.insert(host, Vec::new());
     }
-    table
+
+    let mut entities: Table = entity_answers
+        .iter()
+        .filter_map(|(key, answer)| entry(answer).map(|value| (key.clone(), value)))
+        .collect();
+    if !entities.is_empty() {
+        let reaching: Vec<String> = answers
+            .keys()
+            .filter(|host| reaches_entity(host, &entities))
+            .cloned()
+            .collect();
+        for host in reaching {
+            entities.insert(host, Vec::new());
+        }
+    }
+    (hosts, entities)
+}
+
+fn reaches_entity(host: &str, entities: &Table) -> bool {
+    let mut suffix = host;
+    loop {
+        if entity_key(suffix).is_some_and(|key| entities.contains_key(&key)) {
+            return true;
+        }
+        match suffix.find('.') {
+            Some(dot) => suffix = &suffix[dot + 1..],
+            None => return false,
+        }
+    }
+}
+
+/// The entity table as one script for every frame, when any entity has an entry.
+fn entity_shard(entities: Table) -> Option<(Vec<String>, Table)> {
+    let has_entries = entities
+        .iter()
+        .any(|(key, entry)| key.ends_with(".*") && !entry.is_empty());
+    has_entries.then(|| (vec!["*://*/*".to_string()], entities))
 }
 
 /// Splits a table into pieces of about `MAX_HOSTS_PER_SCRIPT` hosts, keeping each host with
@@ -427,14 +597,38 @@ mod tests {
         answers.insert("example.com".to_string(), parent);
         answers.insert("sub.example.com".to_string(), Answer::default());
         answers.insert("other.org".to_string(), Answer::default());
-        let table = table(&answers, |answer| {
+        let (table, entities) = tables(&answers, &BTreeMap::new(), |answer| {
             (!answer.procedural.is_empty()).then(|| answer.procedural.clone())
         });
+        assert!(entities.is_empty());
         assert_eq!(table.len(), 2);
         assert!(table["sub.example.com"].is_empty());
         assert_eq!(
             includes(&table),
             ["*://example.com/*", "*://*.example.com/*"]
         );
+    }
+
+    #[test]
+    fn entity_entries_run_everywhere_and_listed_hosts_stop_their_walk() {
+        let mut answers = BTreeMap::new();
+        answers.insert("example.com".to_string(), Answer::default());
+        let mut entity = Answer::default();
+        entity.procedural.push(entity_hide(".ad"));
+        let mut entity_answers = BTreeMap::new();
+        entity_answers.insert("example.*".to_string(), entity);
+        let (hosts, entities) = tables(&answers, &entity_answers, |answer| {
+            (!answer.procedural.is_empty()).then(|| answer.procedural.clone())
+        });
+        assert!(hosts.is_empty());
+        assert_eq!(entities["example.*"].len(), 1);
+        assert!(
+            entities["example.com"].is_empty(),
+            "the listed host answers for itself"
+        );
+        let (includes, _) = entity_shard(entities).expect("an entity shard");
+        assert_eq!(includes, ["*://*/*"]);
+        assert_eq!(entity_key("www.example.co.uk").as_deref(), Some("www.*"));
+        assert_eq!(entity_key("localhost"), None);
     }
 }

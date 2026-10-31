@@ -19,6 +19,9 @@ final class ShieldsRequestLog {
 
     /// How many loads Shields blocked or redirected since the page last committed a document.
     private(set) var blockedCount = 0
+    /// When the page last committed a document, in any engine: later entries are the current
+    /// document's.
+    @ObservationIgnored private(set) var documentStart = Date.distantPast
 
     func record(url: URL, frameURL: URL?, decision: RequestLogEntry.Decision) {
         entries.append(RequestLogEntry(
@@ -43,6 +46,7 @@ final class ShieldsRequestLog {
     /// Restarts the page count when a new document commits; the entries stay.
     func documentCommitted() {
         blockedCount = 0
+        documentStart = .now
     }
 
     func log(since sequence: Int64) -> RequestLog {

@@ -729,6 +729,10 @@ final class WebPage: Identifiable {
     /// Cleared when the user manually triggers a reload via ``startNewNavigation()``.
     var crashError: CrashError?
 
+    /// A page Shields kept from opening, because a filter blocks it as a document; the view
+    /// layer shows ``ShieldsBlockedPageView`` over the page. Cleared by the next navigation.
+    var shieldsBlockedURL: URL?
+
     // MARK: - Security State
 
     /// Cached certificate info to avoid repeated certificate chain parsing.

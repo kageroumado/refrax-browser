@@ -83,18 +83,19 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
             newPreferences._autoplayPolicy = policy.websiteAutoplayPolicy
         }
 
-        applyShields(to: newPreferences, for: navigationAction)
-        return (result, newPreferences)
-    }
-
-    /// Lets Shields' network lists take their redirect actions, and skips Shields' lists (only
-    /// those) for a document on a site the user exempted; a frame follows its page's site.
-    private func applyShields(to preferences: WKWebpagePreferences, for navigationAction: WKNavigationAction) {
-        guard let shields = pagePool?.state.shields else { return }
+        guard let shields = pagePool?.state.shields else { return (result, newPreferences) }
         let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
         let siteURL = isMainFrame ? navigationAction.request.url : owner?.url
-        let isExempt = siteURL.map { owner?.siteSettingsCoordinator?.contentBlockersEnabled(for: $0) == false } ?? false
-        shields.webKit.configure(preferences, siteIsExempt: isExempt)
+        let siteIsExempt = siteURL.map { owner?.siteSettingsCoordinator?.contentBlockersEnabled(for: $0) == false } ?? false
+        shields.webKit.configure(newPreferences, siteIsExempt: siteIsExempt)
+        if result == .allow, navigationAction.targetFrame?.isMainFrame == true, let url = navigationAction.request.url {
+            await shields.waitUntilReady()
+            if await shields.blocksPage(url, siteIsExempt: siteIsExempt) {
+                owner?.shieldsBlockedURL = url
+                return (.cancel, newPreferences)
+            }
+        }
+        return (result, newPreferences)
     }
 
     /// A Shields rule list blocked or redirected a load; recorded for the request logger.
