@@ -193,7 +193,7 @@ final class TabArchiveManager {
         let archivedTabs = space.tabs.filter(\.isArchived)
 
         for tab in archivedTabs {
-            context.delete(tab)
+            deleteArchivedTab(tab, in: context)
         }
 
         // Delete the archive group itself
@@ -231,10 +231,14 @@ final class TabArchiveManager {
     ///
     /// - Parameter context: The ModelContext for deletion.
     func clearExpiredTabs(context: ModelContext) {
+        clearExpiredTabs(context: context, now: Date(), lastActivation: activationObserver.lastActivationTime)
+    }
+
+    /// Clears the archived tabs expired at `now`, the app last activated at `lastActivation`.
+    func clearExpiredTabs(context: ModelContext, now: Date, lastActivation: Date?) {
         guard settings.archiveEnabled else { return }
         guard let clearHours = settings.archiveClearHours else { return }
 
-        let lastActivation = activationObserver.lastActivationTime
         let expirationInterval = TimeInterval(clearHours) * 3_600
 
         var expiredCount = 0
@@ -246,19 +250,18 @@ final class TabArchiveManager {
                 guard let archivedAt = tab.archivedAt else { continue }
 
                 // Check if enough time has passed
-                let elapsed = Date().timeIntervalSince(archivedAt)
+                let elapsed = now.timeIntervalSince(archivedAt)
                 guard elapsed >= expirationInterval else { continue }
 
                 // Check if app was activated after this tab was archived
                 if let lastActivation, lastActivation > archivedAt {
-                    context.delete(tab)
+                    deleteArchivedTab(tab, in: context)
                     expiredCount += 1
                 }
             }
         }
 
         if expiredCount > 0 {
-            state.incrementListVersion()
             Logger.debug(
                 "Cleared \(expiredCount) expired archived tabs",
                 category: Logger.tabs,

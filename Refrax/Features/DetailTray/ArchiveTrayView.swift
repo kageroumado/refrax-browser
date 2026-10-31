@@ -10,20 +10,22 @@ struct ArchiveTrayView: View {
 
     @State private var query = ""
     @State private var showsEmptyConfirmation = false
+    /// The shelf, read once per change of the tab list (archiving, restoring, and deleting
+    /// all change it) or of the search.
+    @State private var shelf = ArchiveShelf.empty
 
     private var actions: ArchiveActions {
         ArchiveActions(tabs: tabManager, windowState: windowState)
     }
 
-    /// The shelf, read again whenever the tab list changes: archiving, restoring, and deleting
-    /// all change it.
-    private var shelf: ArchiveShelf {
-        _ = tabManager.state.tabListVersion
-        return actions.shelf(query: query)
+    /// What the shelf is read from.
+    private struct ShelfKey: Equatable {
+        let tabListVersion: UInt64
+        let activeSpaceID: UUID?
+        let query: String
     }
 
     var body: some View {
-        let shelf = shelf
         Group {
             if shelf.isEmpty {
                 emptyState
@@ -48,7 +50,7 @@ struct ArchiveTrayView: View {
                         showsEmptyConfirmation = true
                     }
                     .buttonStyle(.bordered)
-                    .disabled(tabManager.browsableArchivedTabs.isEmpty)
+                    .disabled(shelf.archivedCount == 0)
                 }
                 .padding(12)
             }
@@ -58,6 +60,9 @@ struct ArchiveTrayView: View {
             Button("Empty Archive", role: .destructive) { actions.emptyArchive() }
         } message: {
             Text("Every archived tab listed here is deleted. Locked and private spaces keep theirs. This cannot be undone.")
+        }
+        .onChange(of: ShelfKey(tabListVersion: tabManager.state.tabListVersion, activeSpaceID: windowState.activeSpaceID, query: query), initial: true) {
+            shelf = actions.shelf(query: query)
         }
         .accessibilityIdentifier("ArchiveDrawer")
     }

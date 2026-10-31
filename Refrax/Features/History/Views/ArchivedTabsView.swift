@@ -7,7 +7,6 @@ import SwiftUI
 /// selected.
 struct ArchivedTabsView: View {
     @Environment(TabManager.self) private var tabManager
-    @Environment(TabArchiveManager.self) private var archiveManager
 
     let searchText: String
 
@@ -49,7 +48,7 @@ struct ArchivedTabsView: View {
         .alert("Empty Archive", isPresented: $showsEmptyArchiveAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Empty Archive", role: .destructive) {
-                delete(tabManager.browsableArchivedTabs)
+                actions.emptyArchive()
                 selection.removeAll()
             }
         } message: {
@@ -131,17 +130,20 @@ struct ArchivedTabsView: View {
 
     // MARK: - Actions
 
+    /// The archive's verbs, shared with the library drawer.
+    private var actions: ArchiveActions {
+        ArchiveActions(tabs: tabManager, windowState: nil)
+    }
+
     private func restore(_ tabs: [Tab]) {
         for tab in tabs {
-            try? archiveManager.restoreTab(tab)
+            actions.restore(tab.id, open: false)
         }
         selection.subtract(tabs.map(\.id))
     }
 
     private func delete(_ tabs: [Tab]) {
-        for tab in tabs {
-            archiveManager.deleteArchivedTab(tab, in: tabManager.state.modelContext)
-        }
+        actions.delete(tabs.map(\.id))
         selection.subtract(tabs.map(\.id))
     }
 
