@@ -164,6 +164,16 @@ final class ExtensionManager {
     /// Shim injector for API compatibility.
     let shimInjector: ShimInjector
 
+    /// Every extension action's badge, title and icon, as the rail and the page menu show them.
+    let actions = ExtensionActionStore()
+
+    /// Routes `runtime.sendNativeMessage` and `runtime.connectNative` to native hosts.
+    let nativeMessaging = NativeMessagingRouter()
+
+    /// Refrax's own `refrax.*` API, served as the in-process native host
+    /// ``RefraxAPIShim/hostName``.
+    @ObservationIgnored private lazy var refraxAPI = RefraxAPIShim(state: state)
+
     /// The controller delegate handling extension callbacks (for default controller).
     private var controllerDelegate: ExtensionControllerDelegate?
 
@@ -212,14 +222,17 @@ final class ExtensionManager {
 
     /// Creates an extension manager.
     ///
-    /// - Parameter state: The browser state for configuration access.
-    init(state: BrowserState) {
+    /// - Parameters:
+    ///   - state: The browser state for configuration access.
+    ///   - controllerConfiguration: The default controller's configuration; the shims are
+    ///     installed on it.
+    init(state: BrowserState, controllerConfiguration: WKWebExtensionController.Configuration = .default()) {
         self.state = state
 
         // Create the default extension controller
         let shimInjector = ShimInjector()
         self.shimInjector = shimInjector
-        let configuration = WKWebExtensionController.Configuration.default()
+        let configuration = controllerConfiguration
         shimInjector.install(on: configuration)
         self.defaultController = WKWebExtensionController(configuration: configuration)
 
@@ -232,6 +245,10 @@ final class ExtensionManager {
 
         // Wire up recovery manager
         recoveryManager.extensionManager = self
+
+        nativeMessaging.register({ [unowned self] message, context in
+            try await refraxAPI.handle(message, from: context)
+        }, named: RefraxAPIShim.hostName)
 
         // Wire up update checker
         Task {
@@ -376,7 +393,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist the extension
@@ -450,6 +467,7 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         isolatedControllers[space.id] = controller
+        reportOpenWindows(to: controller)
         loadExtensions(into: space)
 
         Logger.info("Created isolated extension controller for space: \(space.name)", category: Logger.extensions)
@@ -485,6 +503,7 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         privateControllers[space.id] = controller
+        reportOpenWindows(to: controller)
         loadExtensions(into: space)
 
         Logger.info("Created transient extension controller for private space: \(space.name)", category: Logger.extensions)
@@ -620,7 +639,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -696,7 +715,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -809,7 +828,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load into default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -849,14 +868,14 @@ final class ExtensionManager {
     func uninstall(_ extension_: InstalledExtension) async throws {
         // Unload from default controller
         if let context = loadedContexts[extension_.uniqueIdentifier] {
-            try defaultController.unload(context)
+            try unload(context, from: defaultController)
             loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
         }
 
         // Unload from all isolated controllers
         for (key, context) in isolatedContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
             if let controller = isolatedControllers[key.spaceID] {
-                try controller.unload(context)
+                try unload(context, from: controller)
             }
         }
         isolatedContexts = isolatedContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
@@ -864,7 +883,7 @@ final class ExtensionManager {
         // Unload from all private controllers
         for (key, context) in privateContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
             if let controller = privateControllers[key.spaceID] {
-                try controller.unload(context)
+                try unload(context, from: controller)
             }
         }
         privateContexts = privateContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
@@ -934,7 +953,7 @@ final class ExtensionManager {
 
         // Unload from default controller
         if let context = loadedContexts[extension_.uniqueIdentifier] {
-            try defaultController.unload(context)
+            try unload(context, from: defaultController)
             loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
         }
 
@@ -992,41 +1011,6 @@ final class ExtensionManager {
             "Set update behavior to '\(behavior.rawValue)' for '\(extension_.displayName)'",
             category: Logger.extensions,
         )
-    }
-
-    // MARK: - Extension Actions
-
-    /// Triggers a page action for an extension.
-    ///
-    /// This is called when the user clicks an extension in the page menu.
-    /// It triggers the extension's browser/page action, which may show a popup.
-    ///
-    /// - Parameters:
-    ///   - extensionID: The unique identifier of the extension.
-    ///   - webPage: The current web page, if any.
-    func triggerPageAction(for extensionID: String, in webPage: WebPage?) async {
-        guard let context = loadedContexts[extensionID] else {
-            Logger.warning(
-                "Cannot trigger action: extension '\(extensionID)' not loaded",
-                category: Logger.extensions,
-            )
-            return
-        }
-
-        Logger.info(
-            "Triggering page action for extension '\(extensionID)'",
-            category: Logger.extensions,
-        )
-
-        // Get the tab if available
-        var tab: (any WKWebExtensionTab)?
-        if let webPage,
-           let pagePool = state.pagePool {
-            tab = extensionTab(for: webPage.tabPage, pagePool: pagePool)
-        }
-
-        // Perform the action - this will trigger the delegate callback if a popup is needed
-        context.performAction(for: tab)
     }
 
     // MARK: - Tab/Window Adapter Access
@@ -1092,8 +1076,20 @@ final class ExtensionManager {
     /// `tabs(for:)` listing doesn't count. Tabs restored at launch predate every
     /// context, so without this their content scripts fail with "Tab not found"
     /// and blockers like uBlock Origin never apply their filters to them.
-    private func load(_ context: WKWebExtensionContext, into controller: WKWebExtensionController) throws {
+    ///
+    /// The context first gets its stable identifier and base URL, as
+    /// ``ExtensionContextIdentifier`` describes, so its storage survives relaunches.
+    private func load(
+        _ context: WKWebExtensionContext,
+        installedID: String,
+        spaceID: UUID?,
+        into controller: WKWebExtensionController,
+    ) throws {
+        let identifier = ExtensionContextIdentifier.identifier(installedID: installedID, spaceID: spaceID)
+        context.uniqueIdentifier = identifier
+        context.baseURL = ExtensionContextIdentifier.baseURL(for: identifier)
         try controller.load(context)
+        actions.refresh(context)
 
         for space in state.spaces where space.isLoaded {
             reportExistingTabs(space.tabs, to: context)
@@ -1125,6 +1121,55 @@ final class ExtensionManager {
             if pagePool.existingPage(for: tabPage.id) == nil {
                 tabsWithoutWebView.insert(tabPage.id)
             }
+        }
+    }
+
+    /// Unloads a context and forgets its actions.
+    private func unload(_ context: WKWebExtensionContext, from controller: WKWebExtensionController) throws {
+        try controller.unload(context)
+        actions.removeContext(context.uniqueIdentifier)
+    }
+
+    // MARK: - Window Event Dispatching
+
+    /// Every controller: the default one and each space's.
+    var allControllers: [WKWebExtensionController] {
+        [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
+    }
+
+    /// Tells every controller a browser window opened. A window shows one space at a time and
+    /// can switch to a space of another controller, so every controller knows every window;
+    /// each sees only the tabs that are its own.
+    func dispatchWindowOpened(_ windowState: WindowState, nsWindow: NSWindow) {
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        for controller in allControllers {
+            controller.didOpenWindow(window)
+        }
+    }
+
+    /// Tells every controller a browser window became the focused one.
+    func dispatchWindowFocused(_ windowState: WindowState, nsWindow: NSWindow) {
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        for controller in allControllers {
+            controller.didFocusWindow(window)
+        }
+    }
+
+    /// Tells every controller a browser window closed, and drops its adapter.
+    func dispatchWindowClosed(_ windowState: WindowState, nsWindow: NSWindow) {
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        for controller in allControllers {
+            controller.didCloseWindow(window)
+        }
+        removeWindowAdapter(for: windowState)
+    }
+
+    /// Reports the open browser windows to a controller created after them.
+    private func reportOpenWindows(to controller: WKWebExtensionController) {
+        guard let windowManager = state.pagePool?.windowManager else { return }
+        for windowController in windowManager.windowControllers {
+            guard let nsWindow = windowController.window else { continue }
+            controller.didOpenWindow(extensionWindow(for: windowController.windowState, nsWindow: nsWindow))
         }
     }
 
@@ -1196,6 +1241,7 @@ final class ExtensionManager {
             controller.didCloseTab(adapter, windowIsClosing: windowClosing)
         }
         removeTabAdapter(for: tabPage)
+        actions.removeTabPage(tabPage.id)
     }
 
     /// Notifies extensions that a tab was activated.
@@ -1303,6 +1349,94 @@ final class ExtensionManager {
         loadedContexts[extension_.uniqueIdentifier]
     }
 
+    /// The installed extension a loaded context, in any controller, runs.
+    func installedExtension(for context: WKWebExtensionContext) -> InstalledExtension? {
+        let installedID = loadedContexts.first { $0.value === context }?.key
+            ?? isolatedContexts.first { $0.value === context }?.key.extensionIdentifier
+            ?? privateContexts.first { $0.value === context }?.key.extensionIdentifier
+        return installedID.flatMap { id in installedExtensions.first { $0.uniqueIdentifier == id } }
+    }
+
+    // MARK: - Actions
+
+    /// The actions of the extensions that run in `tab`, as that tab shows them, by name.
+    ///
+    /// - Parameter tab: The tab the actions act on; the default controller's when `nil`.
+    func actionEntries(for tab: Tab?) -> [ExtensionActionEntry] {
+        let tabPageID = tab?.pages.first?.id
+        let url = tab?.activePage.url
+        return actionContexts(for: tab)
+            .filter { context in
+                guard let url, let installed = installedExtension(for: context) else { return true }
+                return !isExtensionDisabled(installed, for: url)
+            }
+            .compactMap { context in
+                guard let appearance = actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) else {
+                    return nil
+                }
+                return ExtensionActionEntry(
+                    id: context.uniqueIdentifier,
+                    name: context.webExtension.displayName ?? appearance.label,
+                    icon: actions.icon(contextID: context.uniqueIdentifier, tabPageID: tabPageID)
+                        ?? context.webExtension.icon(for: ExtensionActionStore.iconSize),
+                    appearance: appearance,
+                )
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Whether an extension running in `tab` has an action to show.
+    func hasActions(in tab: Tab?) -> Bool {
+        let tabPageID = tab?.pages.first?.id
+        return actionContexts(for: tab).contains { context in
+            actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) != nil
+        }
+    }
+
+    /// Whether an action in `tab` shows a badge the user has not seen.
+    func hasUnreadActionBadge(in tab: Tab?) -> Bool {
+        actions.board.hasUnreadBadge(among: actionContexts(for: tab).map(\.uniqueIdentifier), tabPageID: tab?.pages.first?.id)
+    }
+
+    /// Marks every action badge in `tab` as seen.
+    func markActionBadgesRead(in tab: Tab?) {
+        actions.markRead(actionContexts(for: tab), tab: extensionTab(for: tab))
+    }
+
+    /// Performs an extension's action in `tab`, as clicking its toolbar button does in other
+    /// browsers: its popup opens at `anchor`, or the extension gets `action.onClicked`.
+    ///
+    /// - Parameters:
+    ///   - contextID: The extension context's unique identifier.
+    ///   - tab: The tab the action acts on.
+    ///   - anchor: The control the user clicked, where the popup opens.
+    func performAction(contextID: String, in tab: Tab?, anchor: ActionPopupAnchor?) {
+        guard let context = actionContexts(for: tab).first(where: { $0.uniqueIdentifier == contextID }) else {
+            Logger.warning("Cannot perform action: extension context \(contextID) not loaded", category: Logger.extensions)
+            return
+        }
+        actions.pendingPopupAnchor = anchor
+        let extensionTab = extensionTab(for: tab)
+        if let extensionTab {
+            context.userGesturePerformed(in: extensionTab)
+        }
+        context.performAction(for: extensionTab)
+    }
+
+    /// The loaded contexts of `tab`'s controller whose extension declares an action.
+    private func actionContexts(for tab: Tab?) -> [WKWebExtensionContext] {
+        let controller = tab.map(controller(for:)) ?? defaultController
+        return controller.extensionContexts.filter { context in
+            let manifest = context.webExtension.manifest
+            return manifest["action"] != nil || manifest["browser_action"] != nil || manifest["page_action"] != nil
+        }
+    }
+
+    private func extensionTab(for tab: Tab?) -> RefraxExtensionTab? {
+        guard let tabPage = tab?.pages.first, let pagePool = state.pagePool else { return nil }
+        return extensionTab(for: tabPage, pagePool: pagePool)
+    }
+
     /// The loaded extension context that owns `url`, searched across the default controller
     /// and every space controller.
     ///
@@ -1313,8 +1447,7 @@ final class ExtensionManager {
     /// - Returns: The owning context, or `nil` when `url` is no loaded extension's page.
     func extensionContext(for url: URL) -> WKWebExtensionContext? {
         guard ExtensionPageRouting.isExtensionURL(url) else { return nil }
-        let controllers = [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
-        for controller in controllers {
+        for controller in allControllers {
             if let context = controller.extensionContext(for: url) {
                 return context
             }
@@ -1458,7 +1591,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try load(context, into: defaultController)
+        try load(context, installedID: extension_.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[extension_.uniqueIdentifier] = context
     }
 
@@ -1494,7 +1627,7 @@ final class ExtensionManager {
                     Logger.error("Failed to load '\(current.displayName)' into space \(space.spaceID): \(error)", category: Logger.extensions)
                 }
             } else if !wanted, let loaded {
-                try? space.controller.unload(loaded)
+                try? unload(loaded, from: space.controller)
                 if space.isPrivate {
                     privateContexts[key] = nil
                 } else {
@@ -1540,7 +1673,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try load(context, into: controller)
+        try load(context, installedID: extension_.uniqueIdentifier, spaceID: spaceID, into: controller)
 
         let key = SpaceExtensionKey(spaceID: spaceID, extensionIdentifier: extension_.uniqueIdentifier)
 

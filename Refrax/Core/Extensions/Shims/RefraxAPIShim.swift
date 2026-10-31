@@ -1,175 +1,94 @@
 import Foundation
 import WebKit
 
-/// Provides Refrax-specific browser APIs to extensions.
+/// Refrax's own extension API, `refrax.*`, served as the in-process native messaging host
+/// ``hostName``.
 ///
-/// `RefraxAPIShim` implements a `refrax.*` API namespace that extensions
-/// can use to access Refrax-specific features like favorites,
-/// and spaces.
+/// `refrax-api-shim.js` defines `browser.refrax` in extension pages and sends each call through
+/// `runtime.sendNativeMessage(hostName, {method, params})`, so the extension needs the
+/// `nativeMessaging` permission, and per area the `refrax.tabs` or `refrax.spaces` permission
+/// in its manifest. Replies are `{success: true, data}` or `{success: false, error}`.
 ///
-/// ## Available APIs
-///
-/// - `refrax.tabs.getFavorites()` - Get all favorited tabs
-/// - `refrax.tabs.setFavorite(tabId, isFavorite)` - Set tab favorite status
-/// - `refrax.spaces.getAll()` - Get all spaces
-/// - `refrax.spaces.getCurrent()` - Get the current space
-///
-/// ## Permissions
-///
-/// Extensions must request the `refrax.tabs` permission to access favorites.
-/// The `refrax.spaces` permission is required for space APIs.
-///
-/// ## Implementation Status
-///
-/// This is a placeholder implementation. Full integration with BrowserState
-/// will be added when the tab/space query APIs are implemented.
-actor RefraxAPIShim {
-    // MARK: - Types
+/// | Method | Permission | Data |
+/// |--------|------------|------|
+/// | `tabs.getFavorites` | `refrax.tabs` | `[{id, title, url}]` |
+/// | `tabs.setFavorite` `{tabId, isFavorite}` | `refrax.tabs` | `{isFavorite}` |
+/// | `spaces.getAll` | `refrax.spaces` | `[{id, name, isPrivate}]` |
+/// | `spaces.getCurrent` | `refrax.spaces` | `{id, name, isPrivate}` or `null` |
+final class RefraxAPIShim {
+    /// The host name extensions address Refrax's API by.
+    static let hostName = "website.refrax.api"
 
-    /// API response to JavaScript.
-    struct APIResponse {
-        let success: Bool
-        let data: Any?
-        let error: String?
-
-        static func success(_ data: Any? = nil) -> APIResponse {
-            APIResponse(success: true, data: data, error: nil)
-        }
-
-        static func error(_ message: String) -> APIResponse {
-            APIResponse(success: false, data: nil, error: message)
-        }
+    private enum Permission {
+        static let tabs = "refrax.tabs"
+        static let spaces = "refrax.spaces"
     }
 
-    // MARK: - Properties
+    private unowned let state: BrowserState
 
-    /// Reference to browser state for tab/space access.
-    private weak var state: BrowserState?
-
-    /// Permission check function.
-    private let hasPermission: @Sendable (String, WKWebExtensionContext) -> Bool
-
-    // MARK: - Initialization
-
-    /// Creates a Refrax API shim.
-    ///
-    /// - Parameters:
-    ///   - state: The browser state for data access.
-    ///   - hasPermission: Function to check if extension has a permission.
-    init(
-        state: BrowserState,
-        hasPermission: @Sendable @escaping (String, WKWebExtensionContext) -> Bool,
-    ) {
+    init(state: BrowserState) {
         self.state = state
-        self.hasPermission = hasPermission
     }
 
-    // MARK: - Message Handling
-
-    /// Handles an API request from JavaScript.
-    ///
-    /// - Parameters:
-    ///   - message: The API request message.
-    ///   - context: The extension context making the request.
-    /// - Returns: The API response to send back.
-    func handleMessage(
-        _ message: [String: Any],
-        context: WKWebExtensionContext,
-    ) async -> [String: Any] {
-        guard let method = message["method"] as? String else {
-            return encodeResponse(.error("Missing method"))
+    /// Answers one call.
+    func handle(_ message: Any, from context: WKWebExtensionContext) async throws -> Any? {
+        guard let request = message as? [String: Any], let method = request["method"] as? String else {
+            return Self.failure("Missing method")
         }
+        let params = request["params"] as? [String: Any] ?? [:]
+        let declared = Set(context.webExtension.manifest["permissions"] as? [String] ?? [])
 
-        let params = message["params"] as? [String: Any] ?? [:]
-
-        let response: APIResponse = switch method {
-        // Tab APIs
+        switch method {
         case "tabs.getFavorites":
-            await getFavorites(context: context)
-
+            guard declared.contains(Permission.tabs) else { return Self.denied(Permission.tabs) }
+            return Self.success(state.favoriteTabs.map(Self.describe))
         case "tabs.setFavorite":
-            await setFavorite(params: params, context: context)
-
-        // Space APIs
+            guard declared.contains(Permission.tabs) else { return Self.denied(Permission.tabs) }
+            return setFavorite(params)
         case "spaces.getAll":
-            await getAllSpaces(context: context)
-
+            guard declared.contains(Permission.spaces) else { return Self.denied(Permission.spaces) }
+            return Self.success(state.spaces.map(Self.describe))
         case "spaces.getCurrent":
-            await getCurrentSpace(context: context)
-
+            guard declared.contains(Permission.spaces) else { return Self.denied(Permission.spaces) }
+            let space = state.pagePool?.windowManager?.activeWindowController?.windowState.activeSpace
+            return Self.success(space.map(Self.describe) ?? NSNull())
         default:
-            .error("Unknown method: \(method)")
+            return Self.failure("Unknown method: \(method)")
         }
-
-        return encodeResponse(response)
     }
 
-    // MARK: - Tab APIs (Stub Implementations)
-
-    /// Gets all favorited tabs.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func getFavorites(context: WKWebExtensionContext) async -> APIResponse {
-        guard hasPermission("refrax.tabs", context) else {
-            return .error("Permission denied: refrax.tabs")
+    private func setFavorite(_ params: [String: Any]) -> [String: Any] {
+        guard let tabID = (params["tabId"] as? String).flatMap(UUID.init(uuidString:)),
+              let isFavorite = params["isFavorite"] as? Bool
+        else {
+            return Self.failure("tabs.setFavorite needs {tabId, isFavorite}")
         }
-
-        // TODO: Implement when BrowserState provides allTabs() API
-        return .error("refrax.tabs.getFavorites is not yet implemented")
+        guard let tab = state.tab(for: tabID), let tabManager = state.pagePool?.tabManager else {
+            return Self.failure("No tab with id \(tabID)")
+        }
+        if tab.isFavorite != isFavorite {
+            tabManager.toggleFavorite(tab)
+        }
+        return Self.success(["isFavorite": tab.isFavorite])
     }
 
-    /// Sets the favorite status of a tab.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func setFavorite(
-        params _: [String: Any],
-        context: WKWebExtensionContext,
-    ) async -> APIResponse {
-        guard hasPermission("refrax.tabs", context) else {
-            return .error("Permission denied: refrax.tabs")
-        }
-
-        // TODO: Implement when BrowserState provides tab lookup API
-        return .error("refrax.tabs.setFavorite is not yet implemented")
+    private static func describe(_ tab: Tab) -> [String: Any] {
+        ["id": tab.id.uuidString, "title": tab.displayTitle, "url": tab.activePage.url.absoluteString]
     }
 
-    // MARK: - Space APIs (Stub Implementations)
-
-    /// Gets all spaces.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func getAllSpaces(context: WKWebExtensionContext) async -> APIResponse {
-        guard hasPermission("refrax.spaces", context) else {
-            return .error("Permission denied: refrax.spaces")
-        }
-
-        // TODO: Implement when BrowserState provides allSpaces() API
-        return .error("refrax.spaces.getAll is not yet implemented")
+    private static func describe(_ space: Space) -> [String: Any] {
+        ["id": space.id.uuidString, "name": space.name, "isPrivate": space.dataStoreMode.isPrivate]
     }
 
-    /// Gets the current space.
-    ///
-    /// - Note: Currently returns an error as this API is not yet implemented.
-    private func getCurrentSpace(context: WKWebExtensionContext) async -> APIResponse {
-        guard hasPermission("refrax.spaces", context) else {
-            return .error("Permission denied: refrax.spaces")
-        }
-
-        // TODO: Implement when BrowserState provides current space API
-        return .error("refrax.spaces.getCurrent is not yet implemented")
+    private static func success(_ data: Any) -> [String: Any] {
+        ["success": true, "data": data]
     }
 
-    // MARK: - Private Helpers
+    private static func failure(_ message: String) -> [String: Any] {
+        ["success": false, "error": message]
+    }
 
-    /// Encodes a response for JavaScript.
-    private func encodeResponse(_ response: APIResponse) -> [String: Any] {
-        var result: [String: Any] = ["success": response.success]
-        if let data = response.data {
-            result["data"] = data
-        }
-        if let error = response.error {
-            result["error"] = error
-        }
-        return result
+    private static func denied(_ permission: String) -> [String: Any] {
+        failure("Permission denied: \(permission)")
     }
 }

@@ -219,7 +219,6 @@ private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithRepl
         injector: ShimInjector,
         extensionIdentifier: String,
     ) async -> (Any?, String?) {
-
         do {
             let result: Any?
 
@@ -258,11 +257,6 @@ private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithRepl
                     args: args,
                     extensionID: extensionIdentifier,
                 )
-
-            case "refraxAPI":
-                // Refrax-specific APIs are not yet implemented
-                // TODO: Enable when BrowserState provides allTabs/allSpaces APIs
-                throw ShimError.unsupportedAPI("refraxAPI (not yet implemented)")
 
             default:
                 throw ShimError.unsupportedAPI(api)

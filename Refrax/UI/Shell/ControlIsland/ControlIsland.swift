@@ -17,6 +17,7 @@ struct ControlIsland: View {
     @Environment(FloatingTourManager.self) private var tour
     @Environment(AppUpdateManager.self) private var updates
     @Environment(MediaControlsManager.self) private var mediaControls
+    @Environment(ExtensionManager.self) private var extensions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.appearsActive) private var appearsActive
@@ -61,6 +62,7 @@ struct ControlIsland: View {
             case .page: windowState.activePage != nil
             case .updates: updateIsReady
             case .nowPlaying: mediaControls.hasActiveMedia
+            case .extensions: extensions.hasActions(in: windowState.activeTab)
             default: true
             }
         }
@@ -528,6 +530,8 @@ struct ControlIsland: View {
             nowPlayingControl(item)
         case .updates:
             updateControl(item)
+        case .extensions:
+            ControlIslandExtensionsControl(item: item, opensLeft: opensLeft, focusedControl: $focusedControl)
         }
     }
 

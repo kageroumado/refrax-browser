@@ -136,18 +136,7 @@ final class WindowManager {
                 if let controller = self?.windowControllers.first(where: { $0.window === window }) {
                     self?.lastActiveBrowserWindowController = controller
 
-                    // Notify extensions of window focus
-                    if let extensionManager = self?.tabManager?.state.extensionManager {
-                        let extensionWindow = extensionManager.extensionWindow(
-                            for: controller.windowState,
-                            nsWindow: window,
-                        )
-                        if let space = controller.windowState.activeSpace {
-                            extensionManager.controller(for: space).didFocusWindow(extensionWindow)
-                        } else {
-                            extensionManager.defaultController.didFocusWindow(extensionWindow)
-                        }
-                    }
+                    self?.tabManager?.state.extensionManager?.dispatchWindowFocused(controller.windowState, nsWindow: window)
                 }
             }
         }
@@ -285,18 +274,7 @@ final class WindowManager {
         let controllerID = ObjectIdentifier(windowController)
         windowControllers.append(windowController)
 
-        // Notify extensions of new window
-        if let extensionManager = tabManager?.state.extensionManager {
-            let extensionWindow = extensionManager.extensionWindow(
-                for: windowController.windowState,
-                nsWindow: window,
-            )
-            if let space = windowController.windowState.activeSpace {
-                extensionManager.controller(for: space).didOpenWindow(extensionWindow)
-            } else {
-                extensionManager.defaultController.didOpenWindow(extensionWindow)
-            }
-        }
+        tabManager?.state.extensionManager?.dispatchWindowOpened(windowController.windowState, nsWindow: window)
 
         let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
@@ -331,19 +309,8 @@ final class WindowManager {
             )
         }
 
-        // Notify extensions of window close (before cleanup)
-        if let extensionManager = tabManager?.state.extensionManager {
-            let extensionWindow = extensionManager.extensionWindow(
-                for: controller.windowState,
-                nsWindow: closedWindow,
-            )
-            if let space = controller.windowState.activeSpace {
-                extensionManager.controller(for: space).didCloseWindow(extensionWindow)
-            } else {
-                extensionManager.defaultController.didCloseWindow(extensionWindow)
-            }
-            extensionManager.removeWindowAdapter(for: controller.windowState)
-        }
+        // Before cleanup, while the window state is intact
+        tabManager?.state.extensionManager?.dispatchWindowClosed(controller.windowState, nsWindow: closedWindow)
 
         tabManager.scheduleSave()
 

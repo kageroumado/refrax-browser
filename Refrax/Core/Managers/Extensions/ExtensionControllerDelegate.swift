@@ -312,8 +312,18 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
 
     // MARK: - Extension Actions & Popups
 
-    /// Shows the action's popup in WebKit's own popover, under the address bar of the
-    /// active window.
+    /// Takes in an action's new badge, title, icon or enabled state for the rail and the
+    /// page menu.
+    func webExtensionController(
+        _: WKWebExtensionController,
+        didUpdate action: WKWebExtension.Action,
+        forExtensionContext _: WKWebExtensionContext,
+    ) {
+        manager.actions.update(from: action)
+    }
+
+    /// Shows the action's popup in WebKit's own popover: beside the control the user clicked
+    /// to perform the action, else under the page card of the active window.
     ///
     /// WebKit owns the popover and its web view: it installs their delegates, sizes the
     /// popover to the page's content, and routes links the popup opens to new tabs.
@@ -323,8 +333,17 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
         for extensionContext: WKWebExtensionContext,
     ) async throws {
         let extensionName = extensionContext.webExtension.displayName ?? "Unknown Extension"
+        let clickedControl = manager.actions.pendingPopupAnchor
+        manager.actions.pendingPopupAnchor = nil
         guard let popover = action.popupPopover else {
             Logger.warning("Extension '\(extensionName)' action has no popup", category: Logger.extensions)
+            return
+        }
+
+        if let clickedControl, let contentView = clickedControl.window?.contentView, !clickedControl.rect.isEmpty {
+            let rect = Self.contentRect(fromGlobal: clickedControl.rect, in: contentView)
+            let edge: NSRectEdge = rect.midX < contentView.bounds.midX ? .maxX : .minX
+            popover.show(relativeTo: rect, of: contentView, preferredEdge: edge)
             return
         }
         guard let controller = windowManager?.activeWindowController,
@@ -335,6 +354,46 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
 
         let anchor = Self.popupAnchor(pageCard: controller.windowState.pageCardFrame, in: contentView)
         popover.show(relativeTo: anchor, of: contentView, preferredEdge: contentView.isFlipped ? .maxY : .minY)
+    }
+
+    // MARK: - Native Messaging
+
+    /// Sends an extension's `runtime.sendNativeMessage` to the native host it names.
+    func webExtensionController(
+        _: WKWebExtensionController,
+        sendMessage message: Any,
+        toApplicationWithIdentifier applicationIdentifier: String?,
+        for extensionContext: WKWebExtensionContext,
+        replyHandler: @escaping (Any?, (any Error)?) -> Void,
+    ) {
+        Task(name: "Native message") {
+            do {
+                let reply = try await manager.nativeMessaging.send(message, to: applicationIdentifier, from: extensionContext)
+                replyHandler(reply, nil)
+            } catch {
+                replyHandler(nil, error)
+            }
+        }
+    }
+
+    /// Connects an extension's `runtime.connectNative` port to the native host it names.
+    ///
+    /// Completes before returning, never after a suspension: WebKit queues what the
+    /// extension posts until the completion arrives, then hands the queued messages back to
+    /// the extension's own port instead of the host. Completing synchronously registers the
+    /// port before the extension's first `postMessage` reaches the browser.
+    func webExtensionController(
+        _: WKWebExtensionController,
+        connectUsing port: WKWebExtension.MessagePort,
+        for extensionContext: WKWebExtensionContext,
+        completionHandler: @escaping ((any Error)?) -> Void,
+    ) {
+        do {
+            try manager.nativeMessaging.connect(port, from: extensionContext)
+            completionHandler(nil)
+        } catch {
+            completionHandler(error)
+        }
     }
 
     private nonisolated enum PopupError: Error, LocalizedError {
@@ -355,7 +414,13 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
             let y = contentView.isFlipped ? bounds.minY + 40 : bounds.maxY - 40
             return CGRect(x: bounds.midX, y: y, width: 1, height: 1)
         }
+        return contentRect(fromGlobal: frame, in: contentView)
+    }
+
+    /// `frame`, in SwiftUI's global space with its top-left origin, in `contentView`'s
+    /// coordinates.
+    private static func contentRect(fromGlobal frame: CGRect, in contentView: NSView) -> CGRect {
         guard !contentView.isFlipped else { return frame }
-        return CGRect(x: frame.minX, y: bounds.height - frame.maxY, width: frame.width, height: frame.height)
+        return CGRect(x: frame.minX, y: contentView.bounds.height - frame.maxY, width: frame.width, height: frame.height)
     }
 }

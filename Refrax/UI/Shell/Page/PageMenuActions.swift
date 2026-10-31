@@ -32,18 +32,17 @@ struct PageMenuActions {
         webPage?.showsDownloadableFile ?? false
     }
 
-    /// The enabled extensions, as the menu lists them.
-    var installedExtensions: [PageMenuExtension] {
-        extensions.installedExtensions
-            .filter(\.isEnabled)
-            .map { ext in
-                PageMenuExtension(
-                    id: ext.uniqueIdentifier,
-                    name: ext.displayName,
-                    icon: ext.iconData.flatMap { NSImage(data: $0) },
-                    isEnabled: true,
-                )
-            }
+    /// The actions of the extensions running in the page's tab, with their badges.
+    var extensionActions: [PageMenuExtension] {
+        extensions.actionEntries(for: webPage?.tabPage.tab).map { entry in
+            PageMenuExtension(
+                id: entry.id,
+                name: entry.appearance.label.isEmpty ? entry.name : entry.appearance.label,
+                icon: entry.icon,
+                badgeText: entry.appearance.badgeText,
+                isEnabled: entry.appearance.isEnabled,
+            )
+        }
     }
 
     // MARK: - Actions
@@ -135,11 +134,9 @@ struct PageMenuActions {
         }
     }
 
-    /// Triggers the extension's page action, which may show a popup.
-    func triggerExtension(_ extensionID: String) {
-        Task(name: "Trigger extension page action") {
-            await extensions.triggerPageAction(for: extensionID, in: webPage)
-        }
+    /// Performs the extension's action in the page's tab; its popup opens over the page card.
+    func performExtensionAction(_ contextID: String) {
+        extensions.performAction(contextID: contextID, in: webPage?.tabPage.tab, anchor: nil)
     }
 
     /// Toggles Calm for the page's domain and applies it to every live page of that domain.
