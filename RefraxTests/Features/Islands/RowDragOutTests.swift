@@ -10,22 +10,26 @@ struct RowDragHandoffTests {
     @Test(arguments: [CGPoint(x: 700, y: 500), CGPoint(x: 0, y: 0), CGPoint(x: -5, y: 500), CGPoint(x: 1_444, y: 1_084)])
     func `A drag inside the window or along its edge stays a move`(point: CGPoint) {
         var handoff = RowDragHandoff()
-        #expect(!handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true))
+        let leaves = handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true)
+        #expect(!leaves)
         #expect(handoff.handedOffTabID == nil)
     }
 
     @Test(arguments: [CGPoint(x: -7, y: 500), CGPoint(x: 700, y: -20), CGPoint(x: 1_500, y: 500), CGPoint(x: 700, y: 1_200)])
     func `A drag past any edge leaves, once`(point: CGPoint) {
         var handoff = RowDragHandoff()
-        #expect(handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true))
+        let first = handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true)
+        #expect(first)
         #expect(handoff.isHandedOff(tab))
-        #expect(!handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true))
+        let again = handoff.leaves(tab, at: point, bounds: bounds, carriesAddress: true)
+        #expect(!again)
     }
 
     @Test
     func `A row with no address to carry never leaves`() {
         var handoff = RowDragHandoff()
-        #expect(!handoff.leaves(tab, at: CGPoint(x: -100, y: 0), bounds: bounds, carriesAddress: false))
+        let leaves = handoff.leaves(tab, at: CGPoint(x: -100, y: 0), bounds: bounds, carriesAddress: false)
+        #expect(!leaves)
     }
 
     @Test
@@ -34,8 +38,8 @@ struct RowDragHandoffTests {
         _ = handoff.leaves(tab, at: CGPoint(x: -100, y: 0), bounds: bounds, carriesAddress: true)
         handoff.end()
         #expect(!handoff.isHandedOff(tab))
-        let other = UUID()
-        #expect(handoff.leaves(other, at: CGPoint(x: -100, y: 0), bounds: bounds, carriesAddress: true))
+        let leaves = handoff.leaves(UUID(), at: CGPoint(x: -100, y: 0), bounds: bounds, carriesAddress: true)
+        #expect(leaves)
     }
 }
 
