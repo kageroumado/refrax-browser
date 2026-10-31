@@ -1,5 +1,4 @@
 module Shields {
     header "shields.h"
-    link "shields"
     export *
 }

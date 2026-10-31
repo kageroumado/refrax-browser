@@ -6,6 +6,20 @@
 	objectVersion = 100;
 	objects = {
 
+/* Begin PBXAggregateTarget section */
+		5D1E1D000000000000000001 /* Shields */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = 5D1E1D000000000000000002 /* Build configuration list for PBXAggregateTarget "Shields" */;
+			buildPhases = (
+				5D1E1D000000000000000005 /* Build libshields.a */,
+			);
+			dependencies = (
+			);
+			name = Shields;
+			productName = Shields;
+		};
+/* End PBXAggregateTarget section */
+
 /* Begin PBXBuildFile section */
 		0BD160A32F70000000584C0B /* Digoxin in Frameworks */ = {isa = PBXBuildFile; productRef = 0BD160A22F70000000584C0B /* Digoxin */; };
 		0B2DACC02EDAE4C700584C0B /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 0B2DACBF2EDAE4C700584C0B /* Algorithms */; };
@@ -28,6 +42,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		5D1E1D000000000000000006 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B46D0F42EAC10FF0018F45B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5D1E1D000000000000000001;
+			remoteInfo = Shields;
+		};
 		0B66EABC2F1BDD5600D42D3C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 0B46D0F42EAC10FF0018F45B /* Project object */;
@@ -266,6 +287,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				5D1E1D000000000000000007 /* PBXTargetDependency */,
 				0BA40BE52F5B9721006575D1 /* PBXTargetDependency */,
 				0B66EABD2F1BDD5600D42D3C /* PBXTargetDependency */,
 				0B97C60E3042405F006C69C6 /* PBXTargetDependency */,
@@ -417,6 +439,7 @@
 				0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */,
 				0BA406C02F5B93DA006575D1 /* refrax-ctl */,
 				0B97C6013042405F006C69C6 /* RefraxCredentialProvider */,
+				5D1E1D000000000000000001 /* Shields */,
 			);
 		};
 /* End PBXProject section */
@@ -443,6 +466,30 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		5D1E1D000000000000000005 /* Build libshields.a */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build libshields.a";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/libshields.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "\"$SRCROOT/Scripts/build-shields.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0B46D0F82EAC10FF0018F45B /* Sources */ = {
@@ -473,6 +520,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		5D1E1D000000000000000007 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5D1E1D000000000000000001 /* Shields */;
+			targetProxy = 5D1E1D000000000000000006 /* PBXContainerItemProxy */;
+		};
 		0B66EABD2F1BDD5600D42D3C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 0B66EAAE2F1BDD5500D42D3C /* RefraxWidgetsExtension */;
@@ -496,6 +548,22 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		5D1E1D000000000000000003 /* Debug configuration for PBXAggregateTarget "Shields" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		5D1E1D000000000000000004 /* Release configuration for PBXAggregateTarget "Shields" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		0B46D1072EAC11010018F45B /* Debug configuration for PBXProject "Refrax" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -536,6 +604,7 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Engines/Shared/shields/include";
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -602,6 +671,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Engines/Shared/shields/include";
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -658,6 +728,10 @@
 				INFOPLIST_FILE = Refrax/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Refrax;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -665,6 +739,10 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 0.36.0;
 				OTHER_SWIFT_FLAGS = "-DREFRAX_TESTS";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lshields",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -725,12 +803,20 @@
 				INFOPLIST_FILE = Refrax/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Refrax;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 0.36.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lshields",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = website.refrax.browser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -955,6 +1041,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		5D1E1D000000000000000002 /* Build configuration list for PBXAggregateTarget "Shields" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D1E1D000000000000000003 /* Debug configuration for PBXAggregateTarget "Shields" */,
+				5D1E1D000000000000000004 /* Release configuration for PBXAggregateTarget "Shields" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		0B46D0F72EAC10FF0018F45B /* Build configuration list for PBXProject "Refrax" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
