@@ -40,11 +40,12 @@ struct IslandDropPayloadTests {
     }
 
     @Test
-    func `A tab dragged from an island is moved, whatever addresses it also carries`() throws {
+    func `A tab dragged from an island keeps its address, to open where it cannot move`() throws {
         let id = UUID()
-        let payload = try IslandDropPayload(tabIDs: [id], urls: [#require(URL(string: "https://example.com"))], strings: ["https://example.com"])
+        let url = try #require(URL(string: "https://example.com"))
+        let payload = IslandDropPayload(tabIDs: [id], urls: [url], strings: ["https://example.com"])
         #expect(payload.tabIDs == [id])
-        #expect(payload.urls.isEmpty)
+        #expect(payload.urls == [url])
     }
 
     @Test
@@ -197,7 +198,10 @@ struct IslandExternalDropTests {
         let loose = fixture.tab("Loose")
         fixture.canvas.toggleFloatingTabs()
         let island = try #require(fixture.islands.island(group.id))
-        #expect(fixture.islands.performDrop(IslandDropPayload(tabIDs: [loose.id]), at: point(onRow: 1, of: island, in: fixture)))
+        // A move registers its undo, which needs the group an event opens in the app.
+        var took = false
+        fixture.edit { took = fixture.islands.performDrop(IslandDropPayload(tabIDs: [loose.id]), at: point(onRow: 1, of: island, in: fixture)) }
+        #expect(took)
         #expect(loose.groupID == group.id)
         #expect(fixture.islands.island(group.id)?.tabIDs[1] == loose.id)
     }
@@ -216,6 +220,61 @@ struct IslandExternalDropTests {
         #expect(!fixture.islands.performDrop(IslandDropPayload(urls: [page]), at: away))
         #expect(fixture.islands.drop == nil)
         #expect(fixture.islands.island(fixture.space.id)?.tabIDs.count == 1)
+    }
+
+    @Test
+    func `A row dragged back onto its own island lands at the row under the pointer`() throws {
+        let fixture = try IslandFixture()
+        for title in ["One", "Two", "Three"] {
+            _ = fixture.tab(title)
+        }
+        fixture.canvas.toggleFloatingTabs()
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        let rows = island.tabIDs
+        let (b, x, y) = (rows[0], rows[1], rows[2])
+        // Between X and Y: B goes there, one row up from where the rows stand now.
+        // A move registers its undo, which needs the group an event opens in the app.
+        var took = false
+        fixture.edit { took = fixture.islands.performDrop(IslandDropPayload(tabIDs: [b]), at: point(onRow: 2, of: island, in: fixture)) }
+        #expect(took)
+        #expect(fixture.islands.island(fixture.space.id)?.tabIDs == [x, b, y])
+    }
+
+    @Test
+    func `Two rows dropped together, one from above the target, land in order at the slot`() throws {
+        let fixture = try IslandFixture()
+        for title in ["A", "B", "X", "Y"] {
+            _ = fixture.tab(title)
+        }
+        let group = try fixture.env.groupManager.createGroup(in: fixture.space, name: "Other")
+        let z = fixture.tab("Z", group: group)
+        fixture.canvas.toggleFloatingTabs()
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        let rows = island.tabIDs
+        let (a, b, x, y) = (rows[0], rows[1], rows[2], rows[3])
+        // A move registers its undo, which needs the group an event opens in the app.
+        var took = false
+        fixture.edit { took = fixture.islands.performDrop(IslandDropPayload(tabIDs: [a, z.id]), at: point(onRow: 3, of: island, in: fixture)) }
+        #expect(took)
+        #expect(fixture.islands.island(fixture.space.id)?.tabIDs == [b, x, a, z.id, y])
+        #expect(z.groupID == nil)
+    }
+
+    @Test
+    func `A row from another space's window opens its page here`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("Here")
+        let elsewhere = fixture.env.makeSpace(name: "Elsewhere")
+        let address = try #require(URL(string: "https://example.com/elsewhere"))
+        let foreign = fixture.env.tabManager.createTab(url: address, in: elsewhere, makeActive: false, loadImmediately: false)
+        fixture.canvas.toggleFloatingTabs()
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        let payload = IslandDropPayload(tabIDs: [foreign.id], urls: [address])
+        #expect(fixture.islands.performDrop(payload, at: point(onRow: 0, of: island, in: fixture)))
+        let opened = try #require(fixture.islands.island(fixture.space.id)?.tabIDs.first.flatMap(fixture.islands.tab(for:)))
+        #expect(opened.id != foreign.id)
+        #expect(opened.activePage.url == address)
+        #expect(foreign.space?.id == elsewhere.id)
     }
 
     @Test

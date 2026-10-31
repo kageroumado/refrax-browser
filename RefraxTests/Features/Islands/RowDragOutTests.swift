@@ -74,7 +74,7 @@ struct TabDragPromiseTests {
         item.setString(id.uuidString, forType: IslandPasteboard.tabIDs)
         item.setString(url.absoluteString, forType: .URL)
         pasteboard.writeObjects([item])
-        #expect(IslandPasteboard.payload(from: pasteboard) == IslandDropPayload(tabIDs: [id]))
+        #expect(IslandPasteboard.payload(from: pasteboard) == IslandDropPayload(tabIDs: [id], urls: [url]))
     }
 }
 

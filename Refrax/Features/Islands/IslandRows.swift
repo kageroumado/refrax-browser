@@ -106,14 +106,27 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
     /// `moving`, the row on its way: with the tab above it when there is one (after a
     /// section's header, into that section), else among the island's own tabs.
     func insertion(at index: Int, moving: UUID? = nil) -> IslandInsertion {
-        let rows = rows.filter { $0 != moving.map(IslandRow.tab) }
+        insertion(at: index, moving: moving.map { [$0] } ?? [])
+    }
+
+    /// Where rows dropped before row `index` of the rows as they are land, `moving` among
+    /// them: the moving rows are counted out of the index and out of the slot's neighbors.
+    func insertion(beforeRow index: Int, moving: Set<UUID>) -> IslandInsertion {
+        let index = min(max(0, index), rows.count)
+        let movingAbove = rows[..<index].count(where: { $0.tabID.map(moving.contains) ?? false })
+        return insertion(at: index - movingAbove, moving: moving)
+    }
+
+    /// Where rows land before row `index`, counted among the rows without `moving`.
+    func insertion(at index: Int, moving: Set<UUID>) -> IslandInsertion {
+        let rows = rows.filter { $0.tabID.map { !moving.contains($0) } ?? true }
         let index = min(max(0, index), rows.count)
         let above = index > 0 ? rows[index - 1] : nil
         switch above {
         case nil:
-            return IslandInsertion(section: nil, after: nil, before: ownTabIDs.first { $0 != moving })
+            return IslandInsertion(section: nil, after: nil, before: ownTabIDs.first { !moving.contains($0) })
         case let .section(id)?:
-            let members = (section(id)?.tabIDs ?? []).filter { $0 != moving }
+            let members = (section(id)?.tabIDs ?? []).filter { !moving.contains($0) }
             // Into a folded section the row goes last, where it is out of sight with the rest.
             if section(id)?.isCollapsed == true {
                 return IslandInsertion(section: id, after: members.last, before: nil)
@@ -121,7 +134,7 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
             return IslandInsertion(section: id, after: nil, before: members.first)
         case let .tab(tabID)?:
             let group = section(of: tabID)
-            let members = (group?.tabIDs ?? ownTabIDs).filter { $0 != moving }
+            let members = (group?.tabIDs ?? ownTabIDs).filter { !moving.contains($0) }
             let next = members.firstIndex(of: tabID).map { $0 + 1 }.flatMap { members.indices.contains($0) ? members[$0] : nil }
             return IslandInsertion(section: group?.id, after: tabID, before: next)
         }

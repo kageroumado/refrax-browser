@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 /// A tab group's name, icon, and color in one popover: a name field, a grid of emoji or
-/// symbols, and the palette with a custom color. Every choice is written as it is made.
+/// symbols, and the palette with a custom color. Icon and color are written as they are
+/// chosen; the name when Return is pressed, the field loses focus, or the popover closes.
 struct GroupSettingsPopover: View {
     @Binding var name: String
     @Binding var selectedIcon: String?
@@ -100,8 +101,11 @@ struct GroupSettingsPopover: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 14, weight: .medium))
                     .focused($isNameFieldFocused)
-                    .onChange(of: editingName) { _, _ in
-                        commitNameIfChanged()
+                    .onSubmit(commitNameIfChanged)
+                    .onChange(of: isNameFieldFocused) { _, focused in
+                        if !focused {
+                            commitNameIfChanged()
+                        }
                     }
             }
             .padding(.horizontal, 10)

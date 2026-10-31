@@ -20,6 +20,10 @@ nonisolated struct ArchiveShelf: Equatable, Sendable {
     }
 
     let sections: [Section]
+    /// Every archived tab that may be listed, whatever the search.
+    let archivedCount: Int
+
+    static let empty = ArchiveShelf(entries: [], currentSpaceID: nil, spaceNames: [], query: "")
 
     /// - Parameters:
     ///   - entries: Every archived tab that may be listed.
@@ -27,6 +31,7 @@ nonisolated struct ArchiveShelf: Equatable, Sendable {
     ///   - spaceNames: Each space's name, and the order other spaces follow in.
     ///   - query: Words a tab's title or address must contain; blank lists every tab.
     init(entries: [Entry], currentSpaceID: UUID?, spaceNames: [(id: UUID, name: String)], query: String) {
+        self.archivedCount = entries.count
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let matching = entries.filter { query.isEmpty || $0.title.localizedStandardContains(query) || $0.address.localizedStandardContains(query) }
         let bySpace = Dictionary(grouping: matching, by: \.spaceID)
@@ -52,7 +57,8 @@ nonisolated struct ArchiveShelf: Equatable, Sendable {
 @MainActor
 struct ArchiveActions {
     let tabs: TabManager
-    let windowState: WindowState
+    /// The window a restored tab may open in; the History window has none.
+    let windowState: WindowState?
 
     /// The shelf for this window, narrowed by `query`.
     func shelf(query: String) -> ArchiveShelf {
@@ -65,14 +71,14 @@ struct ArchiveActions {
             )
         }
         let spaces = tabs.spaceManager.spaces.map { (id: $0.id, name: $0.name) }
-        return ArchiveShelf(entries: entries, currentSpaceID: windowState.activeSpaceID, spaceNames: spaces, query: query)
+        return ArchiveShelf(entries: entries, currentSpaceID: windowState?.activeSpaceID, spaceNames: spaces, query: query)
     }
 
     /// Restores `tabID`; with `open`, a tab of this window's space becomes the page.
     func restore(_ tabID: UUID, open: Bool) {
         guard let tab = tabs.state.tab(for: tabID), tab.isArchived else { return }
         try? tabs.archiveManager.restoreTab(tab)
-        if open, tab.space?.id == windowState.activeSpaceID {
+        if open, let windowState, tab.space?.id == windowState.activeSpaceID {
             tabs.setActiveTab(tab, in: windowState)
         }
     }

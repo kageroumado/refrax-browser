@@ -251,6 +251,8 @@ final class IslandController {
     func start() {
         rebuild()
         canvas.islandDrop = { [weak self] tab, point in self?.attach(tab, at: point) ?? false }
+        // Browsing lasts as long as the latch: its choice and preview go with it.
+        canvas.latchEnded = { [weak self] in self?.endKeyboardBrowsing() }
         let windowState = windowState
         let tabManager = tabManager
         let changes = Observations { [weak self] in
@@ -282,6 +284,7 @@ final class IslandController {
         tasks.forEach { $0.cancel() }
         tasks.removeAll()
         canvas.islandDrop = nil
+        canvas.latchEnded = nil
     }
 
     private func sync(_ key: SyncKey) {
@@ -849,11 +852,6 @@ final class IslandController {
         visibleIslands.map { IslandKeyboardNavigator.Column(id: $0.id, tabIDs: $0.tabIDs) }
     }
 
-    /// Whether the islands have the keyboard: they are latched open and a key has chosen a row.
-    var hasKeyboard: Bool {
-        keyboard != nil
-    }
-
     /// Latches the islands open with the current tab's row chosen, for the arrows to move.
     func beginKeyboardBrowsing() {
         if !canvas.floatingVisibility.isLatched {
@@ -872,18 +870,23 @@ final class IslandController {
         update(\.keyboardCursorID, to: nil)
     }
 
-    /// Answers `key` while the islands are latched open. The first key other than Escape
-    /// starts on the current tab's row. Returns whether the islands took the key; Escape with
-    /// nothing chosen is left to whoever else answers it.
+    /// Answers `key` while the islands are latched open, with `responder` holding the
+    /// window's focus. An arrow starts browsing on the current tab's row; which keys are taken
+    /// before and after is ``IslandKeyRouting``'s rule. Returns whether the islands took the
+    /// key: never while no island is on screen.
     @discardableResult
-    func handleKey(_ key: IslandKey) -> Bool {
+    func handleKey(_ key: IslandKey, responder: IslandKeyResponder = .other) -> Bool {
+        let columns = keyboardColumns
+        let covered = windowState.isDetailTrayVisible || windowState.showsCenteredLens || windowState.isSpaceLocked
+        guard !columns.isEmpty, IslandKeyRouting.takes(key, browsing: keyboard != nil, responder: responder, covered: covered) else {
+            return false
+        }
         if keyboard == nil {
-            guard key != .leave else { return false }
-            keyboard = IslandKeyboardNavigator(current: currentTab?.id, columns: keyboardColumns)
+            keyboard = IslandKeyboardNavigator(current: currentTab?.id, columns: columns)
         }
         guard var navigator = keyboard else { return false }
         let effect = navigator.handle(
-            key, columns: keyboardColumns,
+            key, columns: columns,
             neighbor: { [self] id, direction in island(id).flatMap { island(toward: direction, from: $0)?.id } },
             title: { [self] id in tab(for: id)?.displayTitle ?? "" },
         )
@@ -1301,27 +1304,27 @@ final class IslandController {
         update(\.drop, to: nil)
     }
 
-    /// Takes in `payload` let go at `point`: tabs dragged from an island move to the row under
-    /// the pointer; pages open there as new tabs, the first one shown. Returns whether an
-    /// island took it.
+    /// Takes in `payload` let go at `point`: tabs dragged from an island of this space move to
+    /// the row under the pointer, in order; tabs of another space, and pages, open there as new
+    /// tabs, the first one shown. Returns whether an island took it.
     @discardableResult
     func performDrop(_ payload: IslandDropPayload, at point: CGPoint) -> Bool {
         defer { endExternalDrop() }
         guard !payload.isEmpty, let target = dropTarget(at: point), let island = island(target.island),
               let space = windowState.activeSpace else { return false }
-        if !payload.tabIDs.isEmpty {
-            let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id }
-            guard !moving.isEmpty else { return false }
-            var row = target.row
+        let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id }
+        // The slot is read once, off the rows as they are, the moving tabs counted out of
+        // its neighbors: each later tab goes after the one before it.
+        let slot = island.layout.insertion(beforeRow: target.row, moving: Set(moving.map(\.id)))
+        if !moving.isEmpty {
+            var after = slot.after
             for tab in moving {
-                moveTab(tab.id, to: row, in: target.island)
-                if let placed = self.island(target.island)?.layout.row(of: tab.id) {
-                    row = placed + 1
-                }
+                moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: island)
+                after = tab.id
             }
             return true
         }
-        let slot = island.layout.insertion(at: target.row)
+        guard !payload.urls.isEmpty else { return false }
         let groupID = slot.section ?? (island.isDefault ? nil : island.id)
         var after = slot.after.flatMap(tab(for:))
         let before = slot.before.flatMap(tab(for:))

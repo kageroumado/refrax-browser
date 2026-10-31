@@ -102,4 +102,35 @@ struct ArchiveActionsTests {
         #expect(actions.shelf(query: "").isEmpty)
         #expect(fixture.env.tabManager.state.tab(for: open.id) != nil)
     }
+
+    @Test
+    func `Expired tabs leave the index and the shelf, and the drawer's verbs skip them`() throws {
+        let fixture = try IslandFixture()
+        let tabs = archived(fixture, ["Old", "Fresh"])
+        fixture.env.settings.archiveClearHours = 1
+        let now = Date()
+        tabs[0].archivedAt = now.addingTimeInterval(-7_200)
+        tabs[1].archivedAt = now.addingTimeInterval(-60)
+        // A deleted model's fields are not to be read: the id is taken first.
+        let expiredID = tabs[0].id
+        let freshID = tabs[1].id
+        fixture.env.archiveManager.clearExpiredTabs(context: fixture.env.modelContext, now: now, lastActivation: now.addingTimeInterval(-30))
+        #expect(fixture.env.tabManager.state.tab(for: expiredID) == nil)
+        let actions = ArchiveActions(tabs: fixture.env.tabManager, windowState: fixture.window)
+        #expect(actions.shelf(query: "").sections.flatMap(\.entries).map(\.id) == [freshID])
+        actions.restore(expiredID, open: true)
+        actions.delete([expiredID])
+        #expect(actions.shelf(query: "").count == 1)
+    }
+
+    @Test
+    func `Emptying one space's archive takes its tabs out of the index`() throws {
+        let fixture = try IslandFixture()
+        let ids = archived(fixture, ["One", "Two"]).map(\.id)
+        fixture.env.archiveManager.clearArchive(in: fixture.space, context: fixture.env.modelContext)
+        for id in ids {
+            #expect(fixture.env.tabManager.state.tab(for: id) == nil)
+        }
+        #expect(ArchiveActions(tabs: fixture.env.tabManager, windowState: nil).shelf(query: "").isEmpty)
+    }
 }

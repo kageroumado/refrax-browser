@@ -3,13 +3,14 @@ import Foundation
 /// What a drop from outside the islands brings: tabs of this browser on their way to another
 /// row, or pages to open as new tabs, read from the links, files, and text dropped.
 nonisolated struct IslandDropPayload: Equatable, Sendable {
-    /// Tabs dragged out of an island, of this window or another, coming back as rows.
+    /// Tabs dragged out of an island, of this window or another: rows to move when they are of
+    /// this space, else their addresses open.
     var tabIDs: [UUID] = []
     /// The pages to open, in the order they were dropped, each once.
     var urls: [URL] = []
 
-    /// Reads a drop. A browser tab's own identity wins over the addresses it also carries;
-    /// otherwise links come first, then files (a `.webloc` as the address inside it), and
+    /// Reads a drop: the identities of tabs dragged from an island, and the pages to open,
+    /// links first, then files (a `.webloc` as the address inside it), and
     /// only when neither brought anything, the addresses written in dropped text.
     ///
     /// Only http and https addresses open from a link, a `.webloc`, or text: a dropped
@@ -23,10 +24,7 @@ nonisolated struct IslandDropPayload: Equatable, Sendable {
     ///   - strings: Plain text on the pasteboard.
     ///   - read: Reads a dropped file's contents, for a `.webloc`.
     init(tabIDs: [UUID] = [], urls: [URL] = [], strings: [String] = [], read: (URL) -> Data? = { try? Data(contentsOf: $0) }) {
-        guard tabIDs.isEmpty else {
-            self.tabIDs = tabIDs
-            return
-        }
+        self.tabIDs = tabIDs
         var found: [URL] = []
         for url in urls {
             if url.isFileURL {

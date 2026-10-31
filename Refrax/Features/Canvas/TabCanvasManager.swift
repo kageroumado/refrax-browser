@@ -59,6 +59,8 @@ final class TabCanvasManager {
     var renamingTabID: Tab.ID?
     /// Takes a card released at a point: true when an island took it in as a row.
     @ObservationIgnored var islandDrop: ((Tab, CGPoint) -> Bool)?
+    /// Called when the latched reveal is let go, however it ends.
+    @ObservationIgnored var latchEnded: (() -> Void)?
 
     /// The side a dragged card docks to if it is let go now; the layer draws its silhouette.
     var dockTarget: FloatingDockTarget?
@@ -164,8 +166,12 @@ final class TabCanvasManager {
     }
 
     func dismissFloatingTabs() {
+        let wasLatched = floatingVisibility.isLatched
         floatingVisibility.dismiss()
         windowState.controlIsland.tabInfo.dismiss()
+        if wasLatched {
+            latchEnded?()
+        }
     }
 
     var spaceToReveal: Space.ID?
@@ -192,6 +198,9 @@ final class TabCanvasManager {
         guard !windowState.isSpaceLocked else { return }
         floatingVisibility.toggle()
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
+        if !floatingVisibility.isLatched {
+            latchEnded?()
+        }
     }
 
     func openFloatingTab(_ tab: Tab) {
