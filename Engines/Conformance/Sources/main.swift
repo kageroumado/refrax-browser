@@ -3,11 +3,15 @@
 // engine-conformance: checks an engine bundle against the engine contract (Engines/CONTRACT.md)
 // by driving it through RFXEngine.h as Refrax does, against fixtures it serves on loopback.
 //
-//   engine-conformance <path/to/X.engine> [--storage DIR] [--status FILE] [--list] [name-substring …]
+//   engine-conformance <path/to/X.engine> [--storage DIR] [--status FILE] [--shields DIR] [--datgen PATH]
+//                      [--list] [name-substring …]
 //
 // Prints one line per test and exits 0 when every selected test passes; --status also writes
 // that exit code to FILE, for a launch through `open`, which reports none. Storage defaults to
-// a fresh temporary directory. The input tests need the runner to be the active app, which
+// a fresh temporary directory. --shields names a directory holding the Shields engine
+// (engine.dat, from Engines/Conformance/shields/list*.txt) and resources.json the content-blocking
+// tests apply, and --datgen the shields-datgen that predicts its decisions; without them those
+// tests are skipped. The input tests need the runner to be the active app, which
 // macOS grants an app launched through LaunchServices (forge conformance does).
 
 import AppKit
@@ -15,18 +19,21 @@ import AppKit
 @MainActor
 final class Conformance: NSObject, NSApplicationDelegate {
     static let tests: [ConformanceTest] = EvaluationTests.all + ScriptTests.all + RequestTests.all + NotificationTests.all
-        + NavigationTests.all + BlockingTests.all + SiteSettingsTests.all + StabilityTests.all + InputTests.all
+        + NavigationTests.all + BlockingTests.all + ShieldsTests.all + SiteSettingsTests.all + FindTests.all
+        + DevToolsTests.all + MediaTests.all + AccessibilityTests.all + StabilityTests.all + InputTests.all
         + SecretTests.all + HostTests.all
 
     let bundleURL: URL
     let storage: URL
     let status: URL?
+    let shields: ShieldsFixture?
     let filter: [String]
 
-    init(bundleURL: URL, storage: URL, status: URL?, filter: [String]) {
+    init(bundleURL: URL, storage: URL, status: URL?, shields: ShieldsFixture?, filter: [String]) {
         self.bundleURL = bundleURL
         self.storage = storage
         self.status = status
+        self.shields = shields
         self.filter = filter
     }
 
@@ -44,7 +51,7 @@ final class Conformance: NSObject, NSApplicationDelegate {
                 print("no bundle at \(bundleURL.path)")
                 finish(2)
             }
-            let passed = await Runner(bundle: bundle, storage: storage, filter: filter, tests: Self.tests).run()
+            let passed = await Runner(bundle: bundle, storage: storage, shields: shields, filter: filter, tests: Self.tests).run()
             finish(passed ? 0 : 1)
         }
     }
@@ -72,7 +79,7 @@ final class Conformance: NSObject, NSApplicationDelegate {
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 if arguments.isEmpty || arguments.first == "--help" {
-    print("usage: engine-conformance <X.engine> [--storage DIR] [--status FILE] [--list] [name-substring …]")
+    print("usage: engine-conformance <X.engine> [--storage DIR] [--status FILE] [--shields DIR] [--datgen PATH] [--list] [name-substring …]")
     exit(2)
 }
 if arguments.contains("--list") {
@@ -84,6 +91,8 @@ if arguments.contains("--list") {
 
 var storage = FileManager.default.temporaryDirectory.appending(path: "engine-conformance-\(UUID().uuidString)", directoryHint: .isDirectory)
 var status: URL?
+var shieldsDirectory: URL?
+var datgen: URL?
 var filter: [String] = []
 var index = 1
 while index < arguments.count {
@@ -93,6 +102,12 @@ while index < arguments.count {
     } else if arguments[index] == "--status", index + 1 < arguments.count {
         status = URL(filePath: arguments[index + 1])
         index += 2
+    } else if arguments[index] == "--shields", index + 1 < arguments.count {
+        shieldsDirectory = URL(filePath: arguments[index + 1], directoryHint: .isDirectory)
+        index += 2
+    } else if arguments[index] == "--datgen", index + 1 < arguments.count {
+        datgen = URL(filePath: arguments[index + 1])
+        index += 2
     } else {
         filter.append(arguments[index])
         index += 1
@@ -101,7 +116,8 @@ while index < arguments.count {
 try? FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
 
 MainActor.assumeIsolated {
-    let delegate = Conformance(bundleURL: URL(filePath: arguments[0]), storage: storage, status: status, filter: filter)
+    let shields = shieldsDirectory.flatMap { ShieldsFixture(directory: $0, datgen: datgen) }
+    let delegate = Conformance(bundleURL: URL(filePath: arguments[0]), storage: storage, status: status, shields: shields, filter: filter)
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
     app.delegate = delegate

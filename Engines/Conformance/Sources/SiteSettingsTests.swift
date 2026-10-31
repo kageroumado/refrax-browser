@@ -72,12 +72,9 @@ enum SiteSettingsTests {
             }
         },
 
-        ConformanceTest(name: "site-settings.content-blocking-off-for-a-site", timeout: 300) { context in
-            try context.engine.require("contentBlocking")
-            context.contentBlocking(lists: [Fixtures.blockingList])
-            try await eventuallyAsync("blocking on 127.0.0.1", timeout: 240, interval: .milliseconds(500)) {
-                try await BlockingTests.results(context)["image"] == "blocked" ? true : nil
-            }
+        ConformanceTest(name: "site-settings.content-blocking-off-for-a-site", timeout: 60) { context in
+            try await context.contentBlockingApplied()
+            try expectEqual(try await BlockingTests.results(context)["image"], "blocked", "blocking on 127.0.0.1")
             context.siteSettings(rules: [["host": "localhost", "contentBlockingEnabled": false]])
             let spared = try await BlockingTests.results(context, host: "sub.localhost")
             try expectEqual(spared["image"], "loaded", "sub.localhost with blocking off for localhost")

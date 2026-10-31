@@ -1,0 +1,25 @@
+! Title: engine-conformance
+! The conformance suite's first list (sourceIndex 0). Pages are served on 127.0.0.1; localhost
+! and *.localhost are other sites, so requests to them are third-party.
+
+! Network
+/asset/blocked.png
+/asset/blocked.js$script
+/asset/xhr.json$xhr
+/asset/redirected.js$script,redirect=refrax-noop.js
+/asset/excepted.png
+@@/asset/excepted.png
+/asset/socket-blocked$websocket
+/asset/in-frame.png
+/echo$removeparam=tracking
+||blocked-page.localhost^$document
+/html/csp-page$csp=script-src 'none'
+
+! Cosmetic
+127.0.0.1##.cosmetic-hidden
+localhost##.cosmetic-hidden
+127.0.0.1##+js(refrax-marker, main)
+localhost##+js(refrax-marker, frame)
+127.0.0.1##.procedural:has-text(remove me):remove()
+127.0.0.1##.styled:style(color: rgb(255, 0, 0) !important)
+##.generic-hidden

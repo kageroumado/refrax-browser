@@ -1,0 +1,20 @@
+[package]
+name = "shields-datgen"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+description = "Builds Refrax Shields engines (DATs) and predicts their decisions, for engine conformance."
+
+[[bin]]
+name = "shields-datgen"
+path = "main.rs"
+
+[dependencies]
+# The crate Refrax.app builds DATs with, app features included: what the conformance suite
+# checks an engine against is what Refrax would send it.
+shields = { path = "../../Shared/shields" }
+serde_json = "1"
+
+[profile.release]
+debug = "line-tables-only"

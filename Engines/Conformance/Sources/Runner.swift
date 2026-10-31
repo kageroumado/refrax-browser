@@ -16,16 +16,19 @@ final class Context {
     let bundle: Bundle
     let server: FixtureServer
     let storage: URL
+    /// The Shields engine files `contentBlocking` policies name, and the tool that predicts
+    /// their decisions (`--shields`, `--datgen`).
+    let shields: ShieldsFixture?
     private(set) var engine: TestEngine
     private var touchedPolicy: Set<String> = []
-    private var blockingLists: [String] = []
     /// Extra lines a test reports alongside its result, such as a measured latency.
     private(set) var notes: [String] = []
 
-    init(bundle: Bundle, server: FixtureServer, storage: URL, engine: TestEngine) {
+    init(bundle: Bundle, server: FixtureServer, storage: URL, shields: ShieldsFixture?, engine: TestEngine) {
         self.bundle = bundle
         self.server = server
         self.storage = storage
+        self.shields = shields
         self.engine = engine
     }
 
@@ -62,15 +65,32 @@ final class Context {
         apply("siteSettings", ["policy": ["javaScriptEnabled": javaScriptEnabled, "rules": rules]])
     }
 
-    func contentBlocking(enabled: Bool = true, lists: [String], allowlistedHosts: [String] = []) {
-        blockingLists = lists
-        apply("contentBlocking", [
-            "policy": [
-                "isEnabled": enabled,
-                "lists": lists.enumerated().map { ["id": "list\($0.offset)", "contents": $0.element] },
-                "allowlistedHosts": allowlistedHosts,
-            ],
-        ])
+    /// The contract's `contentBlocking` policy, naming the conformance engine. Aggressive by
+    /// default: the fixtures' requests are mostly first-party. `format` replaces the engine's.
+    func contentBlocking(
+        enabled: Bool = true,
+        mode: String = "aggressive",
+        allowlistedHosts: [String] = [],
+        format: String? = nil,
+    ) throws {
+        guard let shields else {
+            throw Skip("no Shields engine files (run with --shields DIR)")
+        }
+        apply("contentBlocking", ["policy": shields.policy(enabled: enabled, mode: mode, allowlistedHosts: allowlistedHosts, format: format)])
+    }
+
+    /// Applies a `contentBlocking` policy and waits for the engine to report it applied.
+    func contentBlockingApplied(mode: String = "aggressive", allowlistedHosts: [String] = []) async throws {
+        try engine.require("contentBlocking")
+        let mark = engine.events.count
+        try contentBlocking(mode: mode, allowlistedHosts: allowlistedHosts)
+        // An earlier policy's status (the previous test's teardown) may still be on its way.
+        let sha256 = shields?.engineSHA256
+        let status = try await engine.waitForEvent("contentBlockingStatus", after: mark, timeout: 30) {
+            $0["status"] as? String == "applied" || $0["reason"] != nil
+        }
+        try expectEqual(status["status"] as? String, "applied", "contentBlockingStatus (\(JSON.canonical(status)))")
+        try expectEqual(status["sha256"] as? String, sha256, "the applied engine's SHA-256")
     }
 
     /// A fresh engine instance from the same bundle, started on the same storage once the
@@ -95,9 +115,7 @@ final class Context {
             engine.apply(["scripts": ["scripts": []]])
         }
         if touchedPolicy.contains("contentBlocking") {
-            // Off, but with the same lists: the next test that turns blocking on doesn't wait
-            // for its lists to be compiled and indexed again.
-            contentBlocking(enabled: false, lists: blockingLists)
+            try? contentBlocking(enabled: false)
         }
         if touchedPolicy.contains("notifications") {
             notifications()
@@ -114,6 +132,7 @@ final class Context {
 struct Runner {
     let bundle: Bundle
     let storage: URL
+    let shields: ShieldsFixture?
     let filter: [String]
     let tests: [ConformanceTest]
 
@@ -132,7 +151,7 @@ struct Runner {
             let started = Date()
             try await engine.startFromNestedLoop(storage: storage)
             report("started from a nested run loop in \(String(format: "%.2f", -started.timeIntervalSinceNow)) s; fixtures on port \(server.port)")
-            context = Context(bundle: bundle, server: server, storage: storage, engine: engine)
+            context = Context(bundle: bundle, server: server, storage: storage, shields: shields, engine: engine)
         } catch {
             report("FAIL could not start: \(error)")
             return false
