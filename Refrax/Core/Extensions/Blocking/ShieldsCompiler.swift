@@ -16,22 +16,19 @@ nonisolated struct ShieldsList: Sendable, Hashable {
     var format = Format.standard
     /// Lists Refrax trusts (uBlock Origin's own) may use scriptlets uBO marks `requiresTrust`.
     var isTrusted = false
+    /// Whether the list's scriptlet injections (`##+js(…)`) apply. The library drops them
+    /// otherwise, with adblock-rust's own line splitting and parser
+    /// (`SHIELDS_LIST_NO_SCRIPTLETS`).
+    var allowsScriptlets = true
 
     /// adblock-rust's permission mask for the list: bit 0 is uBO's trusted scriptlets.
     var permissions: UInt8 {
         isTrusted ? 1 : 0
     }
 
-    /// `text` without its scriptlet injections (`host##+js(…)`); exceptions (`#@#+js(…)`) stay,
-    /// since they only turn scriptlets off.
-    static func removingScriptlets(from text: Data) -> Data {
-        let lines = String(decoding: text, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
-        let kept = lines.filter { line in
-            guard let sharp = line.firstIndex(of: "#") else { return true }
-            let rest = line[sharp...]
-            return !(rest.hasPrefix("##+js(") || rest.hasPrefix("#?#+js(") || rest.hasPrefix("#$#+js("))
-        }
-        return Data(kept.joined(separator: "\n").utf8)
+    /// `shields_filter_set_add_list_with_options` options for the list.
+    var options: ShieldsListOptions {
+        allowsScriptlets ? 0 : ShieldsListOptions(SHIELDS_LIST_NO_SCRIPTLETS)
     }
 }
 
@@ -57,6 +54,7 @@ nonisolated struct ShieldsKey: Hashable, Sendable, CustomStringConvertible {
             feed(SHA256.hash(data: list.text).hexString)
             feed("\(list.format.rawValue)")
             feed("\(list.permissions)")
+            feed("\(list.options)")
         }
         feed(SHA256.hash(data: resources).hexString)
         self.hex = hasher.finalize().hexString
@@ -321,12 +319,13 @@ private final nonisolated class FilterSet {
         self.handle = handle
         for list in lists {
             let status = list.text.withUnsafeBytes { bytes in
-                shields_filter_set_add_list(
+                shields_filter_set_add_list_with_options(
                     handle,
                     bytes.bindMemory(to: UInt8.self).baseAddress,
                     bytes.count,
                     list.format.rawValue,
                     list.permissions,
+                    list.options,
                     nil,
                 )
             }

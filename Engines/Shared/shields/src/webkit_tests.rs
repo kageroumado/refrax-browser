@@ -316,3 +316,74 @@ fn checks_resources() {
         );
     }
 }
+
+/// The scriptlet and the number of hide selectors a list gives example.com.
+fn cosmetics_for(text: &str, options: ShieldsListOptions) -> (String, usize) {
+    let resources = resources();
+    unsafe {
+        let set = shields_filter_set_new(true);
+        assert_eq!(
+            shields_filter_set_add_list_with_options(
+                set,
+                text.as_ptr(),
+                text.len(),
+                SHIELDS_LIST_FORMAT_STANDARD,
+                0,
+                options,
+                ptr::null_mut()
+            ),
+            SHIELDS_OK
+        );
+        let engine = shields_engine_build(set);
+        shields_engine_use_resources(engine, resources.as_ptr(), resources.len());
+        let mut json = ShieldsBuffer::EMPTY;
+        shields_engine_url_cosmetic_resources(engine, c"https://example.com/".as_ptr(), &mut json);
+        let value: Value =
+            serde_json::from_slice(std::slice::from_raw_parts(json.data, json.len)).unwrap();
+        shields_buffer_free(&mut json);
+        shields_engine_free(engine);
+        shields_filter_set_free(set);
+        (
+            value["injected_script"].as_str().unwrap().to_string(),
+            value["hide_selectors"].as_array().unwrap().len(),
+        )
+    }
+}
+
+#[test]
+fn untrusted_lists_inject_no_scriptlets_whatever_their_line_endings() {
+    let scriptlet = "example.com##+js(set-constant, adsEnabled, false)";
+    let hide = "example.com##.banner";
+    for ending in ["\n", "\r\n", "\r"] {
+        let list = format!("! Title: custom{ending}{scriptlet}{ending}{hide}{ending}");
+        let (script, _) = cosmetics_for(&list, SHIELDS_LIST_NO_SCRIPTLETS);
+        assert!(script.is_empty(), "{ending:?}: {script}");
+    }
+    let mixed = format!("{hide}\r\n{scriptlet}\r{scriptlet}\n{scriptlet}\r\n");
+    assert!(cosmetics_for(&mixed, SHIELDS_LIST_NO_SCRIPTLETS)
+        .0
+        .is_empty());
+
+    // Control: the same CRLF list injects without the option, and the option keeps its hides.
+    let crlf = format!("{scriptlet}\r\n{hide}\r\n");
+    assert!(cosmetics_for(&crlf, 0).0.contains("setConstant("));
+    assert_eq!(cosmetics_for(&crlf, SHIELDS_LIST_NO_SCRIPTLETS).1, 1);
+
+    unsafe {
+        let set = shields_filter_set_new(false);
+        let status = shields_filter_set_add_list_with_options(
+            set,
+            crlf.as_ptr(),
+            crlf.len(),
+            SHIELDS_LIST_FORMAT_STANDARD,
+            0,
+            1 << 7,
+            ptr::null_mut(),
+        );
+        assert_eq!(
+            status, SHIELDS_INVALID_ARGUMENT,
+            "unknown options are refused"
+        );
+        shields_filter_set_free(set);
+    }
+}

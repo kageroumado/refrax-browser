@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import Refrax
 
@@ -291,24 +292,98 @@ struct CustomFilterListTests {
         #expect(await manager.filterLists.isEmpty)
     }
 
-    @Test
-    func `A custom list runs scriptlets only when the user trusted it`() async throws {
-        let text = Data("example.com##+js(set-constant, adsEnabled, false)\nexample.com#@#+js(nowebrtc)\nexample.com##.banner\n".utf8)
-        let untrusted = try #require(ContentBlockingManager.shieldsList(for: custom("https://lists.example/a.txt"), text: text))
-        let trusted = try #require(ContentBlockingManager.shieldsList(for: custom("https://lists.example/a.txt", allowsScriptlets: true), text: text))
-        #expect(!String(decoding: untrusted.text, as: UTF8.self).contains("##+js("))
-        #expect(String(decoding: untrusted.text, as: UTF8.self).contains("#@#+js(nowebrtc)"))
+    @Test(arguments: ["\n", "\r\n", "\r", "mixed"])
+    func `A custom list runs scriptlets only when the user trusted it, whatever its line endings`(ending: String) async throws {
+        let lines = ["example.com##.banner", "example.com##+js(set-constant, adsEnabled, false)", "example.com#@#+js(nowebrtc)"]
+        let text = if ending == "mixed" {
+            lines[0] + "\r\n" + lines[1] + "\r" + lines[1] + "\n" + lines[2] + "\r\n"
+        } else {
+            lines.joined(separator: ending) + ending
+        }
+        let untrusted = try #require(ContentBlockingManager.shieldsList(for: custom("https://lists.example/a.txt"), text: Data(text.utf8)))
+        let trusted = try #require(ContentBlockingManager.shieldsList(
+            for: custom("https://lists.example/a.txt", allowsScriptlets: true),
+            text: Data(text.utf8),
+        ))
+        #expect(!untrusted.allowsScriptlets && trusted.allowsScriptlets)
         #expect(!untrusted.isTrusted && !trusted.isTrusted, "custom lists never get uBO's trusted scriptlets")
 
         let resources = try #require(ShieldsResources.bundled())
         let page = try #require(URL(string: "https://example.com/"))
-        for (list, expectsScriptlet) in [(untrusted, false), (trusted, true)] {
-            let root = try shieldsScratchDirectory()
-            defer { try? FileManager.default.removeItem(at: root) }
-            let engine = try #require(try await ShieldsCompiler().build(lists: [list], resources: resources, into: root).engine)
-            let cosmetics = try #require(engine.cosmeticResources(for: page))
-            #expect(cosmetics.injectedScript.contains("setConstant(") == expectsScriptlet)
-            #expect(cosmetics.hideSelectors.contains(".banner"))
+        let root = try shieldsScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let untrustedEngine = try #require(try await ShieldsCompiler().build(lists: [untrusted], resources: resources, into: root).engine)
+        let untrustedCosmetics = try #require(untrustedEngine.cosmeticResources(for: page))
+        #expect(untrustedCosmetics.injectedScript.isEmpty, "\(ending.debugDescription): \(untrustedCosmetics.injectedScript.prefix(80))")
+        if ending != "\r" {
+            // A lone-CR file is one line to adblock-rust, so it has no filters to compare.
+            #expect(untrustedCosmetics.hideSelectors.contains(".banner"))
+            let trustedEngine = try #require(try await ShieldsCompiler().build(lists: [trusted], resources: resources, into: root).engine)
+            let trustedCosmetics = try #require(trustedEngine.cosmeticResources(for: page))
+            #expect(trustedCosmetics.injectedScript.contains("setConstant("))
         }
+    }
+
+    @Test
+    func `A list fetch refuses a redirect through http and keeps no text`() async throws {
+        let directory = try shieldsScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RedirectingListProtocol.self]
+        let manager = ContentBlockingManager(storageDirectory: directory, configuration: configuration)
+
+        let hop = try #require(URL(string: "https://lists.example/hop.txt"))
+        let safe = try #require(URL(string: "https://lists.example/safe.txt"))
+        let refused = try #require(await manager.addCustomFilterList(name: "Hop", url: hop))
+        let refusedState = try #require(await manager.filterLists.first { $0.id == refused.id })
+        #expect(refusedState.lastError == ShieldsListError.insecureURL.errorDescription)
+        #expect(!FileManager.default.fileExists(atPath: directory.appending(path: "\(refused.id).txt").path))
+        let requested = RedirectingListProtocol.requested.withLock { $0 }
+        #expect(!requested.contains { $0.contains("mitm.example") || $0.contains("attacker.example") })
+
+        let allowed = try #require(await manager.addCustomFilterList(name: "Safe", url: safe))
+        let allowedState = try #require(await manager.filterLists.first { $0.id == allowed.id })
+        #expect(allowedState.lastError == nil, "an https-to-https redirect is fine")
+        #expect(FileManager.default.fileExists(atPath: directory.appending(path: "\(allowed.id).txt").path))
+    }
+}
+
+/// Serves filter lists behind redirects: `hop.txt` goes https → http → https, `safe.txt`
+/// https → https; everything else answers with a list.
+private final nonisolated class RedirectingListProtocol: URLProtocol, @unchecked Sendable {
+    static let requested = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+    override class func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        Self.requested.withLock { $0.append(url.absoluteString) }
+        switch url.absoluteString {
+        case "https://lists.example/hop.txt": redirect(to: "http://mitm.example/hop.txt")
+        case "http://mitm.example/hop.txt": redirect(to: "https://attacker.example/list.txt")
+        case "https://lists.example/safe.txt": redirect(to: "https://cdn.example/list.txt")
+        default:
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)
+            if let response {
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            }
+            client?.urlProtocol(self, didLoad: Data("example.com##+js(set-constant, adsEnabled, false)\n".utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() {}
+
+    private func redirect(to target: String) {
+        guard let url = request.url, let targetURL = URL(string: target),
+              let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: ["Location": target])
+        else { return }
+        client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: targetURL), redirectResponse: response)
     }
 }

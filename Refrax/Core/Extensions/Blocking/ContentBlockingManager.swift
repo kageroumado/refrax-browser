@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Owns Shields' filter lists and builds: which lists are on, their downloaded text, the
 /// resources file, and the last good build.
@@ -18,6 +19,32 @@ nonisolated enum ShieldsListError: LocalizedError {
         switch self {
         case .insecureURL: "Filter lists must be served over HTTPS."
         }
+    }
+}
+
+/// Refuses, and cancels the fetch on, any redirect to a URL that is not HTTPS, so no hop of a
+/// list download can be read or rewritten on the network.
+private final nonisolated class HTTPSOnlyRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let refused = OSAllocatedUnfairLock(initialState: false)
+
+    var refusedInsecureRedirect: Bool {
+        refused.withLock { $0 }
+    }
+
+    func urlSession(
+        _: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void,
+    ) {
+        guard request.url?.scheme?.lowercased() == "https" else {
+            refused.withLock { $0 = true }
+            completionHandler(nil)
+            task.cancel()
+            return
+        }
+        completionHandler(request)
     }
 }
 
@@ -69,10 +96,13 @@ actor ContentBlockingManager {
         storageDirectory.appending(path: "resources", directoryHint: .isDirectory)
     }
 
-    init(storageDirectory: URL = Directories.appStorage.appending(path: "Filters", directoryHint: .isDirectory)) {
+    /// - Parameter configuration: How lists are fetched; tests give one with a stub protocol.
+    init(
+        storageDirectory: URL = Directories.appStorage.appending(path: "Filters", directoryHint: .isDirectory),
+        configuration: URLSessionConfiguration = .default,
+    ) {
         self.storageDirectory = storageDirectory
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-        let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = Constants.requestTimeout
         configuration.timeoutIntervalForResource = Constants.resourceTimeout
         configuration.waitsForConnectivity = true
@@ -184,12 +214,13 @@ actor ContentBlockingManager {
     /// - Returns: Whether the cached text changed.
     @discardableResult
     private func fetch(_ list: FilterListSource) async -> Bool {
+        let redirects = HTTPSOnlyRedirects()
         do {
             guard list.isFetchable else {
                 throw ShieldsListError.insecureURL
             }
-            let (data, response) = try await urlSession.data(from: list.url)
-            guard response.url?.scheme?.lowercased() == "https" else {
+            let (data, response) = try await urlSession.data(from: list.url, delegate: redirects)
+            guard !redirects.refusedInsecureRedirect, response.url?.scheme?.lowercased() == "https" else {
                 throw ShieldsListError.insecureURL
             }
             guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
@@ -210,6 +241,7 @@ actor ContentBlockingManager {
             }
             return previous != data
         } catch {
+            let error: any Error = redirects.refusedInsecureRedirect ? ShieldsListError.insecureURL : error
             Logger.warning("Shields could not fetch \(list.id): \(error.localizedDescription)", category: Logger.network)
             if let index = filterLists.firstIndex(where: { $0.id == list.id }) {
                 filterLists[index].lastError = error.localizedDescription
@@ -273,8 +305,12 @@ actor ContentBlockingManager {
     /// scriptlets from a custom list the user did not trust.
     static func shieldsList(for source: FilterListSource, text: Data) -> ShieldsList? {
         guard source.isFetchable else { return nil }
-        let text = source.contributesScriptlets ? text : ShieldsList.removingScriptlets(from: text)
-        return ShieldsList(id: source.id, text: text, isTrusted: source.isTrusted)
+        return ShieldsList(
+            id: source.id,
+            text: text,
+            isTrusted: source.isTrusted,
+            allowsScriptlets: source.contributesScriptlets,
+        )
     }
 
     // MARK: - Engine
