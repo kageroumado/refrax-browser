@@ -89,7 +89,10 @@ enum PaneControl {
         let grid = windowState.paneEditor.session.flatMap { $0.tabID == tab.id ? $0.grid : nil } ?? tab.paneGrid
         let target = try params.pane.map { try pane($0, of: tab, in: windowState) }
             ?? windowState.focusedPage.flatMap { grid.contains($0.id) ? $0.id : nil } ?? tab.activePage.id
-        islands.joinPage(source.id, at: PaneCommand.placement(beside: target, at: edge, in: grid))
+        guard let placement = PaneCommand.placement(beside: target, at: edge, in: grid) else {
+            throw ControlError.invalidParams("That side of the pane has no room for another")
+        }
+        islands.joinPage(source.id, at: placement)
     }
 
     // MARK: - References

@@ -128,10 +128,12 @@ nonisolated struct PaneLayoutEditor: Equatable, Sendable {
         self.session = session
     }
 
-    /// Records the pane last used.
-    mutating func focus(_ pageID: UUID) {
-        guard session?.grid.contains(pageID) == true else { return }
+    /// Records the pane last used; false when it already was, or is no pane of the edit.
+    @discardableResult
+    mutating func focus(_ pageID: UUID) -> Bool {
+        guard session?.grid.contains(pageID) == true, session?.activePaneID != pageID else { return false }
         session?.activePaneID = pageID
+        return true
     }
 
     private mutating func apply(_ edit: (PaneGrid) -> PaneGrid?) -> Bool {

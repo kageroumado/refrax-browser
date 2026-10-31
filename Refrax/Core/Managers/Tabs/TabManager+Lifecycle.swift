@@ -186,6 +186,11 @@ extension TabManager {
         }
         let spatialReplacementID = spatialReplacement(for: tab)
 
+        // A tab closed while its panes are edited takes the edit with it.
+        for window in layoutWindows(in: tab.space) where window.paneEditor.isEditing(tab: tab.id) {
+            window.discardLayoutMode()
+        }
+
         // Route through archive if enabled and not bypassing
         if state.settings.archiveEnabled, !bypassArchive, !tab.isArchived {
             // Capture state before archive modifies the tab

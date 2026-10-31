@@ -119,10 +119,7 @@ extension TabManager {
     /// Sets the active page in a multi-page tab.
     func setActivePage(in tab: Tab, page: TabPage) {
         tab._setActivePage(page)
-        editLayouts(of: tab, animated: false) { editor in
-            editor.focus(page.id)
-            return true
-        }
+        editLayouts(of: tab, animated: false) { $0.focus(page.id) }
         scheduleSave()
     }
 

@@ -9,10 +9,10 @@ import SwiftUI
 ///
 /// ## Dynamic Properties
 ///
-/// Unlike WebView which applies static browser configurations, PositionedAdapter
+/// Unlike WebView which applies static browser configurations, PaneWebViewAdapter
 /// focuses on display mode management. Dynamic properties like `ignoresAllEvents`
 /// are applied here since they change based on layout mode and overlay state.
-struct PositionedAdapter: NSViewRepresentable {
+struct PaneWebViewAdapter: NSViewRepresentable {
     /// The web page to display, or nil for an empty slot.
     let page: WebPage?
 

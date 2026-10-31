@@ -44,7 +44,15 @@ struct DividerTrackingView: NSViewRepresentable {
 /// and sets an override cursor while the pointer is in it; the drag runs at the AppKit level,
 /// where it never competes with the web view's own event handling.
 final class DividerTrackingNSView: NSView {
-    var grips: [DividerGrip] = []
+    var grips: [DividerGrip] = [] {
+        didSet {
+            // A grip that went away under the pointer (the tab now has one pane) leaves no
+            // tracking area to send mouseExited, so its cursor is cleared here.
+            if let hoveredAxis, activeDrag == nil, !grips.contains(where: { $0.axis == hoveredAxis }) {
+                releaseCursor()
+            }
+        }
+    }
     var onDrag: ((PaneDivider.Axis, CGFloat) -> Void)?
     var onDragEnded: ((PaneDivider.Axis) -> Void)?
 
@@ -55,6 +63,21 @@ final class DividerTrackingNSView: NSView {
 
     override var isFlipped: Bool {
         true
+    }
+
+    /// Leaving the window (the page view is replaced, or the tab no longer has dividers) ends
+    /// any hover or drag, and with them the resize cursor.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil, hoveredAxis != nil || activeDrag != nil {
+            activeDrag = nil
+            releaseCursor()
+        }
+    }
+
+    private func releaseCursor() {
+        hoveredAxis = nil
+        NSCursor._clearOverrideCursorAndSetArrow()
     }
 
     // MARK: - Tracking

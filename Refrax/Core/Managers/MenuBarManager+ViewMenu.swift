@@ -398,7 +398,10 @@ extension MenuBarManager {
             item.title = editing ? PaneCommand.finishEditing.title : PaneCommand.edit.title
             return windowState?.activeTab != nil
         case #selector(openPageBeside(_:)):
-            return windowState.map { PaneCommand.isAvailable(.openBeside(.trailing), in: $0) } ?? false
+            // Only the sides with room show.
+            guard let windowState, let raw = item.representedObject as? String, let edge = PaneEdge(rawValue: raw) else { return false }
+            item.isHidden = !PaneCommand.isAvailable(.openBeside(edge), in: windowState)
+            return !item.isHidden
         case #selector(separatePanes(_:)):
             return windowState.map { PaneCommand.isAvailable(.separate, in: $0) } ?? false
         default:

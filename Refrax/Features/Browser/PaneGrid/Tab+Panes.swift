@@ -3,13 +3,14 @@ import Foundation
 extension Tab {
     /// The tab's pages on the pane grid as stored, every cell covered.
     var paneGrid: PaneGrid {
-        PaneGrid(configuration: layoutConfiguration, pageIDs: pages.map(\.id))
+        let configuration = layoutConfiguration
+        return PaneGrid(configuration: configuration, pageIDs: PaneGrid.loadOrder(pages.map(\.id), configuration: configuration))
     }
 
     /// Stores `grid` as the tab's layout, completed, keeping the tab's split ratios.
     func storePaneGrid(_ grid: PaneGrid, activePaneID: UUID? = nil) {
-        let complete = grid.reconciled(with: pages.map(\.id)).filled()
         let current = layoutConfiguration
+        let complete = grid.reconciled(with: PaneGrid.loadOrder(pages.map(\.id), configuration: current)).filled()
         let configuration = complete.configuration(
             columnSplit: current?.horizontalDivider ?? 0.5,
             rowSplit: current?.verticalDivider ?? 0.5,

@@ -5,18 +5,15 @@ import UniformTypeIdentifiers
 
 // MARK: - Pane Content Wrapper
 
-/// Wraps PositionedAdapter with full WebViewContainer functionality.
+/// One pane of a tab's page: its ``PaneWebViewAdapter`` with the browser chrome a page needs:
+/// dialogs, overlays, link previews, visibility tracking, and modifier key hints.
 ///
-/// This view combines the stable adapter architecture (position-based identity)
-/// with all the browser chrome features: dialogs, overlays, link previews,
-/// visibility tracking, and modifier key hints.
-///
-/// Architecture:
-/// - PositionedAdapter handles the NSView lifecycle, one per page
-/// - This wrapper adds SwiftUI overlays and modifiers that need page context
-/// - Lifecycle callbacks (visibility, history) are scoped to when page exists
+/// The page view keys each pane by its tab page, so the wrapper lives as long as the page is
+/// a pane of the shown tab. The adapter hosts the page's web view; this wrapper adds the
+/// SwiftUI overlays and modifiers that need page context, and drives the page's lifecycle
+/// (ownership, visibility, history) while its web page exists.
 struct PaneContentWrapper: View {
-    let tabPage: TabPage?
+    let tabPage: TabPage
     let webPage: WebPage?
     let frame: CGRect
     /// The pane's corners, clipped by the adapter's own layer so WebKit's layers round too.
@@ -47,14 +44,15 @@ struct PaneContentWrapper: View {
 
     /// The page whose lifecycle this wrapper currently drives, and its tab page.
     ///
-    /// Identity is the position, so a tab switch changes `webPage` without any
-    /// `onDisappear`/`onAppear`; the outgoing page is remembered here so it can be
-    /// hidden and released when the next one arrives.
+    /// The web page under one tab page can change while the pane stays (made after the pane
+    /// appeared, or replaced across an extension's pages) without any `onDisappear`/`onAppear`;
+    /// the outgoing page is remembered here so it can be hidden and released when the next
+    /// one arrives.
     @State private var lifecyclePage: WebPage?
     @State private var lifecycleTabPageID: UUID?
 
     private var hasContent: Bool {
-        tabPage != nil && frame.width > 0 && frame.height > 0
+        frame.width > 0 && frame.height > 0
     }
 
     /// Stable identifier for this window.
@@ -84,7 +82,7 @@ struct PaneContentWrapper: View {
         ZStack(alignment: .bottomLeading) {
             // The adapter - always rendered for position stability
             // isOwner determines active vs portal mode for multi-window coordination
-            PositionedAdapter(
+            PaneWebViewAdapter(
                 page: webPage,
                 isActive: isOwner,
                 isSnapshotMode: isLayoutMode && isOwner,
@@ -102,7 +100,7 @@ struct PaneContentWrapper: View {
             }
 
             // Overlays only when we have content and not in layout mode
-            if hasContent, !isLayoutMode, let webPage, let tabPage {
+            if hasContent, !isLayoutMode, let webPage {
                 overlays(for: webPage, tabPage: tabPage)
             }
         }
@@ -138,8 +136,7 @@ struct PaneContentWrapper: View {
             endLifecycle()
             beginLifecycle()
         }
-        .task(id: tabPage?.id) {
-            guard tabPage != nil else { return }
+        .task(id: tabPage.id) {
             try? await periodicLastSeenUpdate()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
@@ -199,7 +196,7 @@ struct PaneContentWrapper: View {
     /// Takes the current page for this window: ownership, activity registration,
     /// visibility, and the link-hover callback.
     private func beginLifecycle() {
-        guard let webPage, let tabPage else { return }
+        guard let webPage else { return }
         let isWindowKey = windowState.window?.isKeyWindow ?? false
         let ownerID = webPage.ownerWindowID
 
@@ -220,8 +217,7 @@ struct PaneContentWrapper: View {
         webPage.onBecameVisible()
         webPage.inspectorPageDidBecomeVisible()
 
-        // Record interaction for address bar focus tracking
-        windowState.recordInteraction(with: tabPage.id)
+        focusIfActive(on: .appeared)
 
         // Only the owner installs the hover callback, so other windows never overwrite it.
         if webPage.ownerWindowID == windowID {
@@ -253,7 +249,7 @@ struct PaneContentWrapper: View {
     }
 
     private func handleWindowBecameKey(_ notification: Notification) {
-        guard let webPage, let tabPage,
+        guard let webPage,
               let keyWindow = notification.object as? NSWindow,
               keyWindow === windowState.window else {
             return
@@ -262,11 +258,18 @@ struct PaneContentWrapper: View {
         // Claim ownership when our window becomes key
         webPage.claimOwnership(for: windowState)
 
-        windowState.recordInteraction(with: tabPage.id)
+        focusIfActive(on: .windowBecameKey)
         historyActivityManager.updateWindowKey(windowID: windowID, isKey: true)
 
         // Take over link hover callback now that we're the owner
         setupLinkHoverCallback(for: webPage)
+    }
+
+    /// Focuses this pane when ``PaneFocus`` says `event` gives it focus.
+    private func focusIfActive(on event: PaneFocus.Event) {
+        if PaneFocus.takesFocus(on: event, pageID: tabPage.id, activePageID: tabPage.tab?.activePage.id) {
+            windowState.recordInteraction(with: tabPage.id)
+        }
     }
 
     private func handleWindowResignedKey(_ notification: Notification) {
@@ -306,8 +309,6 @@ struct PaneContentWrapper: View {
 
     /// Periodically updates history tracking while the page is visible.
     private func periodicLastSeenUpdate() async throws {
-        guard let tabPage else { return }
-
         var ticksSinceTimeUpdate = 0
         while true {
             try await Task.sleep(for: .seconds(5))
@@ -520,7 +521,7 @@ private struct DialogModifiers: ViewModifier {
 /// assigned/released (once per tab lifetime), NOT on every `isLayoutMode` toggle.
 /// Using `if/else` that flips with `isLayoutMode` creates a `_ConditionalContent`
 /// branch change, which causes SwiftUI to recreate all NSViews in the content tree —
-/// including the PositionedAdapter's CocoaWebViewAdapter. Instead, the `isEnabled`
+/// including the PaneWebViewAdapter's CocoaWebViewAdapter. Instead, the `isEnabled`
 /// flag on each modifier gates overlay visibility without changing the structural type.
 private struct PageOverlayModifiers: ViewModifier {
     let webPage: WebPage?
