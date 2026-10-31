@@ -52,8 +52,10 @@ nonisolated enum ExtensionArchive {
     ///
     /// The header is a `CrxFileHeader` protocol buffer: key proofs in fields 2 (RSA) and 3
     /// (ECDSA) and, in field 10000, the signed data holding the CRX ID. A Web Store CRX carries
-    /// the developer's proof and the store's; the developer's key is the one whose hash is the
-    /// CRX ID, and its signature over the signed data and the ZIP must hold, as Chrome requires.
+    /// the developer's proof and the store's. As in Chrome, every proof's signature over the
+    /// signed data and the ZIP must hold, one of them must be by the key whose hash is the CRX
+    /// ID, and a field that appears twice counts by its last occurrence, as protocol buffers
+    /// read singular fields.
     ///
     /// - Throws: ``ExtensionError/invalidArchiveFormat`` for anything but a CRX3 file,
     ///   ``ExtensionError/invalidSignature`` when no proof by the CRX ID's key verifies.
@@ -71,8 +73,8 @@ nonisolated enum ExtensionArchive {
         let header = Data(data[CRX.prefixLength ..< zipStart])
         let zip = Data(data[zipStart...])
         guard let fields = try? ProtobufFields.parse(header),
-              let signedHeaderData = fields.first(where: { $0.number == CRX.signedHeaderDataField })?.value,
-              let crxID = (try? ProtobufFields.parse(signedHeaderData))?.first(where: { $0.number == CRX.crxIDField })?.value,
+              let signedHeaderData = fields.last(where: { $0.number == CRX.signedHeaderDataField })?.value,
+              let crxID = (try? ProtobufFields.parse(signedHeaderData))?.last(where: { $0.number == CRX.crxIDField })?.value,
               crxID.count == CRX.crxIDLength
         else {
             throw ExtensionError.invalidSignature
@@ -80,9 +82,11 @@ nonisolated enum ExtensionArchive {
 
         var length = UInt32(signedHeaderData.count).littleEndian
         let signedMessage = CRX.signaturePrefix + Data(bytes: &length, count: 4) + signedHeaderData + zip
-        let proofs = fields.compactMap(keyProof)
-        guard let developerProof = proofs.first(where: { Data(SHA256.hash(data: $0.publicKey).prefix(CRX.crxIDLength)) == crxID }),
-              verify(developerProof, of: signedMessage)
+        let proofFields = fields.filter { $0.number == CRX.rsaProofField || $0.number == CRX.ecdsaProofField }
+        let proofs = proofFields.compactMap(keyProof)
+        guard proofs.count == proofFields.count,
+              proofs.allSatisfy({ verify($0, of: signedMessage) }),
+              let developerProof = proofs.first(where: { Data(SHA256.hash(data: $0.publicKey).prefix(CRX.crxIDLength)) == crxID })
         else {
             throw ExtensionError.invalidSignature
         }
@@ -92,8 +96,8 @@ nonisolated enum ExtensionArchive {
     private static func keyProof(_ field: ProtobufFields.Field) -> KeyProof? {
         guard field.number == CRX.rsaProofField || field.number == CRX.ecdsaProofField,
               let members = try? ProtobufFields.parse(field.value),
-              let publicKey = members.first(where: { $0.number == CRX.publicKeyField })?.value,
-              let signature = members.first(where: { $0.number == CRX.signatureField })?.value
+              let publicKey = members.last(where: { $0.number == CRX.publicKeyField })?.value,
+              let signature = members.last(where: { $0.number == CRX.signatureField })?.value
         else { return nil }
         return KeyProof(publicKey: publicKey, signature: signature, isECDSA: field.number == CRX.ecdsaProofField)
     }
@@ -158,8 +162,9 @@ nonisolated enum ExtensionArchive {
     /// fixups. Runs off the main actor.
     ///
     /// - Returns: What the archive proved: a CRX's verified Chrome extension ID.
-    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for an unknown or malformed archive,
-    ///   ``ExtensionError/invalidSignature`` for a CRX whose signature fails,
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for an unknown, malformed or unsafe
+    ///   archive (see ``ZipInspection``), ``ExtensionError/invalidSignature`` for a CRX whose
+    ///   signature fails,
     ///   ``ExtensionError/extractionFailed`` when unzipping fails.
     @concurrent
     @discardableResult
@@ -167,17 +172,18 @@ nonisolated enum ExtensionArchive {
         let data = try Data(contentsOf: archiveURL)
         let zip: Data
         var chromeID: String?
-        switch archiveURL.pathExtension.lowercased() {
-        case "crx":
+        // By content: store downloads arrive without a telling file extension.
+        if data.prefix(4) == CRX.magic {
             let contents = try contents(ofCRX: data)
             zip = contents.zip
             chromeID = contents.chromeID
-        case "xpi", "zip":
+        } else if data.prefix(2) == Data("PK".utf8) {
             zip = data
-        default:
+        } else {
             throw ExtensionError.invalidArchiveFormat
         }
 
+        try ZipInspection.check(zip)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).zip")
         try zip.write(to: zipURL)
@@ -297,5 +303,78 @@ nonisolated enum ProtobufFields {
             shift += 7
         }
         throw MalformedMessage()
+    }
+}
+
+/// Reads a ZIP archive's central directory to decide whether it is safe to unpack: within
+/// size and entry limits, with every entry a regular file or folder inside the archive.
+nonisolated enum ZipInspection {
+    static let maximumEntries = 50_000
+    static let maximumUnpackedSize: UInt64 = 1 << 30
+
+    private enum Signature {
+        static let endOfCentralDirectory: UInt32 = 0x0605_4B50
+        static let centralDirectoryEntry: UInt32 = 0x0201_4B50
+    }
+
+    private enum Layout {
+        static let endRecordLength = 22
+        static let longestComment = 0xFFFF
+        static let entryHeaderLength = 46
+        /// "Version made by" names the system in its high byte; 3 is Unix, whose external
+        /// attributes carry a file mode in their high 16 bits.
+        static let unixHost: UInt8 = 3
+        static let fileTypeMask: UInt32 = 0o170000
+        static let symbolicLink: UInt32 = 0o120000
+    }
+
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for a malformed archive, one past the
+    ///   limits, or one with a symbolic link, an absolute path or a `..` component.
+    static func check(_ zip: Data) throws {
+        let bytes = [UInt8](zip)
+        guard bytes.count >= Layout.endRecordLength else { throw ExtensionError.invalidArchiveFormat }
+        let searchStart = max(0, bytes.count - Layout.endRecordLength - Layout.longestComment)
+        guard let end = stride(from: bytes.count - Layout.endRecordLength, through: searchStart, by: -1)
+            .first(where: { uint32(bytes, $0) == Signature.endOfCentralDirectory })
+        else { throw ExtensionError.invalidArchiveFormat }
+
+        let entryCount = Int(uint16(bytes, end + 10))
+        let directoryOffset = Int(uint32(bytes, end + 16))
+        guard entryCount <= maximumEntries, directoryOffset < bytes.count else { throw ExtensionError.invalidArchiveFormat }
+
+        var offset = directoryOffset
+        var unpackedSize: UInt64 = 0
+        for _ in 0 ..< entryCount {
+            guard offset + Layout.entryHeaderLength <= bytes.count,
+                  uint32(bytes, offset) == Signature.centralDirectoryEntry
+            else { throw ExtensionError.invalidArchiveFormat }
+            let madeBy = bytes[offset + 5]
+            let size = uint32(bytes, offset + 24)
+            let nameLength = Int(uint16(bytes, offset + 28))
+            let extraLength = Int(uint16(bytes, offset + 30))
+            let commentLength = Int(uint16(bytes, offset + 32))
+            let attributes = uint32(bytes, offset + 38)
+            let nameStart = offset + Layout.entryHeaderLength
+            guard nameStart + nameLength <= bytes.count, size != UInt32.max else { throw ExtensionError.invalidArchiveFormat }
+            let name = String(decoding: bytes[nameStart ..< nameStart + nameLength], as: UTF8.self)
+
+            unpackedSize += UInt64(size)
+            let components = name.split(separator: "/", omittingEmptySubsequences: false)
+            let isSymbolicLink = madeBy == Layout.unixHost && (attributes >> 16) & Layout.fileTypeMask == Layout.symbolicLink
+            guard unpackedSize <= maximumUnpackedSize, !name.hasPrefix("/"), !name.contains("\\"),
+                  !components.contains(".."), !isSymbolicLink
+            else { throw ExtensionError.invalidArchiveFormat }
+            offset = nameStart + nameLength + extraLength + commentLength
+        }
+    }
+
+    private static func uint16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
+        guard offset + 2 <= bytes.count else { return 0 }
+        return UInt16(bytes[offset]) | UInt16(bytes[offset + 1]) << 8
+    }
+
+    private static func uint32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
+        guard offset + 4 <= bytes.count else { return 0 }
+        return (0 ..< 4).reduce(0) { $0 | UInt32(bytes[offset + $1]) << (8 * $1) }
     }
 }

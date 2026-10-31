@@ -80,15 +80,11 @@ final class RefraxAPIShim {
         }
 
         func owns(_ space: Space) -> Bool {
-            guard !space.dataStoreMode.isPrivate || installed.allowedInPrivateMode else { return false }
-            return manager.existingController(for: space) === context.webExtensionController
+            manager.space(space, belongsTo: context)
         }
 
         func owns(_ tab: Tab) -> Bool {
-            if let space = tab.space, space.dataStoreMode.isPrivate, !installed.allowedInPrivateMode {
-                return false
-            }
-            return manager.existingController(for: tab) === context.webExtensionController
+            manager.tab(tab, belongsTo: context)
         }
     }
 

@@ -66,6 +66,7 @@ nonisolated enum NativeMessagingError: Error, LocalizedError, Equatable {
     case invalidMessage
     case messageTooLarge
     case hostExited
+    case timedOut
     case communicationFailed
 
     var errorDescription: String? {
@@ -77,6 +78,7 @@ nonisolated enum NativeMessagingError: Error, LocalizedError, Equatable {
         case .invalidMessage: "Message is not valid JSON."
         case .messageTooLarge: "Message exceeds maximum allowed size."
         case .hostExited: "Native host has exited."
+        case .timedOut: "Native host did not reply in time."
         case .communicationFailed: "Error when communicating with the native messaging host."
         }
     }

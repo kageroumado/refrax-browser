@@ -256,10 +256,15 @@ final class ExtensionManager {
             try await refraxAPI.handle(message, from: context)
         }, named: RefraxAPIShim.hostName)
         nativeMessaging.identity = { [unowned self] context in
-            ExtensionIdentity(
+            let installed = installedExtension(for: context)
+            // One origin per installation, the default controller's, whichever controller asks.
+            let origin = installed.map {
+                ExtensionContextIdentifier.baseURL(for: ExtensionContextIdentifier.identifier(installedID: $0.uniqueIdentifier, spaceID: nil))
+            } ?? context.baseURL
+            return ExtensionIdentity(
                 manifest: context.webExtension.manifest,
-                verifiedChromeID: installedExtension(for: context)?.verifiedChromeID,
-                refraxOrigin: context.baseURL.absoluteString,
+                verifiedChromeID: installed?.verifiedChromeID,
+                refraxOrigin: origin.absoluteString,
             )
         }
         nativeMessaging.storedConsent = { [unowned self] request, context in
@@ -470,7 +475,10 @@ final class ExtensionManager {
     /// Creates a new transient extension controller for a private space.
     ///
     /// The controller is configured with:
-    /// - No persistent storage (uses default configuration without identifier)
+    /// - Non-persistent extension storage: `storage.local`, granted permissions and dynamic
+    ///   rules live in memory and end with the controller. The default configuration would
+    ///   share the default controller's storage folder, where a context's stable identifier
+    ///   would bring them back.
     /// - Non-persistent data store from `SpaceDataStoreManager`
     ///
     /// Only extensions with `allowedInPrivateMode = true` will be loaded into this controller.
@@ -478,8 +486,7 @@ final class ExtensionManager {
     /// - Parameter space: The private space to create a controller for.
     /// - Returns: A new transient extension controller.
     private func createPrivateController(for space: Space) -> WKWebExtensionController {
-        // Use default configuration (no identifier) for transient storage
-        let configuration = WKWebExtensionController.Configuration.default()
+        let configuration = WKWebExtensionController.Configuration.nonPersistent()
 
         // Link to the space's non-persistent data store
         if let dataStoreManager {
@@ -563,7 +570,10 @@ final class ExtensionManager {
             // Remove all contexts for this private space
             let keysToRemove = privateContexts.keys.filter { $0.spaceID == space.id }
             for key in keysToRemove {
-                privateContexts.removeValue(forKey: key)
+                if let context = privateContexts.removeValue(forKey: key) {
+                    nativeMessaging.disconnectAll(for: context)
+                    actions.removeContext(context.uniqueIdentifier)
+                }
             }
 
             // Remove controller and delegate
@@ -580,7 +590,10 @@ final class ExtensionManager {
         // Remove all contexts for this space
         let keysToRemove = isolatedContexts.keys.filter { $0.spaceID == space.id }
         for key in keysToRemove {
-            isolatedContexts.removeValue(forKey: key)
+            if let context = isolatedContexts.removeValue(forKey: key) {
+                nativeMessaging.disconnectAll(for: context)
+                actions.removeContext(context.uniqueIdentifier)
+            }
         }
 
         // Remove controller and delegate
@@ -612,7 +625,7 @@ final class ExtensionManager {
 
         // Create persisted metadata
         var installedExtension = InstalledExtension(
-            uniqueIdentifier: url.lastPathComponent, // Will be updated from context
+            uniqueIdentifier: UUID().uuidString,
             source: .localFolder(url),
             displayName: extension_.displayName ?? url.lastPathComponent,
             version: extension_.displayVersion ?? "0.0.0",
@@ -864,27 +877,17 @@ final class ExtensionManager {
     ///
     /// - Parameter extension_: The extension to uninstall.
     func uninstall(_ extension_: InstalledExtension) async throws {
-        // Unload from default controller
+        // Its storage goes first, while WebKit still knows its contexts.
         if let context = loadedContexts[extension_.uniqueIdentifier] {
-            try unload(context, from: defaultController)
-            loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
+            await removeStorage(of: context, in: defaultController)
         }
-
-        // Unload from all isolated controllers
         for (key, context) in isolatedContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
             if let controller = isolatedControllers[key.spaceID] {
-                try unload(context, from: controller)
+                await removeStorage(of: context, in: controller)
             }
         }
-        isolatedContexts = isolatedContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
 
-        // Unload from all private controllers
-        for (key, context) in privateContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
-            if let controller = privateControllers[key.spaceID] {
-                try unload(context, from: controller)
-            }
-        }
-        privateContexts = privateContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
+        try unloadEverywhere(extension_)
 
         // Unregister scripts
         state.scriptRegistry.unregisterExtension(extension_.uniqueIdentifier)
@@ -908,6 +911,95 @@ final class ExtensionManager {
         recoveryManager.extensionUninstalled(extension_)
 
         Logger.info("Uninstalled extension '\(extension_.displayName)'", category: Logger.extensions)
+    }
+
+    /// Unloads an extension from the default controller and every space's.
+    private func unloadEverywhere(_ extension_: InstalledExtension) throws {
+        if let context = loadedContexts[extension_.uniqueIdentifier] {
+            try unload(context, from: defaultController)
+            loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
+        }
+        for (key, context) in isolatedContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
+            if let controller = isolatedControllers[key.spaceID] {
+                try unload(context, from: controller)
+            }
+        }
+        isolatedContexts = isolatedContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
+        for (key, context) in privateContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
+            if let controller = privateControllers[key.spaceID] {
+                try unload(context, from: controller)
+            }
+        }
+        privateContexts = privateContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
+    }
+
+    // MARK: - Updates
+
+    /// Replaces an installed extension's files with a newer archive's, in place: the
+    /// installation keeps its identifier, and with it its storage, grants, consents and source.
+    ///
+    /// An extension whose CRX signature proved a Chrome ID accepts only an archive signed for
+    /// the same ID. The files are swapped while the extension is unloaded; an enabled extension
+    /// loads again afterwards.
+    ///
+    /// - Throws: ``ExtensionError/sourceNotFound`` for an extension Refrax did not unpack itself
+    ///   (a local folder), ``ExtensionError/invalidSignature`` for an archive that does not
+    ///   prove the same ID, and the archive's or manifest's errors.
+    func update(_ extension_: InstalledExtension, from archiveURL: URL) async throws {
+        guard let index = installedExtensions.firstIndex(where: { $0.id == extension_.id }) else {
+            throw ExtensionError.notInstalled
+        }
+        if case .localFolder = extension_.source {
+            throw ExtensionError.sourceNotFound
+        }
+        let folder = extractedFolderURL(for: extension_)
+        let parent = folder.deletingLastPathComponent()
+        let staging = parent.appendingPathComponent("\(extension_.uniqueIdentifier).update-\(UUID().uuidString)", isDirectory: true)
+        let extracted = try await ExtensionArchive.extract(archiveURL, into: staging)
+        do {
+            if let verified = extension_.verifiedChromeID, extracted.verifiedChromeID != verified {
+                throw ExtensionError.invalidSignature
+            }
+            let webExtension = try await WKWebExtension(resourceBaseURL: staging)
+            guard webExtension.errors.isEmpty else {
+                throw ExtensionError.manifestErrors(webExtension.errors.map(\.localizedDescription))
+            }
+
+            try unloadEverywhere(extension_)
+            let previous = parent.appendingPathComponent("\(extension_.uniqueIdentifier).previous-\(UUID().uuidString)", isDirectory: true)
+            if FileManager.default.fileExists(atPath: folder.path) {
+                try FileManager.default.moveItem(at: folder, to: previous)
+            }
+            do {
+                try FileManager.default.moveItem(at: staging, to: folder)
+            } catch {
+                try? FileManager.default.moveItem(at: previous, to: folder)
+                throw error
+            }
+            try? FileManager.default.removeItem(at: previous)
+
+            var updated = installedExtensions[index]
+            updated.version = webExtension.displayVersion ?? updated.version
+            updated.displayName = webExtension.displayName ?? updated.displayName
+            updated.description = webExtension.displayDescription
+            updated.verifiedChromeID = extracted.verifiedChromeID ?? updated.verifiedChromeID
+            updated.lastUpdated = Date()
+            if let icon = webExtension.icon(for: CGSize(width: 128, height: 128)) {
+                updated.iconData = icon.tiffRepresentation
+            }
+            installedExtensions[index] = updated
+            savePersistedState()
+        } catch {
+            try? FileManager.default.removeItem(at: staging)
+            throw error
+        }
+
+        let current = installedExtensions[index]
+        if current.isEnabled {
+            try await loadExtension(current)
+            await reconcileSpaceControllers(for: current)
+        }
+        Logger.info("Updated extension '\(current.displayName)' to \(current.version)", category: Logger.extensions)
     }
 
     // MARK: - Enable/Disable
@@ -1123,6 +1215,7 @@ final class ExtensionManager {
 
     /// Unloads a context and forgets its actions.
     private func unload(_ context: WKWebExtensionContext, from controller: WKWebExtensionController) throws {
+        nativeMessaging.disconnectAll(for: context)
         try controller.unload(context)
         actions.removeContext(context.uniqueIdentifier)
     }
@@ -1231,6 +1324,23 @@ final class ExtensionManager {
             return defaultController
         }
         return existingController(for: space)
+    }
+
+    /// Whether `context`'s extension may see and change `space`: the space runs in the
+    /// context's controller, and a private space only for an extension allowed in private mode.
+    func space(_ space: Space, belongsTo context: WKWebExtensionContext) -> Bool {
+        guard let owner = context.webExtensionController, existingController(for: space) === owner else { return false }
+        return !space.dataStoreMode.isPrivate || isAllowedInPrivateMode(context)
+    }
+
+    /// Whether `context`'s extension may see and change `tab`, as for its space.
+    func tab(_ tab: Tab, belongsTo context: WKWebExtensionContext) -> Bool {
+        guard let owner = context.webExtensionController, existingController(for: tab) === owner else { return false }
+        return tab.space.map { !$0.dataStoreMode.isPrivate } ?? true || isAllowedInPrivateMode(context)
+    }
+
+    private func isAllowedInPrivateMode(_ context: WKWebExtensionContext) -> Bool {
+        installedExtension(for: context)?.allowedInPrivateMode ?? false
     }
 
     /// The controller for a tab's web views: its space's, matching the data store
@@ -1403,7 +1513,7 @@ final class ExtensionManager {
                 return !isExtensionDisabled(installed, for: url)
             }
             .compactMap { context in
-                guard let appearance = actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) else {
+                guard let appearance = actions.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) else {
                     return nil
                 }
                 return ExtensionActionEntry(
@@ -1421,13 +1531,13 @@ final class ExtensionManager {
     func hasActions(in tab: Tab?) -> Bool {
         let tabPageID = tab?.pages.first?.id
         return actionContexts(for: tab).contains { context in
-            actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) != nil
+            actions.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) != nil
         }
     }
 
     /// Whether an action in `tab` shows a badge the user has not seen.
     func hasUnreadActionBadge(in tab: Tab?) -> Bool {
-        actions.board.hasUnreadBadge(among: actionContexts(for: tab).map(\.uniqueIdentifier), tabPageID: tab?.pages.first?.id)
+        actions.hasUnreadBadge(among: actionContexts(for: tab).map(\.uniqueIdentifier), tabPageID: tab?.pages.first?.id)
     }
 
     /// Marks every action badge in `tab` as seen.
@@ -1447,7 +1557,7 @@ final class ExtensionManager {
             Logger.warning("Cannot perform action: extension context \(contextID) not loaded", category: Logger.extensions)
             return
         }
-        actions.pendingPopupAnchor = anchor
+        actions.pendingPopupAnchors[context.uniqueIdentifier] = anchor
         let extensionTab = extensionTab(for: tab)
         if let extensionTab {
             context.userGesturePerformed(in: extensionTab)
@@ -1469,6 +1579,85 @@ final class ExtensionManager {
         return extensionTab(for: tabPage, pagePool: pagePool)
     }
 
+    // MARK: - Storage
+
+    /// Removes everything WebKit stores for `context`: `storage.*`, granted permissions,
+    /// dynamic rules and registered scripts.
+    private func removeStorage(of context: WKWebExtensionContext, in controller: WKWebExtensionController) async {
+        let types = WKWebExtensionController.allExtensionDataTypes
+        await withCheckedContinuation { continuation in
+            controller.fetchDataRecord(ofTypes: types, for: context) { record in
+                guard let record else { return continuation.resume() }
+                controller.removeData(ofTypes: types, from: [record]) {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    // MARK: - Refrax-Provided Permissions
+
+    /// Permissions Refrax provides with shims, which WebKit does not know, so Refrax keeps
+    /// their grants itself, on the installed extension.
+    static let shimmedPermissions: Set<String> = ["downloads", "downloads.open", "idle", "notifications", "privacy"]
+
+    /// Whether `context`'s extension holds `permission`: as WebKit granted it, or for a
+    /// permission Refrax provides, as the installed extension records it.
+    func isGranted(_ permission: String, to context: WKWebExtensionContext) -> Bool {
+        if context.hasPermission(WKWebExtension.Permission(rawValue: permission)) {
+            return true
+        }
+        guard let installed = installedExtension(for: context) else { return false }
+        return installed.grantedPermissions[permission].map { $0 > Date() } ?? false
+    }
+
+    /// Asks the user for permissions Refrax provides, as `permissions.request` does for
+    /// WebKit's: only permissions the manifest declares can be asked for, and only those the
+    /// user allows are granted.
+    ///
+    /// - Returns: Whether `context` holds every permission in `permissions` afterwards.
+    func requestShimmedPermissions(_ permissions: Set<String>, for context: WKWebExtensionContext) async -> Bool {
+        let missing = permissions.filter { !isGranted($0, to: context) }
+        guard !missing.isEmpty else { return true }
+        let manifest = context.webExtension.manifest
+        let declared = Set((manifest["permissions"] as? [String] ?? []) + (manifest["optional_permissions"] as? [String] ?? []))
+        guard missing.isSubset(of: declared), missing.isSubset(of: Self.shimmedPermissions),
+              let installed = installedExtension(for: context)
+        else { return false }
+
+        let (allowed, expiration) = await withCheckedContinuation { continuation in
+            permissionPromptManager.enqueue(PermissionRequest(
+                extensionName: context.webExtension.displayName ?? installed.displayName,
+                extensionIcon: context.webExtension.icon(for: CGSize(width: 64, height: 64)),
+                requestType: .permissions(Set(missing.map(WKWebExtension.Permission.init(rawValue:)))),
+                continuation: .permissions(continuation),
+            ))
+        }
+        let granted = Set(allowed.map(\.rawValue)).intersection(missing)
+        if !granted.isEmpty, let index = installedExtensions.firstIndex(where: { $0.id == installed.id }) {
+            for permission in granted {
+                installedExtensions[index].grantedPermissions[permission] = expiration ?? .distantFuture
+            }
+            savePersistedState()
+        }
+        return granted == missing
+    }
+
+    /// Takes back permissions Refrax provides, as `permissions.remove` does.
+    func removeShimmedPermissions(_ permissions: Set<String>, for context: WKWebExtensionContext) {
+        guard let installed = installedExtension(for: context),
+              let index = installedExtensions.firstIndex(where: { $0.id == installed.id }) else { return }
+        for permission in permissions where Self.shimmedPermissions.contains(permission) {
+            installedExtensions[index].grantedPermissions[permission] = nil
+        }
+        savePersistedState()
+    }
+
+    /// The permissions Refrax provides that `context` holds.
+    func grantedShimmedPermissions(for context: WKWebExtensionContext) -> [String] {
+        Self.shimmedPermissions.filter { isGranted($0, to: context) }.sorted()
+    }
+
     // MARK: - Native Host Consent
 
     /// Asks once whether an extension may start a native host that admits it only by an
@@ -1483,8 +1672,9 @@ final class ExtensionManager {
         if let pending = pendingNativeHostConsents[key] {
             return await pending.value
         }
+        let location = Self.location(of: installed)
         let question = Task(name: "Ask to start native host") {
-            await Self.presentNativeHostConsent(request)
+            await Self.presentNativeHostConsent(request, location: location)
         }
         pendingNativeHostConsents[key] = question
         let allowed = await question.value
@@ -1502,16 +1692,31 @@ final class ExtensionManager {
         return allowed
     }
 
-    /// The consent question, as a sheet on the key window or a standalone alert.
-    private static func presentNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest) async -> Bool {
+    /// Where an installed extension came from, as the consent question names it.
+    private static func location(of installed: InstalledExtension) -> String {
+        switch installed.source {
+        case let .localFolder(url), let .crxFile(url), let .xpiFile(url): url.path
+        case let .chromeWebStore(id): "the Chrome Web Store (\(id))"
+        case let .firefoxAddons(id): "Firefox Add-ons (\(id))"
+        case let .refraxGallery(id): "the Refrax gallery (\(id))"
+        case let .bundled(name): "Refrax's bundled extensions (\(name))"
+        }
+    }
+
+    /// The consent question, as a sheet on the key window or a standalone alert. The
+    /// extension's own name could be anything, so the question leads with what Refrax knows:
+    /// where the extension was installed from and the identity it claims.
+    private static func presentNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest, location: String) async -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Allow “\(request.extensionName)” to start “\(request.hostName)”?"
+        alert.messageText = "Allow an extension to start “\(request.hostName)”?"
         alert.informativeText = """
-        The extension asks to exchange messages with the app at \(request.executablePath). \
-        That app trusts a particular extension, and Refrax cannot confirm this is it: \
-        Refrax did not install it from a signed package. Allow only if you installed this \
-        extension from its developer.
+        The extension installed from \(location), which calls itself “\(request.extensionName)”, \
+        asks to exchange messages with the app at \(request.executablePath).
+        
+        That app trusts the extension \(request.claimedIdentity). This extension claims that \
+        identity, and Refrax could not verify it: it was not installed from a signed package. \
+        Allow only if you installed it from its developer.
         """
         alert.addButton(withTitle: "Don’t Allow")
         alert.addButton(withTitle: "Allow")
@@ -1910,7 +2115,7 @@ final class ExtensionManager {
         to installedExtension: inout InstalledExtension,
     ) {
         let refraxPermissions = (webExtension.manifest["permissions"] as? [String] ?? [])
-            .filter { $0.hasPrefix(RefraxAPIShim.permissionPrefix) }
+            .filter { $0.hasPrefix(RefraxAPIShim.permissionPrefix) || Self.shimmedPermissions.contains($0) }
         installedExtension.grantPermanently(
             permissions: webExtension.requestedPermissions.map(\.rawValue) + refraxPermissions,
             matchPatterns: webExtension.requestedPermissionMatchPatterns.map(\.string),
@@ -2242,7 +2447,7 @@ final class ExtensionManager {
 // MARK: - Extension Errors
 
 /// Errors that can occur during extension operations.
-enum ExtensionError: Error, LocalizedError {
+enum ExtensionError: Error, LocalizedError, Equatable {
     /// The extension manifest contains errors.
     case manifestErrors([String])
 

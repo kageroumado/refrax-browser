@@ -203,14 +203,61 @@ private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithRepl
         let args = body["args"] as? [String: Any] ?? [:]
 
         let origin = message.frameInfo.securityOrigin
-        guard let injector,
+        guard let injector, let manager = injector.extensionManager,
               let baseURL = URL(string: "\(origin.protocol)://\(origin.host)/"),
-              let extensionIdentifier = injector.extensionManager?.extensionContext(for: baseURL)?.uniqueIdentifier
+              let context = manager.extensionContext(for: baseURL)
         else {
             return (nil, "Message from a page that belongs to no extension")
         }
 
-        return await handleMessage(api: api, method: method, args: args, injector: injector, extensionIdentifier: extensionIdentifier)
+        if api == "permissions" {
+            return await handlePermissions(method: method, args: args, context: context, manager: manager)
+        }
+        // The page's own shim checks nothing a page could not reach around, so each API's
+        // permission is checked here.
+        guard let required = Self.requiredPermissions[api] else {
+            return (nil, ShimError.unsupportedAPI(api).localizedDescription)
+        }
+        guard required.contains(where: { manager.isGranted($0, to: context) }) else {
+            return (nil, ShimError.permissionDenied.localizedDescription)
+        }
+        return await handleMessage(api: api, method: method, args: args, injector: injector, extensionIdentifier: context.uniqueIdentifier)
+    }
+
+    /// The permissions that let an extension use each shimmed API; any one of them is enough.
+    private static let requiredPermissions: [String: [String]] = [
+        "storage.sync": ["storage", "unlimitedStorage"],
+        "alarms": ["alarms"],
+        "notifications": ["notifications"],
+        "contextMenus": ["contextMenus", "menus"],
+        "downloads": ["downloads"],
+        "idle": ["idle"],
+    ]
+
+    /// `permissions.contains`, `request`, `remove` and `getAll` for the permissions Refrax
+    /// provides; `request` goes through the same prompt as WebKit's permissions.
+    private func handlePermissions(
+        method: String,
+        args: [String: Any],
+        context: WKWebExtensionContext,
+        manager: ExtensionManager,
+    ) async -> (Any?, String?) {
+        let permissions = Set(args["permissions"] as? [String] ?? [])
+        let result: Any
+        switch method {
+        case "contains":
+            result = permissions.allSatisfy { manager.isGranted($0, to: context) }
+        case "request":
+            result = await manager.requestShimmedPermissions(permissions, for: context)
+        case "remove":
+            manager.removeShimmedPermissions(permissions, for: context)
+            result = true
+        case "getAll":
+            result = manager.grantedShimmedPermissions(for: context)
+        default:
+            return (nil, ShimError.unsupportedMethod("permissions.\(method)").localizedDescription)
+        }
+        return (["success": true, "result": result], nil)
     }
 
     private func handleMessage(

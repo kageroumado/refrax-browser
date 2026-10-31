@@ -198,62 +198,13 @@ struct ExtensionIdentityTests {
 /// CRX3 files: the ZIP after the header, and the extension ID the developer's signature proves.
 @Suite("Extension archives")
 struct ExtensionArchiveTests {
-    private func lengthDelimited(_ field: UInt64, _ value: Data) -> Data {
-        varint(field << 3 | 2) + varint(UInt64(value.count)) + value
-    }
-
-    private func varint(_ value: UInt64) -> Data {
-        var value = value
-        var bytes: [UInt8] = []
-        repeat {
-            let byte = UInt8(value & 0x7F)
-            value >>= 7
-            bytes.append(value == 0 ? byte : byte | 0x80)
-        } while value != 0
-        return Data(bytes)
-    }
-
-    private func derLength(_ count: Int) -> Data {
-        count < 0x80 ? Data([UInt8(count)]) : Data([0x82, UInt8(count >> 8), UInt8(count & 0xFF)])
-    }
-
-    /// A new RSA key pair and its public key as a DER SubjectPublicKeyInfo.
-    private func rsaKey() throws -> (privateKey: SecKey, spki: Data) {
-        let attributes: [CFString: Any] = [kSecAttrKeyType: kSecAttrKeyTypeRSA, kSecAttrKeySizeInBits: 2_048]
-        let privateKey = try #require(SecKeyCreateRandomKey(attributes as CFDictionary, nil))
-        let publicKey = try #require(SecKeyCopyPublicKey(privateKey))
-        let pkcs1 = try #require(SecKeyCopyExternalRepresentation(publicKey, nil) as Data?)
-        let algorithm = Data([0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, 0x05, 0x00])
-        let bitString = Data([0x03]) + derLength(pkcs1.count + 1) + Data([0x00]) + pkcs1
-        let body = algorithm + bitString
-        return (privateKey, Data([0x30]) + derLength(body.count) + body)
-    }
-
-    private func sign(_ message: Data, with key: SecKey) throws -> Data {
-        try #require(SecKeyCreateSignature(key, .rsaSignatureMessagePKCS1v15SHA256, message as CFData, nil) as Data?)
-    }
-
-    /// A CRX3 file whose header names `crxKey`'s ID and carries proofs by `signers`.
-    private func crx(zip: Data, crxKey: Data, signers: [(spki: Data, key: SecKey)]) throws -> Data {
-        let signedHeaderData = lengthDelimited(1, Data(SHA256.hash(data: crxKey).prefix(16)))
-        var signedLength = UInt32(signedHeaderData.count).littleEndian
-        let message = Data("CRX3 SignedData\u{0}".utf8) + Data(bytes: &signedLength, count: 4) + signedHeaderData + zip
-        var header = Data()
-        for signer in signers {
-            header += try lengthDelimited(2, lengthDelimited(1, signer.spki) + lengthDelimited(2, sign(message, with: signer.key)))
-        }
-        header += lengthDelimited(10_000, signedHeaderData)
-        var version = UInt32(3).littleEndian
-        var length = UInt32(header.count).littleEndian
-        return Data("Cr24".utf8) + Data(bytes: &version, count: 4) + Data(bytes: &length, count: 4) + header + zip
-    }
+    private let zip = Data("PK\u{3}\u{4}payload".utf8)
 
     @Test
     func `A CRX signed by the key its ID names yields that ID, whatever else signed it`() throws {
-        let store = try rsaKey()
-        let developer = try rsaKey()
-        let zip = Data("PK\u{3}\u{4}payload".utf8)
-        let file = try crx(zip: zip, crxKey: developer.spki, signers: [(store.spki, store.privateKey), (developer.spki, developer.privateKey)])
+        let store = try TestArchives.rsaSigner()
+        let developer = try TestArchives.rsaSigner()
+        let file = try TestArchives.crx(zip: zip, developer: developer, signers: [store, developer])
 
         let contents = try ExtensionArchive.contents(ofCRX: file)
 
@@ -262,25 +213,98 @@ struct ExtensionArchiveTests {
     }
 
     @Test
+    func `An ECDSA proof verifies too`() throws {
+        let developer = try TestArchives.ecdsaSigner()
+        let file = try TestArchives.crx(zip: zip, developer: developer, signers: [developer])
+        #expect(try ExtensionArchive.contents(ofCRX: file).chromeID == ExtensionIdentity.chromeID(forPublicKey: developer.spki))
+    }
+
+    @Test
     func `A CRX whose payload changed after signing, or that the named key never signed, is refused`() throws {
-        let developer = try rsaKey()
-        let other = try rsaKey()
-        var tampered = try crx(zip: Data("PK\u{3}\u{4}payload".utf8), crxKey: developer.spki, signers: [(developer.spki, developer.privateKey)])
+        let developer = try TestArchives.rsaSigner()
+        let other = try TestArchives.rsaSigner()
+        var tampered = try TestArchives.crx(zip: zip, developer: developer, signers: [developer])
         tampered[tampered.count - 1] ^= 0xFF
-        #expect(throws: ExtensionError.self) {
+        #expect(throws: ExtensionError.invalidSignature) {
             try ExtensionArchive.contents(ofCRX: tampered)
         }
 
-        let unsigned = try crx(zip: Data("PK\u{3}\u{4}payload".utf8), crxKey: developer.spki, signers: [(other.spki, other.privateKey)])
-        #expect(throws: ExtensionError.self) {
+        let unsigned = try TestArchives.crx(zip: zip, developer: developer, signers: [other])
+        #expect(throws: ExtensionError.invalidSignature) {
             try ExtensionArchive.contents(ofCRX: unsigned)
         }
     }
 
     @Test
-    func `Anything but a CRX3 file is refused`() {
-        #expect(throws: (any Error).self) {
+    func `Every proof must verify, not only the developer's`() throws {
+        let developer = try TestArchives.rsaSigner()
+        let store = try TestArchives.rsaSigner()
+        let signed = TestArchives.signedHeaderData(for: developer.spki)
+        let message = TestArchives.signedMessage(signedHeaderData: signed, zip: zip)
+        let header = try TestArchives.proof(by: developer, signature: developer.sign(message))
+            + TestArchives.proof(by: store, signature: Data(repeating: 1, count: 256))
+            + TestArchives.lengthDelimited(10_000, signed)
+        #expect(throws: ExtensionError.invalidSignature) {
+            try ExtensionArchive.contents(ofCRX: TestArchives.crx(header: header, zip: zip))
+        }
+    }
+
+    @Test
+    func `A field that appears twice counts by its last occurrence`() throws {
+        let developer = try TestArchives.rsaSigner()
+        let decoy = try TestArchives.rsaSigner()
+        let signed = TestArchives.signedHeaderData(for: developer.spki)
+        let message = TestArchives.signedMessage(signedHeaderData: signed, zip: zip)
+        let header = try TestArchives.proof(by: developer, signature: developer.sign(message))
+            + TestArchives.lengthDelimited(10_000, TestArchives.signedHeaderData(for: decoy.spki))
+            + TestArchives.lengthDelimited(10_000, signed)
+        #expect(try ExtensionArchive.contents(ofCRX: TestArchives.crx(header: header, zip: zip)).chromeID
+            == ExtensionIdentity.chromeID(forPublicKey: developer.spki))
+
+        // The last header data names the decoy, which signed nothing.
+        let swapped = try TestArchives.proof(by: developer, signature: developer.sign(message))
+            + TestArchives.lengthDelimited(10_000, signed)
+            + TestArchives.lengthDelimited(10_000, TestArchives.signedHeaderData(for: decoy.spki))
+        #expect(throws: ExtensionError.invalidSignature) {
+            try ExtensionArchive.contents(ofCRX: TestArchives.crx(header: swapped, zip: zip))
+        }
+    }
+
+    @Test
+    func `A header longer than the file, or anything but a CRX3 file, is refused`() {
+        var file = TestArchives.crx(header: Data(count: 8), zip: zip)
+        file.replaceSubrange(8 ..< 12, with: [0xFF, 0xFF, 0xFF, 0x7F])
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ExtensionArchive.contents(ofCRX: file)
+        }
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
             try ExtensionArchive.contents(ofCRX: Data("PK\u{3}\u{4}".utf8))
+        }
+    }
+
+    @Test
+    func `An archive with a path out of it, an absolute path, or a symbolic link is refused`() throws {
+        let file: UInt32 = 0o100644
+        let link: UInt32 = 0o120777
+        try ZipInspection.check(TestArchives.centralDirectory([("manifest.json", file, 10), ("js/a.js", file, 10)]))
+        let unsafe: [[(name: String, mode: UInt32, size: UInt32)]] = [
+            [("../outside.js", file, 10)],
+            [("js/../../outside.js", file, 10)],
+            [("/etc/hosts", file, 10)],
+            [("link", link, 10)],
+        ]
+        for entries in unsafe {
+            #expect(throws: ExtensionError.invalidArchiveFormat) {
+                try ZipInspection.check(TestArchives.centralDirectory(entries))
+            }
+        }
+    }
+
+    @Test
+    func `An archive that unpacks past the size limit is refused`() {
+        let file: UInt32 = 0o100644
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ZipInspection.check(TestArchives.centralDirectory([("a", file, 0xF000_0000), ("b", file, 0xF000_0000)]))
         }
     }
 

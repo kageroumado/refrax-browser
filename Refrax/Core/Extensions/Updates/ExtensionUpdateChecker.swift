@@ -409,11 +409,7 @@ actor ExtensionUpdateChecker {
         }
 
         do {
-            // Uninstall old version (preserving data via new install)
-            try await manager.uninstall(extension_)
-
-            // Install new version from downloaded file
-            _ = try await manager.installFromArchive(downloadedURL)
+            try await manager.update(extension_, from: downloadedURL)
 
             Logger.info(
                 "Updated extension '\(extension_.displayName)' from \(updateInfo.currentVersion) to \(updateInfo.newVersion)",
@@ -488,8 +484,12 @@ actor ExtensionUpdateChecker {
             let part1 = i < v1Parts.count ? v1Parts[i] : 0
             let part2 = i < v2Parts.count ? v2Parts[i] : 0
 
-            if part1 < part2 { return .orderedAscending }
-            if part1 > part2 { return .orderedDescending }
+            if part1 < part2 {
+                return .orderedAscending
+            }
+            if part1 > part2 {
+                return .orderedDescending
+            }
         }
 
         return .orderedSame

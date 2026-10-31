@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import Network
+import Security
 import Testing
 import WebKit
 @testable import Refrax
@@ -36,10 +38,10 @@ struct ExtensionFixture {
     /// A context for the extension with its permissions granted and its identity set, not
     /// yet loaded.
     @MainActor
-    func makeContext(installedID: String = UUID().uuidString) async throws -> WKWebExtensionContext {
+    func makeContext(installedID: String = UUID().uuidString, spaceID: UUID? = nil) async throws -> WKWebExtensionContext {
         let webExtension = try await WKWebExtension(resourceBaseURL: write())
         let context = WKWebExtensionContext(for: webExtension)
-        let identifier = ExtensionContextIdentifier.identifier(installedID: installedID, spaceID: nil)
+        let identifier = ExtensionContextIdentifier.identifier(installedID: installedID, spaceID: spaceID)
         context.uniqueIdentifier = identifier
         context.baseURL = ExtensionContextIdentifier.baseURL(for: identifier)
         Self.grantEverything(to: context)
@@ -111,7 +113,7 @@ struct EchoHostFixture {
     let directory: URL
     let executable: URL
 
-    private static let script = #"""
+    static let echoScript = #"""
     #!/usr/bin/perl
     use strict;
     use warnings;
@@ -141,14 +143,19 @@ struct EchoHostFixture {
     /// - Parameters:
     ///   - allowedOrigins: The manifest's Chrome-format `allowed_origins`.
     ///   - allowedExtensions: The manifest's Firefox-format `allowed_extensions`.
-    init(name: String = "refrax.test.echo", allowedOrigins: [String]? = nil, allowedExtensions: [String]? = nil) throws {
+    init(
+        name: String = "refrax.test.echo",
+        script: String = EchoHostFixture.echoScript,
+        allowedOrigins: [String]? = nil,
+        allowedExtensions: [String]? = nil,
+    ) throws {
         self.name = name
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("refrax-native-host-\(UUID().uuidString)", isDirectory: true)
         self.directory = root.appendingPathComponent("NativeMessagingHosts", isDirectory: true)
         self.executable = root.appendingPathComponent("echo-host.pl")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Self.script.write(to: executable, atomically: true, encoding: .utf8)
+        try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
 
         var manifest: [String: Any] = ["name": name, "description": "Echo", "path": executable.path, "type": "stdio"]
@@ -156,6 +163,30 @@ struct EchoHostFixture {
         manifest["allowed_extensions"] = allowedExtensions
         try JSONSerialization.data(withJSONObject: manifest).write(to: directory.appendingPathComponent("\(name).json"))
     }
+
+    /// A host that announces a reply larger than a host may send, then waits.
+    static let oversizedScript = """
+    #!/usr/bin/perl
+    binmode STDOUT;
+    $| = 1;
+    print pack("V", 2 * 1024 * 1024);
+    sleep 30;
+    """
+
+    /// A host that closes its output at once, then waits.
+    static let closingScript = """
+    #!/usr/bin/perl
+    close(STDOUT);
+    sleep 30;
+    """
+
+    /// A host that reads and never answers.
+    static let silentScript = """
+    #!/usr/bin/perl
+    my $header;
+    read(STDIN, $header, 4);
+    sleep 30;
+    """
 
     var locator: NativeMessagingHostLocator {
         NativeMessagingHostLocator(refraxDirectory: nil, browserDirectories: [directory])
@@ -229,5 +260,132 @@ final class LoopbackHTTPServer {
                 })
             }
         }
+    }
+}
+
+/// Builders for signed CRX3 files and ZIP archives.
+enum TestArchives {
+    static func lengthDelimited(_ field: UInt64, _ value: Data) -> Data {
+        varint(field << 3 | 2) + varint(UInt64(value.count)) + value
+    }
+
+    static func varint(_ value: UInt64) -> Data {
+        var value = value
+        var bytes: [UInt8] = []
+        repeat {
+            let byte = UInt8(value & 0x7F)
+            value >>= 7
+            bytes.append(value == 0 ? byte : byte | 0x80)
+        } while value != 0
+        return Data(bytes)
+    }
+
+    private static func derLength(_ count: Int) -> Data {
+        count < 0x80 ? Data([UInt8(count)]) : Data([0x82, UInt8(count >> 8), UInt8(count & 0xFF)])
+    }
+
+    private static func spki(algorithm: Data, key: Data) -> Data {
+        let bitString = Data([0x03]) + derLength(key.count + 1) + Data([0x00]) + key
+        let body = algorithm + bitString
+        return Data([0x30]) + derLength(body.count) + body
+    }
+
+    /// A signing key and its public key as a DER SubjectPublicKeyInfo.
+    struct Signer {
+        let privateKey: SecKey
+        let spki: Data
+        let isECDSA: Bool
+
+        func sign(_ message: Data) throws -> Data {
+            let algorithm: SecKeyAlgorithm = isECDSA ? .ecdsaSignatureMessageX962SHA256 : .rsaSignatureMessagePKCS1v15SHA256
+            return try #require(SecKeyCreateSignature(privateKey, algorithm, message as CFData, nil) as Data?)
+        }
+    }
+
+    static func rsaSigner() throws -> Signer {
+        let attributes: [CFString: Any] = [kSecAttrKeyType: kSecAttrKeyTypeRSA, kSecAttrKeySizeInBits: 2_048]
+        let privateKey = try #require(SecKeyCreateRandomKey(attributes as CFDictionary, nil))
+        let pkcs1 = try #require(SecKeyCopyPublicKey(privateKey).flatMap { SecKeyCopyExternalRepresentation($0, nil) as Data? })
+        let algorithm = Data([0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, 0x05, 0x00])
+        return Signer(privateKey: privateKey, spki: spki(algorithm: algorithm, key: pkcs1), isECDSA: false)
+    }
+
+    static func ecdsaSigner() throws -> Signer {
+        let attributes: [CFString: Any] = [kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeySizeInBits: 256]
+        let privateKey = try #require(SecKeyCreateRandomKey(attributes as CFDictionary, nil))
+        let point = try #require(SecKeyCopyPublicKey(privateKey).flatMap { SecKeyCopyExternalRepresentation($0, nil) as Data? })
+        let algorithm = Data([
+            0x30, 0x13, 0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01,
+            0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07,
+        ])
+        return Signer(privateKey: privateKey, spki: spki(algorithm: algorithm, key: point), isECDSA: true)
+    }
+
+    /// The signed header data naming `key`'s CRX ID.
+    static func signedHeaderData(for key: Data) -> Data {
+        lengthDelimited(1, Data(SHA256.hash(data: key).prefix(16)))
+    }
+
+    /// What every proof signs.
+    static func signedMessage(signedHeaderData: Data, zip: Data) -> Data {
+        var length = UInt32(signedHeaderData.count).littleEndian
+        return Data("CRX3 SignedData\u{0}".utf8) + Data(bytes: &length, count: 4) + signedHeaderData + zip
+    }
+
+    /// A proof field: field 2 for RSA, 3 for ECDSA.
+    static func proof(by signer: Signer, signature: Data) -> Data {
+        lengthDelimited(signer.isECDSA ? 3 : 2, lengthDelimited(1, signer.spki) + lengthDelimited(2, signature))
+    }
+
+    /// A CRX3 file with `header` and `zip`.
+    static func crx(header: Data, zip: Data) -> Data {
+        var version = UInt32(3).littleEndian
+        var length = UInt32(header.count).littleEndian
+        return Data("Cr24".utf8) + Data(bytes: &version, count: 4) + Data(bytes: &length, count: 4) + header + zip
+    }
+
+    /// A CRX3 file whose ID is `developer`'s, signed by each of `signers`.
+    static func crx(zip: Data, developer: Signer, signers: [Signer]) throws -> Data {
+        let signed = signedHeaderData(for: developer.spki)
+        let message = signedMessage(signedHeaderData: signed, zip: zip)
+        let proofs = try signers.map { try proof(by: $0, signature: $0.sign(message)) }.reduce(Data(), +)
+        return crx(header: proofs + lengthDelimited(10_000, signed), zip: zip)
+    }
+
+    /// `folder` zipped, as an XPI is.
+    static func zip(_ folder: URL) throws -> Data {
+        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("refrax-archive-\(UUID().uuidString).zip")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = folder
+        process.arguments = ["-q", "-r", archive.path, "."]
+        try process.run()
+        process.waitUntilExit()
+        return try Data(contentsOf: archive)
+    }
+
+    /// A ZIP central directory with entries named `names`, each `size` bytes, and Unix modes.
+    static func centralDirectory(_ entries: [(name: String, mode: UInt32, size: UInt32)]) -> Data {
+        func le16(_ value: Int) -> Data {
+            Data([UInt8(value & 0xFF), UInt8(value >> 8 & 0xFF)])
+        }
+        func le32(_ value: UInt32) -> Data {
+            Data((0 ..< 4).map { UInt8(value >> (8 * $0) & 0xFF) })
+        }
+        var directory = Data()
+        for entry in entries {
+            let name = Data(entry.name.utf8)
+            let parts: [Data] = [
+                le32(0x0201_4B50), le16(0x031E), le16(20), le16(0), le16(0), le16(0), le16(0),
+                le32(0), le32(entry.size), le32(entry.size), le16(name.count), le16(0), le16(0),
+                le16(0), le16(0), le32(entry.mode << 16), le32(0), name,
+            ]
+            directory.append(contentsOf: parts.joined())
+        }
+        let end: [Data] = [
+            le32(0x0605_4B50), le16(0), le16(0), le16(entries.count), le16(entries.count),
+            le32(UInt32(directory.count)), le32(0), le16(0),
+        ]
+        return directory + Data(end.joined())
     }
 }
