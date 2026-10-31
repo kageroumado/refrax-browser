@@ -205,6 +205,15 @@ struct IslandHeader: View {
         add("New Tab in \(island.title)", to: menu) { islands.addTab(to: id) }
         add(island.placement.iconsOnly ? "Show Titles" : "Show as Icon Rail", to: menu) { islands.toggleIconsOnly(id) }
         add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
+        let only = NSMenu(title: "Show Only")
+        add("All Tabs", to: only, state: islands.filter == nil ? .on : .off) { islands.setFilter(nil) }
+        only.addItem(.separator())
+        for filter in IslandFilter.allCases {
+            add(filter.title, to: only, state: islands.filter == filter ? .on : .off) { islands.setFilter(filter) }
+        }
+        let onlyItem = NSMenuItem(title: "Show Only", action: nil, keyEquivalent: "")
+        onlyItem.submenu = only
+        menu.addItem(onlyItem)
         if !island.isDefault {
             add("Edit Island…", to: menu) { editAfterMenu = true }
             let parents = islands.islands.filter { islands.canNest(id, in: $0.id) }

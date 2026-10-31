@@ -175,6 +175,7 @@ final class CommandLensManager {
             HistoryProvider(historyManager: historyManager),
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
             ActionsProvider(tabs: tabManager, windowState: windowState),
+            IslandsProvider(windowState: windowState),
         ]
         // The tour's page comes before every other suggestion while a tour step asks for one.
         if let floatingTour {
@@ -1721,6 +1722,14 @@ final class CommandLensManager {
             case .showOpenTabs:
                 showOpenTabs()
                 return
+            case let .filterIslands(filter):
+                if let islands = windowState.islandController {
+                    islands.setFilter(filter)
+                    // The islands come up to show what the filter kept.
+                    if filter != nil, !islands.isRevealed {
+                        (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggleFloatingTabs()
+                    }
+                }
             }
             closeCurrentLens()
             reset()

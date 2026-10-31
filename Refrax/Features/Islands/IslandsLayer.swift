@@ -48,6 +48,13 @@ struct IslandsLayer: View {
                         .zIndex(6)
                         .allowsHitTesting(false)
                     }
+                    if let origin = islands.filterBadgeOrigin(size: IslandFilterBadge.Layout.size, gap: IslandFilterBadge.Layout.gap) {
+                        IslandFilterBadge()
+                            .frame(height: IslandFilterBadge.Layout.size.height)
+                            .offset(x: origin.x, y: origin.y)
+                            .zIndex(4)
+                            .transition(.opacity)
+                    }
                     if let island = islands.startHintIsland {
                         let origin = IslandDropPlacement.hintOrigin(
                             beside: islands.fullFrame(of: island), size: IslandStartHint.Layout.size, gap: IslandStartHint.Layout.gap, in: bounds,
@@ -71,6 +78,7 @@ struct IslandsLayer: View {
                 .animation(.easeOut(duration: 0.15), value: islands.sideDrop)
                 .animation(.easeOut(duration: 0.15), value: islands.islandGhost == nil)
                 .animation(.easeOut(duration: 0.2), value: islands.startHintIsland?.id)
+                .animation(.easeOut(duration: 0.15), value: islands.filter)
                 .animation(.easeOut(duration: 0.15), value: islands.previewedTabID)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .coordinateSpace(name: "islands")
@@ -378,6 +386,47 @@ struct IslandStartHint: View {
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drag a tab here to start an island")
+    }
+}
+
+/// The quick filter on the islands, beside them while it is on: what it shows, or that it
+/// matches nothing, and a button that brings every tab back.
+struct IslandFilterBadge: View {
+    @Environment(IslandController.self) private var islands
+
+    enum Layout {
+        /// The room the badge is placed with; the capsule itself takes its text's width.
+        static let size = CGSize(width: 260, height: 28)
+        static let gap: CGFloat = 10
+        static let glyphSize: CGFloat = 10
+    }
+
+    var body: some View {
+        if let filter = islands.filter {
+            let text = islands.visibleIslands.isEmpty ? filter.emptyDescription : filter.description
+            HStack(spacing: 6) {
+                Image(systemName: filter.symbol)
+                    .font(.system(size: Layout.glyphSize))
+                    .foregroundStyle(.secondary)
+                Text(text)
+                    .font(.caption)
+                    .lineLimit(1)
+                Button("Show All") {
+                    islands.setFilter(nil)
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.appAccentColor)
+                .pointerStyle(.default)
+                .help("Show every tab")
+            }
+            .padding(.horizontal, 12)
+            .frame(height: Layout.size.height)
+            .fixedSize()
+            .glassEffect(.regular, in: .capsule)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(text)
+        }
     }
 }
 

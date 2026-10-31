@@ -136,6 +136,8 @@ final class IslandController {
         var spaceID: UUID?
         var tabListVersion: UInt64
         var activeTabID: UUID?
+        /// The tabs a quick filter keeps, followed as the pages' sound and capture change.
+        var filtered: Set<UUID>?
     }
 
     // MARK: - State
@@ -167,6 +169,8 @@ final class IslandController {
     private(set) var startHintDismissed: Bool
     @ObservationIgnored private let defaults: UserDefaults
     static let startHintKey = "islands.startHintDismissed"
+    /// The quick filter on the islands: only the tabs it matches keep their rows.
+    private(set) var filter: IslandFilter?
     /// Rows chosen with ⇧ or ⌘, on one island, for actions on several tabs at once.
     private(set) var selectedTabIDs: Set<UUID> = []
     /// The row the pointer has rested on, whose page shows as a preview beside its island.
@@ -248,8 +252,11 @@ final class IslandController {
         canvas.islandDrop = { [weak self] tab, point in self?.attach(tab, at: point) ?? false }
         let windowState = windowState
         let tabManager = tabManager
-        let changes = Observations {
-            SyncKey(spaceID: windowState.activeSpaceID, tabListVersion: tabManager.state.tabListVersion, activeTabID: windowState.activeTabID)
+        let changes = Observations { [weak self] in
+            SyncKey(
+                spaceID: windowState.activeSpaceID, tabListVersion: tabManager.state.tabListVersion, activeTabID: windowState.activeTabID,
+                filtered: self?.filteredTabIDs(),
+            )
         }
         tasks.append(Task(name: "Follow the space's islands") { [weak self] in
             for await key in changes {
@@ -338,7 +345,7 @@ final class IslandController {
     /// The loose tabs' island the one-time hint stands beside: while the space has no island
     /// but that one, with tabs enough to pull one out, it shows, and no row is on its way.
     var startHintIsland: Island? {
-        guard !startHintDismissed, draggedTabID == nil, islands.count == 1, let island = visibleIslands.first,
+        guard !startHintDismissed, filter == nil, draggedTabID == nil, islands.count == 1, let island = visibleIslands.first,
               island.isDefault, island.tabIDs.count >= 2 else { return nil }
         return island
     }
@@ -572,11 +579,15 @@ final class IslandController {
             spaceID = space.id
             state = IslandState.decode(space.tableLayoutData)
             lastTab = [:]
+            filter = nil
         }
         repairPanes(in: space)
-        // Favorites, docked pages, and tabs floating as cards are not rows.
+        // Favorites, docked pages, and tabs floating as cards are not rows; a quick filter
+        // keeps only the tabs it matches.
+        let filtered = filteredTabIDs()
         let onIslands = space.mainTabs.filter {
             !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
+                && filtered?.contains($0.id) != false
         }
         let current = windowState.activeTabID
         func members(of groupID: UUID) -> [UUID] {
@@ -797,6 +808,42 @@ final class IslandController {
         state.islands.removeValue(forKey: islandID)
         groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
         rebuild()
+    }
+
+    // MARK: - Quick filters
+
+    /// Turns a quick filter on, or every row back with `nil`; switching spaces turns it off.
+    func setFilter(_ filter: IslandFilter?) {
+        guard self.filter != filter else { return }
+        self.filter = filter
+        clearSelection()
+        rebuild()
+    }
+
+    /// Where the word on the filter stands, `size` big: beside the first island on screen, else
+    /// at the islands' first place, right of the rail; `nil` while no filter is on or no
+    /// island could show.
+    func filterBadgeOrigin(size: CGSize, gap: CGFloat) -> CGPoint? {
+        guard filter != nil, isRevealed || !visibleIslands.isEmpty, !windowState.isSpaceLocked, !windowState.isDetailTrayVisible,
+              !windowState.showsCenteredLens else { return nil }
+        if let island = visibleIslands.first {
+            return IslandDropPlacement.hintOrigin(beside: fullFrame(of: island), size: size, gap: gap, in: area)
+        }
+        let rail = windowState.controlIsland.railFrame
+        let x = rail.isEmpty || rail.midX > area.midX ? area.minX : rail.maxX + Layout.islandGap
+        return CGPoint(x: min(x, max(area.minX, area.maxX - size.width)), y: area.minY)
+    }
+
+    /// The tabs of the space the filter keeps: those it matches and the current one; `nil`
+    /// while no filter is on.
+    func filteredTabIDs() -> Set<UUID>? {
+        guard let filter, let space = windowState.activeSpace else { return nil }
+        return filter.shown(space.mainTabs.map { ($0.id, facts(for: $0)) }, current: windowState.activeTabID)
+    }
+
+    /// What a filter reads of `tab`.
+    func facts(for tab: Tab) -> IslandRowFacts {
+        IslandRowFacts(state: TabMediaControl(tab: tab, pagePool: pagePool).state, isUnread: tab.isUnread)
     }
 
     // MARK: - Sections
