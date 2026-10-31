@@ -382,6 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             webNotifications.handle(event, from: engineID)
         }
         self.keyboardShortcutsManager = KeyboardShortcutsManager(windowManager: windowManager)
+        keyboardShortcutsManager.setExtensionManager(extensionManager)
         
         self.menuBarManager = MenuBarManager(
             windowManager: windowManager,

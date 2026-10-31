@@ -30,7 +30,6 @@ final class KeyboardShortcutsManager: Sendable {
     // MARK: - Dependencies
 
     private weak var windowManager: WindowManager?
-    private weak var extensionManager: ExtensionManager?
 
     /// Handler for extension keyboard commands.
     private nonisolated(unsafe) var extensionCommandHandler: ExtensionCommandHandler?
@@ -55,7 +54,6 @@ final class KeyboardShortcutsManager: Sendable {
     ///
     /// - Parameter manager: The extension manager.
     func setExtensionManager(_ manager: ExtensionManager) {
-        extensionManager = manager
         extensionCommandHandler = ExtensionCommandHandler(extensionManager: manager)
     }
 
@@ -187,12 +185,9 @@ final class KeyboardShortcutsManager: Sendable {
             }
         }
 
-        // Extension shortcuts (checked after all system shortcuts)
-        if let handler = extensionCommandHandler {
-            let result = handler.handleKeyDown(event)
-            if case .handled = result {
-                return nil
-            }
+        // Extension commands, after every Refrax shortcut
+        if extensionCommandHandler?.perform(event, in: controller.windowState) == true {
+            return nil
         }
 
         return event
