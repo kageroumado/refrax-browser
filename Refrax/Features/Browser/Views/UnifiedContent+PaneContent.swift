@@ -173,6 +173,11 @@ struct PaneContentWrapper: View {
             CrashPageView(page: page, crashError: crashError)
         }
 
+        // A page Shields blocked from opening
+        if let blockedURL = page.shieldsBlockedURL {
+            ShieldsBlockedPageView(page: page, url: blockedURL)
+        }
+
         // HTTP error page overlay (4xx, 5xx, and network error codes)
         if let errorCode = page.httpErrorCode, let failedURL = page.httpErrorURL {
             ErrorPageView(page: page, statusCode: errorCode, failedURL: failedURL)

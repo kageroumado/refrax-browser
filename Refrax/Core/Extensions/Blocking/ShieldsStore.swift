@@ -7,26 +7,44 @@ import Observation
 /// ``ContentBlockingManager`` (an actor) owns lists and builds; ``ShieldsWebKit`` puts a
 /// build into WebKit; this store connects them, publishes the `contentBlocking` policy to the
 /// other engines, and answers the request logger.
+///
+/// A build reaches the other engines as soon as it exists, whatever WebKit makes of it. At
+/// launch, page loads wait (``waitUntilReady(timeout:)``, at most 1.5 s) until WebKit has a
+/// build attached; the one attached at the last quit usually is within milliseconds, since
+/// WebKit keeps its compiled lists.
 @Observable
 final class ShieldsStore {
+    private enum Constants {
+        /// How long a page load waits at launch for Shields before it goes ahead unfiltered.
+        static let readinessTimeout: Duration = .milliseconds(1_500)
+    }
+
     /// The lists, with their state as of the last change.
     private(set) var lists: [FilterListSource] = []
-    /// The build attached to WebKit and sent to the other engines.
+    /// The newest build, sent to the other engines; WebKit's is ``ShieldsWebKit/artifacts``.
     private(set) var artifacts: ShieldsArtifacts?
     private(set) var isUpdating = false
     private(set) var lastUpdate: Date?
-    private(set) var lastError: String?
+    /// Why the last fetch, build or WebKit install failed.
+    var lastError: String? {
+        installError ?? buildError
+    }
+
     /// Whether Shields filters at all (``BrowserSettings/enableContentBlocking``).
     private(set) var isEnabled = true
-    private(set) var mode = ContentBlockingPolicy.Mode.standard
     /// Sites the user turned Shields off for.
     private(set) var allowlistedHosts: [String] = []
     /// Whether a uBlock Origin extension is on. Shields then leaves cosmetic filtering and
     /// scriptlets to it and keeps its own network lists, which uBO cannot apply on WebKit.
     private(set) var isUBlockOriginActive = false
+    /// Whether WebKit has a build attached, or Shields has nothing more to attach.
+    private(set) var isReady = false
+
+    private var buildError: String?
+    private var installError: String?
 
     let webKit: ShieldsWebKit
-    @ObservationIgnored let manager = ContentBlockingManager()
+    @ObservationIgnored let manager: ContentBlockingManager
 
     /// Receives the `contentBlocking` policy for engines other than WebKit.
     @ObservationIgnored var onPolicy: ((ContentBlockingPolicy) -> Void)? {
@@ -34,46 +52,82 @@ final class ShieldsStore {
     }
 
     @ObservationIgnored private var isStarted = false
+    @ObservationIgnored private var readinessWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// Hosts whose blocked pages the user chose to open; kept until quit.
+    @ObservationIgnored private var hostsOpenedAnyway: Set<String> = []
 
-    init(webKit: ShieldsWebKit) {
+    init(webKit: ShieldsWebKit, manager: ContentBlockingManager = ContentBlockingManager()) {
         self.webKit = webKit
+        self.manager = manager
     }
 
     // MARK: - Starting
 
-    /// Attaches the cached build and starts list updates. Returns without waiting for a
-    /// download or a build.
+    /// Attaches the build WebKit had at the last quit, builds the current lists and starts
+    /// list updates. Returns without waiting for a download.
     func start() async {
         guard !isStarted else { return }
         isStarted = true
         await manager.start(
             onChange: { [weak self] snapshot in self?.apply(snapshot) },
-            onBuild: { [weak self] artifacts in await self?.install(artifacts) },
+            onBuild: { [weak self] artifacts in await self?.install(artifacts) ?? .skipped },
         )
+        markReady()
     }
 
     private func apply(_ snapshot: ContentBlockingManager.Snapshot) {
         lists = snapshot.lists
         isUpdating = snapshot.isUpdating
         lastUpdate = snapshot.lastUpdate
-        lastError = snapshot.lastError
+        buildError = snapshot.lastError
     }
 
-    private func install(_ artifacts: ShieldsArtifacts) async {
-        guard isEnabled else {
-            self.artifacts = artifacts
-            publishPolicy()
-            return
-        }
-        do {
-            try await webKit.install(artifacts)
-            self.artifacts = artifacts
-        } catch {
-            lastError = "WebKit could not compile the rule lists: \(error.localizedDescription)"
-            Logger.error("Shields WebKit install failed, keeping the previous build: \(error)", category: Logger.tabs)
-            return
-        }
+    /// Publishes `artifacts` to the other engines, then attaches it to WebKit.
+    private func install(_ artifacts: ShieldsArtifacts) async -> ContentBlockingManager.InstallResult {
+        self.artifacts = artifacts
         publishPolicy()
+        guard isEnabled else { return .skipped }
+        do {
+            let attached = try await webKit.install(artifacts) { [weak self] in self?.isEnabled == true }
+            guard attached else { return .skipped }
+            installError = nil
+            markReady()
+            return .attached
+        } catch {
+            installError = "WebKit could not compile the rule lists: \(error.localizedDescription)"
+            Logger.error("Shields WebKit install failed, keeping the previous build: \(error)", category: Logger.tabs)
+            return .failed
+        }
+    }
+
+    // MARK: - Readiness
+
+    /// Waits until WebKit has Shields' lists attached, or `timeout` passes. Returns at once
+    /// when Shields is off or ready.
+    func waitUntilReady(timeout: Duration = Constants.readinessTimeout) async {
+        guard isEnabled, !isReady else { return }
+        let id = UUID()
+        let timer = Task(name: "Shields readiness timeout") { [weak self] in
+            try? await Task.sleep(for: timeout)
+            self?.resumeWaiter(id)
+        }
+        await withCheckedContinuation { continuation in
+            readinessWaiters[id] = continuation
+        }
+        timer.cancel()
+    }
+
+    private func resumeWaiter(_ id: UUID) {
+        readinessWaiters.removeValue(forKey: id)?.resume()
+    }
+
+    private func markReady() {
+        isReady = true
+        let waiters = readinessWaiters.values
+        readinessWaiters = [:]
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     // MARK: - Intents
@@ -82,18 +136,11 @@ final class ShieldsStore {
         guard enabled != isEnabled else { return }
         isEnabled = enabled
         if enabled {
-            if let artifacts {
-                Task(name: "Shields re-attach") { try? await webKit.install(artifacts) }
-            }
+            Task(name: "Shields re-attach") { await manager.reinstall() }
         } else {
             webKit.uninstall()
+            markReady()
         }
-        publishPolicy()
-    }
-
-    func setMode(_ mode: ContentBlockingPolicy.Mode) {
-        guard mode != self.mode else { return }
-        self.mode = mode
         publishPolicy()
     }
 
@@ -132,17 +179,34 @@ final class ShieldsStore {
         Task(name: "Shields update") { await manager.updateFilterLists(force: true) }
     }
 
+    // MARK: - Pages
+
+    /// Whether Shields blocks opening `url` as a page: a filter matches it as a document, and
+    /// neither the site's exemption nor the user's "open anyway" lets it through.
+    func blocksPage(_ url: URL, siteIsExempt: Bool) async -> Bool {
+        guard isEnabled, !siteIsExempt, url.isWebURL,
+              !hostsOpenedAnyway.contains(url.host()?.lowercased() ?? "")
+        else { return false }
+        return await manager.blocksDocument(url)
+    }
+
+    /// Lets `url`'s site open pages Shields blocks, until quit.
+    func openAnyway(_ url: URL) {
+        if let host = url.host()?.lowercased() {
+            hostsOpenedAnyway.insert(host)
+        }
+    }
+
     // MARK: - Policy
 
     /// The `contentBlocking` policy for the current build and settings.
     var policy: ContentBlockingPolicy {
         guard isEnabled, let artifacts else {
-            return ContentBlockingPolicy(isEnabled: false, mode: mode, allowlistedHosts: allowlistedHosts)
+            return ContentBlockingPolicy(isEnabled: false, allowlistedHosts: allowlistedHosts)
         }
         let manifest = artifacts.manifest
         return ContentBlockingPolicy(
             isEnabled: true,
-            mode: mode,
             engine: .init(path: artifacts.engineURL, sha256: manifest.engineSHA256, format: manifest.format),
             resources: .init(path: artifacts.resourcesURL, sha256: manifest.resourcesSHA256),
             lists: manifest.lists.map { .init(id: $0.id, sourceIndex: $0.sourceIndex) },
@@ -167,13 +231,17 @@ final class ShieldsStore {
         page.shieldsLog.record(url: url, frameURL: page.url, decision: blocked ? .blocked : .redirected)
     }
 
-    /// `page`'s log after `sequence`, with every entry's rule named.
-    func requestLog(for page: WebPage, since sequence: Int64 = 0) async throws -> RequestLog {
+    /// `page`'s log after `sequence`.
+    ///
+    /// - Parameter attributed: Whether to name every entry's rule, which loads the engine with
+    ///   rule text and asks it about each entry; the popover, which shows hosts, skips it.
+    func requestLog(for page: WebPage, since sequence: Int64 = 0, attributed: Bool = true) async throws -> RequestLog {
         let log = if let enginePage = page.enginePage {
             try await enginePage.requestLog(since: sequence)
         } else {
             page.shieldsLog.log(since: sequence)
         }
+        guard attributed else { return log }
         let engine = await manager.debugEngine()
         let lists = listIDsBySourceIndex
         return await Self.attribute(log, engine: engine, lists: lists)

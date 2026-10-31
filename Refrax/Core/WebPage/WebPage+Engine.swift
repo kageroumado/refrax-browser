@@ -93,7 +93,8 @@ extension WebPage {
     /// Effects every engine's events have alike.
     ///
     /// - Renderer health goes to the pool's watchdog.
-    /// - A committed navigation dismisses the questions the previous document asked.
+    /// - A committed navigation dismisses the questions the previous document asked and starts
+    ///   Shields' count for the new document.
     private func applyCommonEffects(_ event: PageEvent) {
         switch event {
         case let .rendererHealthChanged(health):
@@ -101,6 +102,8 @@ extension WebPage {
         case .navigationCommitted:
             documentRevision = UUID()
             prompts.dismissAll()
+            shieldsLog.documentCommitted()
+            shieldsBlockedURL = nil
         default:
             break
         }

@@ -153,6 +153,13 @@ nonisolated extension FilterListSource {
         ),
     ]
 
+    /// Default lists whose text the app ships (`Scripts/shields-list-snapshots.sh`), so a fresh
+    /// install filters before its first download: the ad, tracker and badware lists with the
+    /// unbreak and quick-fix lists that keep them from breaking sites.
+    static let bundledListIDs: Set<String> = [
+        "easylist", "easyprivacy", "ublock-filters", "ublock-privacy", "ublock-badware", "ublock-unbreak", "ublock-quick-fixes",
+    ]
+
     /// Lists users can turn on.
     static let additionalLists: [FilterListSource] = [
         list("malware-domains", "Malware Domain List", "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter.txt", .malware, enabled: false),
