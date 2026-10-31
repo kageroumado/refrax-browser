@@ -2463,9 +2463,6 @@ enum ExtensionError: Error, LocalizedError, Equatable {
     /// The archive file is not a valid CRX or XPI format.
     case invalidArchiveFormat
 
-    /// Failed to extract the extension archive.
-    case extractionFailed
-
     /// A CRX file's developer signature does not verify.
     case invalidSignature
 
@@ -2496,8 +2493,6 @@ enum ExtensionError: Error, LocalizedError, Equatable {
             "Permission denied for extension operation"
         case .invalidArchiveFormat:
             "Invalid extension archive format"
-        case .extractionFailed:
-            "Failed to extract extension archive"
         case .invalidSignature:
             "The extension archive's signature is invalid"
         case let .resourceBudgetExceeded(resource):

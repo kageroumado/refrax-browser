@@ -1,3 +1,4 @@
+import Compression
 import CryptoKit
 import Foundation
 import Security
@@ -158,14 +159,17 @@ nonisolated enum ExtensionArchive {
 
     // MARK: - Extraction
 
-    /// Unzips `archiveURL` into `directory`, which must not exist yet, and applies the manifest
-    /// fixups. Runs off the main actor.
+    /// Unpacks `archiveURL` into `directory`, which must not exist yet, and applies the
+    /// manifest fixups. Runs off the main actor.
+    ///
+    /// The central directory is checked first (``ZipInspection``), the entries are written by
+    /// ``ZipExtractor``, which counts what it writes, and the written tree is checked on disk
+    /// (``ExtractedTree``) before it takes `directory`'s place.
     ///
     /// - Returns: What the archive proved: a CRX's verified Chrome extension ID.
     /// - Throws: ``ExtensionError/invalidArchiveFormat`` for an unknown, malformed or unsafe
     ///   archive (see ``ZipInspection``), ``ExtensionError/invalidSignature`` for a CRX whose
-    ///   signature fails,
-    ///   ``ExtensionError/extractionFailed`` when unzipping fails.
+    ///   signature fails.
     @concurrent
     @discardableResult
     static func extract(_ archiveURL: URL, into directory: URL) async throws -> Extracted {
@@ -183,28 +187,18 @@ nonisolated enum ExtensionArchive {
             throw ExtensionError.invalidArchiveFormat
         }
 
-        try ZipInspection.check(zip)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).zip")
-        try zip.write(to: zipURL)
-        defer { try? FileManager.default.removeItem(at: zipURL) }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-q", "-o", zipURL.path, "-d", directory.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            process.terminationHandler = { _ in continuation.resume() }
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
-        }
-        guard process.terminationStatus == 0 else {
-            try? FileManager.default.removeItem(at: directory)
-            throw ExtensionError.extractionFailed
+        let entries = try ZipInspection.check(zip)
+        // Written into a staging folder that becomes `directory` only once the tree checks out.
+        let staging = directory.deletingLastPathComponent()
+            .appendingPathComponent(".\(directory.lastPathComponent).unpacking-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        do {
+            try ZipExtractor.extract(zip, entries: entries, into: staging)
+            try ExtractedTree.verify(staging)
+            try FileManager.default.moveItem(at: staging, to: directory)
+        } catch {
+            try? FileManager.default.removeItem(at: staging)
+            throw error
         }
 
         fixupManifest(at: directory)
@@ -306,75 +300,284 @@ nonisolated enum ProtobufFields {
     }
 }
 
-/// Reads a ZIP archive's central directory to decide whether it is safe to unpack: within
-/// size and entry limits, with every entry a regular file or folder inside the archive.
+/// Reads a ZIP archive's central directory: the entries Refrax will unpack, refused early when
+/// the archive is past the limits or names anything but regular files and folders inside it.
+///
+/// The directory must be the plain, single one the end record describes: an archive with a
+/// ZIP64 locator, or whose end record counts other entries than its directory holds, is
+/// refused, so the entries checked here are the entries ``ZipExtractor`` writes.
 nonisolated enum ZipInspection {
     static let maximumEntries = 50_000
     static let maximumUnpackedSize: UInt64 = 1 << 30
 
+    /// One file or folder of the archive, as its central directory describes it.
+    struct Entry {
+        let name: String
+        let method: UInt16
+        let flags: UInt16
+        let crc: UInt32
+        let compressedSize: Int
+        let size: Int
+        let localHeaderOffset: Int
+
+        var isFolder: Bool {
+            name.hasSuffix("/")
+        }
+    }
+
     private enum Signature {
         static let endOfCentralDirectory: UInt32 = 0x0605_4B50
+        static let zip64Locator: UInt32 = 0x0706_4B50
         static let centralDirectoryEntry: UInt32 = 0x0201_4B50
     }
 
     private enum Layout {
         static let endRecordLength = 22
+        static let zip64LocatorLength = 20
         static let longestComment = 0xFFFF
         static let entryHeaderLength = 46
-        /// "Version made by" names the system in its high byte; 3 is Unix, whose external
-        /// attributes carry a file mode in their high 16 bits.
-        static let unixHost: UInt8 = 3
         static let fileTypeMask: UInt32 = 0o170000
-        static let symbolicLink: UInt32 = 0o120000
+        static let regularFile: UInt32 = 0o100000
+        static let folder: UInt32 = 0o040000
     }
 
-    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for a malformed archive, one past the
-    ///   limits, or one with a symbolic link, an absolute path or a `..` component.
-    static func check(_ zip: Data) throws {
+    /// The archive's entries.
+    ///
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for a malformed or ZIP64 archive, one
+    ///   past the limits, or one with an entry that is a symbolic link or any file type but a
+    ///   regular file or folder, whatever system the archive says made it, or whose path is
+    ///   absolute or has a `..` component.
+    @discardableResult
+    static func check(_ zip: Data) throws -> [Entry] {
         let bytes = [UInt8](zip)
         guard bytes.count >= Layout.endRecordLength else { throw ExtensionError.invalidArchiveFormat }
         let searchStart = max(0, bytes.count - Layout.endRecordLength - Layout.longestComment)
         guard let end = stride(from: bytes.count - Layout.endRecordLength, through: searchStart, by: -1)
             .first(where: { uint32(bytes, $0) == Signature.endOfCentralDirectory })
         else { throw ExtensionError.invalidArchiveFormat }
+        if end >= Layout.zip64LocatorLength, uint32(bytes, end - Layout.zip64LocatorLength) == Signature.zip64Locator {
+            throw ExtensionError.invalidArchiveFormat
+        }
 
         let entryCount = Int(uint16(bytes, end + 10))
+        let directorySize = Int(uint32(bytes, end + 12))
         let directoryOffset = Int(uint32(bytes, end + 16))
-        guard entryCount <= maximumEntries, directoryOffset < bytes.count else { throw ExtensionError.invalidArchiveFormat }
+        guard entryCount <= maximumEntries, entryCount == Int(uint16(bytes, end + 8)),
+              directoryOffset + directorySize <= end
+        else { throw ExtensionError.invalidArchiveFormat }
 
+        var entries: [Entry] = []
         var offset = directoryOffset
-        var unpackedSize: UInt64 = 0
+        var unpackedSize = 0
         for _ in 0 ..< entryCount {
-            guard offset + Layout.entryHeaderLength <= bytes.count,
-                  uint32(bytes, offset) == Signature.centralDirectoryEntry
-            else { throw ExtensionError.invalidArchiveFormat }
-            let madeBy = bytes[offset + 5]
-            let size = uint32(bytes, offset + 24)
-            let nameLength = Int(uint16(bytes, offset + 28))
-            let extraLength = Int(uint16(bytes, offset + 30))
-            let commentLength = Int(uint16(bytes, offset + 32))
-            let attributes = uint32(bytes, offset + 38)
-            let nameStart = offset + Layout.entryHeaderLength
-            guard nameStart + nameLength <= bytes.count, size != UInt32.max else { throw ExtensionError.invalidArchiveFormat }
-            let name = String(decoding: bytes[nameStart ..< nameStart + nameLength], as: UTF8.self)
-
-            unpackedSize += UInt64(size)
-            let components = name.split(separator: "/", omittingEmptySubsequences: false)
-            let isSymbolicLink = madeBy == Layout.unixHost && (attributes >> 16) & Layout.fileTypeMask == Layout.symbolicLink
-            guard unpackedSize <= maximumUnpackedSize, !name.hasPrefix("/"), !name.contains("\\"),
-                  !components.contains(".."), !isSymbolicLink
-            else { throw ExtensionError.invalidArchiveFormat }
-            offset = nameStart + nameLength + extraLength + commentLength
+            let entry = try entry(in: bytes, at: &offset)
+            unpackedSize += entry.size
+            guard UInt64(unpackedSize) <= maximumUnpackedSize else { throw ExtensionError.invalidArchiveFormat }
+            entries.append(entry)
         }
+        // The end record must count every entry the directory holds, and nothing else.
+        guard offset == directoryOffset + directorySize else { throw ExtensionError.invalidArchiveFormat }
+        return entries
     }
 
-    private static func uint16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
-        guard offset + 2 <= bytes.count else { return 0 }
+    private static func entry(in bytes: [UInt8], at offset: inout Int) throws -> Entry {
+        guard offset + Layout.entryHeaderLength <= bytes.count,
+              uint32(bytes, offset) == Signature.centralDirectoryEntry
+        else { throw ExtensionError.invalidArchiveFormat }
+        let flags = uint16(bytes, offset + 8)
+        let method = uint16(bytes, offset + 10)
+        let crc = uint32(bytes, offset + 16)
+        let compressedSize = uint32(bytes, offset + 20)
+        let size = uint32(bytes, offset + 24)
+        let nameLength = Int(uint16(bytes, offset + 28))
+        let extraLength = Int(uint16(bytes, offset + 30))
+        let commentLength = Int(uint16(bytes, offset + 32))
+        let attributes = uint32(bytes, offset + 38)
+        let localHeaderOffset = uint32(bytes, offset + 42)
+        let nameStart = offset + Layout.entryHeaderLength
+        guard nameStart + nameLength <= bytes.count, size != UInt32.max, compressedSize != UInt32.max,
+              localHeaderOffset != UInt32.max
+        else { throw ExtensionError.invalidArchiveFormat }
+        let name = String(decoding: bytes[nameStart ..< nameStart + nameLength], as: UTF8.self)
+
+        // A file type in the high attribute bits counts whoever made the archive, as unzip
+        // honors it.
+        let fileType = (attributes >> 16) & Layout.fileTypeMask
+        let components = name.split(separator: "/", omittingEmptySubsequences: false)
+        guard fileType == 0 || fileType == Layout.regularFile || fileType == Layout.folder,
+              !name.isEmpty, !name.hasPrefix("/"), !name.contains("\\"), !name.contains("\0"),
+              !components.contains(".."), !components.contains(".")
+        else { throw ExtensionError.invalidArchiveFormat }
+
+        offset = nameStart + nameLength + extraLength + commentLength
+        return Entry(
+            name: name,
+            method: method,
+            flags: flags,
+            crc: crc,
+            compressedSize: Int(compressedSize),
+            size: Int(size),
+            localHeaderOffset: Int(localHeaderOffset),
+        )
+    }
+
+    static func uint16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
+        guard offset >= 0, offset + 2 <= bytes.count else { return 0 }
         return UInt16(bytes[offset]) | UInt16(bytes[offset + 1]) << 8
     }
 
-    private static func uint32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
-        guard offset + 4 <= bytes.count else { return 0 }
+    static func uint32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
+        guard offset >= 0, offset + 4 <= bytes.count else { return 0 }
         return (0 ..< 4).reduce(0) { $0 | UInt32(bytes[offset + $1]) << (8 * $1) }
+    }
+}
+
+/// Unpacks the entries ``ZipInspection`` read, writing only regular files and folders and
+/// counting the bytes it writes: an entry that inflates past its declared size, fails its
+/// checksum, or would take the archive past ``ZipInspection/maximumUnpackedSize`` stops the
+/// extraction. Stored and deflated entries are supported, as browsers' extension archives use.
+nonisolated enum ZipExtractor {
+    private enum Layout {
+        static let localSignature: UInt32 = 0x0403_4B50
+        static let localHeaderLength = 30
+        static let encryptedFlag: UInt16 = 1
+        static let stored: UInt16 = 0
+        static let deflated: UInt16 = 8
+        static let bufferSize = 64 * 1_024
+    }
+
+    /// Writes `entries` of `zip` into `directory`, which must exist and be empty.
+    ///
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for anything that is not exactly what
+    ///   the entries declare.
+    static func extract(_ zip: Data, entries: [ZipInspection.Entry], into directory: URL) throws {
+        let bytes = [UInt8](zip)
+        var written = 0
+        for entry in entries {
+            let destination = directory.appendingPathComponent(entry.name)
+            if entry.isFolder {
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                continue
+            }
+            try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try compressedData(of: entry, in: bytes)
+            let descriptor = open(destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o644)
+            guard descriptor >= 0 else { throw ExtensionError.invalidArchiveFormat }
+            let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            var checksum = CRC32()
+            var entryBytes = 0
+            try inflate(data, method: entry.method) { chunk in
+                entryBytes += chunk.count
+                written += chunk.count
+                guard entryBytes <= entry.size, UInt64(written) <= ZipInspection.maximumUnpackedSize else {
+                    throw ExtensionError.invalidArchiveFormat
+                }
+                checksum.update(chunk)
+                try file.write(contentsOf: chunk)
+            }
+            guard entryBytes == entry.size, checksum.value == entry.crc else { throw ExtensionError.invalidArchiveFormat }
+        }
+    }
+
+    private static func compressedData(of entry: ZipInspection.Entry, in bytes: [UInt8]) throws -> ArraySlice<UInt8> {
+        let header = entry.localHeaderOffset
+        guard entry.flags & Layout.encryptedFlag == 0,
+              ZipInspection.uint32(bytes, header) == Layout.localSignature
+        else { throw ExtensionError.invalidArchiveFormat }
+        let nameLength = Int(ZipInspection.uint16(bytes, header + 26))
+        let extraLength = Int(ZipInspection.uint16(bytes, header + 28))
+        let start = header + Layout.localHeaderLength + nameLength + extraLength
+        guard start + entry.compressedSize <= bytes.count else { throw ExtensionError.invalidArchiveFormat }
+        return bytes[start ..< start + entry.compressedSize]
+    }
+
+    /// Feeds `data`'s uncompressed bytes to `output` in chunks.
+    private static func inflate(_ data: ArraySlice<UInt8>, method: UInt16, output: (Data) throws -> Void) throws {
+        switch method {
+        case Layout.stored:
+            try output(Data(data))
+        case Layout.deflated:
+            try data.withUnsafeBufferPointer { source in
+                let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
+                defer { stream.deallocate() }
+                guard compression_stream_init(stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+                    throw ExtensionError.invalidArchiveFormat
+                }
+                defer { compression_stream_destroy(stream) }
+                let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Layout.bufferSize)
+                defer { buffer.deallocate() }
+                stream.pointee.src_ptr = source.baseAddress ?? UnsafePointer(buffer)
+                stream.pointee.src_size = source.count
+                while true {
+                    stream.pointee.dst_ptr = buffer
+                    stream.pointee.dst_size = Layout.bufferSize
+                    let status = compression_stream_process(stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
+                    let produced = Layout.bufferSize - stream.pointee.dst_size
+                    if produced > 0 {
+                        try output(Data(bytes: buffer, count: produced))
+                    }
+                    switch status {
+                    case COMPRESSION_STATUS_OK: continue
+                    case COMPRESSION_STATUS_END: return
+                    default: throw ExtensionError.invalidArchiveFormat
+                    }
+                }
+            }
+        default:
+            throw ExtensionError.invalidArchiveFormat
+        }
+    }
+
+    /// The CRC-32 ZIP archives use.
+    private struct CRC32 {
+        private static let table: [UInt32] = (0 ..< 256).map { index in
+            (0 ..< 8).reduce(UInt32(index)) { value, _ in value & 1 == 1 ? 0xEDB8_8320 ^ (value >> 1) : value >> 1 }
+        }
+
+        private var state: UInt32 = 0xFFFF_FFFF
+
+        var value: UInt32 {
+            state ^ 0xFFFF_FFFF
+        }
+
+        mutating func update(_ data: Data) {
+            var state = state
+            for byte in data {
+                state = Self.table[Int((state ^ UInt32(byte)) & 0xFF)] ^ (state >> 8)
+            }
+            self.state = state
+        }
+    }
+}
+
+/// Checks an unpacked extension folder as it is on disk: only regular files with a single
+/// link and folders, nothing that resolves outside it, and no more than
+/// ``ZipInspection/maximumUnpackedSize`` in all.
+nonisolated enum ExtractedTree {
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` when the folder holds anything else.
+    static func verify(_ directory: URL) throws {
+        let root = directory.resolvingSymlinksInPath().standardizedFileURL.path
+        guard let enumerator = FileManager.default.enumerator(atPath: directory.path) else {
+            throw ExtensionError.invalidArchiveFormat
+        }
+        var total: UInt64 = 0
+        for case let relativePath as String in enumerator {
+            let path = directory.appendingPathComponent(relativePath).path
+            var info = stat()
+            guard lstat(path, &info) == 0 else { throw ExtensionError.invalidArchiveFormat }
+            switch info.st_mode & S_IFMT {
+            case S_IFDIR:
+                break
+            case S_IFREG:
+                guard info.st_nlink == 1 else { throw ExtensionError.invalidArchiveFormat }
+                total += UInt64(info.st_size)
+            default:
+                throw ExtensionError.invalidArchiveFormat
+            }
+            let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+            guard resolved == root || resolved.hasPrefix(root + "/"), total <= ZipInspection.maximumUnpackedSize else {
+                throw ExtensionError.invalidArchiveFormat
+            }
+        }
     }
 }

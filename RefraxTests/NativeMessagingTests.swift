@@ -301,6 +301,81 @@ struct ExtensionArchiveTests {
     }
 
     @Test
+    func `A symbolic link counts whatever system the archive says made it`() {
+        let msDOS = 0x0014
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ZipInspection.check(TestArchives.centralDirectory([("link", 0o120777, 10)], madeBy: msDOS))
+        }
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ZipInspection.check(TestArchives.centralDirectory([("fifo", 0o010644, 0)], madeBy: msDOS))
+        }
+    }
+
+    @Test
+    func `A ZIP64 archive, or one whose end record miscounts its directory, is refused`() {
+        let file: UInt32 = 0o100644
+        let entries: [(name: String, mode: UInt32, size: UInt32)] = [("a.js", file, 1), ("b.js", file, 1)]
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ZipInspection.check(TestArchives.centralDirectory(entries, zip64Locator: true))
+        }
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ZipInspection.check(TestArchives.centralDirectory(entries, declaredCount: 1))
+        }
+    }
+
+    @Test
+    func `An entry that inflates past its declared size stops the extraction and leaves nothing`() async throws {
+        let folder = try ExtensionFixture(files: [
+            "manifest.json": #"{"manifest_version": 3, "name": "Big", "version": "1.0"}"#,
+            "big.bin": String(repeating: "0", count: 200_000),
+        ]).write()
+        var zip = try TestArchives.zip(folder)
+        // Declare 100 bytes for big.bin in the central directory, which the pre-check sums.
+        let name = Data("big.bin".utf8)
+        let signature = Data([0x50, 0x4B, 0x01, 0x02])
+        var search = zip.startIndex
+        var patched = false
+        while let range = zip.range(of: signature, in: search ..< zip.endIndex) {
+            let nameLength = Int(zip[range.lowerBound + 28]) | Int(zip[range.lowerBound + 29]) << 8
+            let nameStart = range.lowerBound + 46
+            if zip[nameStart ..< nameStart + nameLength] == name {
+                zip.replaceSubrange(range.lowerBound + 24 ..< range.lowerBound + 28, with: [100, 0, 0, 0])
+                patched = true
+            }
+            search = range.upperBound
+        }
+        #expect(patched)
+        try ZipInspection.check(zip)
+
+        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).xpi")
+        try zip.write(to: archive)
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        await #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try await ExtensionArchive.extract(archive, into: destination)
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    @Test
+    func `An honest archive unpacks, and an unpacked tree with a link in it is refused`() async throws {
+        let folder = try ExtensionFixture(files: [
+            "manifest.json": #"{"manifest_version": 3, "name": "Small", "version": "1.0"}"#,
+            "js/a.js": "console.log(1);",
+        ]).write()
+        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).xpi")
+        try TestArchives.zip(folder).write(to: archive)
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try await ExtensionArchive.extract(archive, into: destination)
+        #expect(try String(contentsOf: destination.appendingPathComponent("js/a.js"), encoding: .utf8) == "console.log(1);")
+        try ExtractedTree.verify(destination)
+
+        try FileManager.default.createSymbolicLink(atPath: destination.appendingPathComponent("js/link").path, withDestinationPath: "/etc")
+        #expect(throws: ExtensionError.invalidArchiveFormat) {
+            try ExtractedTree.verify(destination)
+        }
+    }
+
+    @Test
     func `An archive that unpacks past the size limit is refused`() {
         let file: UInt32 = 0o100644
         #expect(throws: ExtensionError.invalidArchiveFormat) {

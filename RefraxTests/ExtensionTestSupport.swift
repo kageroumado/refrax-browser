@@ -365,7 +365,16 @@ enum TestArchives {
     }
 
     /// A ZIP central directory with entries named `names`, each `size` bytes, and Unix modes.
-    static func centralDirectory(_ entries: [(name: String, mode: UInt32, size: UInt32)]) -> Data {
+    /// - Parameters:
+    ///   - madeBy: The "version made by" field; 0x031E names Unix, 0x0014 MS-DOS.
+    ///   - zip64Locator: Puts a ZIP64 end-of-directory locator before the end record.
+    ///   - declaredCount: The entry count the end record states, when it should differ.
+    static func centralDirectory(
+        _ entries: [(name: String, mode: UInt32, size: UInt32)],
+        madeBy: Int = 0x031E,
+        zip64Locator: Bool = false,
+        declaredCount: Int? = nil,
+    ) -> Data {
         func le16(_ value: Int) -> Data {
             Data([UInt8(value & 0xFF), UInt8(value >> 8 & 0xFF)])
         }
@@ -376,16 +385,18 @@ enum TestArchives {
         for entry in entries {
             let name = Data(entry.name.utf8)
             let parts: [Data] = [
-                le32(0x0201_4B50), le16(0x031E), le16(20), le16(0), le16(0), le16(0), le16(0),
+                le32(0x0201_4B50), le16(madeBy), le16(20), le16(0), le16(0), le16(0), le16(0),
                 le32(0), le32(entry.size), le32(entry.size), le16(name.count), le16(0), le16(0),
                 le16(0), le16(0), le32(entry.mode << 16), le32(0), name,
             ]
             directory.append(contentsOf: parts.joined())
         }
+        let count = declaredCount ?? entries.count
         let end: [Data] = [
-            le32(0x0605_4B50), le16(0), le16(0), le16(entries.count), le16(entries.count),
+            le32(0x0605_4B50), le16(0), le16(0), le16(count), le16(count),
             le32(UInt32(directory.count)), le32(0), le16(0),
         ]
-        return directory + Data(end.joined())
+        let locator = zip64Locator ? le32(0x0706_4B50) + Data(count: 16) : Data()
+        return directory + locator + Data(end.joined())
     }
 }
