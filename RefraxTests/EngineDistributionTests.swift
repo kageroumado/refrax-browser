@@ -11,7 +11,7 @@ struct EngineDistributionTests {
 
     private func release(
         version: String = "152.0.7977.82-r1", url: String? = nil, bytes: Data = Data("engine".utf8),
-        contract: String = "1.1", minimumSystemVersion: String = "26.0",
+        contract: String = EngineContractVersion.current.description, minimumSystemVersion: String = "26.0",
     ) -> EngineCatalog.Release {
         EngineCatalog.Release(
             version: version,
@@ -35,7 +35,7 @@ struct EngineDistributionTests {
     }
 
     /// A bundle EngineBundle reads as an engine: Info.plist only, no code.
-    private func makeEngineBundle(in directory: URL, id: String = "website.refrax.engine.chromium", build: String = "152.0.7977.82-r1", contract: String = "1.1") throws -> URL {
+    private func makeEngineBundle(in directory: URL, id: String = "website.refrax.engine.chromium", build: String = "152.0.7977.82-r1", contract: String = EngineContractVersion.current.description) throws -> URL {
         let bundle = directory.appending(path: "Refrax Chromium.engine", directoryHint: .isDirectory)
         let contents = bundle.appending(path: "Contents", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
