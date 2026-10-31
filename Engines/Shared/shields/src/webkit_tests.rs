@@ -10,7 +10,7 @@ use crate::*;
 fn resources() -> Vec<u8> {
     std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../Refrax/Resources/Shields/resources.json"
+        "/../../../Refrax/Resources/Shields/shields-resources.json"
     ))
     .expect("the app's resources.json exists")
 }
@@ -153,8 +153,13 @@ fn important_blocks_follow_exceptions() {
 #[test]
 fn redirects_and_removeparam_become_redirect_actions() {
     let built =
-        Built::new(&["||ads.example/x.js$script,redirect=noop.js\n*$removeparam=utm_source\n"]);
+        Built::new(&["||ads.example/x.js$script,redirect=noop.js\n*$removeparam=utm_source\n/ads/y.js$script,redirect=noop.js,domain=example.com\n"]);
     let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    assert_eq!(
+        output.counts.redirect_rules, 2,
+        "a path pattern keeps its options: {:?}",
+        output.counts.unsupported
+    );
     let chunk = &output.network[0];
     let redirect = position(chunk, |rule| {
         action(rule) == "redirect" && rule["action"]["redirect"]["url"].is_string()

@@ -33,7 +33,7 @@ fn golden() -> String {
 fn resources() -> Vec<u8> {
     std::fs::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../Refrax/Resources/Shields/resources.json"),
+            .join("../../../Refrax/Resources/Shields/shields-resources.json"),
     )
     .expect("the app's resources.json exists")
 }

@@ -290,8 +290,18 @@ fn includes(table: &Table) -> Vec<String> {
     table
         .iter()
         .filter(|(_, entry)| !entry.is_empty())
-        .flat_map(|(host, _)| [format!("*://{host}/*"), format!("*://*.{host}/*")])
+        .flat_map(|(host, _)| host_patterns(host))
         .collect()
+}
+
+/// Match patterns for `host` and its subdomains; an IP address has no subdomains.
+fn host_patterns(host: &str) -> Vec<String> {
+    let is_address = host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[');
+    if is_address {
+        vec![format!("*://{host}/*")]
+    } else {
+        vec![format!("*://{host}/*"), format!("*://*.{host}/*")]
+    }
 }
 
 /// Scriptlet function name → its resource and the code that defines it with its dependencies.

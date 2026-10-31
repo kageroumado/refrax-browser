@@ -32,7 +32,7 @@ use crate::bundles::{self, UserScript};
 use crate::syntax;
 
 /// Bumped whenever this pass's output changes for the same input; part of the app's cache key.
-pub const PASS_VERSION: u32 = 1;
+pub const PASS_VERSION: u32 = 2;
 
 /// WebKit's `maxRuleCount` (`ContentExtensionParser.cpp`).
 pub const MAX_RULES_PER_LIST: usize = 150_000;
@@ -314,7 +314,10 @@ impl NetworkPass<'_> {
 /// WebKit triggers for `raw` with the named options removed, so an action filter can reuse
 /// the converter's trigger. `None` (counted) when the remainder does not convert.
 fn stripped_triggers(raw: &str, options: &[&str], counts: &mut Counts) -> Option<Vec<Value>> {
-    let stripped = syntax::without_options(raw, options)?;
+    let Some(stripped) = syntax::without_options(raw, options) else {
+        counts.unsupported("other");
+        return None;
+    };
     if matches!(stripped.as_str(), "" | "*" | "|") {
         // A filter that is nothing but its option applies to every URL; adblock-rust parses no
         // bare pattern, so the trigger is written directly.

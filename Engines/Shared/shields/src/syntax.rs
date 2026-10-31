@@ -3,17 +3,18 @@
 
 /// Where a network filter's `$options` start, or `None` when it has none.
 ///
-/// A regex pattern (`/…/`) may itself contain `$`, so options start after its closing slash.
+/// A regex pattern (`/…/`) may itself contain `$`, so options start after its closing slash. A
+/// pattern that only starts with `/` is a path (`/ads/x.js$script`).
 pub fn options_start(line: &str) -> Option<usize> {
     let pattern_start = if line.starts_with("@@") { 2 } else { 0 };
     let pattern = &line[pattern_start..];
-    let search_from = if pattern.starts_with('/') {
-        match pattern[1..].rfind("/$") {
-            Some(index) => pattern_start + 1 + index + 1,
-            None => return None,
-        }
-    } else {
-        pattern_start
+    let is_bare_regex = pattern.len() > 1 && pattern.starts_with('/') && pattern.ends_with('/');
+    if is_bare_regex {
+        return None;
+    }
+    let search_from = match pattern.strip_prefix('/').and_then(|rest| rest.rfind("/$")) {
+        Some(index) => pattern_start + 1 + index + 1,
+        None => pattern_start,
     };
     line[search_from..]
         .rfind('$')
@@ -124,6 +125,8 @@ mod tests {
         assert_eq!(options_start("||a.com^"), None);
         assert_eq!(options_start("/ad[0-9]$/$script"), Some(10));
         assert_eq!(options_start("@@||a.com^$document"), Some(10));
+        assert_eq!(options_start("/ads/x.js$script"), Some(9));
+        assert_eq!(options_start("/ad[0-9]$/"), None);
     }
 
     #[test]
