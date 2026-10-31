@@ -30,8 +30,8 @@ Chrome itself never calls them; its behavior is unchanged.
 
 ## `chrome-renderer-refrax-agents.patch`
 
-`chrome/renderer/chrome_content_renderer_client.cc` and `chrome/renderer/BUILD.gn`: attach two
-per-frame agents the engine host drives, both inert without it:
+`chrome/renderer/chrome_content_renderer_client.cc` and `chrome/renderer/BUILD.gn`: attach three
+per-frame agents the engine host drives, all inert without it:
 
 - `js_injection::JsCommunication` (WebView's script-injection renderer half), with its
   document-start and document-end scripts run before extensions' (which may destroy the
@@ -41,6 +41,9 @@ per-frame agents the engine host drives, both inert without it:
   Refrax's worlds, awaiting promises and activating the frame only when asked. Content's
   browser-side script APIs reach only content's own world ids (`ISOLATED_WORLD_ID_MAX`) and
   never await promises.
+- `refrax::ShieldsFrameObserver` (`//refrax/renderer`), Refrax Shields' cosmetic filtering: the
+  hiding stylesheet, scriptlets and procedural filters the host pushes for each document,
+  applied when its document element is created.
 
 ## `js-injection-scripts-when-disabled.patch`
 

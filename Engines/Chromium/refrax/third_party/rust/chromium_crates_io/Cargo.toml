@@ -1,4 +1,14 @@
 # Refrax: the Rust crates the Chromium engine host links (Engines/Shared/shields).
+#
+# forge vendors them with cargo from Cargo.lock (checksums verified) into
+# //third_party/refrax_crates/vendor/<crate>-v<epoch>. The BUILD.gn files beside this directory
+# come from gnrt: in a scratch root holding a copy of Chromium's build/rust and tools/crates/gnrt
+# and the rust-toolchain, with this directory as third_party/rust/chromium_crates_io (plus
+# Chromium's *.hbs templates and .cargo/config.toml, and Cargo.lock without its checksum lines),
+# run `gnrt vendor` and `gnrt gen`, then point their paths at //refrax/third_party/rust and
+# //third_party/refrax_crates/vendor, rename each target `lib` to `refrax_lib`, and add
+# `rustc_metadata = "refrax-<crate>-<epoch>"`: Chromium builds its own copies of several of these
+# crates into the same binary, and those names and that metadata must differ from theirs.
 [package]
 edition = "2021"
 name = "chromium"

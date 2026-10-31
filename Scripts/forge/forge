@@ -255,6 +255,40 @@ default_targets() {
     esac
 }
 
+# The Rust crates //refrax links (Refrax Shields' adblock-rust and its dependencies), downloaded
+# by cargo from the lock in //refrax/third_party/rust/chromium_crates_io, whose checksums it
+# verifies, into //third_party/refrax_crates/vendor/<crate>-v<epoch>, where the gnrt-generated
+# BUILD files under //refrax/third_party/rust look for them. Reruns only when the lock changes.
+vendor_crates() {
+    local manifest="$REFRAX_SOURCES/third_party/rust/chromium_crates_io" dest
+    dest="$SRC/third_party/refrax_crates"
+    local lock_hash
+    lock_hash=$(shasum -a 256 "$manifest/Cargo.lock" | cut -d' ' -f1)
+    [[ -f "$dest/.vendored-$lock_hash" ]] && return
+    log "vendoring Refrax's Rust crates"
+    local work="$FORGE/crates-work"
+    [[ -e "$work" ]] && trash "$work"
+    mkdir -p "$work/src" "$dest"
+    cp "$manifest/Cargo.toml" "$manifest/Cargo.lock" "$work/"
+    : >"$work/src/lib.rs"
+    "$SRC/third_party/rust-toolchain/bin/cargo" vendor --locked --versioned-dirs \
+        --manifest-path "$work/Cargo.toml" "$work/vendor" >/dev/null
+    [[ -e "$dest/vendor" ]] && trash "$dest/vendor"
+    mkdir -p "$dest/vendor"
+    local crate base version major minor epoch
+    for crate in "$work/vendor"/*; do
+        base=$(basename "$crate")
+        version=${base##*-}
+        major=${version%%.*}
+        minor=${version#*.}
+        minor=${minor%%.*}
+        if ((major > 0)); then epoch="v$major"; else epoch="v0_$minor"; fi
+        mv "$crate" "$dest/vendor/${base%-*}-$epoch"
+    done
+    trash "$work"
+    touch "$dest/.vendored-$lock_hash"
+}
+
 cmd_gen() {
     [[ -f "$(stamp "prepared-$(chromium_version)")" ]] || die "run forge prepare first"
     local config="${1:-release}" name out sdk overlay
@@ -265,6 +299,7 @@ cmd_gen() {
     name=$(out_name "$config")
     out="$SRC/out/$name"
     ln -sfn "$REFRAX_SOURCES" "$SRC/refrax"
+    vendor_crates
     mkdir -p "$out/sdk/forge"
     # GN takes SDK inputs only from inside the build directory, as Chromium's own
     # sdk/xcode_links symlink does for Xcode's SDK.
@@ -558,6 +593,15 @@ PLIST
     local identity
     identity=$(signing_identity)
     codesign --force --sign "${identity:--}" "$app" >/dev/null
+    # The content-blocking tests' engine: the conformance lists built into a DAT through the
+    # Shields crate Refrax.app builds with, and the tool that predicts its decisions.
+    local shields="$FORGE/conformance-shields" datgen_target="$FORGE/datgen-target"
+    mkdir -p "$shields"
+    cargo build --release --quiet --manifest-path "$REPO_ROOT/Engines/Conformance/datgen/Cargo.toml" \
+        --target-dir "$datgen_target"
+    "$datgen_target/release/shields-datgen" build "$shields/engine.dat" \
+        "$REPO_ROOT/Engines/Conformance/shields/list0.txt" "$REPO_ROOT/Engines/Conformance/shields/list1.txt"
+    cp "$REPO_ROOT/Engines/Conformance/shields/resources.json" "$shields/resources.json"
     # The results stream to the terminal; the engine's own logging (its processes inherit the
     # runner's stderr) goes to a file.
     local storage log engine_log status tail_pid
@@ -569,7 +613,8 @@ PLIST
     tail -f "$log" &
     tail_pid=$!
     open -W -n -a "$app" --stdout "$log" --stderr "$engine_log" \
-        --args "$engine" --storage "$storage" --status "$status" "$@"
+        --args "$engine" --storage "$storage" --status "$status" --shields "$shields" \
+        --datgen "$datgen_target/release/shields-datgen" "$@"
     sleep 1
     kill "$tail_pid" 2>/dev/null
     echo "engine log: $engine_log"

@@ -26,6 +26,31 @@ class HostContentBrowserClient : public ChromeContentBrowserClient {
   void OpenURL(content::SiteInstance* site_instance,
                const content::OpenURLParams& params,
                base::OnceCallback<void(content::WebContents*)> callback) override;
+  void WillCreateURLLoaderFactory(
+      content::BrowserContext* browser_context,
+      content::RenderFrameHost* frame,
+      int render_process_id,
+      URLLoaderFactoryType type,
+      const url::Origin& request_initiator,
+      const net::IsolationInfo& isolation_info,
+      std::optional<int64_t> navigation_id,
+      ukm::SourceIdObj ukm_source_id,
+      network::URLLoaderFactoryBuilder& factory_builder,
+      mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>* header_client,
+      bool* bypass_redirect_checks,
+      bool* disable_secure_dns,
+      network::mojom::URLLoaderFactoryOverridePtr* factory_override,
+      scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+      bool is_for_network_service) override;
+  bool WillInterceptWebSocket(content::RenderFrameHost* frame) override;
+  void CreateWebSocket(content::RenderFrameHost* frame,
+                       WebSocketFactory factory,
+                       const GURL& url,
+                       const net::SiteForCookies& site_for_cookies,
+                       const std::optional<std::string>& user_agent,
+                       mojo::PendingRemote<network::mojom::WebSocketHandshakeClient>
+                           handshake_client,
+                       WebSocketOptions options) override;
 };
 
 }  // namespace refrax

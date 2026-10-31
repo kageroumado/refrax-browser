@@ -17,7 +17,7 @@ namespace refrax {
 // Refrax's per-site settings (CONTRACT.md §4.5 `siteSettings`), written into the Chrome profiles
 // pages use: JavaScript as content settings, autoplay with sound as Chrome's autoplay allowlist,
 // and popups allowed everywhere, since Refrax decides each one through `openURL`. Sites with
-// content blocking off go to ContentBlocking. One per host process, on the UI thread.
+// content blocking off go to ShieldsService. One per host process, on the UI thread.
 //
 // A profile holds the policy as of the last write to it: Apply rewrites the profiles of open
 // pages, and a page made in another profile rewrites that one first.

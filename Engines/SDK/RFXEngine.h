@@ -1,6 +1,6 @@
 // RFXEngine.h — binary interface between Refrax and an engine bundle.
 //
-// Engine contract 1.x. The message schema (every JSON payload named below) is
+// Engine contract 2.x. The message schema (every JSON payload named below) is
 // specified in Engines/CONTRACT.md; this header only carries it.
 //
 // An engine is a loadable bundle (`<Name>.engine`) whose principal class
@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - Info.plist keys
 
 typedef NSString *RFXEngineInfoKey NS_TYPED_ENUM;
-/// "1.0": the contract version the engine implements.
+/// "2.0": the contract version the engine implements.
 static RFXEngineInfoKey const RFXEngineInfoContractVersion = @"RFXEngineContractVersion";
 /// Name shown in Settings → Engines, e.g. "Chromium".
 static RFXEngineInfoKey const RFXEngineInfoDisplayName = @"RFXEngineDisplayName";
@@ -114,6 +114,12 @@ NS_SWIFT_UI_ACTOR
 
 /// Tears the page down. No delegate callbacks follow.
 - (void)close;
+
+@optional
+/// The page's content-blocking decisions numbered after `sequence` (CONTRACT.md §4.7), for
+/// engines declaring `requestLog`: JSON `{ "entries": [RequestLogEntry], "nextSequence" }`.
+/// Calls `completion` once, on the main thread.
+- (void)requestLogSince:(int64_t)sequence completion:(void (^)(NSData *log))completion;
 @end
 
 NS_ASSUME_NONNULL_END

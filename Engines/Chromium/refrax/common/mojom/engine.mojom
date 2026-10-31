@@ -6,6 +6,7 @@ import "components/remote_cocoa/common/application.mojom";
 import "mojo/public/mojom/base/values.mojom";
 import "skia/public/mojom/bitmap.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
+import "url/mojom/url.mojom";
 
 // Refrax's engine contract (Engines/CONTRACT.md) between the client loaded into Refrax and the
 // host app. Contract payloads cross as the contract's own JSON: the host translates them to and
@@ -65,6 +66,23 @@ interface Page {
   // display's resolution. Null when the page has nothing rendered to copy.
   Snapshot(gfx.mojom.Rect rect) => (skia.mojom.BitmapN32? image);
 
+  // The contract's request log (CONTRACT.md §4.7): entries after `since`, as JSON.
+  RequestLog(int64 since) => (string log);
+
+  // Accessibility. An assistive technology reached the page's container: build the pages'
+  // accessibility trees from now on.
+  EnableAccessibility();
+  // The token of the page's root accessibility element in the host, and the host's pid, which
+  // the client turns into an NSAccessibilityRemoteUIElement for the container's child. An empty
+  // token while the page has nothing rendered.
+  GetAccessibilityToken() => (int32 pid, array<uint8> token);
+  // The token of the container NSView in the client (process `pid`), which the page's root
+  // element reports as its parent.
+  SetAccessibilityParent(int32 pid, array<uint8> token);
+
+  // The DevTools window's content size in points.
+  SetDevToolsSize(gfx.mojom.Size size);
+
   // Tears the page down. The reply is sent before the page's views are: the views' own
   // messages share this pipe, so every one that names the page's container arrives first.
   Close() => ();
@@ -84,6 +102,17 @@ interface PageClient {
   // to Refrax's menus, which is how ⌘-shortcuts reach Refrax and the Edit menu while the page
   // has focus. Between client and host only; not part of the contract.
   RedispatchKeyEvent(array<uint8> native_event_data);
+
+  // Shows the page's DevTools window, whose content view the client registers under
+  // `container_ns_view_id` before replying; the host then builds the DevTools frontend's views
+  // in it. `title` names the window. Between client and host only.
+  ShowDevToolsWindow(uint64 container_ns_view_id, string title) => ();
+  // Closes the DevTools window. The user closing it sends the contract's devTools `hide`.
+  CloseDevToolsWindow();
+
+  // The page's root accessibility element was replaced (a new renderer): a token from
+  // GetAccessibilityToken is stale.
+  AccessibilityElementChanged();
 };
 
 // Runs the contract's evaluateScript in one frame, in any of Refrax's worlds. Implemented in
@@ -95,4 +124,30 @@ interface FrameScripts {
   // promise rejected, or its value can't be represented as JSON.
   Evaluate(string source, int32 world_id, bool user_gesture)
       => (mojo_base.mojom.Value? result, string? error);
+};
+
+// The V8 world Refrax Shields' procedural filters and generic class/id collector run in, just
+// below the worlds //refrax/host/world_registry.cc hands out.
+const int32 kShieldsWorldId = 16777215;
+
+// Cosmetic filtering for one document, pushed by the host at ReadyToCommitNavigation on the
+// frame's channel, so it arrives before the commit. Implemented in the renderer by
+// //refrax/renderer/shields_frame_observer.cc.
+interface ShieldsFrame {
+  // What to apply to the document at `url` when its document element is created, before any
+  // of its scripts run: `stylesheet` as a user stylesheet, `scriptlets` in the main world,
+  // `procedural_actions` (a JSON array of adblock-rust procedural filters) in the Shields
+  // world. With `host`, the document's classes and ids are collected and generic hiding is
+  // asked for. A document at another URL gets nothing.
+  Apply(url.mojom.Url url,
+        string stylesheet,
+        string scriptlets,
+        string procedural_actions,
+        pending_remote<ShieldsHost>? host);
+};
+
+// The browser half of generic cosmetic hiding, bound to one document's resources.
+interface ShieldsHost {
+  // The stylesheet hiding the given classes and ids; "" when none are hidden.
+  HiddenClassIdSelectors(array<string> classes, array<string> ids) => (string stylesheet);
 };

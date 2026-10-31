@@ -14,7 +14,7 @@
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_thread.h"
-#include "refrax/host/content_blocking.h"
+#include "refrax/host/shields_service.h"
 
 namespace refrax {
 
@@ -72,7 +72,7 @@ bool SiteSettings::Apply(const base::DictValue& policy) {
       unblocked_hosts.insert(base::ToLowerASCII(*host));
     }
   }
-  ContentBlocking::Get().SetSiteExceptions(std::move(unblocked_hosts));
+  ShieldsService::Get().SetSiteExceptions(std::move(unblocked_hosts));
   return true;
 }
 
