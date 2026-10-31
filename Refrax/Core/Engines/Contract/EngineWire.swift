@@ -109,7 +109,10 @@ nonisolated enum EngineWire {
             return try .notificationShown(notification: validated(notification))
         case let .notificationClosed(id):
             return .notificationClosed(id: capped(id))
-        case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
+        case let .findResultChanged(matches, activeMatch, isFinal):
+            let matches = min(max(matches, 0), 1_000_000)
+            return .findResultChanged(matches: matches, activeMatch: min(max(activeMatch, 0), matches), isFinal: isFinal)
+        case .devToolsChanged, .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             return event
         }

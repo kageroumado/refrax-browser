@@ -8,7 +8,6 @@ extension WebPage {
     func showWebInspector() {
         if let enginePage {
             enginePage.perform(.devTools(command: .show))
-            isEngineDevToolsShown = true
             return
         }
         webInspectorManager?.showInspector(for: tabPage.id, webView: backingWebView)
@@ -18,7 +17,6 @@ extension WebPage {
     func closeWebInspector() {
         if let enginePage {
             enginePage.perform(.devTools(command: .hide))
-            isEngineDevToolsShown = false
             return
         }
         webInspectorManager?.closeInspector(for: tabPage.id, webView: backingWebView)
@@ -37,7 +35,6 @@ extension WebPage {
     func showJavaScriptConsole() {
         if let enginePage {
             enginePage.perform(.devTools(command: .showConsole))
-            isEngineDevToolsShown = true
             return
         }
         webInspectorManager?.showJavaScriptConsole(for: tabPage.id, webView: backingWebView)

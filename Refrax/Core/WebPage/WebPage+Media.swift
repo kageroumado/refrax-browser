@@ -35,6 +35,10 @@ extension WebPage {
 
     /// Changes whether the page suspends media playback.
     func setAllMediaPlaybackSuspended(_ suspended: Bool) async {
+        if let enginePage {
+            enginePage.perform(.setMediaSuspended(suspended: suspended))
+            return
+        }
         await backingWebView.setAllMediaPlaybackSuspended(suspended)
     }
 
