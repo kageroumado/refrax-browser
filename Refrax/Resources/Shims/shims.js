@@ -301,6 +301,18 @@
             if (types && types.includes('sub_frame') && !types.includes('main_frame')) {
                 nativeFilter = Object.assign({}, filter, { types: [...types, 'main_frame'] });
             }
+            // WebKit rejects the whole listener over one URL pattern it cannot match
+            // (Privacy Badger's `ws://*/*`), which stops the background page. The patterns
+            // it can match stay; a listener left with none never fires anyway.
+            if (nativeFilter && Array.isArray(nativeFilter.urls)) {
+                const urls = nativeFilter.urls.filter(isMatchablePattern);
+                if (urls.length === 0) {
+                    return undefined;
+                }
+                if (urls.length !== nativeFilter.urls.length) {
+                    nativeFilter = Object.assign({}, nativeFilter, { urls });
+                }
+            }
             const listener = function(details, ...rest) {
                 const corrected = withFrameType(details);
                 if (types && corrected && !types.includes(corrected.type)) {
@@ -421,6 +433,271 @@
         self.cancelIdleCallback = function(handle) {
             clearTimeout(handle);
         };
+    }
+
+    /**
+     * Chrome's `webRequest` option enums. Extensions read them unguarded when they add
+     * listeners: Stylus's background page stops at
+     * `chrome.webRequest.OnHeadersReceivedOptions.EXTRA_HEADERS`.
+     */
+    if (typeof browser !== 'undefined' && browser.webRequest) {
+        const webRequestOptions = {
+            OnBeforeRequestOptions: { BLOCKING: 'blocking', REQUEST_BODY: 'requestBody', EXTRA_HEADERS: 'extraHeaders' },
+            OnBeforeSendHeadersOptions: { REQUEST_HEADERS: 'requestHeaders', BLOCKING: 'blocking', EXTRA_HEADERS: 'extraHeaders' },
+            OnSendHeadersOptions: { REQUEST_HEADERS: 'requestHeaders', EXTRA_HEADERS: 'extraHeaders' },
+            OnHeadersReceivedOptions: { BLOCKING: 'blocking', RESPONSE_HEADERS: 'responseHeaders', EXTRA_HEADERS: 'extraHeaders' },
+            OnAuthRequiredOptions: { RESPONSE_HEADERS: 'responseHeaders', BLOCKING: 'blocking', ASYNC_BLOCKING: 'asyncBlocking', EXTRA_HEADERS: 'extraHeaders' },
+            OnResponseStartedOptions: { RESPONSE_HEADERS: 'responseHeaders', EXTRA_HEADERS: 'extraHeaders' },
+            OnBeforeRedirectOptions: { RESPONSE_HEADERS: 'responseHeaders', EXTRA_HEADERS: 'extraHeaders' },
+            OnCompletedOptions: { RESPONSE_HEADERS: 'responseHeaders', EXTRA_HEADERS: 'extraHeaders' },
+            OnErrorOccurredOptions: { EXTRA_HEADERS: 'extraHeaders' },
+            ResourceType: {
+                MAIN_FRAME: 'main_frame', SUB_FRAME: 'sub_frame', STYLESHEET: 'stylesheet', SCRIPT: 'script',
+                IMAGE: 'image', FONT: 'font', OBJECT: 'object', XMLHTTPREQUEST: 'xmlhttprequest', PING: 'ping',
+                CSP_REPORT: 'csp_report', MEDIA: 'media', WEBSOCKET: 'websocket', OTHER: 'other',
+            },
+        };
+        for (const [name, values] of Object.entries(webRequestOptions)) {
+            addMissingMember(browser.webRequest, name, Object.freeze(values));
+        }
+    }
+
+    /**
+     * Firefox's `runtime.getBrowserInfo`. Firefox add-ons call it unguarded at startup and
+     * stop when it is missing (Vimium C's background page, Violentmonkey). The version is
+     * empty: Refrax is not Firefox, and an add-on that gates features on the Firefox version
+     * falls back to its default.
+     */
+    if (typeof browser !== 'undefined' && browser.runtime) {
+        addMissingMember(browser.runtime, 'getBrowserInfo', function(callback) {
+            const info = { name: 'Refrax', vendor: 'Refrax', version: '', buildID: '' };
+            if (typeof callback === 'function') {
+                callback(info);
+            }
+            return Promise.resolve(info);
+        });
+    }
+
+    /**
+     * `management.getSelf`, which any extension may call without the `management` permission;
+     * Refined GitHub reads its own install type with it. The rest of `management` stays absent.
+     */
+    if (typeof browser !== 'undefined' && browser.runtime && browser.management === undefined) {
+        const self = () => {
+            const manifest = browser.runtime.getManifest();
+            return {
+                id: browser.runtime.id,
+                name: manifest.name,
+                shortName: manifest.short_name || manifest.name,
+                description: manifest.description || '',
+                version: manifest.version,
+                versionName: manifest.version_name,
+                mayDisable: true,
+                enabled: true,
+                installType: 'normal',
+                type: 'extension',
+                offlineEnabled: false,
+                optionsUrl: '',
+                permissions: (manifest.permissions || []).filter((permission) => !permission.includes('://')),
+                hostPermissions: manifest.host_permissions || [],
+            };
+        };
+        addMissingMember(browser, 'management', {
+            getSelf(callback) {
+                const info = self();
+                if (typeof callback === 'function') {
+                    callback(info);
+                }
+                return Promise.resolve(info);
+            },
+            onEnabled: new ShimEvent(),
+            onDisabled: new ShimEvent(),
+            onInstalled: new ShimEvent(),
+            onUninstalled: new ShimEvent(),
+        });
+    }
+
+    /**
+     * Permissions WebKit does not know. It throws on a `permissions.contains` or `request`
+     * naming one, where Chrome and Firefox answer: Violentmonkey's background page stops on
+     * `contains({permissions: ['downloads']})`, Vimium C's options page on `bookmarks`.
+     * Permissions Refrax provides with its own shims are granted whenever the manifest declares
+     * them, required or optional; any other unknown permission is not granted; WebKit answers
+     * for the rest.
+     */
+    const refraxPermissions = new Set(['downloads', 'downloads.open', 'idle', 'notifications', 'privacy']);
+
+    function wrapPermissions(namespace) {
+        if (!namespace || typeof namespace.contains !== 'function' || namespace.__refraxPermissionsWrapped) {
+            return;
+        }
+        const manifest = browser.runtime.getManifest();
+        const declared = new Set([...(manifest.permissions || []), ...(manifest.optional_permissions || [])]);
+        const native = {
+            contains: namespace.contains,
+            request: namespace.request,
+            remove: namespace.remove,
+            getAll: namespace.getAll,
+        };
+        defineRetained(namespace, '__refraxPermissionsWrapped', true);
+
+        // The query without Refrax's permissions, and whether each of those is declared.
+        function split(query) {
+            const permissions = (query && query.permissions) || [];
+            const ours = permissions.filter((permission) => refraxPermissions.has(permission));
+            const rest = Object.assign({}, query, {
+                permissions: permissions.filter((permission) => !refraxPermissions.has(permission)),
+            });
+            const isEmpty = rest.permissions.length === 0 && !(rest.origins && rest.origins.length);
+            return { declared: ours.every((permission) => declared.has(permission)), rest, isEmpty };
+        }
+
+        function settle(promise, callback) {
+            if (typeof callback === 'function') {
+                promise.then(callback, () => callback(false));
+            }
+            return promise;
+        }
+
+        for (const method of ['contains', 'request']) {
+            if (typeof native[method] !== 'function') {
+                continue;
+            }
+            defineRetained(namespace, method, function(query, callback) {
+                const { declared: allDeclared, rest, isEmpty } = split(query);
+                if (!allDeclared) {
+                    return settle(Promise.resolve(false), callback);
+                }
+                if (isEmpty) {
+                    return settle(Promise.resolve(true), callback);
+                }
+                let answer;
+                try {
+                    answer = Promise.resolve(native[method].call(namespace, rest));
+                } catch (error) {
+                    answer = Promise.reject(error);
+                }
+                return settle(answer.catch((error) => {
+                    if (/not a valid permission/.test(String(error && error.message))) {
+                        return false;
+                    }
+                    throw error;
+                }), callback);
+            });
+        }
+        if (typeof native.remove === 'function') {
+            defineRetained(namespace, 'remove', function(query, callback) {
+                const { rest, isEmpty } = split(query);
+                const result = isEmpty ? Promise.resolve(false) : Promise.resolve(native.remove.call(namespace, rest));
+                return settle(result, callback);
+            });
+        }
+        if (typeof native.getAll === 'function') {
+            defineRetained(namespace, 'getAll', function(callback) {
+                const result = Promise.resolve(native.getAll.call(namespace)).then((all) => {
+                    const ours = [...declared].filter((permission) => refraxPermissions.has(permission));
+                    return Object.assign({}, all, { permissions: [...new Set([...(all.permissions || []), ...ours])] });
+                });
+                if (typeof callback === 'function') {
+                    result.then(callback);
+                }
+                return result;
+            });
+        }
+    }
+
+    if (typeof browser !== 'undefined' && browser.runtime && typeof browser.runtime.getManifest === 'function') {
+        wrapPermissions(browser.permissions);
+    }
+
+    /**
+     * `storage.managed`, the enterprise policy area: always empty in Refrax, which applies no
+     * policies. uBlock Origin, Privacy Badger and Bitwarden read it at startup.
+     */
+    if (typeof browser !== 'undefined' && browser.storage && browser.storage.managed === undefined) {
+        const answer = (value, callback) => {
+            if (typeof callback === 'function') {
+                callback(value);
+            }
+            return Promise.resolve(value);
+        };
+        addMissingMember(browser.storage, 'managed', {
+            get: (keys, callback) => answer({}, typeof keys === 'function' ? keys : callback),
+            getBytesInUse: (keys, callback) => answer(0, typeof keys === 'function' ? keys : callback),
+            onChanged: new ShimEvent(),
+        });
+    }
+
+    /**
+     * `idle`, which WebKit lacks. The user reads as active and the state never changes, so an
+     * extension that locks on idle (Bitwarden) keeps its own timers instead. Present only for
+     * extensions that declare the `idle` permission, as in Chrome and Firefox.
+     */
+    const declaresIdle = typeof browser !== 'undefined' && browser.runtime && typeof browser.runtime.getManifest === 'function'
+        && [...(browser.runtime.getManifest().permissions || []), ...(browser.runtime.getManifest().optional_permissions || [])]
+            .includes('idle');
+    if (declaresIdle) {
+        addMissingMember(browser, 'idle', {
+            queryState(detectionInterval, callback) {
+                if (typeof callback === 'function') {
+                    callback('active');
+                }
+                return Promise.resolve('active');
+            },
+            setDetectionInterval() {},
+            getAutoLockDelay(callback) {
+                if (typeof callback === 'function') {
+                    callback(0);
+                }
+                return Promise.resolve(0);
+            },
+            onStateChanged: new ShimEvent(),
+        });
+    }
+
+    /**
+     * `setIcon` given both `path` and `imageData`, which Chrome and Firefox accept, preferring
+     * the image data; WebKit throws. Violentmonkey's popup sets its icon that way.
+     */
+    for (const name of ['action', 'browserAction', 'pageAction']) {
+        const namespace = typeof browser !== 'undefined' ? browser[name] : undefined;
+        if (!namespace || typeof namespace.setIcon !== 'function' || namespace.setIcon.__refraxIconData) {
+            continue;
+        }
+        const setIcon = namespace.setIcon;
+        const wrapped = function(details, ...rest) {
+            if (details && details.imageData !== undefined && details.path !== undefined) {
+                const { path, ...imageOnly } = details;
+                return setIcon.call(namespace, imageOnly, ...rest);
+            }
+            return setIcon.call(namespace, details, ...rest);
+        };
+        wrapped.__refraxIconData = true;
+        wrapped.__refraxDetachable = true;
+        defineRetained(namespace, 'setIcon', wrapped);
+    }
+
+    /**
+     * `tabs.query` with a window type Refrax has no windows of. WebKit accepts only `normal`
+     * and `popup` and throws on Chrome's `app` and `devtools`, which Dark Reader's popup asks
+     * for while it looks for the active tab; no tab matches such a query.
+     */
+    if (typeof browser !== 'undefined' && browser.tabs && typeof browser.tabs.query === 'function'
+        && !browser.tabs.query.__refraxWindowTypes) {
+        const query = browser.tabs.query;
+        const knownWindowTypes = new Set(['normal', 'popup']);
+        const wrapped = function(queryInfo, callback) {
+            if (queryInfo && queryInfo.windowType !== undefined && !knownWindowTypes.has(queryInfo.windowType)) {
+                if (typeof callback === 'function') {
+                    callback([]);
+                }
+                return Promise.resolve([]);
+            }
+            return query.apply(this, arguments);
+        };
+        wrapped.__refraxWindowTypes = true;
+        wrapped.__refraxDetachable = true;
+        defineRetained(browser.tabs, 'query', wrapped);
     }
 
     /**

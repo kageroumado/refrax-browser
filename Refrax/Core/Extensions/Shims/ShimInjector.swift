@@ -60,20 +60,15 @@ final class ShimInjector {
     private(set) lazy var contextMenusShim = ContextMenusShim()
     private(set) lazy var downloadsShim = DownloadsShim()
 
-    // Refrax-specific API shim will be enabled when BrowserState APIs are available
-    // private(set) lazy var refraxAPIShim: RefraxAPIShim = { ... }()
-
     // MARK: - Cached Scripts
 
     /// The combined shim JavaScript, loaded once from bundle.
     private lazy var shimScript: String = Self.loadShimScript()
 
-    // MARK: - Initialization
-
-
     // MARK: - Installation
 
-    /// Installs the shim scripts and their message handler on a controller configuration.
+    /// Installs the shim scripts, their message handler, and Safari's user agent name on a
+    /// controller configuration.
     ///
     /// Call before creating the controller. WebKit builds every extension page's
     /// configuration by copying the controller's, and the copies share its user content
@@ -83,6 +78,10 @@ final class ShimInjector {
     /// - Parameter configuration: The configuration the controller will be created with.
     func install(on configuration: WKWebExtensionController.Configuration) {
         let webViewConfiguration = configuration.webViewConfiguration ?? WKWebViewConfiguration()
+        // Extension pages present themselves as Safari, as Refrax's web pages do. WebKit's
+        // bare user agent names no browser, and extensions that pick their code paths by it
+        // stop: Bitwarden's background page fails on a `null` device type.
+        webViewConfiguration.applicationNameForUserAgent = UserAgentProvider.applicationName
         let userContentController = webViewConfiguration.userContentController
         userContentController.addUserScript(WKUserScript(
             source: shimScript,
