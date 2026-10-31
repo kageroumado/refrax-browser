@@ -20,7 +20,16 @@ struct ExtensionShimTests {
     var console = { debug() {}, info() {}, warn() {}, error() {}, log() {} };
     var setTimeout = function(callback) { return 0; };
     var clearTimeout = function() {};
-    var webkit = { messageHandlers: { refraxShim: { postMessage() { return Promise.resolve({ success: true }); } } } };
+    var grantedByRefrax = ['downloads'];
+    var webkit = { messageHandlers: { refraxShim: { postMessage(body) {
+        if (body.api === 'permissions') {
+            const result = body.method === 'getAll'
+                ? grantedByRefrax
+                : body.args.permissions.every(permission => grantedByRefrax.includes(permission));
+            return Promise.resolve({ success: true, result });
+        }
+        return Promise.resolve({ success: true });
+    } } } };
     
     class NativeEvent {
         constructor() { this.listeners = []; }
@@ -230,7 +239,7 @@ struct ExtensionShimTests {
     }
 
     @Test
-    func `Permissions WebKit does not know are answered: declared shimmed ones granted, others not`() throws {
+    func `Permissions WebKit does not know are answered: Refrax's by the browser, others not granted`() throws {
         let context = try makeContext()
         evaluate("""
         globalThis.answers = {};

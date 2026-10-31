@@ -11,13 +11,13 @@ import WebKit
 @MainActor
 struct ExtensionAPIFixtureTests {
     /// `probe(message)` in a fixture background sends `message` to the probe host.
-    private static let probe = """
+    static let probe = """
     function probe(message) {
         return browser.runtime.sendNativeMessage("\(ProbeHost.name)", message);
     }
     """
 
-    private static func persistentBackground(
+    static func persistentBackground(
         permissions: [String],
         script: String,
         extra: String = "",
@@ -33,7 +33,7 @@ struct ExtensionAPIFixtureTests {
         ])
     }
 
-    private func environment() throws -> (TabManagerTestEnvironment, Space, WindowState, ProbeHost) {
+    static func environment() throws -> (TabManagerTestEnvironment, Space, WindowState, ProbeHost) {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -44,7 +44,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `Badge text, title and enabled state reach the action board, per tab`() async throws {
-        let (env, space, _, probe) = try environment()
+        let (env, space, _, probe) = try Self.environment()
         let fixture = ExtensionFixture(files: [
             "manifest.json": """
             {"manifest_version": 3, "name": "Badge", "version": "1.0",
@@ -71,7 +71,7 @@ struct ExtensionAPIFixtureTests {
 
         let board = env.extensionManager.actions
         let defaultAppearance = try await waitFor("the default action's badge") {
-            board.board.appearance(contextID: context.uniqueIdentifier, tabPageID: nil).flatMap { $0.badgeText == "7" ? $0 : nil }
+            board.appearance(contextID: context.uniqueIdentifier, tabPageID: nil).flatMap { $0.badgeText == "7" ? $0 : nil }
         }
         #expect(defaultAppearance.label == "Seven")
         #expect(!defaultAppearance.isEnabled)
@@ -81,7 +81,7 @@ struct ExtensionAPIFixtureTests {
         _ = try await probe.message(kind: "tab-badge")
         let tabPageID = try #require(tab.pages.first?.id)
         _ = try await waitFor("the tab's own badge") {
-            board.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID).flatMap { $0.badgeText == "T" ? $0 : nil }
+            board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID).flatMap { $0.badgeText == "T" ? $0 : nil }
         }
         #expect(env.extensionManager.actionEntries(for: tab).first?.appearance.badgeText == "T")
         #expect(env.extensionManager.hasUnreadActionBadge(in: tab))
@@ -90,7 +90,7 @@ struct ExtensionAPIFixtureTests {
         #expect(!env.extensionManager.hasUnreadActionBadge(in: tab))
 
         env.extensionManager.dispatchTabClosed(tab, windowClosing: false)
-        #expect(board.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID)?.badgeText == "7")
+        #expect(board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID)?.badgeText == "7")
     }
 
     // MARK: - Native messaging
@@ -114,7 +114,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `One-off messages and ports reach a native host the user allowed, and come back`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         let host = try EchoHostFixture(allowedExtensions: ["echo@refrax.test"])
         let router = env.extensionManager.nativeMessaging
         router.locator = host.locator
@@ -145,7 +145,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `A host reached by a claimed identity starts only after the user allows it`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         let host = try EchoHostFixture(allowedExtensions: ["echo@refrax.test"])
         let router = env.extensionManager.nativeMessaging
         router.locator = host.locator
@@ -167,7 +167,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `The refrax API answers what the installed extension was granted, in its own spaces`() async throws {
-        let (env, space, _, probe) = try environment()
+        let (env, space, _, probe) = try Self.environment()
         let privateSpace = env.makeSpace(name: "Private")
         privateSpace.dataStoreMode = .private
         let separateSpace = env.makeSpace(name: "Separate")
@@ -179,9 +179,6 @@ struct ExtensionAPIFixtureTests {
             .then(() => probe({ kind: "favorites" }), (error) => probe({ kind: "favorites", error: String(error) }));
         """).write()
         let installed = try await env.extensionManager.installFromFolder(folder)
-        defer {
-            Task { try? await env.extensionManager.uninstall(installed) }
-        }
 
         let spaces = try await probe.message(kind: "spaces")
         let ids = Set((spaces["spaces"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? [])
@@ -191,11 +188,13 @@ struct ExtensionAPIFixtureTests {
 
         let favorites = try await probe.message(kind: "favorites")
         #expect((favorites["error"] as? String)?.contains("refrax.tabs") == true, "\(favorites)")
+
+        try await env.extensionManager.uninstall(installed)
     }
 
     @Test
     func `The refrax API answers nothing to an extension that is not installed`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         _ = try await Self.persistentBackground(permissions: ["refrax.spaces"], script: """
         browser.refrax.spaces.getAll()
             .then((spaces) => probe({ kind: "spaces", spaces }), (error) => probe({ kind: "spaces", error: String(error) }));
@@ -210,7 +209,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `idle reports a locked screen to the extension, and active once it unlocks`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         let lockNotifications = NotificationCenter()
         env.extensionManager.shimInjector.idleShim.monitor = IdleMonitor(
             lockNotifications: lockNotifications,
@@ -218,10 +217,11 @@ struct ExtensionAPIFixtureTests {
             idleSeconds: { 0 },
             isLocked: false,
         )
-        _ = try await Self.persistentBackground(permissions: ["idle"], script: """
+        // Installed, so Refrax records the idle grant its shim checks.
+        let installed = try await env.extensionManager.installFromFolder(Self.persistentBackground(permissions: ["idle"], script: """
         browser.idle.onStateChanged.addListener((state) => probe({ kind: "idle-" + state }));
         browser.idle.queryState(60).then((state) => probe({ kind: "initial", state }));
-        """).load(into: env)
+        """).write())
 
         let initial = try await probe.message(kind: "initial")
         #expect(initial["state"] as? String == "active")
@@ -232,6 +232,8 @@ struct ExtensionAPIFixtureTests {
 
         lockNotifications.post(name: Notification.Name("com.apple.screenIsUnlocked"), object: nil)
         _ = try await probe.message(kind: "idle-active")
+
+        try await env.extensionManager.uninstall(installed)
     }
 
     @Test
@@ -252,7 +254,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `A command's keys reach commands.onCommand through the shortcut handler`() async throws {
-        let (env, _, windowState, probe) = try environment()
+        let (env, _, windowState, probe) = try Self.environment()
         let fixture = Self.persistentBackground(permissions: [], script: """
         browser.commands.onCommand.addListener((command) => probe({ kind: "command", command }));
         probe({ kind: "ready" });
@@ -287,7 +289,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `webNavigation reports a tab's navigation`() async throws {
-        let (env, space, _, probe) = try environment()
+        let (env, space, _, probe) = try Self.environment()
         let server = try await server(["/page.html": .init(contentType: "text/html", body: "<!doctype html><title>Page</title>")])
         defer { server.stop() }
         let fixture = Self.persistentBackground(permissions: ["webNavigation", "<all_urls>"], script: """
@@ -314,7 +316,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `cookies sets, reads and removes a cookie in the controller's data store`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         let fixture = Self.persistentBackground(permissions: ["cookies", "<all_urls>"], script: """
         (async () => {
             const url = "http://127.0.0.1/";
@@ -334,7 +336,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `A declarativeNetRequest rule blocks the request it matches`() async throws {
-        let (env, space, _, probe) = try environment()
+        let (env, space, _, probe) = try Self.environment()
         let server = try await server([
             "/page.html": .init(contentType: "text/html", body: """
             <!doctype html><script src="/blocked.js"></script><script src="/allowed.js"></script>
@@ -365,7 +367,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `An extension's storage survives a reload under the same installation`() async throws {
-        let (env, _, _, probe) = try environment()
+        let (env, _, _, probe) = try Self.environment()
         let fixture = Self.persistentBackground(permissions: ["storage"], script: """
         browser.storage.local.get("count").then(async (stored) => {
             const count = (stored.count || 0) + 1;
@@ -398,7 +400,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `A separate space's tabs and pages belong to that space's controller`() async throws {
-        let (env, _, _, _) = try environment()
+        let (env, _, _, _) = try Self.environment()
         let space = env.makeSpace(name: "Separate")
         space.dataStoreMode = .separate
         let controller = env.extensionManager.controller(for: space)
@@ -421,7 +423,7 @@ struct ExtensionAPIFixtureTests {
 
     @Test
     func `A window belongs to its space's controller, moves with the space, and refuses others`() async throws {
-        let (env, space, windowState, _) = try environment()
+        let (env, space, windowState, _) = try Self.environment()
         let separateSpace = env.makeSpace(name: "Separate")
         separateSpace.dataStoreMode = .separate
         let manager = env.extensionManager
