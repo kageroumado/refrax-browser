@@ -60,8 +60,8 @@ extension PaneCommand {
         case .toggleEditing:
             windowState.toggleLayoutMode()
         case let .openBeside(edge):
-            guard windowState.activeTab != nil else { return }
-            windowState.newPanePlacement = placement(beside: edge, in: windowState)
+            guard let placement = placement(beside: edge, in: windowState) else { return }
+            windowState.newPanePlacement = placement
             windowState.openCommandLens()
         case .separate:
             guard let tab = windowState.activeTab, tab.pages.count > 1 else { return }
@@ -77,23 +77,24 @@ extension PaneCommand {
         case .edit: return !windowState.isInLayoutMode
         case .finishEditing: return windowState.isInLayoutMode
         case .toggleEditing: return true
-        case .openBeside: return tab.pages.count < PaneGrid.capacity
+        case let .openBeside(edge): return placement(beside: edge, in: windowState) != nil
         case .separate: return tab.pages.count > 1
         }
     }
 
-    /// Where a page opened beside the focused pane on `edge` goes: that pane's half at `edge`
-    /// when it is two cells thick that way, else the empty cell beyond it, else the
-    /// automatic place.
-    static func placement(beside edge: PaneEdge, in windowState: WindowState) -> PanePlacement {
-        guard let tab = windowState.activeTab else { return .automatic }
+    /// Where a page opened beside the focused pane on `edge` goes; nil when that side has no
+    /// room (``placement(beside:at:in:)``).
+    static func placement(beside edge: PaneEdge, in windowState: WindowState) -> PanePlacement? {
+        guard let tab = windowState.activeTab else { return nil }
         let grid = windowState.paneEditor.session.flatMap { $0.tabID == tab.id ? $0.grid : nil } ?? tab.paneGrid
         let focused = windowState.focusedPage.flatMap { grid.contains($0.id) ? $0.id : nil } ?? tab.activePage.id
         return placement(beside: focused, at: edge, in: grid)
     }
 
-    /// Where a page opened beside `pageID` on `edge` goes in `grid`.
-    static func placement(beside pageID: UUID, at edge: PaneEdge, in grid: PaneGrid) -> PanePlacement {
+    /// Where a page opened beside `pageID` on `edge` goes in `grid`: that pane's half at `edge`
+    /// when it is two cells thick that way, else an empty cell beyond that side; nil when
+    /// neither exists, as for the outer side of a pane one cell thick.
+    nonisolated static func placement(beside pageID: UUID, at edge: PaneEdge, in grid: PaneGrid) -> PanePlacement? {
         let split = PaneSplit(target: pageID, edge: edge)
         if grid.canSplit(split) {
             return .split(split)
@@ -104,6 +105,6 @@ extension PaneCommand {
                 return .cell(beyond)
             }
         }
-        return .automatic
+        return nil
     }
 }

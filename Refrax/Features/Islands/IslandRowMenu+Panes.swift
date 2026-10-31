@@ -23,7 +23,8 @@ extension IslandRowMenu {
             ]
         }
         guard let current = islands.currentTab, islands.canJoin(tab.id, with: current.id) else { return [] }
-        let sides = PaneEdge.allCases.map { edge in
+        let sides = PaneEdge.allCases.compactMap { edge -> MenuAction? in
+            guard let placement = PaneCommand.placement(beside: edge, in: windowState) else { return nil }
             let command = PaneCommand.openBeside(edge)
             let title = switch edge {
             case .leading: "On the Left"
@@ -32,9 +33,10 @@ extension IslandRowMenu {
             case .bottom: "Below"
             }
             return MenuAction("panes.beside.\(edge.rawValue)", title, symbol: command.symbol, group: .table) {
-                islands.joinPage(tab.id, at: PaneCommand.placement(beside: edge, in: windowState))
+                islands.joinPage(tab.id, at: placement)
             }
         }
+        guard !sides.isEmpty else { return [] }
         return [MenuAction("panes.beside", "Show Beside This Page", symbol: "rectangle.split.2x1", group: .table, children: sides)]
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import SwiftData
 import SwiftUI
 
 // MARK: - Window State
@@ -506,6 +507,10 @@ final class WindowState {
     /// by the `.transaction` modifier to allow the exit animation through.
     @ObservationIgnored private(set) var isAnimatingLayoutTransition = false
 
+    /// Ends ``isAnimatingLayoutTransition`` once the exit's spring settles; a later entry or
+    /// exit cancels it, so an earlier exit never cuts a later one short.
+    @ObservationIgnored private var layoutSettleTask: Task<Void, Never>?
+
     /// Whether the mouse cursor is currently inside the bounds of an overlay.
     ///
     /// When `true`, WKWebView's `_ignoresAllEvents` is set to block all input.
@@ -749,12 +754,16 @@ final class WindowState {
         if paneEditor.isEditing(tab: tab.id) {
             return
         }
+        layoutSettleTask?.cancel()
+        layoutSettleTask = nil
+        isAnimatingLayoutTransition = false
         if paneEditor.isEditing {
             exitLayoutMode(animated: false)
         }
         withAnimation(LayoutModeMotion.spring) {
             _ = paneEditor.enter(
-                tabID: tab.id, configuration: tab.layoutConfiguration, pageIDs: tab.pages.map(\.id), activePageID: focusedPage?.id,
+                tabID: tab.id, configuration: tab.layoutConfiguration,
+                pageIDs: PaneGrid.loadOrder(tab.pages.map(\.id), configuration: tab.layoutConfiguration), activePageID: focusedPage?.id,
             )
         }
     }
@@ -762,7 +771,10 @@ final class WindowState {
     /// Commits the edit to the tab it began on and lays the panes back edge to edge.
     func exitLayoutMode(animated: Bool = true) {
         guard paneEditor.isEditing else { return }
+        layoutSettleTask?.cancel()
+        layoutSettleTask = nil
         guard animated else {
+            isAnimatingLayoutTransition = false
             commitLayoutMode()
             return
         }
@@ -770,10 +782,19 @@ final class WindowState {
         withAnimation(LayoutModeMotion.spring) {
             commitLayoutMode()
         }
-        Task(name: "Settle layout mode exit") { [weak self] in
+        layoutSettleTask = Task(name: "Settle layout mode exit") { [weak self] in
             try? await Task.sleep(for: LayoutModeMotion.settle)
+            guard !Task.isCancelled else { return }
             self?.isAnimatingLayoutTransition = false
         }
+    }
+
+    /// Ends layout mode without writing the edit: its tab is closing.
+    func discardLayoutMode() {
+        layoutSettleTask?.cancel()
+        layoutSettleTask = nil
+        isAnimatingLayoutTransition = false
+        paneEditor.discard()
     }
 
     /// Enters layout mode, or leaves it when it is on.
@@ -798,11 +819,11 @@ final class WindowState {
 
     private func commitLayoutMode() {
         guard let tabID = paneEditor.session?.tabID else { return }
-        guard let tab = browserState.tab(for: tabID) else {
+        guard let tab = browserState.tab(for: tabID), !tab.isDeleted else {
             paneEditor.discard()
             return
         }
-        if let commit = paneEditor.exit(pageIDs: tab.pages.map(\.id)) {
+        if let commit = paneEditor.exit(pageIDs: PaneGrid.loadOrder(tab.pages.map(\.id), configuration: tab.layoutConfiguration)) {
             tab.applyPaneLayout(commit)
         }
     }
@@ -969,27 +990,6 @@ final class WindowState {
         browserState.extensionManager?.dispatchActiveSpaceChanged(self)
     }
     
-    /// Removes references to a deleted tab from all navigation state.
-    ///
-    /// Call this when a tab is closed or deleted to prevent stale IDs from
-    /// lingering in inactive spaces' active tab dictionaries.
-    ///
-    /// - Parameters:
-    ///   - tabID: The deleted tab's identifier.
-    ///   - spaceID: The space the tab belonged to.
-    func handleTabRemoved(_ tabID: Tab.ID, from spaceID: Space.ID) {
-        if _activeTabIDs[spaceID] == tabID {
-            _activeTabIDs.removeValue(forKey: spaceID)
-        }
-        if _previousActiveTabIDs[spaceID] == tabID {
-            _previousActiveTabIDs.removeValue(forKey: spaceID)
-        }
-        if _activeLiveFavoriteTabID == tabID {
-            _activeLiveFavoriteTabID = nil
-        }
-        followActiveTabWithLayoutMode()
-    }
-
     /// Removes all stale tab IDs that no longer exist in the browser state.
     ///
     /// Iterates through all stored active and previous tab IDs and removes

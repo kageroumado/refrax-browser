@@ -246,6 +246,21 @@ nonisolated struct PaneGrid: Equatable, Sendable {
         self = filled()
     }
 
+    /// `pageIDs` in the order a stored layout is read in: by stored cell in reading order,
+    /// pages without one last, ties by id. A tab's pages come in no fixed order, and the
+    /// order decides which of two pages stored in one cell keeps it and where an unplaced
+    /// page goes, so a damaged layout reads the same on every launch.
+    static func loadOrder(_ pageIDs: [UUID], configuration: LayoutConfiguration?) -> [UUID] {
+        func rank(_ id: UUID) -> Int {
+            configuration?.panePositions[id].flatMap(GridCell.init)?.readingIndex ?? GridCell.all.count
+        }
+        return pageIDs.sorted { lhs, rhs in
+            let left = rank(lhs)
+            let right = rank(rhs)
+            return left != right ? left < right : lhs.uuidString < rhs.uuidString
+        }
+    }
+
     // MARK: - Reading
 
     /// The pages in reading order of their top-leading cells.

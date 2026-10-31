@@ -94,7 +94,14 @@ final class WebPagePool {
     /// Not observed to prevent cascade invalidation when pages are added/removed.
     /// Views access pages via `existingPage(for:)` without triggering observation.
     @ObservationIgnored
-    private var _activePages: [TabPage.ID: WebPage] = [:]
+    private var _activePages: [TabPage.ID: WebPage] = [:] {
+        didSet { syncShownSlots() }
+    }
+
+    /// One observed slot per page a view shows (``shownPage(for:)``), so making, evicting, or
+    /// replacing one page updates only the panes showing that page.
+    @ObservationIgnored
+    private var shownSlots: [TabPage.ID: ShownPageSlot] = [:]
 
     /// Version counter for callers that need to observe structural changes.
     ///
@@ -486,9 +493,18 @@ final class WebPagePool {
     /// updated when the page is made, evicted, or replaced. Pages are made outside bodies
     /// with ``page(for:)``.
     func shownPage(for tabPage: TabPage) -> WebPage? {
-        _ = pagesVersion
-        _ = pageReplacements[tabPage.id]
-        return activePages[tabPage.id]
+        if let slot = shownSlots[tabPage.id] {
+            return slot.page
+        }
+        let slot = ShownPageSlot(page: _activePages[tabPage.id])
+        shownSlots[tabPage.id] = slot
+        return slot.page
+    }
+
+    private func syncShownSlots() {
+        for (id, slot) in shownSlots where slot.page !== _activePages[id] {
+            slot.page = _activePages[id]
+        }
     }
 
     /// Returns existing page by ID without creating one.
@@ -595,6 +611,7 @@ final class WebPagePool {
         terminationHandler.clearHistory(for: tabPage.id)
         page.onSessionEnding()
         extensionManager?.pageRemoved(for: tabPage)
+        shownSlots.removeValue(forKey: tabPage.id)
         pagesVersion += 1
         Logger.debug("Removed page for: \(tabPage.title)", category: Logger.tabs)
     }
@@ -1224,5 +1241,15 @@ protocol EvictionCandidate {
 extension PageImportanceScorer.ScoredPage: EvictionCandidate {
     var pageID: UUID {
         page.tabPage.id
+    }
+}
+
+/// The page shown for one tab page, observed on its own by the panes showing it.
+@Observable
+final class ShownPageSlot {
+    var page: WebPage?
+
+    init(page: WebPage?) {
+        self.page = page
     }
 }
