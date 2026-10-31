@@ -1,0 +1,66 @@
+import Foundation
+
+/// What a drop from outside the islands brings: tabs of this browser on their way to another
+/// row, or pages to open as new tabs, read from the links, files, and text dropped.
+nonisolated struct IslandDropPayload: Equatable, Sendable {
+    /// Tabs dragged out of an island, of this window or another, coming back as rows.
+    var tabIDs: [UUID] = []
+    /// The pages to open, in the order they were dropped, each once.
+    var urls: [URL] = []
+
+    /// Reads a drop. A browser tab's own identity wins over the addresses it also carries;
+    /// otherwise links come first, then files (a `.webloc` as the address inside it), and
+    /// only when neither brought anything, the addresses written in dropped text.
+    ///
+    /// - Parameters:
+    ///   - tabIDs: Identities of tabs dragged from an island.
+    ///   - urls: Every URL on the pasteboard, web and file alike.
+    ///   - strings: Plain text on the pasteboard.
+    ///   - read: Reads a dropped file's contents, for a `.webloc`.
+    init(tabIDs: [UUID] = [], urls: [URL] = [], strings: [String] = [], read: (URL) -> Data? = { try? Data(contentsOf: $0) }) {
+        guard tabIDs.isEmpty else {
+            self.tabIDs = tabIDs
+            return
+        }
+        var found: [URL] = []
+        for url in urls {
+            if url.isFileURL {
+                if url.pathExtension.lowercased() == WeblocFile.pathExtension {
+                    if let data = read(url), let inside = WeblocFile.url(from: data) {
+                        found.append(inside)
+                    }
+                } else if !url.hasDirectoryPath {
+                    found.append(url)
+                }
+            } else if url.scheme != nil {
+                found.append(url)
+            }
+        }
+        if found.isEmpty {
+            found = strings.flatMap(Self.links(in:))
+        }
+        var seen = Set<URL>()
+        self.urls = found.filter { seen.insert($0).inserted }
+    }
+
+    var isEmpty: Bool {
+        tabIDs.isEmpty && urls.isEmpty
+    }
+
+    /// The web addresses written in `text`, a bare domain read as https.
+    static func links(in text: String) -> [URL] {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return detector.matches(in: text, range: range).compactMap { match -> URL? in
+            guard let url = match.url else { return nil }
+            guard url.isWebURL else { return nil }
+            // A bare "example.com" is detected as http; pages are asked for securely.
+            if url.scheme == "http", let written = Range(match.range, in: text), !text[written].lowercased().hasPrefix("http") {
+                var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                components?.scheme = "https"
+                return components?.url ?? url
+            }
+            return url
+        }
+    }
+}

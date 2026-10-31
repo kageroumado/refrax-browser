@@ -120,6 +120,8 @@ struct IslandView: View {
                     .padding(.horizontal, geometry.horizontalPadding)
                     .frame(width: frame.width, height: frame.height, alignment: .top)
                     .clipShape(shape)
+                    // Links, files, and text from other apps land on the row under the pointer.
+                    .overlay { IslandDropReceiver() }
                     // Empty glass moves the island within the browser.
                     .background {
                         IslandDragSurface(islandID: island.id)

@@ -1140,11 +1140,74 @@ final class IslandController {
 
     /// A card released at `point` over an island goes in as a row there.
     private func attach(_ tab: Tab, at point: CGPoint) -> Bool {
-        guard state.detached.contains(tab.id), let island = visibleIslands.first(where: { frame(of: $0).contains(point) }) else { return false }
-        let local = rowPoint(CGPoint(x: point.x - frame(of: island).minX, y: point.y - frame(of: island).minY), in: island)
-        let geometry = geometry(for: island)
-        moveTab(tab.id, to: geometry.insertion(at: local, count: island.rows.count), in: island.id)
+        guard state.detached.contains(tab.id), let target = dropTarget(at: point, reach: 0) else { return false }
+        moveTab(tab.id, to: target.row, in: target.island)
         return true
+    }
+
+    // MARK: - Drops from outside
+
+    /// The island under `point`, within `reach` of its glass, and the row a drop there goes
+    /// before: the rows as scrolled, the row under the pointer.
+    func dropTarget(at point: CGPoint, reach: CGFloat = IslandGeometry.padding) -> IslandDrop? {
+        guard let island = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else { return nil }
+        let frame = frame(of: island)
+        let local = rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: island)
+        return IslandDrop(island: island.id, row: geometry(for: island).insertion(at: local, count: island.rows.count))
+    }
+
+    /// Something from outside is held at `point`: the island under it shows where it would
+    /// go. Returns whether an island takes it.
+    @discardableResult
+    func updateExternalDrop(at point: CGPoint) -> Bool {
+        let target = dropTarget(at: point)
+        update(\.drop, to: target)
+        return target != nil
+    }
+
+    /// The drop from outside left the islands, or was let go.
+    func endExternalDrop() {
+        guard draggedTabID == nil else { return }
+        update(\.drop, to: nil)
+    }
+
+    /// Takes in `payload` let go at `point`: tabs dragged from an island move to the row under
+    /// the pointer; pages open there as new tabs, the first one shown. Returns whether an
+    /// island took it.
+    @discardableResult
+    func performDrop(_ payload: IslandDropPayload, at point: CGPoint) -> Bool {
+        defer { endExternalDrop() }
+        guard !payload.isEmpty, let target = dropTarget(at: point), let island = island(target.island),
+              let space = windowState.activeSpace else { return false }
+        if !payload.tabIDs.isEmpty {
+            let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id }
+            guard !moving.isEmpty else { return false }
+            var row = target.row
+            for tab in moving {
+                moveTab(tab.id, to: row, in: target.island)
+                if let placed = self.island(target.island)?.layout.row(of: tab.id) {
+                    row = placed + 1
+                }
+            }
+            return true
+        }
+        let slot = island.layout.insertion(at: target.row)
+        let groupID = slot.section ?? (island.isDefault ? nil : island.id)
+        var after = slot.after.flatMap(tab(for:))
+        let before = slot.before.flatMap(tab(for:))
+        var opened: [Tab] = []
+        for url in payload.urls {
+            let tab = tabManager.createTab(url: url, in: space, groupID: groupID, makeActive: false, loadImmediately: false)
+            tabManager.placeTab(tab, after: after, before: before)
+            after = tab
+            opened.append(tab)
+        }
+        rebuild()
+        if let first = opened.first {
+            first.isUnread = false
+            open(first)
+        }
+        return !opened.isEmpty
     }
 
     func moveIsland(_ islandID: UUID, to origin: CGPoint) {
