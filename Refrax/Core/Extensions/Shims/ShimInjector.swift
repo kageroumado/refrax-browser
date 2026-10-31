@@ -59,6 +59,7 @@ final class ShimInjector {
     private(set) lazy var notificationsShim = NotificationsShim()
     private(set) lazy var contextMenusShim = ContextMenusShim()
     private(set) lazy var downloadsShim = DownloadsShim()
+    private(set) lazy var idleShim = IdleShim()
 
     // MARK: - Cached Scripts
 
@@ -253,6 +254,13 @@ private final class ShimMessageHandler: NSObject, WKScriptMessageHandlerWithRepl
 
             case "downloads":
                 result = try await injector.downloadsShim.handle(
+                    method: method,
+                    args: args,
+                    extensionID: extensionIdentifier,
+                )
+
+            case "idle":
+                result = try await injector.idleShim.handle(
                     method: method,
                     args: args,
                     extensionID: extensionIdentifier,

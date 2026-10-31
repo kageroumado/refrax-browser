@@ -629,29 +629,63 @@
     }
 
     /**
-     * `idle`, which WebKit lacks. The user reads as active and the state never changes, so an
-     * extension that locks on idle (Bitwarden) keeps its own timers instead. Present only for
-     * extensions that declare the `idle` permission, as in Chrome and Firefox.
+     * `idle`, which WebKit lacks, backed by the system (IdleShim.swift): `locked` while the
+     * screen is locked, `idle` after the detection interval without input. Password managers
+     * lock their vaults on these. `onStateChanged` fires on each transition while it has
+     * listeners: the page keeps one request open that the browser answers when the state
+     * changes. Present only for extensions that declare the `idle` permission, as in Chrome
+     * and Firefox; `getAutoLockDelay` is ChromeOS-only and stays absent.
      */
     const declaresIdle = typeof browser !== 'undefined' && browser.runtime && typeof browser.runtime.getManifest === 'function'
         && [...(browser.runtime.getManifest().permissions || []), ...(browser.runtime.getManifest().optional_permissions || [])]
             .includes('idle');
     if (declaresIdle) {
+        const defaultDetectionInterval = 60;
+        let detectionInterval = defaultDetectionInterval;
+        const stateChanges = new ShimEvent();
+        let isWatching = false;
+
+        const watch = async () => {
+            if (isWatching) {
+                return;
+            }
+            isWatching = true;
+            try {
+                let state = await window.__refraxShimCall('idle', 'queryState', { detectionInterval });
+                while (stateChanges.hasListeners()) {
+                    const next = await window.__refraxShimCall('idle', 'waitForChange', { detectionInterval, state });
+                    if (next !== state) {
+                        state = next;
+                        stateChanges._dispatch(state);
+                    }
+                }
+            } catch (e) {
+                window.__shimLog.warn('idle state watch stopped', e);
+            } finally {
+                isWatching = false;
+            }
+        };
+
         addMissingMember(browser, 'idle', {
-            queryState(detectionInterval, callback) {
+            queryState(interval, callback) {
+                const state = window.__refraxShimCall('idle', 'queryState', { detectionInterval: interval });
                 if (typeof callback === 'function') {
-                    callback('active');
+                    state.then(callback);
                 }
-                return Promise.resolve('active');
+                return state;
             },
-            setDetectionInterval() {},
-            getAutoLockDelay(callback) {
-                if (typeof callback === 'function') {
-                    callback(0);
-                }
-                return Promise.resolve(0);
+            setDetectionInterval(interval) {
+                detectionInterval = Number(interval) || defaultDetectionInterval;
             },
-            onStateChanged: new ShimEvent(),
+            onStateChanged: {
+                addListener(callback) {
+                    stateChanges.addListener(callback);
+                    watch();
+                },
+                removeListener: (callback) => stateChanges.removeListener(callback),
+                hasListener: (callback) => stateChanges.hasListener(callback),
+                hasListeners: () => stateChanges.hasListeners(),
+            },
         });
     }
 
