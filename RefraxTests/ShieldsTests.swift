@@ -72,6 +72,18 @@ struct ShieldsKeyTests {
         #expect(base.hex.count == 64)
         #expect(base.shortForm.count == 12)
     }
+
+    @Test
+    func `A list whose comment header alone changed keeps its key`() {
+        let monday = ShieldsList(id: "easylist", text: Data("! Version: 1\n! Last modified: Mon\n||ads.example^\n".utf8))
+        let tuesday = ShieldsList(id: "easylist", text: Data("! Version: 2\n! Last modified: Tue\n||ads.example^\n".utf8))
+        let shifted = ShieldsList(id: "easylist", text: Data("! Version: 2\n||ads.example^\n".utf8))
+        #expect(ShieldsKey(lists: [monday], resources: resources) == ShieldsKey(lists: [tuesday], resources: resources))
+        #expect(
+            ShieldsKey(lists: [monday], resources: resources) != ShieldsKey(lists: [shifted], resources: resources),
+            "a changed line count moves the logger's line numbers",
+        )
+    }
 }
 
 @Suite("Shields compiler", .tags(.shields))
@@ -107,6 +119,27 @@ struct ShieldsCompilerTests {
         let (cached, cachedEngine) = try await compiler.build(lists: Self.lists, resources: resources, into: root)
         #expect(cachedEngine == nil, "a warm build compiles nothing")
         #expect(cached == built)
+        #expect(built.manifest.files.keys.contains(ShieldsArtifacts.networkRulesPath(0)))
+        #expect(built.ruleListIdentifier(forPath: ShieldsArtifacts.networkRulesPath(0))?.hasPrefix("shields.network.") == true)
+    }
+
+    @Test
+    func `Pruning keeps the new and protected builds and the newest other one`() async throws {
+        let root = try shieldsScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let compiler = ShieldsCompiler()
+        try FileManager.default.createDirectory(at: root.appending(path: "store"), withIntermediateDirectories: true)
+        var keys: [String] = []
+        for index in 0 ..< 4 {
+            let list = ShieldsList(id: "easylist", text: Data("||ads\(index).example^\n".utf8))
+            let protected = Set(keys.prefix(1))
+            try await keys.append(compiler.build(lists: [list], resources: Data("[]".utf8), into: root, protecting: protected).artifacts.key.hex)
+        }
+        let exists = { (key: String) in FileManager.default.fileExists(atPath: root.appending(path: key).path) }
+        #expect(exists(keys[0]), "the installed build stays")
+        #expect(!exists(keys[1]))
+        #expect(exists(keys[2]) && exists(keys[3]))
+        #expect(exists("store"), "only build directories are pruned")
     }
 
     @Test
@@ -242,8 +275,10 @@ struct RequestLogTests {
         #expect(log.entries.first?.seq == 51)
         #expect(log.blockedCount == 2_050)
         #expect(log.log(since: 2_040).entries.count == 10)
+        #expect(log.documentStart == .distantPast)
         log.documentCommitted()
         #expect(log.blockedCount == 0)
+        #expect(log.documentStart > .distantPast)
         #expect(log.entries.first?.type == "script")
     }
 }

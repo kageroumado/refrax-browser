@@ -44,6 +44,13 @@ WKUserScript *RFXMatchPatternUserScript(NSString *source,
                                         WKContentWorld *world)
     NS_SWIFT_NAME(makeMatchPatternUserScript(source:forMainFrameOnly:includes:excludes:world:));
 
+@interface WKUserContentController (WKShieldsPrivate)
+
+/** Removes one user script; the others stay in the web processes as they are. */
+- (void)_removeUserScript:(WKUserScript *)userScript API_AVAILABLE(macos(10.12));
+
+@end
+
 /**
  * What a content rule list did to one load. Delivered to the navigation delegate's
  * `-_webView:contentRuleListWithIdentifier:performedAction:forURL:`.
