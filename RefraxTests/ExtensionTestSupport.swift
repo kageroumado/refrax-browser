@@ -158,7 +158,7 @@ struct EchoHostFixture {
     }
 
     var locator: NativeMessagingHostLocator {
-        NativeMessagingHostLocator(directories: [directory])
+        NativeMessagingHostLocator(refraxDirectory: nil, browserDirectories: [directory])
     }
 }
 

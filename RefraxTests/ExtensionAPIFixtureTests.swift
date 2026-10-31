@@ -25,7 +25,7 @@ struct ExtensionAPIFixtureTests {
         let permissionList = (permissions + ["nativeMessaging"]).map { "\"\($0)\"" }.joined(separator: ", ")
         return ExtensionFixture(files: [
             "manifest.json": """
-            {"manifest_version": 2, "name": "Fixture", "version": "1.0",
+            {"manifest_version": 2, "name": "Fixture", "version": "1.0", "description": "Fixture",
              "permissions": [\(permissionList)],
              "background": {"scripts": ["background.js"], "persistent": true}\(extra)}
             """,
@@ -95,24 +95,35 @@ struct ExtensionAPIFixtureTests {
 
     // MARK: - Native messaging
 
-    @Test
-    func `One-off messages and ports reach a native host and come back`() async throws {
-        let (env, _, _, probe) = try environment()
-        let host = try EchoHostFixture(allowedExtensions: ["echo@refrax.test"])
-        env.extensionManager.nativeMessaging.locator = host.locator
-        let fixture = Self.persistentBackground(permissions: [], script: """
-        browser.runtime.sendNativeMessage("\(host.name)", { ping: 1 })
+    /// A background that sends one message to `host`, and posts one over a port.
+    private static func nativeMessagingFixture(host: String) -> ExtensionFixture {
+        persistentBackground(permissions: [], script: """
+        browser.runtime.sendNativeMessage("\(host)", { ping: 1 })
             .then((reply) => probe({ kind: "send", reply }), (error) => probe({ kind: "send", error: String(error) }));
         browser.runtime.sendNativeMessage("refrax.test.missing", { ping: 0 })
             .then(() => probe({ kind: "missing" }), (error) => probe({ kind: "missing", error: String(error) }));
-        const port = browser.runtime.connectNative("\(host.name)");
+        const port = browser.runtime.connectNative("\(host)");
         port.onMessage.addListener((reply) => {
             probe({ kind: "port", reply });
             port.disconnect();
         });
+        port.onDisconnect.addListener(() => probe({ kind: "port-closed" }));
         port.postMessage({ ping: 2 });
         """, extra: #", "browser_specific_settings": {"gecko": {"id": "echo@refrax.test"}}"#)
-        _ = try await fixture.load(into: env)
+    }
+
+    @Test
+    func `One-off messages and ports reach a native host the user allowed, and come back`() async throws {
+        let (env, _, _, probe) = try environment()
+        let host = try EchoHostFixture(allowedExtensions: ["echo@refrax.test"])
+        let router = env.extensionManager.nativeMessaging
+        router.locator = host.locator
+        var asked: [NativeMessagingRouter.ConsentRequest] = []
+        router.storedConsent = { request, _ in
+            asked.append(request)
+            return true
+        }
+        _ = try await Self.nativeMessagingFixture(host: host.name).load(into: env)
 
         let send = try await probe.message(kind: "send")
         let reply = try #require(send["reply"] as? [String: Any], "\(send)")
@@ -126,27 +137,115 @@ struct ExtensionAPIFixtureTests {
         #expect((missing["error"] as? String)?.isEmpty == false)
 
         _ = try await waitFor("the port to close") {
-            env.extensionManager.nativeMessaging.connectionCount == 0 ? true : nil
+            router.connectionCount == 0 ? true : nil
         }
+        #expect(asked.first?.hostName == host.name)
+        #expect(asked.first?.executablePath == host.executable.resolvingSymlinksInPath().path)
     }
 
     @Test
-    func `The refrax API answers through its in-process host`() async throws {
+    func `A host reached by a claimed identity starts only after the user allows it`() async throws {
+        let (env, _, _, probe) = try environment()
+        let host = try EchoHostFixture(allowedExtensions: ["echo@refrax.test"])
+        let router = env.extensionManager.nativeMessaging
+        router.locator = host.locator
+        var questions = 0
+        router.askConsent = { _, _ in
+            questions += 1
+            return false
+        }
+        _ = try await Self.nativeMessagingFixture(host: host.name).load(into: env)
+
+        let send = try await probe.message(kind: "send")
+        #expect(send["reply"] == nil)
+        #expect((send["error"] as? String)?.isEmpty == false, "\(send)")
+        _ = try await probe.message(kind: "port-closed")
+        #expect(probe.messages.contains { $0["kind"] as? String == "port" } == false)
+        _ = try await waitFor("both questions") { questions == 2 ? true : nil }
+        #expect(router.connectionCount == 0)
+    }
+
+    @Test
+    func `The refrax API answers what the installed extension was granted, in its own spaces`() async throws {
         let (env, space, _, probe) = try environment()
-        let fixture = Self.persistentBackground(permissions: ["refrax.spaces"], script: """
+        let privateSpace = env.makeSpace(name: "Private")
+        privateSpace.dataStoreMode = .private
+        let separateSpace = env.makeSpace(name: "Separate")
+        separateSpace.dataStoreMode = .separate
+        let folder = try Self.persistentBackground(permissions: ["refrax.spaces"], script: """
         browser.refrax.spaces.getAll()
             .then((spaces) => probe({ kind: "spaces", spaces }), (error) => probe({ kind: "spaces", error: String(error) }));
         browser.refrax.tabs.getFavorites()
             .then(() => probe({ kind: "favorites" }), (error) => probe({ kind: "favorites", error: String(error) }));
-        """)
-        _ = try await fixture.load(into: env)
+        """).write()
+        let installed = try await env.extensionManager.installFromFolder(folder)
+        defer {
+            Task { try? await env.extensionManager.uninstall(installed) }
+        }
 
         let spaces = try await probe.message(kind: "spaces")
-        let ids = (spaces["spaces"] as? [[String: Any]])?.compactMap { $0["id"] as? String }
-        #expect(ids?.contains(space.id.uuidString) == true, "\(spaces)")
+        let ids = Set((spaces["spaces"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? [])
+        #expect(ids.contains(space.id.uuidString), "\(spaces)")
+        #expect(!ids.contains(privateSpace.id.uuidString))
+        #expect(!ids.contains(separateSpace.id.uuidString))
 
         let favorites = try await probe.message(kind: "favorites")
         #expect((favorites["error"] as? String)?.contains("refrax.tabs") == true, "\(favorites)")
+    }
+
+    @Test
+    func `The refrax API answers nothing to an extension that is not installed`() async throws {
+        let (env, _, _, probe) = try environment()
+        _ = try await Self.persistentBackground(permissions: ["refrax.spaces"], script: """
+        browser.refrax.spaces.getAll()
+            .then((spaces) => probe({ kind: "spaces", spaces }), (error) => probe({ kind: "spaces", error: String(error) }));
+        """).load(into: env)
+
+        let spaces = try await probe.message(kind: "spaces")
+        #expect(spaces["spaces"] == nil)
+        #expect((spaces["error"] as? String)?.isEmpty == false)
+    }
+
+    // MARK: - Idle
+
+    @Test
+    func `idle reports a locked screen to the extension, and active once it unlocks`() async throws {
+        let (env, _, _, probe) = try environment()
+        let lockNotifications = NotificationCenter()
+        env.extensionManager.shimInjector.idleShim.monitor = IdleMonitor(
+            lockNotifications: lockNotifications,
+            workspaceNotifications: NotificationCenter(),
+            idleSeconds: { 0 },
+            isLocked: false,
+        )
+        _ = try await Self.persistentBackground(permissions: ["idle"], script: """
+        browser.idle.onStateChanged.addListener((state) => probe({ kind: "idle-" + state }));
+        browser.idle.queryState(60).then((state) => probe({ kind: "initial", state }));
+        """).load(into: env)
+
+        let initial = try await probe.message(kind: "initial")
+        #expect(initial["state"] as? String == "active")
+        try await Task.sleep(for: .milliseconds(500))
+
+        lockNotifications.post(name: Notification.Name("com.apple.screenIsLocked"), object: nil)
+        _ = try await probe.message(kind: "idle-locked")
+
+        lockNotifications.post(name: Notification.Name("com.apple.screenIsUnlocked"), object: nil)
+        _ = try await probe.message(kind: "idle-active")
+    }
+
+    @Test
+    func `idle reports idle once input stops for the detection interval`() {
+        var seconds: TimeInterval = 10
+        let monitor = IdleMonitor(
+            lockNotifications: NotificationCenter(),
+            workspaceNotifications: NotificationCenter(),
+            idleSeconds: { seconds },
+            isLocked: false,
+        )
+        #expect(monitor.state(detectionInterval: 60) == .active)
+        seconds = 61
+        #expect(monitor.state(detectionInterval: 60) == .idle)
     }
 
     // MARK: - Commands
@@ -318,5 +417,44 @@ struct ExtensionAPIFixtureTests {
 
         let page = try #require(env.pagePool.page(for: tabPage))
         #expect(page.webKitView.configuration.webExtensionController === controller)
+    }
+
+    @Test
+    func `A window belongs to its space's controller, moves with the space, and refuses others`() async throws {
+        let (env, space, windowState, _) = try environment()
+        let separateSpace = env.makeSpace(name: "Separate")
+        separateSpace.dataStoreMode = .separate
+        let manager = env.extensionManager
+        let isolated = manager.controller(for: separateSpace)
+        let manifest = #"{"manifest_version": 3, "name": "Windows", "version": "1.0"}"#
+        let defaultContext = try await ExtensionFixture(files: ["manifest.json": manifest]).makeContext()
+        try manager.defaultController.load(defaultContext)
+        let isolatedContext = try await ExtensionFixture(files: ["manifest.json": manifest]).makeContext()
+        try isolated.load(isolatedContext)
+
+        let nsWindow = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        nsWindow.isReleasedWhenClosed = false
+        windowState.window = nsWindow
+        #expect(windowState.activeSpace === space)
+        manager.dispatchWindowOpened(windowState, nsWindow: nsWindow)
+        let window = manager.extensionWindow(for: windowState, nsWindow: nsWindow)
+
+        #expect(defaultContext.openWindows.count == 1)
+        #expect(isolatedContext.openWindows.isEmpty)
+        try await window.setFrame(CGRect(x: 10, y: 10, width: 400, height: 300), for: defaultContext)
+        await #expect(throws: (any Error).self) {
+            try await window.setFrame(CGRect(x: 20, y: 20, width: 400, height: 300), for: isolatedContext)
+        }
+
+        env.spaceManager.switchToSpaceSync(separateSpace, for: windowState)
+
+        #expect(defaultContext.openWindows.isEmpty)
+        #expect(isolatedContext.openWindows.count == 1)
+        await #expect(throws: (any Error).self) {
+            try await window.close(for: defaultContext)
+        }
+
+        manager.dispatchWindowClosed(windowState, nsWindow: nsWindow)
+        #expect(isolatedContext.openWindows.isEmpty)
     }
 }

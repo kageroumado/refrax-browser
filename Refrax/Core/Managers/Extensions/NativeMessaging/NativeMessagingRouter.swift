@@ -9,7 +9,32 @@ import WebKit
 /// ``NativeMessagingHostLocator`` and run as ``NativeMessagingHostProcess``. A one-off message
 /// starts the executable, waits for its first reply and stops it; a port keeps it running
 /// until either side disconnects.
+///
+/// An executable host that admits the extension only by an identity the extension claims
+/// (see ``ExtensionIdentity``) starts only once the user has allowed it for that extension.
+/// A one-off message waits for the answer. A port is refused while the answer is pending,
+/// because WebKit needs a port connected synchronously (see
+/// `ExtensionControllerDelegate`'s `connectUsing`); the question is asked, and the
+/// extension's next connection gets the answer.
 final class NativeMessagingRouter {
+    /// What the user is asked before a claimed identity starts a host.
+    struct ConsentRequest: Equatable {
+        let hostName: String
+        let executablePath: String
+        let extensionName: String
+    }
+
+    /// The identity of an extension, with the Chrome ID its installation verified.
+    var identity: (WKWebExtensionContext) -> ExtensionIdentity = { context in
+        ExtensionIdentity(manifest: context.webExtension.manifest, verifiedChromeID: nil, refraxOrigin: context.baseURL.absoluteString)
+    }
+
+    /// The user's stored answer for a request, or `nil` when never asked.
+    var storedConsent: (ConsentRequest, WKWebExtensionContext) -> Bool? = { _, _ in nil }
+
+    /// Asks the user, stores the answer, and returns it.
+    var askConsent: (ConsentRequest, WKWebExtensionContext) async -> Bool = { _, _ in false }
+
     /// Answers one message from an extension. A port to an in-process host calls it for each
     /// message and posts back each non-`nil` reply.
     typealias InProcessHost = (_ message: Any, _ context: WKWebExtensionContext) async throws -> Any?
@@ -59,6 +84,15 @@ final class NativeMessagingRouter {
         }
 
         let host = try resolve(name, for: context)
+        if host.requiresConsent {
+            let request = Self.consentRequest(for: host, context: context)
+            let allowed = if let stored = storedConsent(request, context) {
+                stored
+            } else {
+                await askConsent(request, context)
+            }
+            guard allowed else { throw NativeMessagingError.forbidden }
+        }
         let exchange = OneOffExchange()
         let key = ObjectIdentifier(exchange)
         let process = NativeMessagingHostProcess(host: host) { [weak self] event in
@@ -139,6 +173,20 @@ final class NativeMessagingRouter {
         }
 
         let host = try resolve(name, for: context)
+        if host.requiresConsent {
+            let request = Self.consentRequest(for: host, context: context)
+            switch storedConsent(request, context) {
+            case true?:
+                break
+            case false?:
+                throw NativeMessagingError.forbidden
+            case nil:
+                Task(name: "Ask to start native host \(name)") {
+                    _ = await self.askConsent(request, context)
+                }
+                throw NativeMessagingError.forbidden
+            }
+        }
         let process = NativeMessagingHostProcess(host: host) { [weak self, weak port] event in
             switch event {
             case let .message(body):
@@ -170,10 +218,17 @@ final class NativeMessagingRouter {
 
     // MARK: - Resolution
 
+    private static func consentRequest(for host: ResolvedNativeMessagingHost, context: WKWebExtensionContext) -> ConsentRequest {
+        ConsentRequest(
+            hostName: host.name,
+            executablePath: host.executableURL.path,
+            extensionName: context.webExtension.displayName ?? context.uniqueIdentifier,
+        )
+    }
+
     private func resolve(_ name: String, for context: WKWebExtensionContext) throws -> ResolvedNativeMessagingHost {
-        let identity = ExtensionIdentity(manifest: context.webExtension.manifest)
         do {
-            return try locator.host(named: name, for: identity)
+            return try locator.host(named: name, for: identity(context))
         } catch {
             Logger.warning(
                 "Native messaging host '\(name)' unavailable to '\(context.webExtension.displayName ?? "extension")': \(error.localizedDescription)",

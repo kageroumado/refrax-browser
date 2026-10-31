@@ -1,42 +1,62 @@
 import CryptoKit
 import Foundation
+import Security
 
 /// Unpacks Chrome `.crx` and Firefox `.xpi` archives into folders `WKWebExtension` loads, and
 /// patches their manifests for WebKit.
 nonisolated enum ExtensionArchive {
-    /// A CRX3 file split into its ZIP payload and the public key that identifies the extension.
+    /// A CRX3 file whose developer signature checked out.
     struct CRXContents: Equatable {
         /// The ZIP archive after the CRX header.
         let zip: Data
-        /// The DER public key whose SHA-256 is the header's CRX ID: the key Chrome derives the
-        /// extension ID from. `nil` when the header names no matching key.
-        let publicKey: Data?
+        /// The Chrome extension ID of the developer key that signed the archive.
+        let chromeID: String
+    }
+
+    /// What an extracted archive proved about its extension.
+    struct Extracted {
+        /// The signed Chrome extension ID of a CRX; `nil` for an XPI or a ZIP.
+        let verifiedChromeID: String?
     }
 
     private enum CRX {
         static let magic = Data("Cr24".utf8)
         static let version: UInt32 = 3
         static let prefixLength = 12
-        /// `CrxFileHeader.sha256_with_rsa` and `.sha256_with_ecdsa`, each an `AsymmetricKeyProof`.
-        static let keyProofFields: Set<UInt64> = [2, 3]
-        /// `AsymmetricKeyProof.public_key`.
+        /// `CrxFileHeader.sha256_with_rsa`, an `AsymmetricKeyProof`.
+        static let rsaProofField: UInt64 = 2
+        /// `CrxFileHeader.sha256_with_ecdsa`, an `AsymmetricKeyProof`.
+        static let ecdsaProofField: UInt64 = 3
+        /// `AsymmetricKeyProof.public_key`, a DER SubjectPublicKeyInfo.
         static let publicKeyField: UInt64 = 1
+        /// `AsymmetricKeyProof.signature`.
+        static let signatureField: UInt64 = 2
         /// `CrxFileHeader.signed_header_data`, a serialized `SignedData`.
         static let signedHeaderDataField: UInt64 = 10_000
         /// `SignedData.crx_id`: the first 16 bytes of the SHA-256 of the extension's key.
         static let crxIDField: UInt64 = 1
         static let crxIDLength = 16
+        /// What each signature covers before the signed header data's length.
+        static let signaturePrefix = Data("CRX3 SignedData\u{0}".utf8)
+    }
+
+    private struct KeyProof {
+        let publicKey: Data
+        let signature: Data
+        let isECDSA: Bool
     }
 
     // MARK: - CRX
 
-    /// Splits a CRX3 file into its ZIP payload and its extension key.
+    /// Splits a CRX3 file into its ZIP payload and its verified extension ID.
     ///
-    /// The header is a `CrxFileHeader` protocol buffer: key proofs in fields 2 and 3 and, in
-    /// field 10000, the signed data holding the CRX ID. A Web Store CRX carries two proofs, the
-    /// developer's and the store's; the developer's is the one whose hash is the CRX ID.
+    /// The header is a `CrxFileHeader` protocol buffer: key proofs in fields 2 (RSA) and 3
+    /// (ECDSA) and, in field 10000, the signed data holding the CRX ID. A Web Store CRX carries
+    /// the developer's proof and the store's; the developer's key is the one whose hash is the
+    /// CRX ID, and its signature over the signed data and the ZIP must hold, as Chrome requires.
     ///
-    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for anything but a CRX3 file.
+    /// - Throws: ``ExtensionError/invalidArchiveFormat`` for anything but a CRX3 file,
+    ///   ``ExtensionError/invalidSignature`` when no proof by the CRX ID's key verifies.
     static func contents(ofCRX data: Data) throws -> CRXContents {
         guard data.count > CRX.prefixLength,
               data.prefix(4) == CRX.magic,
@@ -49,21 +69,83 @@ nonisolated enum ExtensionArchive {
         guard zipStart < data.count else { throw ExtensionError.invalidArchiveFormat }
 
         let header = Data(data[CRX.prefixLength ..< zipStart])
-        return CRXContents(zip: Data(data[zipStart...]), publicKey: developerKey(inHeader: header))
+        let zip = Data(data[zipStart...])
+        guard let fields = try? ProtobufFields.parse(header),
+              let signedHeaderData = fields.first(where: { $0.number == CRX.signedHeaderDataField })?.value,
+              let crxID = (try? ProtobufFields.parse(signedHeaderData))?.first(where: { $0.number == CRX.crxIDField })?.value,
+              crxID.count == CRX.crxIDLength
+        else {
+            throw ExtensionError.invalidSignature
+        }
+
+        var length = UInt32(signedHeaderData.count).littleEndian
+        let signedMessage = CRX.signaturePrefix + Data(bytes: &length, count: 4) + signedHeaderData + zip
+        let proofs = fields.compactMap(keyProof)
+        guard let developerProof = proofs.first(where: { Data(SHA256.hash(data: $0.publicKey).prefix(CRX.crxIDLength)) == crxID }),
+              verify(developerProof, of: signedMessage)
+        else {
+            throw ExtensionError.invalidSignature
+        }
+        return CRXContents(zip: zip, chromeID: ExtensionIdentity.chromeID(forPublicKey: developerProof.publicKey))
     }
 
-    private static func developerKey(inHeader header: Data) -> Data? {
-        guard let fields = try? ProtobufFields.parse(header) else { return nil }
-        let keys = fields
-            .filter { CRX.keyProofFields.contains($0.number) }
-            .compactMap { proof in
-                (try? ProtobufFields.parse(proof.value))?.first { $0.number == CRX.publicKeyField }?.value
+    private static func keyProof(_ field: ProtobufFields.Field) -> KeyProof? {
+        guard field.number == CRX.rsaProofField || field.number == CRX.ecdsaProofField,
+              let members = try? ProtobufFields.parse(field.value),
+              let publicKey = members.first(where: { $0.number == CRX.publicKeyField })?.value,
+              let signature = members.first(where: { $0.number == CRX.signatureField })?.value
+        else { return nil }
+        return KeyProof(publicKey: publicKey, signature: signature, isECDSA: field.number == CRX.ecdsaProofField)
+    }
+
+    /// Whether `proof`'s signature over `message` holds: RSASSA-PKCS1-v1_5 or ECDSA P-256,
+    /// both over SHA-256.
+    private static func verify(_ proof: KeyProof, of message: Data) -> Bool {
+        guard let keyBits = subjectPublicKey(inSPKI: proof.publicKey) else { return false }
+        let attributes: [CFString: Any] = [
+            kSecAttrKeyType: proof.isECDSA ? kSecAttrKeyTypeECSECPrimeRandom : kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass: kSecAttrKeyClassPublic,
+        ]
+        guard let key = SecKeyCreateWithData(keyBits as CFData, attributes as CFDictionary, nil) else { return false }
+        let algorithm: SecKeyAlgorithm = proof.isECDSA ? .ecdsaSignatureMessageX962SHA256 : .rsaSignatureMessagePKCS1v15SHA256
+        return SecKeyVerifySignature(key, algorithm, message as CFData, proof.signature as CFData, nil)
+    }
+
+    /// The key inside a DER SubjectPublicKeyInfo: the bit string after the algorithm, which is
+    /// a PKCS #1 key for RSA and an uncompressed point for ECDSA, the forms Security accepts.
+    static func subjectPublicKey(inSPKI spki: Data) -> Data? {
+        let bytes = [UInt8](spki)
+        var index = 0
+        guard let outer = DER.element(bytes, &index), outer.tag == DER.sequence else { return nil }
+        var inner = outer.content.lowerBound
+        guard let algorithm = DER.element(bytes, &inner), algorithm.tag == DER.sequence,
+              let key = DER.element(bytes, &inner), key.tag == DER.bitString, !key.content.isEmpty,
+              bytes[key.content.lowerBound] == 0
+        else { return nil }
+        return Data(bytes[(key.content.lowerBound + 1) ..< key.content.upperBound])
+    }
+
+    private enum DER {
+        static let sequence: UInt8 = 0x30
+        static let bitString: UInt8 = 0x03
+
+        /// The element at `index`, which then points past it.
+        static func element(_ bytes: [UInt8], _ index: inout Int) -> (tag: UInt8, content: Range<Int>)? {
+            guard index + 2 <= bytes.count else { return nil }
+            let tag = bytes[index]
+            var length = Int(bytes[index + 1])
+            index += 2
+            if length & 0x80 != 0 {
+                let count = length & 0x7F
+                guard count > 0, count <= 4, index + count <= bytes.count else { return nil }
+                length = bytes[index ..< index + count].reduce(0) { $0 << 8 | Int($1) }
+                index += count
             }
-        let crxID = fields.first { $0.number == CRX.signedHeaderDataField }
-            .flatMap { try? ProtobufFields.parse($0.value) }?
-            .first { $0.number == CRX.crxIDField }?.value
-        guard let crxID, crxID.count == CRX.crxIDLength else { return keys.first }
-        return keys.first { Data(SHA256.hash(data: $0).prefix(CRX.crxIDLength)) == crxID }
+            guard length <= bytes.count - index else { return nil }
+            let content = index ..< index + length
+            index += length
+            return (tag, content)
+        }
     }
 
     private static func littleEndianUInt32(_ data: Data, at offset: Int) -> UInt32 {
@@ -75,18 +157,21 @@ nonisolated enum ExtensionArchive {
     /// Unzips `archiveURL` into `directory`, which must not exist yet, and applies the manifest
     /// fixups. Runs off the main actor.
     ///
+    /// - Returns: What the archive proved: a CRX's verified Chrome extension ID.
     /// - Throws: ``ExtensionError/invalidArchiveFormat`` for an unknown or malformed archive,
+    ///   ``ExtensionError/invalidSignature`` for a CRX whose signature fails,
     ///   ``ExtensionError/extractionFailed`` when unzipping fails.
     @concurrent
-    static func extract(_ archiveURL: URL, into directory: URL) async throws {
+    @discardableResult
+    static func extract(_ archiveURL: URL, into directory: URL) async throws -> Extracted {
         let data = try Data(contentsOf: archiveURL)
         let zip: Data
-        var publicKey: Data?
+        var chromeID: String?
         switch archiveURL.pathExtension.lowercased() {
         case "crx":
             let contents = try contents(ofCRX: data)
             zip = contents.zip
-            publicKey = contents.publicKey
+            chromeID = contents.chromeID
         case "xpi", "zip":
             zip = data
         default:
@@ -116,17 +201,15 @@ nonisolated enum ExtensionArchive {
             throw ExtensionError.extractionFailed
         }
 
-        fixupManifest(at: directory, publicKey: publicKey)
+        fixupManifest(at: directory)
+        return Extracted(verifiedChromeID: chromeID)
     }
 
     // MARK: - Manifest
 
-    /// Patches the manifest in `directory` for WebKit and for Refrax's extension identity:
-    ///
-    /// - Drops empty `commands` entries (`"_execute_browser_action": {}`), which WebKit rejects.
-    /// - Records a CRX's `publicKey` as the manifest's `key`, as Chrome does for an unpacked
-    ///   extension, so the Chrome extension ID that native messaging hosts allow stays known.
-    static func fixupManifest(at directory: URL, publicKey: Data?) {
+    /// Drops empty `commands` entries from the manifest in `directory`
+    /// (`"_execute_browser_action": {}`), which WebKit rejects.
+    static func fixupManifest(at directory: URL) {
         let manifestURL = directory.appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: manifestURL),
               let original = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -135,7 +218,7 @@ nonisolated enum ExtensionArchive {
             return
         }
 
-        let manifest = fixedManifest(original, publicKey: publicKey)
+        let manifest = fixedManifest(original)
         guard !NSDictionary(dictionary: manifest).isEqual(to: original) else { return }
         do {
             let fixed = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
@@ -145,16 +228,13 @@ nonisolated enum ExtensionArchive {
         }
     }
 
-    /// `manifest` with the fixups ``fixupManifest(at:publicKey:)`` describes.
-    static func fixedManifest(_ manifest: [String: Any], publicKey: Data?) -> [String: Any] {
+    /// `manifest` with the fixups ``fixupManifest(at:)`` describes.
+    static func fixedManifest(_ manifest: [String: Any]) -> [String: Any] {
         var manifest = manifest
         if let commands = manifest["commands"] as? [String: Any] {
             manifest["commands"] = commands.filter { _, value in
                 (value as? [String: Any]).map { !$0.isEmpty } ?? false
             }
-        }
-        if manifest["key"] == nil, let publicKey {
-            manifest["key"] = publicKey.base64EncodedString()
         }
         return manifest
     }

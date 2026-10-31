@@ -1,33 +1,45 @@
 import CryptoKit
 import Foundation
 
-/// The identifiers other browsers know an extension by, read from its manifest: the Chrome
-/// extension ID that its `key` hashes to, and the Firefox add-on ID it declares.
+/// Who an extension is, as native messaging hosts decide whom to serve.
 ///
-/// Native messaging hosts name the extensions they serve by these: Chrome-format host
-/// manifests list `chrome-extension://<id>/` origins, Firefox-format ones list add-on IDs.
+/// Chrome-format host manifests list `chrome-extension://<id>/` origins and Firefox-format ones
+/// list add-on IDs. Only a Chrome ID proven by a CRX signature at install is trusted; an ID the
+/// manifest merely states (its `key`, its `browser_specific_settings.gecko.id`) can be copied
+/// by any sideloaded extension, so a host reached through one needs the user's consent. Hosts
+/// in Refrax's own folder name the extension by the origin Refrax serves it from.
 nonisolated struct ExtensionIdentity: Equatable, Sendable {
-    /// The 32-letter Chrome extension ID, when the manifest carries a `key`.
-    let chromeID: String?
-    /// The Firefox add-on ID from `browser_specific_settings.gecko.id` or `applications.gecko.id`.
-    let geckoID: String?
+    /// The Chrome ID of the developer key that signed the extension's CRX.
+    let verifiedChromeID: String?
+    /// The Chrome ID the manifest's `key` hashes to; unverified.
+    let claimedChromeID: String?
+    /// The Firefox add-on ID the manifest declares; unverified.
+    let claimedGeckoID: String?
+    /// `webkit-extension://<context identifier>/`, stable for an installation.
+    let refraxOrigin: String
 
-    init(chromeID: String?, geckoID: String?) {
-        self.chromeID = chromeID
-        self.geckoID = geckoID
+    init(verifiedChromeID: String?, claimedChromeID: String?, claimedGeckoID: String?, refraxOrigin: String) {
+        self.verifiedChromeID = verifiedChromeID
+        self.claimedChromeID = claimedChromeID
+        self.claimedGeckoID = claimedGeckoID
+        self.refraxOrigin = refraxOrigin
     }
 
-    /// Reads the identity from a parsed `manifest.json`.
-    init(manifest: [String: Any]) {
+    /// The identity of an extension with `manifest`, served from `refraxOrigin`, whose CRX
+    /// proved `verifiedChromeID` at install.
+    init(manifest: [String: Any], verifiedChromeID: String?, refraxOrigin: String) {
         let key = (manifest["key"] as? String).flatMap { Data(base64Encoded: $0, options: .ignoreUnknownCharacters) }
-        self.chromeID = key.map(Self.chromeID(forPublicKey:))
         let settings = manifest["browser_specific_settings"] as? [String: Any] ?? manifest["applications"] as? [String: Any]
-        self.geckoID = (settings?["gecko"] as? [String: Any])?["id"] as? String
+        self.init(
+            verifiedChromeID: verifiedChromeID,
+            claimedChromeID: key.map(Self.chromeID(forPublicKey:)),
+            claimedGeckoID: (settings?["gecko"] as? [String: Any])?["id"] as? String,
+            refraxOrigin: refraxOrigin,
+        )
     }
 
-    /// The origin Chrome gives the extension and lists in `allowed_origins`.
-    var chromeOrigin: String? {
-        chromeID.map { "chrome-extension://\($0)/" }
+    static func chromeOrigin(_ chromeID: String) -> String {
+        "chrome-extension://\(chromeID)/"
     }
 
     /// Chrome's extension ID for a DER public key: the first 16 bytes of its SHA-256, each

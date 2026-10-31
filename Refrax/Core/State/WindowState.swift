@@ -899,6 +899,7 @@ final class WindowState {
         // Persist as the last-active space so windowless surfaces (a standalone Glimpse)
         // can default to it after every window closes.
         browserState.lastActiveSpaceID = space.id
+        browserState.extensionManager?.dispatchActiveSpaceChanged(self)
     }
     
     /// Removes references to a deleted tab from all navigation state.

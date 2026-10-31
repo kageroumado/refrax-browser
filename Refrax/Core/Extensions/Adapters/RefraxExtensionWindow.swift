@@ -10,11 +10,9 @@ import WebKit
 //
 // ## Space Mapping
 //
-// In Refrax, each window shows one space at a time. The extension sees tabs from
-// the currently active space only, and only those its own controller runs: every
-// controller knows every window, and a window showing an isolated space has no tabs for
-// the default controller's extensions. When the user switches spaces, the tab list
-// changes accordingly.
+// In Refrax, each window shows one space at a time and belongs to that space's
+// controller: only its extensions see the window, its tabs and act on it, and the window
+// moves to another controller when it switches to a space of another one.
 //
 // ## Thread Safety
 //
@@ -154,21 +152,32 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
 
     // MARK: - Actions
 
-    func focus(for _: WKWebExtensionContext) async throws {
+    /// Refuses an action by an extension of another controller than the one of the space the
+    /// window shows: an extension acts only on windows it can see.
+    private func requireOwnership(by context: WKWebExtensionContext) throws {
+        guard let windowState, let manager, manager.windowBelongs(windowState, to: context) else {
+            throw ExtensionError.permissionDenied
+        }
+    }
+
+    func focus(for context: WKWebExtensionContext) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func close(for _: WKWebExtensionContext) async throws {
+    func close(for context: WKWebExtensionContext) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.performClose(nil)
     }
 
     func setWindowState(
         _ state: WKWebExtension.WindowState,
-        for _: WKWebExtensionContext,
+        for context: WKWebExtensionContext,
     ) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
 
         switch state {
@@ -203,8 +212,9 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
 
     func setFrame(
         _ frame: CGRect,
-        for _: WKWebExtensionContext,
+        for context: WKWebExtensionContext,
     ) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.setFrame(frame, display: true, animate: true)
     }

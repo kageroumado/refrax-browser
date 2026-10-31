@@ -135,6 +135,9 @@ final class ExtensionManager {
     /// launch that were never shown, and tabs whose page was evicted.
     private(set) var tabsWithoutWebView: Set<TabPage.ID> = []
 
+    /// The controller each browser window is reported to, keyed by WindowState object identity.
+    private var windowOwners: [ObjectIdentifier: WKWebExtensionController] = [:]
+
     /// Extension window adapters, keyed by WindowState object identity.
     private var windowAdapters: [ObjectIdentifier: RefraxExtensionWindow] = [:]
 
@@ -206,6 +209,9 @@ final class ExtensionManager {
     /// Task for observing app activation state changes.
     private var activationObservationTask: Task<Void, Never>?
 
+    /// Consent questions on screen, by installation and host name.
+    @ObservationIgnored private var pendingNativeHostConsents: [String: Task<Bool, Never>] = [:]
+
     isolated deinit {
         activationObservationTask?.cancel()
     }
@@ -249,6 +255,19 @@ final class ExtensionManager {
         nativeMessaging.register({ [unowned self] message, context in
             try await refraxAPI.handle(message, from: context)
         }, named: RefraxAPIShim.hostName)
+        nativeMessaging.identity = { [unowned self] context in
+            ExtensionIdentity(
+                manifest: context.webExtension.manifest,
+                verifiedChromeID: installedExtension(for: context)?.verifiedChromeID,
+                refraxOrigin: context.baseURL.absoluteString,
+            )
+        }
+        nativeMessaging.storedConsent = { [unowned self] request, context in
+            installedExtension(for: context)?.nativeHostConsents?[request.hostName]
+        }
+        nativeMessaging.askConsent = { [unowned self] request, context in
+            await askNativeHostConsent(request, for: context)
+        }
 
         // Wire up update checker
         Task {
@@ -355,7 +374,7 @@ final class ExtensionManager {
     @discardableResult
     private func installBundledExtension(from url: URL, name: String) async throws -> InstalledExtension {
         // Extract to extensions directory (runs on background thread)
-        let extractedURL = try await extractArchive(url)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(url)
 
         // Create the WKWebExtension from the extracted folder
         let extension_ = try await WKWebExtension(resourceBaseURL: extractedURL)
@@ -376,6 +395,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -467,7 +487,6 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         isolatedControllers[space.id] = controller
-        reportOpenWindows(to: controller)
         loadExtensions(into: space)
 
         Logger.info("Created isolated extension controller for space: \(space.name)", category: Logger.extensions)
@@ -503,7 +522,6 @@ final class ExtensionManager {
         controller.delegate = delegate
 
         privateControllers[space.id] = controller
-        reportOpenWindows(to: controller)
         loadExtensions(into: space)
 
         Logger.info("Created transient extension controller for private space: \(space.name)", category: Logger.extensions)
@@ -673,7 +691,7 @@ final class ExtensionManager {
         }
 
         // Extract to extensions directory (runs on background thread)
-        let extractedURL = try await extractArchive(url)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(url)
 
         // Determine source type
         let source: ExtensionSource = fileExtension == "crx"
@@ -699,6 +717,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -792,7 +811,12 @@ final class ExtensionManager {
         defer { try? FileManager.default.removeItem(at: archiveURL) }
 
         // Extract the archive
-        let extractedURL = try await extractArchive(archiveURL)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(archiveURL)
+
+        if store == .chrome, verifiedChromeID != extensionID {
+            try? FileManager.default.removeItem(at: extractedURL)
+            throw ExtensionError.invalidSignature
+        }
 
         // Create the WKWebExtension from the extracted folder
         let extension_ = try await WKWebExtension(resourceBaseURL: extractedURL)
@@ -812,6 +836,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -850,13 +875,13 @@ final class ExtensionManager {
     /// with a new UUID that becomes the extension's unique identifier.
     ///
     /// - Parameter archiveURL: Path to the archive file.
-    /// - Returns: Path to the extracted extension folder.
-    private func extractArchive(_ archiveURL: URL) async throws -> URL {
+    /// - Returns: The extracted extension folder, and the Chrome ID a CRX's signature proves.
+    private func extractArchive(_ archiveURL: URL) async throws -> (folder: URL, verifiedChromeID: String?) {
         let directory = stateFileURL.deletingLastPathComponent()
             .appendingPathComponent("Extracted", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try await ExtensionArchive.extract(archiveURL, into: directory)
-        return directory
+        let extracted = try await ExtensionArchive.extract(archiveURL, into: directory)
+        return (directory, extracted.verifiedChromeID)
     }
 
     /// Uninstalls an extension.
@@ -1137,40 +1162,54 @@ final class ExtensionManager {
         [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
     }
 
-    /// Tells every controller a browser window opened. A window shows one space at a time and
-    /// can switch to a space of another controller, so every controller knows every window;
-    /// each sees only the tabs that are its own.
+    /// Reports a browser window to the controller of the space it shows. Only that
+    /// controller's extensions see the window; it moves to another controller when the window
+    /// switches to a space of another one (``dispatchActiveSpaceChanged(_:)``).
     func dispatchWindowOpened(_ windowState: WindowState, nsWindow: NSWindow) {
-        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
-        for controller in allControllers {
-            controller.didOpenWindow(window)
-        }
+        let owner = windowOwner(for: windowState)
+        windowOwners[ObjectIdentifier(windowState)] = owner
+        owner.didOpenWindow(extensionWindow(for: windowState, nsWindow: nsWindow))
     }
 
-    /// Tells every controller a browser window became the focused one.
+    /// Tells the window's controller it became the focused window.
     func dispatchWindowFocused(_ windowState: WindowState, nsWindow: NSWindow) {
-        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
-        for controller in allControllers {
-            controller.didFocusWindow(window)
-        }
+        dispatchActiveSpaceChanged(windowState)
+        windowOwners[ObjectIdentifier(windowState)]?.didFocusWindow(extensionWindow(for: windowState, nsWindow: nsWindow))
     }
 
-    /// Tells every controller a browser window closed, and drops its adapter.
+    /// Tells the window's controller it closed, and drops its adapter.
     func dispatchWindowClosed(_ windowState: WindowState, nsWindow: NSWindow) {
         let window = extensionWindow(for: windowState, nsWindow: nsWindow)
-        for controller in allControllers {
-            controller.didCloseWindow(window)
-        }
+        windowOwners.removeValue(forKey: ObjectIdentifier(windowState))?.didCloseWindow(window)
         removeWindowAdapter(for: windowState)
     }
 
-    /// Reports the open browser windows to a controller created after them.
-    private func reportOpenWindows(to controller: WKWebExtensionController) {
-        guard let windowManager = state.pagePool?.windowManager else { return }
-        for windowController in windowManager.windowControllers {
-            guard let nsWindow = windowController.window else { continue }
-            controller.didOpenWindow(extensionWindow(for: windowController.windowState, nsWindow: nsWindow))
+    /// Moves a window to the controller of the space it now shows: the old controller's
+    /// extensions see it close, the new one's see it open.
+    func dispatchActiveSpaceChanged(_ windowState: WindowState) {
+        let key = ObjectIdentifier(windowState)
+        guard let current = windowOwners[key], let nsWindow = windowState.window else { return }
+        let owner = windowOwner(for: windowState)
+        guard owner !== current else { return }
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        current.didCloseWindow(window)
+        windowOwners[key] = owner
+        owner.didOpenWindow(window)
+        if nsWindow.isKeyWindow {
+            owner.didFocusWindow(window)
         }
+    }
+
+    /// Whether `context` runs in the controller of the space `windowState` shows, so its
+    /// extension may act on the window.
+    func windowBelongs(_ windowState: WindowState, to context: WKWebExtensionContext) -> Bool {
+        guard let owner = context.webExtensionController else { return false }
+        guard let space = windowState.activeSpace else { return owner === defaultController }
+        return existingController(for: space) === owner
+    }
+
+    private func windowOwner(for windowState: WindowState) -> WKWebExtensionController {
+        windowState.activeSpace.map(controller(for:)) ?? defaultController
     }
 
     /// Notes that an open tab's page went away while the tab stays open, as when the
@@ -1199,6 +1238,27 @@ final class ExtensionManager {
         controller.didCloseTab(adapter, windowIsClosing: false)
         removeTabAdapter(for: tabPage)
         controller.didOpenTab(extensionTab(for: tabPage, pagePool: pagePool))
+    }
+
+    /// The controller a space's tabs run in, or `nil` for an isolated or private space whose
+    /// controller does not exist yet. Never creates one.
+    func existingController(for space: Space) -> WKWebExtensionController? {
+        if space.dataStoreMode.isPrivate {
+            return privateControllers[space.id]
+        }
+        if space.dataStoreMode.usesSeparateDataStore {
+            return isolatedControllers[space.id]
+        }
+        return defaultController
+    }
+
+    /// The controller a tab's web views run in, as `controller(for:)` picks it, without
+    /// creating a space's controller.
+    func existingController(for tab: Tab) -> WKWebExtensionController? {
+        guard !tab.status.usesGlobalDataStore, let space = tab.space else {
+            return defaultController
+        }
+        return existingController(for: space)
     }
 
     /// The controller for a tab's web views: its space's, matching the data store
@@ -1435,6 +1495,60 @@ final class ExtensionManager {
     private func extensionTab(for tab: Tab?) -> RefraxExtensionTab? {
         guard let tabPage = tab?.pages.first, let pagePool = state.pagePool else { return nil }
         return extensionTab(for: tabPage, pagePool: pagePool)
+    }
+
+    // MARK: - Native Host Consent
+
+    /// Asks once whether an extension may start a native host that admits it only by an
+    /// identity it claims, and remembers the answer on the installed extension. Requests for
+    /// the same extension and host while the question is up share it.
+    private func askNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest, for context: WKWebExtensionContext) async -> Bool {
+        guard let installed = installedExtension(for: context) else { return false }
+        if let answer = installed.nativeHostConsents?[request.hostName] {
+            return answer
+        }
+        let key = "\(installed.id)/\(request.hostName)"
+        if let pending = pendingNativeHostConsents[key] {
+            return await pending.value
+        }
+        let question = Task(name: "Ask to start native host") {
+            await Self.presentNativeHostConsent(request)
+        }
+        pendingNativeHostConsents[key] = question
+        let allowed = await question.value
+        pendingNativeHostConsents[key] = nil
+
+        if let index = installedExtensions.firstIndex(where: { $0.id == installed.id }) {
+            installedExtensions[index].nativeHostConsents = (installedExtensions[index].nativeHostConsents ?? [:])
+                .merging([request.hostName: allowed]) { $1 }
+            savePersistedState()
+        }
+        Logger.info(
+            "Native host '\(request.hostName)' \(allowed ? "allowed" : "refused") for '\(installed.displayName)'",
+            category: Logger.extensions,
+        )
+        return allowed
+    }
+
+    /// The consent question, as a sheet on the key window or a standalone alert.
+    private static func presentNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest) async -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Allow “\(request.extensionName)” to start “\(request.hostName)”?"
+        alert.informativeText = """
+        The extension asks to exchange messages with the app at \(request.executablePath). \
+        That app trusts a particular extension, and Refrax cannot confirm this is it: \
+        Refrax did not install it from a signed package. Allow only if you installed this \
+        extension from its developer.
+        """
+        alert.addButton(withTitle: "Don’t Allow")
+        alert.addButton(withTitle: "Allow")
+        let response: NSApplication.ModalResponse = if let window = NSApp.keyWindow {
+            await alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+        return response == .alertSecondButtonReturn
     }
 
     /// The loaded extension context that owns `url`, searched across the default controller
@@ -1823,8 +1937,10 @@ final class ExtensionManager {
         of webExtension: WKWebExtension,
         to installedExtension: inout InstalledExtension,
     ) {
+        let refraxPermissions = (webExtension.manifest["permissions"] as? [String] ?? [])
+            .filter { $0.hasPrefix(RefraxAPIShim.permissionPrefix) }
         installedExtension.grantPermanently(
-            permissions: webExtension.requestedPermissions.map(\.rawValue),
+            permissions: webExtension.requestedPermissions.map(\.rawValue) + refraxPermissions,
             matchPatterns: webExtension.requestedPermissionMatchPatterns.map(\.string),
         )
     }
@@ -2173,6 +2289,9 @@ enum ExtensionError: Error, LocalizedError {
     /// Failed to extract the extension archive.
     case extractionFailed
 
+    /// A CRX file's developer signature does not verify.
+    case invalidSignature
+
     /// Extension exceeded its resource budget.
     case resourceBudgetExceeded(String)
 
@@ -2202,6 +2321,8 @@ enum ExtensionError: Error, LocalizedError {
             "Invalid extension archive format"
         case .extractionFailed:
             "Failed to extract extension archive"
+        case .invalidSignature:
+            "The extension archive's signature is invalid"
         case let .resourceBudgetExceeded(resource):
             "Extension exceeded \(resource) resource budget"
         case .alreadyInstalled:

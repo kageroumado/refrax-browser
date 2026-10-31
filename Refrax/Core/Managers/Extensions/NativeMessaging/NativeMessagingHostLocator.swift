@@ -9,7 +9,8 @@ nonisolated struct NativeMessagingHostManifest: Decodable, Equatable, Sendable {
     let path: String
     /// The transport; `stdio` is the only one either browser defines.
     let type: String
-    /// Chrome format: the `chrome-extension://<id>/` origins allowed to connect.
+    /// Chrome format: the `chrome-extension://<id>/` origins allowed to connect. In Refrax's
+    /// own folder, `webkit-extension://<id>/` origins.
     let allowedOrigins: [String]?
     /// Firefox format: the add-on IDs allowed to connect.
     let allowedExtensions: [String]?
@@ -22,19 +23,6 @@ nonisolated struct NativeMessagingHostManifest: Decodable, Equatable, Sendable {
         case allowedOrigins = "allowed_origins"
         case allowedExtensions = "allowed_extensions"
     }
-
-    /// Whether the manifest lets `identity` connect, and the arguments the host then starts
-    /// with: the caller's origin for a Chrome host, or the manifest's path and the add-on ID
-    /// for a Firefox host.
-    func launchArguments(for identity: ExtensionIdentity, manifestURL: URL) -> [String]? {
-        if let origin = identity.chromeOrigin, allowedOrigins?.contains(origin) == true {
-            return [origin]
-        }
-        if let geckoID = identity.geckoID, allowedExtensions?.contains(geckoID) == true {
-            return [manifestURL.path, geckoID]
-        }
-        return nil
-    }
 }
 
 /// A host that may be started for one extension.
@@ -43,20 +31,28 @@ nonisolated struct ResolvedNativeMessagingHost: Equatable, Sendable {
     let manifestURL: URL
     let executableURL: URL
     let arguments: [String]
+    /// The manifest allows the extension only by an identity the extension claims, so the
+    /// user decides whether it may start the host.
+    let requiresConsent: Bool
 }
 
 /// Finds the native messaging host an extension names, in the directories where Chrome,
 /// Chromium and Firefox look, and decides whether the extension may start it.
 ///
-/// Refrax's own directory comes first, then each browser's per-user directory before its
-/// system-wide one. A host name selects `<name>.json` in each directory; the first manifest
-/// that allows the extension wins, so an app that registers itself for both Chrome and
-/// Firefox serves the extension under whichever identity it carries.
+/// A host name selects `<name>.json` in each directory. In Refrax's own folder a manifest
+/// allows an extension by the origin Refrax serves it from. In a browser's folder it allows
+/// one by Chrome origin or Firefox add-on ID: a Chrome ID proven by the CRX signature starts
+/// the host outright, while a Chrome ID or add-on ID the extension only states in its manifest
+/// starts it with the user's consent. A proven match in any folder wins over a claimed one;
+/// otherwise folders are searched in order, each browser's per-user folder before its
+/// system-wide one.
 nonisolated struct NativeMessagingHostLocator: Sendable {
-    /// The directories searched, in order.
-    let directories: [URL]
+    /// Refrax's own `NativeMessagingHosts` folder.
+    let refraxDirectory: URL?
+    /// Chrome's, Chromium's and Firefox's folders, in search order.
+    let browserDirectories: [URL]
 
-    /// The standard directories for a user whose home is `home`, after Refrax's own
+    /// The standard directories for a user whose home is `home`, with Refrax's own
     /// `NativeMessagingHosts` folder in `appStorage`.
     static func standard(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -65,15 +61,17 @@ nonisolated struct NativeMessagingHostLocator: Sendable {
         let userSupport = home.appendingPathComponent("Library/Application Support", isDirectory: true)
         let systemSupport = URL(fileURLWithPath: "/Library/Application Support", isDirectory: true)
         let folder = "NativeMessagingHosts"
-        return NativeMessagingHostLocator(directories: [
-            appStorage.appendingPathComponent(folder, isDirectory: true),
-            userSupport.appendingPathComponent("Google/Chrome/\(folder)", isDirectory: true),
-            URL(fileURLWithPath: "/Library/Google/Chrome/\(folder)", isDirectory: true),
-            userSupport.appendingPathComponent("Chromium/\(folder)", isDirectory: true),
-            systemSupport.appendingPathComponent("Chromium/\(folder)", isDirectory: true),
-            userSupport.appendingPathComponent("Mozilla/\(folder)", isDirectory: true),
-            systemSupport.appendingPathComponent("Mozilla/\(folder)", isDirectory: true),
-        ])
+        return NativeMessagingHostLocator(
+            refraxDirectory: appStorage.appendingPathComponent(folder, isDirectory: true),
+            browserDirectories: [
+                userSupport.appendingPathComponent("Google/Chrome/\(folder)", isDirectory: true),
+                URL(fileURLWithPath: "/Library/Google/Chrome/\(folder)", isDirectory: true),
+                userSupport.appendingPathComponent("Chromium/\(folder)", isDirectory: true),
+                systemSupport.appendingPathComponent("Chromium/\(folder)", isDirectory: true),
+                userSupport.appendingPathComponent("Mozilla/\(folder)", isDirectory: true),
+                systemSupport.appendingPathComponent("Mozilla/\(folder)", isDirectory: true),
+            ],
+        )
     }
 
     /// Whether `name` is a host name Chrome accepts: dot-separated components of lowercase
@@ -97,23 +95,60 @@ nonisolated struct NativeMessagingHostLocator: Sendable {
         guard Self.isValidHostName(name) else { throw NativeMessagingError.invalidHostName }
 
         var sawManifest = false
-        for directory in directories {
+        var claimedMatch: ResolvedNativeMessagingHost?
+        let directories = (refraxDirectory.map { [($0, true)] } ?? []) + browserDirectories.map { ($0, false) }
+        for (directory, isRefrax) in directories {
             let manifestURL = directory.appendingPathComponent("\(name).json")
             guard let manifest = try? loadManifest(at: manifestURL, name: name) else { continue }
             sawManifest = true
-            guard let arguments = manifest.launchArguments(for: identity, manifestURL: manifestURL) else { continue }
+            guard let (arguments, requiresConsent) = Self.match(manifest, identity, manifestURL: manifestURL, isRefrax: isRefrax) else {
+                continue
+            }
             guard let executableURL = Self.executableURL(for: manifest.path) else {
                 Logger.warning("Native messaging host '\(name)' names a missing or non-executable \(manifest.path)", category: Logger.extensions)
                 continue
             }
-            return ResolvedNativeMessagingHost(
+            let host = ResolvedNativeMessagingHost(
                 name: name,
                 manifestURL: manifestURL,
                 executableURL: executableURL,
                 arguments: arguments,
+                requiresConsent: requiresConsent,
             )
+            if !requiresConsent {
+                return host
+            }
+            claimedMatch = claimedMatch ?? host
+        }
+        if let claimedMatch {
+            return claimedMatch
         }
         throw sawManifest ? NativeMessagingError.forbidden : NativeMessagingError.hostNotFound
+    }
+
+    /// Whether `manifest` lets `identity` connect, the arguments the host then starts with (the
+    /// caller's origin for a Chrome-format host, the manifest's path and the add-on ID for a
+    /// Firefox-format one), and whether the match rests on a claimed identity.
+    private static func match(
+        _ manifest: NativeMessagingHostManifest,
+        _ identity: ExtensionIdentity,
+        manifestURL: URL,
+        isRefrax: Bool,
+    ) -> (arguments: [String], requiresConsent: Bool)? {
+        let origins = manifest.allowedOrigins ?? []
+        if isRefrax {
+            return origins.contains(identity.refraxOrigin) ? ([identity.refraxOrigin], false) : nil
+        }
+        if let id = identity.verifiedChromeID, origins.contains(ExtensionIdentity.chromeOrigin(id)) {
+            return ([ExtensionIdentity.chromeOrigin(id)], false)
+        }
+        if let id = identity.claimedChromeID, origins.contains(ExtensionIdentity.chromeOrigin(id)) {
+            return ([ExtensionIdentity.chromeOrigin(id)], true)
+        }
+        if let id = identity.claimedGeckoID, manifest.allowedExtensions?.contains(id) == true {
+            return ([manifestURL.path, id], true)
+        }
+        return nil
     }
 
     /// The manifest at `url`, when it is a regular file describing the `stdio` host `name`.

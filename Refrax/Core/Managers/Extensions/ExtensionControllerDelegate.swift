@@ -50,25 +50,28 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
 
     // MARK: - Window Management
 
+    /// The windows showing a space of the extension's controller.
     func webExtensionController(
         _: WKWebExtensionController,
-        openWindowsFor _: WKWebExtensionContext,
+        openWindowsFor context: WKWebExtensionContext,
     ) -> [any WKWebExtensionWindow] {
         guard let windowManager else { return [] }
 
         return windowManager.windowControllers.compactMap { controller in
-            guard let nsWindow = controller.window else { return nil }
+            guard let nsWindow = controller.window, manager.windowBelongs(controller.windowState, to: context) else { return nil }
             return manager.extensionWindow(for: controller.windowState, nsWindow: nsWindow)
         }
     }
 
+    /// The active window, when it shows a space of the extension's controller.
     func webExtensionController(
         _: WKWebExtensionController,
-        focusedWindowFor _: WKWebExtensionContext,
+        focusedWindowFor context: WKWebExtensionContext,
     ) -> (any WKWebExtensionWindow)? {
         guard let windowManager else { return nil }
         guard let controller = windowManager.activeWindowController,
-              let nsWindow = controller.window else { return nil }
+              let nsWindow = controller.window,
+              manager.windowBelongs(controller.windowState, to: context) else { return nil }
 
         return manager.extensionWindow(for: controller.windowState, nsWindow: nsWindow)
     }
