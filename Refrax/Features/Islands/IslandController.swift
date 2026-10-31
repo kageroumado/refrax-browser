@@ -62,6 +62,16 @@ struct IslandDrop: Equatable {
     var joins: UUID?
 }
 
+/// Where a row's drag stands against the browser window's edge.
+enum RowDragExit {
+    /// Within the window: a move between rows and islands.
+    case inside
+    /// Past the edge just now: these tabs go out as a system drag.
+    case leaves([Tab])
+    /// Already out, the system's drag until it ends.
+    case handedOff
+}
+
 /// How a page replaces the current one.
 nonisolated enum TravelStyle: Sendable {
     /// A neighbor in the same island: the pages slide in the direction of travel.
@@ -181,6 +191,10 @@ final class IslandController {
     /// The row being dragged, at the pointer, for the layer to draw.
     var rowGhost: RowGhost?
     @ObservationIgnored private var joinDwell = IslandJoinDwell()
+    /// The row whose drag left the window as a system drag.
+    @ObservationIgnored private var handoff = RowDragHandoff()
+    /// The system drag's source, kept while the drag lasts.
+    @ObservationIgnored var dragOutSource: AnyObject?
     @ObservationIgnored private var joinTask: Task<Void, Never>?
     /// A new island's name, open for editing in its controls as soon as they show.
     var renameRequest: UUID?
@@ -939,6 +953,24 @@ final class IslandController {
         } else {
             makeIsland(from: tabID, at: point)
         }
+    }
+
+    /// Where a row's drag at `point` stands: still a move within the window, leaving it now
+    /// with the tabs it carries out (the row, or its selection), or already the system's.
+    func rowDragExit(_ tabID: UUID, at point: CGPoint) -> RowDragExit {
+        if handoff.isHandedOff(tabID) {
+            return .handedOff
+        }
+        let carried = actionTabs(for: tabID).filter(IslandRowDragOut.carriesAddress)
+        guard handoff.leaves(tabID, at: point, bounds: bounds, carriesAddress: !carried.isEmpty) else { return .inside }
+        cancelRowDrag()
+        return .leaves(carried)
+    }
+
+    /// The system drag of a row ended, wherever it was let go.
+    func endDragOut() {
+        handoff.end()
+        dragOutSource = nil
     }
 
     func cancelRowDrag() {

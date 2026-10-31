@@ -51,6 +51,49 @@ struct IslandDropPayloadTests {
     func `Plain words bring nothing`() {
         #expect(IslandDropPayload(strings: ["just some words"]).isEmpty)
     }
+
+    @Test(arguments: [
+        "javascript:alert(document.cookie)",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///etc/passwd",
+        "refrax://settings",
+        "webkit-extension://abc/page.html",
+        "x-apple.systempreferences:com.apple.preference.security",
+        "mailto:me@example.org",
+    ])
+    func `A dropped link opens only over http or https`(address: String) throws {
+        let url = try #require(URL(string: address))
+        #expect(IslandDropPayload(urls: [url]).isEmpty, "\(address)")
+    }
+
+    @Test(arguments: ["javascript:alert(1)", "file:///Users/someone/.ssh/id_ed25519", "data:text/html,hi", "refrax://settings"])
+    func `A webloc pointing anywhere but the web opens nothing`(address: String) throws {
+        let webloc = URL(filePath: "/tmp/Trap.webloc")
+        let contents = try WeblocFile.data(for: #require(URL(string: address)))
+        #expect(IslandDropPayload(urls: [webloc]) { _ in contents }.isEmpty, "\(address)")
+    }
+
+    @Test(arguments: [
+        "javascript:alert(1)",
+        "data:text/html,hi",
+        "file:///etc/passwd",
+        "refrax://settings",
+    ])
+    func `Addresses written in text open only over http or https`(text: String) {
+        #expect(IslandDropPayload(strings: [text]).isEmpty, "\(text)")
+    }
+
+    @Test
+    func `Web links, a dropped file itself, and a webloc to the web all open`() throws {
+        let http = try #require(URL(string: "http://example.com/plain"))
+        let https = try #require(URL(string: "https://example.com/secure"))
+        let file = URL(filePath: "/tmp/notes.html")
+        let webloc = URL(filePath: "/tmp/Page.webloc")
+        let inside = try #require(URL(string: "https://example.com/inside"))
+        let contents = try WeblocFile.data(for: inside)
+        let payload = IslandDropPayload(urls: [http, https, file, webloc]) { $0 == webloc ? contents : nil }
+        #expect(payload.urls == [http, https, file, inside])
+    }
 }
 
 /// The internet location file a row dragged to Finder becomes.

@@ -12,6 +12,11 @@ nonisolated struct IslandDropPayload: Equatable, Sendable {
     /// otherwise links come first, then files (a `.webloc` as the address inside it), and
     /// only when neither brought anything, the addresses written in dropped text.
     ///
+    /// Only http and https addresses open from a link, a `.webloc`, or text: a dropped
+    /// address is written by whatever app or page it came from, and `javascript:`, `data:`,
+    /// `file:`, or an app's own scheme from there would run or reveal something the person
+    /// never chose. A file opens as `file://` only when that file itself was dropped.
+    ///
     /// - Parameters:
     ///   - tabIDs: Identities of tabs dragged from an island.
     ///   - urls: Every URL on the pasteboard, web and file alike.
@@ -26,13 +31,13 @@ nonisolated struct IslandDropPayload: Equatable, Sendable {
         for url in urls {
             if url.isFileURL {
                 if url.pathExtension.lowercased() == WeblocFile.pathExtension {
-                    if let data = read(url), let inside = WeblocFile.url(from: data) {
+                    if let data = read(url), let inside = WeblocFile.url(from: data), inside.isWebURL {
                         found.append(inside)
                     }
                 } else if !url.hasDirectoryPath {
                     found.append(url)
                 }
-            } else if url.scheme != nil {
+            } else if url.isWebURL {
                 found.append(url)
             }
         }

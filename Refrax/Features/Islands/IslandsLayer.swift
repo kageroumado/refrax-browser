@@ -606,11 +606,24 @@ private struct IslandTabRow: View, Equatable {
 
     /// Where the row would land while it is dragged, and what happens when it is let go. The
     /// row's ghost travels over the page; the row itself stays, dimmed, in its window. ⇧ held
-    /// at the drop opens the row as a card instead of a new island.
+    /// at the drop opens the row as a card instead of a new island. Past the window's edge
+    /// the drag leaves the browser, carrying the page's address and a `.webloc`.
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .named("islands"))
             .onChanged { value in
-                islands.updateRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
+                switch islands.rowDragExit(tab.id, at: value.location) {
+                case .inside:
+                    islands.updateRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))
+                case let .leaves(tabs):
+                    // Past the window's edge the row goes on as a system drag, to Finder or any app.
+                    guard let view = windowState.window?.contentView, let event = NSApp.currentEvent,
+                          IslandRowDragOut.begin(tabs, from: view, event: event, islands: islands) else {
+                        islands.endDragOut()
+                        return
+                    }
+                case .handedOff:
+                    break
+                }
             }
             .onEnded { value in
                 islands.finishRowDrag(tab.id, at: value.location, asCard: NSEvent.modifierFlags.contains(.shift))

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Pasteboard types the islands write and read for a row dragged out of an island.
-enum IslandPasteboard {
+nonisolated enum IslandPasteboard {
     /// The dragged tabs' identities, one UUID per line.
     static let tabIDs = NSPasteboard.PasteboardType("com.refrax.tab-id")
 
@@ -13,7 +13,9 @@ enum IslandPasteboard {
 
     /// Reads what a drop brings from `pasteboard`.
     static func payload(from pasteboard: NSPasteboard) -> IslandDropPayload {
-        let tabIDs = pasteboard.string(forType: tabIDs)?.split(separator: "\n").compactMap { UUID(uuidString: String($0)) } ?? []
+        let tabIDs = (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: tabIDs) }
+            .flatMap { $0.split(separator: "\n") }
+            .compactMap { UUID(uuidString: String($0)) }
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] ?? []
         let strings = pasteboard.string(forType: .string).map { [$0] } ?? []
         return IslandDropPayload(tabIDs: tabIDs, urls: urls, strings: strings)
