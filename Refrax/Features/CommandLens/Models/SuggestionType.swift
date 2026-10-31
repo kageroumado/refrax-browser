@@ -133,6 +133,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case showOpenTabs
     /// Keep only the tabs a quick filter matches on the islands, or every tab with `nil`.
     case filterIslands(IslandFilter?)
+    /// Open the archive in the library drawer.
+    case showArchive
 }
 
 /// Scope of a setting (global or per-site).

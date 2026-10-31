@@ -1,6 +1,7 @@
 import Foundation
 
-/// The islands' own commands: the quick filters, and showing every tab again.
+/// The islands' own commands: the quick filters and showing every tab again, and the
+/// archive in the library drawer.
 struct IslandsProvider: CommandLensSuggestionProvider {
     weak var windowState: WindowState?
 
@@ -31,6 +32,9 @@ struct IslandsProvider: CommandLensSuggestionProvider {
         }
         if islands.filter != nil, matches(["show all tabs", "all tabs", "clear filter", "remove filter", "unfilter"]) {
             results.append(suggestion(.filterIslands(nil), "Show All Tabs", "Every tab's row comes back", "line.3.horizontal.decrease.circle"))
+        }
+        if matches(["archive", "archived tabs", "show archive", "open archive", "empty archive", "restore archived"]) {
+            results.append(suggestion(.showArchive, "Show Archive", "Archived tabs in the library drawer", "archivebox"))
         }
         return results
     }

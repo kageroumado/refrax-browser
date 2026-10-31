@@ -1722,6 +1722,8 @@ final class CommandLensManager {
             case .showOpenTabs:
                 showOpenTabs()
                 return
+            case .showArchive:
+                windowState.showDetailTray(.archive)
             case let .filterIslands(filter):
                 if let islands = windowState.islandController {
                     islands.setFilter(filter)

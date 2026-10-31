@@ -1018,4 +1018,7 @@ enum DetailTrayMode: Equatable, Sendable {
 
     /// Showing Lightboard dashboard for monitoring tab health and resources.
     case lightboard
+
+    /// Archived tabs, to restore or delete.
+    case archive
 }

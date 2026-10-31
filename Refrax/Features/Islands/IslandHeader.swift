@@ -232,6 +232,8 @@ struct IslandHeader: View {
         if !island.isDefault {
             add("Ungroup Island", to: menu) { islands.dissolve(id) }
         }
+        menu.addItem(.separator())
+        add("Show Archive", to: menu) { windowState.showDetailTray(.archive) }
         // Convert the top-down glass layer coordinates to AppKit's content coordinates.
         let point = NSPoint(x: menuButtonFrame.maxX - menu.size.width, y: content.bounds.height - menuButtonFrame.maxY - 2)
         islands.holdControls(id, true)
