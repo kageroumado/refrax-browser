@@ -1,0 +1,11 @@
+Name: rustc-hash
+URL: https://crates.io/crates/rustc-hash
+Version: 2.1.3
+Revision: c13e7ccca705e6255387a2ebc6dca142d6881621
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/rustc-hash-v2/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: A speedy, non-cryptographic hashing algorithm used by rustc

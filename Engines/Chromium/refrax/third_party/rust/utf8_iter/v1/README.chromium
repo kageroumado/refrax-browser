@@ -1,0 +1,11 @@
+Name: utf8_iter
+URL: https://crates.io/crates/utf8_iter
+Version: 1.1.0
+Revision: 17ac91ec5c6e18cf31a38dc1c0a704aebd35bb1f
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/utf8_iter-v1/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Iterator by char over potentially-invalid UTF-8 in &[u8]

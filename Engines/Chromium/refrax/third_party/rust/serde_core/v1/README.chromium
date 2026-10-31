@@ -1,0 +1,11 @@
+Name: serde_core
+URL: https://crates.io/crates/serde_core
+Version: 1.0.229
+Revision: 7fc3b4c30c94f73a96ebd1553f2b090d928fc3a8
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/serde_core-v1/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Serde traits only, with no support for derive -- use the `serde` crate instead

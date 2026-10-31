@@ -1,0 +1,11 @@
+Name: percent-encoding
+URL: https://crates.io/crates/percent-encoding
+Version: 2.3.2
+Revision: 91377f48bf35011d042aa5abef9e7f2a0a625aaa
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/percent-encoding-v2/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Percent encoding and decoding

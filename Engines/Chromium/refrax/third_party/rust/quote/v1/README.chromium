@@ -1,0 +1,11 @@
+Name: quote
+URL: https://crates.io/crates/quote
+Version: 1.0.47
+Revision: 723dcb47d3f0ddc896e17287c8a8d3f2ea2317d5
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/quote-v1/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Quasi-quoting macro quote!(...)

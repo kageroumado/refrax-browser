@@ -1,0 +1,14 @@
+# Refrax: the Rust crates the Chromium engine host links (Engines/Shared/shields).
+[package]
+edition = "2021"
+name = "chromium"
+version = "0.1.0"
+
+[workspace]
+
+[dependencies]
+adblock = { version = "=0.13.3", default-features = false, features = ["full-regex-handling"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# URLs reach the host already in ASCII (GURL punycodes hosts): the no-op IDNA backend drops ICU.
+idna_adapter = "=1.0.0"

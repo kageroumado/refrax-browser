@@ -1,0 +1,11 @@
+Name: syn
+URL: https://crates.io/crates/syn
+Version: 3.0.9
+Revision: 7c44a5565b4421035101cc16184e9af08ab5fc77
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/syn-v3/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Parser for Rust source code

@@ -1,0 +1,11 @@
+Name: arrayvec
+URL: https://crates.io/crates/arrayvec
+Version: 0.7.8
+Revision: 0cb664cf505844348538230479b0040b44f3faf1
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/arrayvec-v0_7/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: A vector with fixed capacity, backed by an array (it can be stored on the stack too). Implements fixed capacity ArrayVec and ArrayString.
