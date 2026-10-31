@@ -2,11 +2,16 @@
 
 #include "refrax/host/host_content_browser_client.h"
 
+#include <utility>
+
 #include "base/command_line.h"
 #include "chrome/browser/chrome_browser_main.h"
-#include "refrax/host/content_blocking.h"
+#include "content/public/browser/render_frame_host.h"
 #include "refrax/host/navigation_policy.h"
+#include "services/network/public/mojom/websocket.mojom.h"
 #include "refrax/host/refrax_browser_main_extra_parts.h"
+#include "refrax/host/shields_document_throttle.h"
+#include "refrax/host/shields_url_loader_factory.h"
 #include "refrax/host/switches.h"
 
 namespace refrax {
@@ -28,11 +33,9 @@ HostContentBrowserClient::CreateBrowserMainParts(bool is_integration_test) {
 
 void HostContentBrowserClient::CreateThrottlesForNavigation(
     content::NavigationThrottleRegistry& registry) {
-  // First, so the filter's page activation is known before Chrome's subresource filter
-  // throttles act on it.
-  ContentBlocking::Get().MaybeAddThrottle(registry);
-  // Refrax decides before Chrome's throttles see the request.
+  // Refrax decides before Chrome's throttles see the request, then Shields.
   navigation_policy::MaybeAddThrottle(registry);
+  ShieldsDocumentThrottle::MaybeAdd(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
 }
 
@@ -44,6 +47,79 @@ void HostContentBrowserClient::OpenURL(
   // worker's clients.openWindow() resolves with null, and Refrax shows the site itself when
   // the worker's notification is clicked.
   std::move(callback).Run(nullptr);
+}
+
+void HostContentBrowserClient::WillCreateURLLoaderFactory(
+    content::BrowserContext* browser_context,
+    content::RenderFrameHost* frame,
+    int render_process_id,
+    URLLoaderFactoryType type,
+    const url::Origin& request_initiator,
+    const net::IsolationInfo& isolation_info,
+    std::optional<int64_t> navigation_id,
+    ukm::SourceIdObj ukm_source_id,
+    network::URLLoaderFactoryBuilder& factory_builder,
+    mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>* header_client,
+    bool* bypass_redirect_checks,
+    bool* disable_secure_dns,
+    network::mojom::URLLoaderFactoryOverridePtr* factory_override,
+    scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+    bool is_for_network_service) {
+  // Chrome's proxies (extensions' webRequest) first, then Shields in front of them: the order
+  // Brave uses, so an extension sees what Shields lets through.
+  ChromeContentBrowserClient::WillCreateURLLoaderFactory(
+      browser_context, frame, render_process_id, type, request_initiator, isolation_info,
+      navigation_id, ukm_source_id, factory_builder, header_client, bypass_redirect_checks,
+      disable_secure_dns, factory_override, navigation_response_task_runner,
+      is_for_network_service);
+  ShieldsURLLoaderFactory::Install(frame, type, request_initiator, factory_builder);
+}
+
+bool HostContentBrowserClient::WillInterceptWebSocket(content::RenderFrameHost* frame) {
+  return ShieldsFiltersWebSockets(frame) ||
+         ChromeContentBrowserClient::WillInterceptWebSocket(frame);
+}
+
+void HostContentBrowserClient::CreateWebSocket(
+    content::RenderFrameHost* frame,
+    WebSocketFactory factory,
+    const GURL& url,
+    const net::SiteForCookies& site_for_cookies,
+    const std::optional<std::string>& user_agent,
+    mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
+    WebSocketOptions options) {
+  if (!ShieldsFiltersWebSockets(frame)) {
+    ChromeContentBrowserClient::CreateWebSocket(frame, std::move(factory), url,
+                                                site_for_cookies, user_agent,
+                                                std::move(handshake_client), std::move(options));
+    return;
+  }
+  const content::GlobalRenderFrameHostId frame_id = frame->GetGlobalId();
+  ShieldsDecideWebSocket(
+      frame, url,
+      base::BindOnce(
+          [](HostContentBrowserClient* client, content::GlobalRenderFrameHostId frame_id,
+             WebSocketFactory factory, GURL url, net::SiteForCookies site_for_cookies,
+             std::optional<std::string> user_agent,
+             mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client,
+             WebSocketOptions options, bool allowed) {
+            content::RenderFrameHost* frame = content::RenderFrameHost::FromID(frame_id);
+            // A refused connection is never opened: dropping the handshake client fails the
+            // page's WebSocket.
+            if (!allowed || !frame) {
+              return;
+            }
+            if (client->ChromeContentBrowserClient::WillInterceptWebSocket(frame)) {
+              client->ChromeContentBrowserClient::CreateWebSocket(
+                  frame, std::move(factory), url, site_for_cookies, user_agent,
+                  std::move(handshake_client), std::move(options));
+              return;
+            }
+            std::move(factory).Run(url, {}, std::move(handshake_client), mojo::NullRemote(),
+                                   std::move(options.header_client));
+          },
+          base::Unretained(this), frame_id, std::move(factory), url, site_for_cookies,
+          user_agent, std::move(handshake_client), std::move(options)));
 }
 
 }  // namespace refrax

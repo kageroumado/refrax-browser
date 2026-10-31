@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -17,6 +18,7 @@
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "refrax/common/mojom/engine.mojom.h"
+#include "refrax/host/devtools_frontend.h"
 #include "ui/base/cocoa/views_hostable.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -26,6 +28,7 @@ namespace refrax {
 
 class EngineHostImpl;
 class PageDialogs;
+class PageShields;
 class PageDownloads;
 class PageScripts;
 
@@ -61,6 +64,9 @@ class HostPage : public mojom::Page,
 
   content::WebContents* web_contents() const { return web_contents_.get(); }
 
+  // Shields' per-page state: the request log and cosmetic filtering.
+  PageShields& shields() { return *shields_; }
+
   // Replaces the page's Refrax scripts (the contract's `scripts` policy).
   void ApplyScripts(const base::ListValue& scripts);
 
@@ -80,6 +86,11 @@ class HostPage : public mojom::Page,
   void EvaluateScript(const std::string& request,
                       EvaluateScriptCallback callback) override;
   void Snapshot(const gfx::Rect& rect, SnapshotCallback callback) override;
+  void RequestLog(int64_t since, RequestLogCallback callback) override;
+  void EnableAccessibility() override;
+  void GetAccessibilityToken(GetAccessibilityTokenCallback callback) override;
+  void SetAccessibilityParent(int32_t pid, const std::vector<uint8_t>& token) override;
+  void SetDevToolsSize(const gfx::Size& size) override;
   void Close(CloseCallback callback) override;
 
   // ui::ViewsHostableView::Host:
@@ -107,6 +118,10 @@ class HostPage : public mojom::Page,
   void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override;
   void OnRendererUnresponsive(content::RenderProcessHost* process) override;
   void OnRendererResponsive(content::RenderProcessHost* process) override;
+  void RenderFrameHostChanged(content::RenderFrameHost* old_host,
+                              content::RenderFrameHost* new_host) override;
+  void MediaStartedPlaying(const MediaPlayerInfo& video_type,
+                           const content::MediaPlayerId& id) override;
 
   // content::WebContentsDelegate:
   content::WebContents* OpenURLFromTab(
@@ -133,6 +148,12 @@ class HostPage : public mojom::Page,
   bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
                                   const url::Origin& security_origin,
                                   blink::mojom::MediaStreamType type) override;
+  void FindReply(content::WebContents* web_contents,
+                 int request_id,
+                 int number_of_matches,
+                 const gfx::Rect& selection_rect,
+                 int active_match_ordinal,
+                 bool final_update) override;
 
  private:
   // Emits loadingChanged when `loading` differs from what Refrax was last told.
@@ -151,6 +172,15 @@ class HostPage : public mojom::Page,
   ui::ViewsHostableView* hostable_view() const;
   void ApplyBounds();
 
+  // The contract's `find` (CONTRACT.md §4.2): matches are reported with findResultChanged.
+  void Find(const base::DictValue& query);
+  // The contract's `devTools` command.
+  void PerformDevToolsCommand(const base::DictValue& command);
+  void ShowDevTools(DevToolsFrontend::Panel panel);
+  void CloseDevTools();
+  // The contract's `setMediaSuspended`: pauses every player and keeps them from playing.
+  void SetMediaSuspended(bool suspended);
+
   raw_ptr<EngineHostImpl> engine_;
   const std::string id_;
   const uint64_t container_ns_view_id_;
@@ -160,6 +190,8 @@ class HostPage : public mojom::Page,
   std::unique_ptr<PageScripts> scripts_;
   std::unique_ptr<PageDialogs> dialogs_;
   std::unique_ptr<PageDownloads> downloads_;
+  std::unique_ptr<PageShields> shields_;
+  std::unique_ptr<DevToolsFrontend> devtools_;
 
   bool attached_ = false;
   // The zoom Refrax last set (1 = 100%), kept across the page's navigations as WebKit's
@@ -172,6 +204,15 @@ class HostPage : public mojom::Page,
   gfx::Size size_;
   // Set when Refrax asked for the renderer to be killed, so its exit reads as intended.
   bool renderer_termination_requested_ = false;
+  // The find session Refrax is shown results for: replies to older requests are dropped.
+  int find_request_id_ = 0;
+  int find_matches_ = 0;
+  int find_active_match_ = 0;
+  std::u16string find_text_;
+  bool media_suspended_ = false;
+  // The client's container, which the page's accessibility tree names as its parent.
+  int32_t accessibility_parent_pid_ = 0;
+  std::vector<uint8_t> accessibility_parent_token_;
 
   base::WeakPtrFactory<HostPage> weak_factory_{this};
 };

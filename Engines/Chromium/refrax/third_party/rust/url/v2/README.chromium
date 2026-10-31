@@ -1,0 +1,11 @@
+Name: url
+URL: https://crates.io/crates/url
+Version: 2.5.8
+Revision: d6ea13c5f8e7e6e627f6390161b3e185bda5e5ce
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/url-v2/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: URL library for Rust, based on the WHATWG URL Standard

@@ -587,9 +587,12 @@ final class WebPage: Identifiable {
     @ObservationIgnored
     var engineDownloads: [String: UUID] = [:]
 
-    /// Whether the engine's developer tools are open for this page.
+    /// Whether the engine's developer tools are open for this page, as the engine last reported.
     @ObservationIgnored
     var isEngineDevToolsShown = false
+
+    /// The engine's latest find-in-page result, which the engine find bar shows.
+    var engineFindResult: EngineFindResult?
 
     // MARK: - Back-Forward List
 

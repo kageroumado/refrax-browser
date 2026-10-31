@@ -38,6 +38,11 @@
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "components/permissions/permission_request_manager.h"
 #include "refrax/host/page_scripts.h"
+#include "refrax/host/page_shields.h"
+#include "content/public/browser/media_session.h"
+#include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
+#include "ui/base/cocoa/remote_accessibility_api.h"
+#include "ui/gfx/native_ui_types.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 #include "ui/base/page_transition_types.h"
@@ -182,6 +187,7 @@ HostPage::HostPage(EngineHostImpl* engine,
             }
           },
           weak_factory_.GetWeakPtr()));
+  shields_ = std::make_unique<PageShields>(web_contents_.get());
   // Permission questions go to Refrax instead of Chrome's bubbles.
   permissions::PermissionRequestManager::FromWebContents(web_contents_.get())
       ->set_view_factory(PermissionPrompt::Factory(
@@ -200,6 +206,9 @@ void HostPage::ApplyScripts(const base::ListValue& scripts) {
 }
 
 HostPage::~HostPage() {
+  // The DevTools frontend detaches its views from the client's window first.
+  devtools_.reset();
+  shields_.reset();
   downloads_.reset();
   dialogs_.reset();
   scripts_.reset();
@@ -269,6 +278,9 @@ void HostPage::AttachView() {
   attached_ = true;
   ApplyBounds();
   hostable_view()->ViewsHostableSetVisible(true);
+  if (!accessibility_parent_token_.empty()) {
+    SetAccessibilityParent(accessibility_parent_pid_, accessibility_parent_token_);
+  }
 }
 
 void HostPage::SetSize(const gfx::Size& size) {
@@ -362,9 +374,138 @@ void HostPage::PerformCommand(const std::string& command) {
     renderer_termination_requested_ = true;
     web_contents_->GetPrimaryMainFrame()->GetProcess()->Shutdown(
         content::RESULT_CODE_KILLED);
+  } else if (name == "find") {
+    if (const base::DictValue* query = fields.FindDict("query")) {
+      Find(*query);
+    }
+  } else if (name == "stopFinding") {
+    find_text_.clear();
+    ++find_request_id_;
+    web_contents_->StopFinding(content::STOP_FIND_ACTION_CLEAR_SELECTION);
+  } else if (name == "setMediaSuspended") {
+    SetMediaSuspended(fields.FindBool("suspended").value_or(false));
+  } else if (name == "devTools") {
+    if (const base::DictValue* devtools = fields.FindDict("command")) {
+      PerformDevToolsCommand(*devtools);
+    }
   }
-  // find, stopFinding, devTools and setMediaSuspended are not declared in
-  // the engine's capabilities yet, so Refrax does not send them.
+}
+
+void HostPage::Find(const base::DictValue& query) {
+  const std::string* text = query.FindString("text");
+  if (!text) {
+    return;
+  }
+  const std::u16string search = base::UTF8ToUTF16(*text);
+  ++find_request_id_;
+  if (search.empty()) {
+    find_text_.clear();
+    web_contents_->StopFinding(content::STOP_FIND_ACTION_CLEAR_SELECTION);
+    find_matches_ = 0;
+    find_active_match_ = 0;
+    Emit("findResultChanged", base::DictValue()
+                                  .Set("matches", 0)
+                                  .Set("activeMatch", 0)
+                                  .Set("isFinal", true));
+    return;
+  }
+  auto options = blink::mojom::FindOptions::New();
+  options->forward = query.FindBool("forward").value_or(true);
+  options->match_case = query.FindBool("matchCase").value_or(false);
+  options->new_session = !query.FindBool("findNext").value_or(false) || search != find_text_;
+  options->find_match = true;
+  if (options->new_session) {
+    find_matches_ = 0;
+    find_active_match_ = 0;
+  }
+  find_text_ = search;
+  web_contents_->Find(find_request_id_, search, std::move(options), /*skip_delay=*/true);
+}
+
+void HostPage::FindReply(content::WebContents* web_contents,
+                         int request_id,
+                         int number_of_matches,
+                         const gfx::Rect& selection_rect,
+                         int active_match_ordinal,
+                         bool final_update) {
+  if (request_id != find_request_id_ || find_text_.empty()) {
+    return;
+  }
+  // -1 leaves a count as it was.
+  if (number_of_matches >= 0) {
+    find_matches_ = number_of_matches;
+  }
+  if (active_match_ordinal >= 0) {
+    find_active_match_ = active_match_ordinal;
+  }
+  Emit("findResultChanged", base::DictValue()
+                                .Set("matches", find_matches_)
+                                .Set("activeMatch", find_active_match_)
+                                .Set("isFinal", final_update));
+}
+
+void HostPage::SetMediaSuspended(bool suspended) {
+  media_suspended_ = suspended;
+  content::MediaSession* session = content::MediaSession::Get(web_contents_.get());
+  if (suspended) {
+    session->Suspend(content::MediaSession::SuspendType::kSystem);
+  } else {
+    session->Resume(content::MediaSession::SuspendType::kSystem);
+  }
+}
+
+void HostPage::MediaStartedPlaying(const MediaPlayerInfo& video_type,
+                                   const content::MediaPlayerId& id) {
+  // A suspended page stays paused: whatever starts playing is paused again.
+  if (media_suspended_) {
+    content::MediaSession::Get(web_contents_.get())
+        ->Suspend(content::MediaSession::SuspendType::kSystem);
+  }
+}
+
+void HostPage::PerformDevToolsCommand(const base::DictValue& command) {
+  if (command.contains("show")) {
+    ShowDevTools(DevToolsFrontend::Panel::kDefault);
+  } else if (command.contains("hide")) {
+    CloseDevTools();
+  } else if (command.contains("showConsole")) {
+    ShowDevTools(DevToolsFrontend::Panel::kConsole);
+  } else if (command.contains("toggleElementSelection")) {
+    ShowDevTools(DevToolsFrontend::Panel::kElementSelection);
+  }
+}
+
+void HostPage::ShowDevTools(DevToolsFrontend::Panel panel) {
+  if (devtools_) {
+    devtools_->Show(panel);
+    return;
+  }
+  const uint64_t view_id = remote_cocoa::GetNewNSViewId();
+  devtools_ = std::make_unique<DevToolsFrontend>(
+      web_contents_.get(), engine_->application(), view_id, panel,
+      base::BindOnce(&HostPage::CloseDevTools, weak_factory_.GetWeakPtr()));
+  const std::string title = base::UTF16ToUTF8(web_contents_->GetTitle());
+  client_->ShowDevToolsWindow(
+      view_id, title.empty() ? "Developer Tools" : "Developer Tools — " + title,
+      base::BindOnce(
+          [](base::WeakPtr<HostPage> page, uint64_t view_id) {
+            // The client registered the window's view: the frontend's views go in it.
+            if (page && page->devtools_ && page->devtools_->container_ns_view_id() == view_id) {
+              page->devtools_->Attach();
+            }
+          },
+          weak_factory_.GetWeakPtr(), view_id));
+  Emit("devToolsChanged", base::DictValue().Set("isShown", true));
+}
+
+void HostPage::CloseDevTools() {
+  if (!devtools_) {
+    return;
+  }
+  // Its views leave the client's window before the window closes; the pipe keeps the order.
+  devtools_.reset();
+  client_->CloseDevToolsWindow();
+  Emit("devToolsChanged", base::DictValue().Set("isShown", false));
 }
 
 void HostPage::EvaluateScript(const std::string& request,
@@ -423,6 +564,48 @@ void HostPage::Snapshot(const gfx::Rect& rect, SnapshotCallback callback) {
             std::move(callback).Run(result->bitmap);
           },
           std::move(callback)));
+}
+
+void HostPage::RequestLog(int64_t since, RequestLogCallback callback) {
+  std::move(callback).Run(shields_->log().Since(since));
+}
+
+void HostPage::EnableAccessibility() {
+  engine_->EnableAccessibility();
+}
+
+void HostPage::GetAccessibilityToken(GetAccessibilityTokenCallback callback) {
+  content::RenderWidgetHostView* view = web_contents_->GetRenderWidgetHostView();
+  if (!view) {
+    std::move(callback).Run(getpid(), {});
+    return;
+  }
+  // The browser-side view of the page's widget: its child is the page's root accessibility
+  // element, which Chromium keeps current as the renderer's tree changes.
+  id element = view->GetNativeViewAccessible().Get();
+  if (accessibility_parent_pid_ &&
+      [element respondsToSelector:@selector(accessibilitySetPresenterProcessIdentifier:)]) {
+    [element accessibilitySetPresenterProcessIdentifier:accessibility_parent_pid_];
+  }
+  std::move(callback).Run(getpid(), ui::RemoteAccessibility::GetTokenForLocalElement(element));
+}
+
+void HostPage::SetAccessibilityParent(int32_t pid, const std::vector<uint8_t>& token) {
+  accessibility_parent_pid_ = pid;
+  accessibility_parent_token_ = token;
+  if (!attached_ || token.empty()) {
+    return;
+  }
+  [NSAccessibilityRemoteUIElement registerRemoteUIProcessIdentifier:pid];
+  hostable_view()->ViewsHostableSetParentAccessible(
+      gfx::NativeViewAccessible(static_cast<id<NSAccessibility>>(
+          ui::RemoteAccessibility::GetRemoteElementFromToken(token))));
+}
+
+void HostPage::SetDevToolsSize(const gfx::Size& size) {
+  if (devtools_) {
+    devtools_->SetSize(size);
+  }
 }
 
 void HostPage::Close(CloseCallback callback) {
@@ -605,6 +788,13 @@ void HostPage::PrimaryMainFrameRenderProcessGone(base::TerminationStatus status)
        base::DictValue().Set(
            "health", base::DictValue().Set(
                          "terminated", base::DictValue().Set("reason", reason))));
+}
+
+void HostPage::RenderFrameHostChanged(content::RenderFrameHost* old_host,
+                                      content::RenderFrameHost* new_host) {
+  if (new_host && new_host->IsInPrimaryMainFrame() && accessibility_parent_pid_) {
+    client_->AccessibilityElementChanged();
+  }
 }
 
 void HostPage::OnRendererUnresponsive(content::RenderProcessHost* process) {

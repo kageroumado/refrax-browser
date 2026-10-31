@@ -47,6 +47,11 @@ nonisolated enum PageEvent: Codable, Hashable, Sendable {
     case notificationShown(notification: EngineNotification)
     /// The page closed a notification it showed.
     case notificationClosed(id: String)
+    /// Results of the latest ``PageCommand/find(query:)``: how many matches the page has and the
+    /// 1-based index of the selected one (0 when none). The last event of a search is `isFinal`.
+    case findResultChanged(matches: Int, activeMatch: Int, isFinal: Bool)
+    /// The engine's developer tools for the page opened or closed, the user's closing included.
+    case devToolsChanged(isShown: Bool)
 }
 
 /// A notification an engine page showed, for Refrax to put in Notification Center.

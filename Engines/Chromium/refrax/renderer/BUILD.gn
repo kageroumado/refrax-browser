@@ -6,6 +6,8 @@ source_set("renderer") {
   sources = [
     "frame_scripts.cc",
     "frame_scripts.h",
+    "shields_frame_observer.cc",
+    "shields_frame_observer.h",
   ]
   deps = [
     "//base",
@@ -14,6 +16,7 @@ source_set("renderer") {
     "//mojo/public/cpp/bindings",
     "//refrax/common/mojom",
     "//third_party/blink/public:blink",
+    "//url",
     "//v8",
   ]
 }

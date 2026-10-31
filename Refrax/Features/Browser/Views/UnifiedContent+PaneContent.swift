@@ -97,7 +97,7 @@ struct PaneContentWrapper: View {
 
             // A plug-in engine renders over the paused WebKit view it replaces.
             if hasContent, isOwner, let enginePage = webPage?.enginePage {
-                EngineContentView(page: enginePage)
+                EngineContentView(page: enginePage, owner: webPage)
                     .allowsHitTesting(!shouldIgnoreAllEvents)
             }
 

@@ -2,8 +2,9 @@
 
 import Foundation
 
-/// The `contentBlocking` policy (CONTRACT.md §4.5): lists block, allowlisted hosts and their
-/// subdomains are spared, and turning blocking off and on takes effect on the next load.
+/// The `contentBlocking` policy (CONTRACT.md §4.5): the engine loads the blocking engine Refrax
+/// names and reports it, allowlisted hosts and their subdomains are spared, and turning blocking
+/// off and on takes effect on the next load.
 enum BlockingTests {
     /// What the blocking fixture could load: `image`, `allowed`, `script`, `fetch` →
     /// `loaded` | `blocked`.
@@ -19,28 +20,31 @@ enum BlockingTests {
     }
 
     static let all: [ConformanceTest] = [
-        ConformanceTest(name: "blocking.lists-block", timeout: 300) { context in
+        ConformanceTest(name: "blocking.status-and-blocking", timeout: 60) { context in
             try context.engine.require("contentBlocking")
             let applied = Date()
-            context.contentBlocking(lists: [Fixtures.blockingList])
-            // Compiling and indexing a new list takes a moment; pages loaded before it's ready
-            // aren't filtered. Measure how long.
-            let results = try await eventuallyAsync("the image to be blocked", timeout: 240, interval: .milliseconds(500)) {
-                let results = try await Self.results(context)
-                return results["image"] == "blocked" ? results : nil
-            }
-            context.note(String(format: "ruleset effective %.1f s after the policy", -applied.timeIntervalSinceNow))
+            try await context.contentBlockingApplied()
+            context.note(String(format: "engine applied %.2f s after the policy", -applied.timeIntervalSinceNow))
+            let results = try await Self.results(context)
+            try expectEqual(results["image"], "blocked", "listed image")
             try expectEqual(results["allowed"], "loaded", "unlisted image")
-            try expectEqual(results["script"], "blocked", "first-party script ($script,1p)")
+            try expectEqual(results["script"], "blocked", "listed script ($script)")
             try expectEqual(results["fetch"], "blocked", "fetch() ($xhr)")
         },
 
-        ConformanceTest(name: "blocking.allowlisted-hosts-and-subdomains", timeout: 300) { context in
+        ConformanceTest(name: "blocking.refuses-another-format", timeout: 60) { context in
             try context.engine.require("contentBlocking")
-            context.contentBlocking(lists: [Fixtures.blockingList], allowlistedHosts: ["localhost", "0.1"])
-            try await eventuallyAsync("blocking on 127.0.0.1", timeout: 240, interval: .milliseconds(500)) {
-                try await Self.results(context)["image"] == "blocked" ? true : nil
-            }
+            let mark = context.engine.events.count
+            try context.contentBlocking(format: "adblock-0.0.0;shields-0")
+            let status = try await context.engine.waitForEvent("contentBlockingStatus", after: mark, timeout: 30) { $0["reason"] != nil }
+            try expectEqual(status["status"] as? String, "unfiltered", "status for a foreign format")
+            try expect(!((status["reason"] as? String) ?? "").isEmpty, "unfiltered status gives a reason")
+            let results = try await Self.results(context)
+            try expectEqual(results["image"], "loaded", "listed image with no engine loaded")
+        },
+
+        ConformanceTest(name: "blocking.allowlisted-hosts-and-subdomains", timeout: 60) { context in
+            try await context.contentBlockingApplied(allowlistedHosts: ["localhost", "0.1"])
             let subdomain = try await Self.results(context, host: "sub.localhost")
             try expectEqual(subdomain, ["image": "loaded", "allowed": "loaded", "script": "loaded", "fetch": "loaded"], "sub.localhost under an allowlisted localhost")
             // "0.1" is no parent of 127.0.0.1.
@@ -48,24 +52,20 @@ enum BlockingTests {
             try expectEqual(address["image"], "blocked", "127.0.0.1 with 0.1 allowlisted")
         },
 
-        ConformanceTest(name: "blocking.off-and-on-again", timeout: 300) { context in
-            try context.engine.require("contentBlocking")
-            context.contentBlocking(lists: [Fixtures.blockingList])
-            try await eventuallyAsync("blocking", timeout: 240, interval: .milliseconds(500)) {
-                try await Self.results(context)["image"] == "blocked" ? true : nil
-            }
-            context.contentBlocking(enabled: false, lists: [Fixtures.blockingList])
-            let off = try await eventuallyAsync("unblocked after turning off", timeout: 10) {
-                let results = try await Self.results(context)
-                return results["image"] == "loaded" ? results : nil
-            }
-            try expectEqual(off["script"], "loaded", "script with blocking off")
+        ConformanceTest(name: "blocking.off-and-on-again", timeout: 60) { context in
+            try await context.contentBlockingApplied()
+            try expectEqual(try await Self.results(context)["image"], "blocked", "blocking on")
+            let mark = context.engine.events.count
+            try context.contentBlocking(enabled: false)
+            let off = try await context.engine.waitForEvent("contentBlockingStatus", after: mark, timeout: 30)
+            try expectEqual(off["status"] as? String, "unfiltered", "status with blocking off")
+            let results = try await Self.results(context)
+            try expectEqual(results["image"], "loaded", "image with blocking off")
+            try expectEqual(results["script"], "loaded", "script with blocking off")
             let reenabled = Date()
-            context.contentBlocking(lists: [Fixtures.blockingList])
-            try await eventuallyAsync("blocked after turning on", timeout: 10) {
-                try await Self.results(context)["image"] == "blocked" ? true : nil
-            }
-            context.note(String(format: "re-enabled in %.1f s (same lists: nothing to re-index)", -reenabled.timeIntervalSinceNow))
+            try await context.contentBlockingApplied()
+            try expectEqual(try await Self.results(context)["image"], "blocked", "blocking on again")
+            context.note(String(format: "re-enabled in %.2f s", -reenabled.timeIntervalSinceNow))
         },
     ]
 }

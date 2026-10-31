@@ -1,32 +1,38 @@
 --- a/chrome/renderer/chrome_content_renderer_client.cc
 +++ b/chrome/renderer/chrome_content_renderer_client.cc
-@@ -75,6 +75,8 @@
+@@ -75,6 +75,9 @@
  #include "chrome/renderer/worker_content_settings_client.h"
  #include "chrome/services/speech/buildflags/buildflags.h"
  #include "components/autofill/content/renderer/autofill_agent.h"
 +#include "components/js_injection/renderer/js_communication.h"
 +#include "refrax/renderer/frame_scripts.h"
++#include "refrax/renderer/shields_frame_observer.h"
  #include "components/autofill/content/renderer/password_autofill_agent.h"
  #include "components/autofill/content/renderer/password_generation_agent.h"
  #include "components/autofill/core/common/autofill_features.h"
-@@ -621,6 +623,12 @@
+@@ -621,6 +624,13 @@
    service_manager::BinderRegistry* registry = render_frame_observer->registry();
  
    new prerender::NoStatePrefetchRenderFrameObserver(render_frame);
 +
-+  // Refrax: the engine contract's scripts, message channels and script evaluation, driven
-+  // per frame by the engine host (//refrax/host); inert without it. Both delete themselves
-+  // with the frame.
++  // Refrax: the engine contract's scripts, message channels and script evaluation, and
++  // Shields' cosmetic filtering, driven per frame by the engine host (//refrax/host); inert
++  // without it. Each deletes itself with the frame.
 +  new js_injection::JsCommunication(render_frame);
 +  refrax::FrameScripts::Create(render_frame);
++  refrax::ShieldsFrameObserver::Create(render_frame);
  
    auto content_settings_delegate =
        std::make_unique<ChromeContentSettingsAgentDelegate>(render_frame);
-@@ -1411,6 +1419,11 @@
- 
+@@ -1411,6 +1421,15 @@
+
  void ChromeContentRendererClient::RunScriptsAtDocumentStart(
      content::RenderFrame* render_frame) {
-+  // Refrax's scripts run first: extension scripts below may destroy the frame.
++  // Refrax's scripts run first: extension scripts below may destroy the frame. Shields'
++  // scriptlets precede everything else.
++  if (auto* shields = refrax::ShieldsFrameObserver::Get(render_frame)) {
++    shields->RunScriptsAtDocumentStart();
++  }
 +  if (auto* js_communication = js_injection::JsCommunication::Get(render_frame)) {
 +    js_communication->RunScripts(
 +        js_injection::mojom::DocumentInjectionTime::kDocumentStart);
@@ -34,7 +40,7 @@
  #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
    extensions::ExtensionsRendererClient::Get()->RunScriptsAtDocumentStart(
        render_frame);
-@@ -1420,6 +1433,10 @@
+@@ -1420,6 +1439,10 @@
  
  void ChromeContentRendererClient::RunScriptsAtDocumentEnd(
      content::RenderFrame* render_frame) {

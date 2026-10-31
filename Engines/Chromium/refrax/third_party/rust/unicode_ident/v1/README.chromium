@@ -1,0 +1,11 @@
+Name: unicode-ident
+URL: https://crates.io/crates/unicode-ident
+Version: 1.0.27
+Revision: c1ac3afb721f3cea6527bc2255340a04d0de3ca0
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0, Unicode-3.0
+License File: //third_party/refrax_crates/vendor/unicode-ident-v1/LICENSE-APACHE,//third_party/refrax_crates/vendor/unicode-ident-v1/LICENSE-UNICODE
+Shipped: yes
+Security Critical: yes
+
+Description: Determine whether characters have the XID_Start or XID_Continue properties according to Unicode Standard Annex #31

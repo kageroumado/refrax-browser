@@ -1,0 +1,11 @@
+Name: regex-automata
+URL: https://crates.io/crates/regex-automata
+Version: 0.4.18
+Revision: e6ad938198e68339a593f85d228f2d44cb54718f
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/regex-automata-v0_4/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Automata construction and matching using regular expressions.

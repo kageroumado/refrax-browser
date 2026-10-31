@@ -92,11 +92,11 @@ final class TestEngine: NSObject, RFXEngineHostDelegate {
         host.performCommand?(JSON.data([name: fields]))
     }
 
-    /// The first engine event named `name` that satisfies `matching`.
+    /// The first engine event named `name` after index `mark` that satisfies `matching`.
     @discardableResult
-    func waitForEvent(_ name: String, timeout: TimeInterval = 10, matching: ([String: Any]) -> Bool = { _ in true }) async throws -> [String: Any] {
+    func waitForEvent(_ name: String, after mark: Int = 0, timeout: TimeInterval = 10, matching: ([String: Any]) -> Bool = { _ in true }) async throws -> [String: Any] {
         try await eventually("engine event \(name)", timeout: timeout) {
-            events.first { $0.name == name && matching($0.fields) }?.fields
+            events[mark...].first { $0.name == name && matching($0.fields) }?.fields
         }
     }
 
@@ -318,6 +318,24 @@ final class TestPage: NSObject, RFXEnginePageDelegate {
                 }
             }
         }
+    }
+
+    /// The page's request log after `sequence` (CONTRACT.md §4.7).
+    func requestLog(since sequence: Int64 = 0) async throws -> (entries: [[String: Any]], nextSequence: Int) {
+        guard page.responds(to: #selector(RFXEnginePage.requestLog(since:completion:))) else {
+            throw Skip("the engine's pages keep no request log (requestLogSince:completion:)")
+        }
+        let data = try await callback("requestLog", timeout: 10) { (done: @escaping @MainActor (Result<Data, Error>) -> Void) in
+            page.requestLog?(since: sequence) { log in
+                MainActor.assumeIsolated { done(.success(log)) }
+            }
+        }
+        guard let log = JSON.parse(data) as? [String: Any], let entries = log["entries"] as? [[String: Any]],
+              let next = log["nextSequence"] as? Int
+        else {
+            throw Failure("malformed request log: \(String(decoding: data, as: UTF8.self))")
+        }
+        return (entries, next)
     }
 
     func close() {

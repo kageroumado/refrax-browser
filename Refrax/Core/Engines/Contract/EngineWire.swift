@@ -109,7 +109,9 @@ nonisolated enum EngineWire {
             try .notificationShown(notification: validated(notification))
         case let .notificationClosed(id):
             .notificationClosed(id: capped(id))
-        case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
+        case let .findResultChanged(matches, activeMatch, isFinal):
+            .findResultChanged(matches: clampedMatches(matches), activeMatch: min(max(activeMatch, 0), clampedMatches(matches)), isFinal: isFinal)
+        case .devToolsChanged, .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             event
         }
@@ -230,6 +232,11 @@ nonisolated enum EngineWire {
 
     private static func capped(_ string: String) -> String {
         string.count <= maximumStringLength ? string : String(string.prefix(maximumStringLength))
+    }
+
+    /// A find result's match count, between none and a million.
+    private static func clampedMatches(_ matches: Int) -> Int {
+        min(max(matches, 0), 1_000_000)
     }
 
     private static func clamped(_ value: Double, _ range: ClosedRange<Double>) -> Double {

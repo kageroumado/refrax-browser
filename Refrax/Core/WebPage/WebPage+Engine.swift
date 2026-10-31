@@ -223,6 +223,12 @@ extension WebPage {
         case let .notificationClosed(id):
             webNotifications?.withdrawEngineNotification(id, from: self)
 
+        case let .findResultChanged(matches, activeMatch, isFinal):
+            engineFindResult = EngineFindResult(matches: matches, activeMatch: activeMatch, isFinal: isFinal)
+
+        case let .devToolsChanged(isShown):
+            isEngineDevToolsShown = isShown
+
         default:
             break
         }

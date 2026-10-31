@@ -1,0 +1,137 @@
+[gn]
+build_file_template = "BUILD.gn.hbs"
+readme_file_template = "README.chromium.hbs"
+removed_cargo_template = "removed_Cargo.toml.hbs"
+removed_librs_template = "removed_lib.rs.hbs"
+
+[resolve]
+remove_crates = []
+root = "chromium"
+
+[crate.adblock]
+extra_kv = { allow_unsafe = true }
+
+[crate.aho-corasick]
+group = 'safe'
+extra_kv = { allow_unsafe = true }
+
+[crate.arrayvec]
+extra_kv = { allow_unsafe = true }
+
+[crate.base64.extra_kv]
+allow_unsafe = true
+
+[crate.bitflags.extra_kv]
+allow_unsafe = true
+
+[crate.either.extra_kv]
+allow_unsafe = true
+
+[crate.flatbuffers]
+# Its build script turns on a nightly-only feature under any nightly rustc, Chromium's
+# included, which forbids it.
+remove_build_rs = true
+license_files = ["README.md"]
+extra_kv = { allow_unsafe = true }
+
+[crate.form_urlencoded]
+extra_kv = { allow_unsafe = true }
+
+[crate.idna]
+extra_kv = { allow_unsafe = true }
+
+[crate.idna_adapter]
+extra_kv = { allow_unsafe = true }
+
+[crate.itertools]
+extra_kv = { allow_unsafe = true }
+
+[crate.itoa.extra_kv]
+allow_unsafe = true
+
+[crate.memchr.extra_kv]
+allow_unsafe = true
+
+[crate.percent-encoding]
+extra_kv = { allow_unsafe = true }
+
+[crate.precomputed-hash]
+extra_kv = { allow_unsafe = true }
+
+[crate.proc-macro2.extra_kv]
+allow_unsafe = true
+
+[crate.quote.extra_kv]
+allow_unsafe = true
+
+[crate.regex]
+extra_kv = { allow_unsafe = true }
+
+[crate.regex-automata.extra_kv]
+allow_unsafe = true
+
+[crate.regex-syntax.extra_kv]
+allow_unsafe = true
+
+[crate.rustc-hash]
+extra_kv = { allow_unsafe = true }
+
+[crate.rustc_version]
+extra_kv = { allow_unsafe = true }
+
+[crate.seahash]
+license_files = ["README.md"]
+extra_kv = { allow_unsafe = true }
+
+[crate.semver]
+extra_kv = { allow_unsafe = true }
+
+[crate.serde]
+build_script_outputs = [ "private.rs" ]
+extra_kv = { allow_unsafe = true }
+
+[crate.serde_core]
+build_script_outputs = [ "private.rs" ]
+extra_kv = { allow_unsafe = true }
+
+[crate.serde_derive.extra_kv]
+allow_unsafe = true
+
+[crate.serde_json.extra_kv]
+allow_unsafe = true
+
+[crate.smallvec]
+ban_features = ['malloc_size_of']
+extra_kv = { allow_unsafe = true }
+
+[crate.syn.extra_kv]
+allow_unsafe = true
+multiversion_cleanup_bug = "https://crbug.com/540235303"
+
+[crate.synstructure.extra_kv]
+allow_unsafe = true
+
+[crate.thiserror]
+extra_kv = { allow_unsafe = true }
+
+[crate.thiserror-impl]
+extra_kv = { allow_unsafe = true }
+
+[crate.unicode-ident.extra_kv]
+allow_unsafe = true
+
+[crate.url]
+extra_kv = { allow_unsafe = true }
+
+[crate.utf8_iter]
+license_files = ["LICENSE-APACHE"]
+
+[crate.utf8_iter.extra_kv]
+# Crate exists to encapsulate common UTF8 decoding code
+allow_unsafe = true
+
+[crate.utf_types]
+extra_kv = { allow_unsafe = true }
+
+[crate.zmij]
+extra_kv = { allow_unsafe = true }

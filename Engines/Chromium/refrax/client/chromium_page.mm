@@ -14,6 +14,7 @@
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/utils/mac/SkCGUtils.h"
+#include "ui/base/cocoa/remote_accessibility_api.h"
 #include "ui/events/cocoa/cocoa_event_utils.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -21,6 +22,12 @@
 #include "ui/gfx/geometry/size.h"
 
 @class RFXChromiumPage;
+
+@interface RFXChromiumPage ()
+- (void)showDevToolsWindowWithID:(uint64_t)viewID title:(NSString*)title;
+- (void)closeDevToolsWindow;
+- (void)accessibilityElementChanged;
+@end
 
 namespace {
 
@@ -36,7 +43,9 @@ std::string ToString(NSData* data) {
 struct ClosingPage {
   mojo::AssociatedRemote<refrax::mojom::Page> page;
   std::unique_ptr<remote_cocoa::ScopedNSViewIdMapping> view_id_mapping;
+  std::unique_ptr<remote_cocoa::ScopedNSViewIdMapping> devtools_view_id_mapping;
   NSView* __strong container;
+  NSView* __strong devtools_container;
 };
 
 // A call's reply that will never come: the page closed or its host exited first.
@@ -86,6 +95,19 @@ class PageClientImpl : public refrax::mojom::PageClient {
     }
   }
 
+  void ShowDevToolsWindow(uint64_t container_ns_view_id,
+                          const std::string& title,
+                          ShowDevToolsWindowCallback callback) override {
+    // The window's view is registered before the reply, after which the host builds the
+    // frontend's views in it.
+    [page_ showDevToolsWindowWithID:container_ns_view_id title:base::SysUTF8ToNSString(title)];
+    std::move(callback).Run();
+  }
+
+  void CloseDevToolsWindow() override { [page_ closeDevToolsWindow]; }
+
+  void AccessibilityElementChanged() override { [page_ accessibilityElementChanged]; }
+
   void OnScriptMessage(const std::string& message,
                        OnScriptMessageCallback callback) override {
     RFXChromiumPage* page = page_;
@@ -111,14 +133,45 @@ class PageClientImpl : public refrax::mojom::PageClient {
 }  // namespace
 
 // The page's view: Chromium's WebContentsViewCocoa becomes its only subview. It tells the host
-// its size, since the host lays the page out.
+// its size, since the host lays the page out. To assistive technologies it shows the page's
+// accessibility tree, which lives in the host: its one child is a remote element for the
+// page's root there, and the subviews (Chromium's views here, which carry no tree) are hidden.
 @interface RFXChromiumContainerView : NSView
 @property(nonatomic, copy) void (^sizeDidChange)(NSSize size);
+// The remote root element, or nil while there is none yet; asking starts fetching it.
+@property(nonatomic, copy) id (^accessibilityRoot)(void);
 @end
 
 @implementation RFXChromiumContainerView
 
 @synthesize sizeDidChange = _sizeDidChange;
+@synthesize accessibilityRoot = _accessibilityRoot;
+
+- (id)remoteRoot {
+  return _accessibilityRoot ? _accessibilityRoot() : nil;
+}
+
+- (BOOL)isAccessibilityElement {
+  return NO;
+}
+
+- (NSArray*)accessibilityChildren {
+  if (!_accessibilityRoot) {
+    return [super accessibilityChildren];
+  }
+  id root = [self remoteRoot];
+  return root ? @[ root ] : @[];
+}
+
+- (id)accessibilityHitTest:(NSPoint)point {
+  id root = [self remoteRoot];
+  return root ? [root accessibilityHitTest:point] : [super accessibilityHitTest:point];
+}
+
+- (id)accessibilityFocusedUIElement {
+  id root = [self remoteRoot];
+  return root ? [root accessibilityFocusedUIElement] : [super accessibilityFocusedUIElement];
+}
 
 - (BOOL)isFlipped {
   return YES;
@@ -139,12 +192,27 @@ class PageClientImpl : public refrax::mojom::PageClient {
 
 @end
 
+@interface RFXChromiumPage () <NSWindowDelegate>
+@end
+
 @implementation RFXChromiumPage {
   mojo::AssociatedRemote<refrax::mojom::Page> _page;
   std::unique_ptr<PageClientImpl> _client;
   std::unique_ptr<remote_cocoa::ScopedNSViewIdMapping> _viewIDMapping;
   RFXChromiumContainerView* _container;
   BOOL _closed;
+
+  // The DevTools window and its content view, registered under the id the host builds the
+  // frontend's views with.
+  NSWindow* _devToolsWindow;
+  RFXChromiumContainerView* _devToolsContainer;
+  std::unique_ptr<remote_cocoa::ScopedNSViewIdMapping> _devToolsViewIDMapping;
+
+  // Accessibility: whether an assistive technology has asked, the remote root element once
+  // the host has sent its token, and whether a token request is outstanding.
+  BOOL _accessibilityStarted;
+  NSAccessibilityRemoteUIElement* _accessibilityRoot;
+  BOOL _fetchingAccessibilityToken;
 }
 
 @synthesize delegate = _delegate;
@@ -161,8 +229,147 @@ class PageClientImpl : public refrax::mojom::PageClient {
     _container.sizeDidChange = ^(NSSize size) {
       [weakSelf containerDidResize:size];
     };
+    _container.accessibilityRoot = ^id {
+      return [weakSelf accessibilityRoot];
+    };
   }
   return self;
+}
+
+// MARK: Accessibility
+
+- (id)accessibilityRoot {
+  if (_closed) {
+    return nil;
+  }
+  if (!_accessibilityStarted) {
+    // The host builds accessibility trees only once something reads them.
+    _accessibilityStarted = YES;
+    _page->EnableAccessibility();
+    _page->SetAccessibilityParent(getpid(),
+                                  ui::RemoteAccessibility::GetTokenForLocalElement(_container));
+  }
+  if (!_accessibilityRoot) {
+    [self fetchAccessibilityRoot];
+  }
+  return _accessibilityRoot;
+}
+
+- (void)fetchAccessibilityRoot {
+  if (_fetchingAccessibilityToken || _closed) {
+    return;
+  }
+  _fetchingAccessibilityToken = YES;
+  __weak RFXChromiumPage* weakSelf = self;
+  void (^received)(int32_t, std::vector<uint8_t>) = ^(int32_t pid, std::vector<uint8_t> token) {
+    [weakSelf didReceiveAccessibilityToken:token fromProcess:pid];
+  };
+  _page->GetAccessibilityToken(base::BindOnce(
+      [](void (^received)(int32_t, std::vector<uint8_t>), int32_t pid,
+         const std::vector<uint8_t>& token) { received(pid, token); },
+      received));
+}
+
+- (void)didReceiveAccessibilityToken:(const std::vector<uint8_t>&)token fromProcess:(int32_t)pid {
+  _fetchingAccessibilityToken = NO;
+  if (token.empty() || _closed) {
+    return;
+  }
+  [NSAccessibilityRemoteUIElement registerRemoteUIProcessIdentifier:pid];
+  _accessibilityRoot = ui::RemoteAccessibility::GetRemoteElementFromToken(token);
+  _accessibilityRoot.windowUIElement = _container.window;
+  _accessibilityRoot.topLevelUIElement = _container.window;
+  NSAccessibilityPostNotification(_container, NSAccessibilityLayoutChangedNotification);
+}
+
+- (void)accessibilityElementChanged {
+  _accessibilityRoot = nil;
+  if (_accessibilityStarted) {
+    [self fetchAccessibilityRoot];
+  }
+}
+
+// MARK: DevTools
+
+- (void)showDevToolsWindowWithID:(uint64_t)viewID title:(NSString*)title {
+  [self dismissDevToolsWindow];
+  _devToolsContainer = [[RFXChromiumContainerView alloc] initWithFrame:NSMakeRect(0, 0, 1000, 700)];
+  _devToolsContainer.wantsLayer = YES;
+  __weak RFXChromiumPage* weakSelf = self;
+  _devToolsContainer.sizeDidChange = ^(NSSize size) {
+    [weakSelf devToolsDidResize:size];
+  };
+  _devToolsWindow =
+      [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1000, 700)
+                                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                            NSWindowStyleMaskResizable |
+                                            NSWindowStyleMaskMiniaturizable
+                                    backing:NSBackingStoreBuffered
+                                      defer:NO];
+  _devToolsWindow.releasedWhenClosed = NO;
+  _devToolsWindow.title = title;
+  _devToolsWindow.delegate = self;
+  _devToolsWindow.contentView = _devToolsContainer;
+  _devToolsWindow.frameAutosaveName = @"RFXChromiumDevTools";
+  _devToolsViewIDMapping =
+      std::make_unique<remote_cocoa::ScopedNSViewIdMapping>(viewID, _devToolsContainer);
+  [self devToolsDidResize:_devToolsContainer.frame.size];
+  if (![_devToolsWindow setFrameUsingName:@"RFXChromiumDevTools"]) {
+    [_devToolsWindow center];
+  }
+  [_devToolsWindow makeKeyAndOrderFront:nil];
+}
+
+- (void)devToolsDidResize:(NSSize)size {
+  if (!_closed && _devToolsContainer) {
+    _page->SetDevToolsSize(gfx::Size(size.width, size.height));
+  }
+}
+
+// The host has taken the frontend's views out of the window.
+- (void)closeDevToolsWindow {
+  [self dismissDevToolsWindow];
+  _devToolsViewIDMapping.reset();
+}
+
+- (void)dismissDevToolsWindow {
+  if (!_devToolsWindow) {
+    return;
+  }
+  _devToolsWindow.delegate = nil;
+  [_devToolsWindow close];
+  _devToolsWindow = nil;
+  _devToolsContainer.sizeDidChange = nil;
+}
+
+- (BOOL)windowShouldClose:(NSWindow*)window {
+  // The host takes the frontend's views out first, then asks for the window to close.
+  [self performCommand:[@"{\"devTools\":{\"command\":{\"hide\":{}}}}"
+                           dataUsingEncoding:NSUTF8StringEncoding]];
+  return NO;
+}
+
+// MARK: Request log
+
+- (void)requestLogSince:(int64_t)sequence completion:(void (^)(NSData* log))completion {
+  NSData* (^empty)(void) = ^NSData* {
+    return [[NSString stringWithFormat:@"{\"entries\":[],\"nextSequence\":%lld}",
+                                       (long long)sequence + 1]
+        dataUsingEncoding:NSUTF8StringEncoding];
+  };
+  if (_closed) {
+    completion(empty());
+    return;
+  }
+  _page->RequestLog(
+      sequence,
+      mojo::WrapCallbackWithDropHandler(
+          base::BindOnce([](void (^completion)(NSData*),
+                            const std::string& log) { completion(ToData(log)); },
+                         completion),
+          base::BindOnce([](void (^completion)(NSData*), NSData* (^empty)(void)) {
+            completion(empty());
+          }, completion, empty)));
 }
 
 - (NSView*)view {
@@ -266,9 +473,13 @@ class PageClientImpl : public refrax::mojom::PageClient {
   _closed = YES;
   _delegate = nil;
   _client.reset();
+  _container.accessibilityRoot = nil;
+  _accessibilityRoot = nil;
   [_container removeFromSuperview];
+  [self dismissDevToolsWindow];
   if (!_page.is_bound()) {
     _viewIDMapping.reset();
+    _devToolsViewIDMapping.reset();
     return;
   }
   // The host may still attach this page's views to the container, found by its id, until it
@@ -278,7 +489,9 @@ class PageClientImpl : public refrax::mojom::PageClient {
   auto closing = std::make_unique<ClosingPage>();
   closing->page = std::move(_page);
   closing->view_id_mapping = std::move(_viewIDMapping);
+  closing->devtools_view_id_mapping = std::move(_devToolsViewIDMapping);
   closing->container = _container;
+  closing->devtools_container = _devToolsContainer;
   refrax::mojom::Page* page = closing->page.get();
   page->Close(base::BindOnce([](std::unique_ptr<ClosingPage>) {}, std::move(closing)));
 }
@@ -287,6 +500,8 @@ class PageClientImpl : public refrax::mojom::PageClient {
   _page.reset();
   _client.reset();
   _closed = YES;
+  [self dismissDevToolsWindow];
+  _devToolsViewIDMapping.reset();
 }
 
 @end

@@ -21,7 +21,11 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/shell_dialogs/selected_file_info.h"
-#include "refrax/host/content_blocking.h"
+#include "content/public/browser/browser_accessibility_state.h"
+#include "content/public/browser/scoped_accessibility_mode.h"
+#include "ui/accessibility/ax_mode.h"
+#include "ui/base/cocoa/remote_accessibility_api.h"
+#include "refrax/host/shields_service.h"
 #include "refrax/host/contract_json.h"
 #include "refrax/host/download_delegate.h"
 #include "refrax/host/engine_requests.h"
@@ -214,7 +218,11 @@ void EngineHostImpl::ApplyPolicy(const std::string& update) {
       receiver_.ReportBadMessage("ApplyPolicy: contentBlocking without a policy");
       return;
     }
-    ContentBlocking::Get().Apply(*policy);
+    if (!ShieldsService::Get().Apply(
+            *policy, base::BindOnce(&EngineHostImpl::EmitEngineEvent,
+                                    weak_factory_.GetWeakPtr()))) {
+      receiver_.ReportBadMessage("ApplyPolicy: contentBlocking without its engine");
+    }
     return;
   }
   if (category == "notifications") {
@@ -330,6 +338,17 @@ std::optional<base::DictValue> EngineHostImpl::ProfileSpec(Profile* profile) {
     }
   }
   return std::nullopt;
+}
+
+void EngineHostImpl::EnableAccessibility() {
+  if (accessibility_mode_) {
+    return;
+  }
+  // The trees are read from the client's process through remote elements, as an app shim's
+  // windows are; macOS needs this process marked as one serving remote UI.
+  [NSAccessibilityRemoteUIElement setRemoteUIApp:YES];
+  accessibility_mode_ = content::BrowserAccessibilityState::GetInstance()->CreateScopedModeForProcess(
+      ui::kAXModeComplete | ui::AXMode::kFromPlatform);
 }
 
 void EngineHostImpl::EmitEngineEvent(std::string event) {

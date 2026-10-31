@@ -1,0 +1,22 @@
+# Copyright 2026 Refrax. Use of this source code is governed by the license in the repository root.
+
+import("//build/rust/rust_static_library.gni")
+
+# Refrax Shields (Engines/Shared/shields, linked here as src/ and include/): the C ABI over
+# adblock-rust the host matches requests and cosmetics with. Built by Chromium's Rust toolchain
+# with the crate's host feature set (no features): no list parsing, eTLD+1 through Chromium's
+# registry (shields_set_domain_resolver). Never link a cargo-built archive: it would carry a
+# second Rust standard library and allocator.
+rust_static_library("shields") {
+  crate_name = "shields"
+  crate_root = "src/lib.rs"
+  sources = [ "src/lib.rs" ]
+  public = [ "include/shields.h" ]
+  allow_unsafe = true
+  edition = "2021"
+  deps = [
+    "//refrax/third_party/rust/adblock/v0_13:refrax_lib",
+    "//refrax/third_party/rust/serde/v1:refrax_lib",
+    "//refrax/third_party/rust/serde_json/v1:refrax_lib",
+  ]
+}

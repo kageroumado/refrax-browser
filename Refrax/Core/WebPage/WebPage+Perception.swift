@@ -29,6 +29,7 @@ extension WebPage {
     func hideFindUI() {
         if let enginePage {
             enginePage.perform(.stopFinding)
+            engineFindResult = nil
         } else {
             backingWebView._hideFindUI()
         }

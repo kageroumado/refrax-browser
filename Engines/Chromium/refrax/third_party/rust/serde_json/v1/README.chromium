@@ -1,0 +1,11 @@
+Name: serde_json
+URL: https://crates.io/crates/serde_json
+Version: 1.0.154
+Revision: 20572a6d066958542d79cdd6cf1a7cd9f0c8e1f8
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/serde_json-v1/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: A JSON serialization file format

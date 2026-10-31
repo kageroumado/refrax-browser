@@ -1,0 +1,11 @@
+Name: form_urlencoded
+URL: https://crates.io/crates/form_urlencoded
+Version: 1.2.2
+Revision: 91377f48bf35011d042aa5abef9e7f2a0a625aaa
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: Apache-2.0
+License File: //third_party/refrax_crates/vendor/form_urlencoded-v1/LICENSE-APACHE
+Shipped: yes
+Security Critical: yes
+
+Description: Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.

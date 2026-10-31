@@ -1,0 +1,14 @@
+[
+  {
+    "name": "refrax-noop.js",
+    "aliases": [],
+    "kind": { "mime": "application/javascript" },
+    "content": "d2luZG93Ll9fcmVkaXJlY3RlZCA9IHRydWU7Cg=="
+  },
+  {
+    "name": "refrax-marker.js",
+    "aliases": [],
+    "kind": { "mime": "application/javascript" },
+    "content": "KGZ1bmN0aW9uICgpIHsKICB3aW5kb3cuX19zaGllbGRzTWFya2VyID0gKHdpbmRvdy5fX3NoaWVsZHNNYXJrZXIgfHwgW10pLmNvbmNhdChbJ3t7MX19OicgKyBsb2NhdGlvbi5wYXRobmFtZV0pOwp9KSgpOwo="
+  }
+]

@@ -1,6 +1,6 @@
 # Refrax engine contract
 
-**Version 1.2.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
+**Version 2.0.** How a rendering engine plugs into Refrax. Refrax is the browser: windows,
 tabs, spaces, history, bookmarks, passwords, extensions as installed artifacts, content-blocking
 lists, user scripts, settings. An engine renders pages and reports what happens in them. System
 WebKit is built in; every other engine is a separately installed bundle that speaks this contract.
@@ -35,7 +35,7 @@ An engine is a loadable bundle named `<Name>.engine`, installed at
 | `CFBundleIdentifier` | string | Engine ID, reverse-DNS (`website.refrax.engine.chromium`). `system.webkit` is reserved. |
 | `CFBundleShortVersionString` | string | Version of the engine bundle |
 | `NSPrincipalClass` | string | Class conforming to `RFXEngineHost` |
-| `RFXEngineContractVersion` | string | Contract version implemented, `"1.2"` |
+| `RFXEngineContractVersion` | string | Contract version implemented, `"2.0"` |
 | `RFXEngineDisplayName` | string | Name in Settings → Engines |
 | `RFXEngineVersion` | string | Version of the rendering engine, e.g. `"Chromium 155.0.8059.12"` |
 | `RFXEngineVendor` | string | Who built it |
@@ -122,6 +122,8 @@ since 1970, optional fields may be omitted or `null`.
 | `notificationShown` | `notification`: `{ "id", "origin", "title", "body", "tag?", "iconURL?", "isSilent" }` | The page called `new Notification()` for an origin Refrax allowed. Engines declaring `notifications` only; service worker notifications are engine events (§4.6) |
 | `notificationClosed` | `id` | The page closed a notification it showed |
 | `rendererHealthChanged` | `health`: `{"running":{}}` \| `{"unresponsive":{"since":<date>}}` \| `{"terminated":{"reason":…}}` \| `{"suspended":{}}` | Reasons: `crashed`, `sharedProcessCrashed`, `exceededMemoryLimit`, `exceededCPULimit`, `requestedByBrowser`, `unknown` |
+| `findResultChanged` (2.0) | `matches`, `activeMatch`, `isFinal` | Results of the latest `find`: the number of matches in the page and the 1-based index of the selected one (0 when there is none). Counting may take several events; the last of a search has `isFinal` true. An empty `text` answers `0`, `0`, `true` |
+| `devToolsChanged` (2.0) | `isShown` | The page's developer tools opened or closed, including when the user closed them |
 
 `failure` = `{ "kind", "url?", "isProvisional", "engineCode", "description" }` where `kind` is one
 of `cancelled`, `cannotFindHost`, `cannotConnectToHost`, `notConnectedToInternet`,
@@ -140,10 +142,10 @@ Colors are `{ "red", "green", "blue", "alpha" }`, each 0…1.
 | `reload` | `fromOrigin` (bypass caches) |
 | `setZoom` | `factor` — this page's zoom, kept across its navigations; engines keep no zoom of their own (per site or saved) |
 | `setAudioMuted` | `muted` |
-| `setMediaSuspended` | `suspended` |
-| `find` | `query`: `{ "text", "forward", "matchCase", "findNext" }` |
+| `setMediaSuspended` | `suspended` — pauses every audio and video player in the page and keeps them paused until `false` |
+| `find` | `query`: `{ "text", "forward", "matchCase", "findNext" }` — selects and highlights the next match (`findNext` continues from the selected one) and reports `findResultChanged`; `stopFinding` clears the highlights |
 | `setVisibility` | `visibility`: `visible` \| `hidden` (throttle when hidden) |
-| `devTools` | `command`: `{"show":{}}` \| `{"hide":{}}` \| `{"showConsole":{}}` \| `{"toggleElementSelection":{}}` |
+| `devTools` | `command`: `{"show":{}}` \| `{"hide":{}}` \| `{"showConsole":{}}` \| `{"toggleElementSelection":{}}` — the engine presents its own developer tools (an in-process engine wherever it docks them; an out-of-process one in a window its client opens in Refrax's process) and reports `devToolsChanged` |
 | `terminateRenderer` | — (watchdog; answer with `rendererHealthChanged` → `requestedByBrowser`) |
 | `notificationClicked`, `notificationClosed` | `id` — the user clicked or dismissed the notification; fire its `click` / `close` event |
 
@@ -227,7 +229,7 @@ message as untrusted.)
 
 | Case | Fields |
 |---|---|
-| `contentBlocking` | `policy`: `{ "isEnabled", "lists": [{ "id", "contents" }], "allowlistedHosts": [...] }` — lists in Adblock Plus / uBlock syntax |
+| `contentBlocking` | `policy`: `{ "isEnabled", "mode", "engine": { "path", "sha256", "format" }, "resources?": { "path", "sha256" }, "lists": [{ "id", "sourceIndex" }], "allowlistedHosts": [...] }` (2.0) — see below |
 | `scripts` | `scripts`: `[{ "id", "source", "injectionTime": documentStart\|documentEnd, "world", "mainFrameOnly", "matches", "excludes", "channels" }]` — replaces the previous set |
 | `extensions` | `extensions`: `[{ "id", "directory", "grantedPermissions", "grantedHostPatterns", "isEnabled" }]` — unpacked, read-only |
 | `siteSettings` (1.2) | `policy`: `{ "javaScriptEnabled", "rules": [{ "host", "javaScriptEnabled?", "contentBlockingEnabled?", "autoplayWithSound?" }] }` |
@@ -244,6 +246,25 @@ the default lets only muted media autoplay. Changes take effect on the next load
 and permissions (`permission` requests) are per page and per request instead. Engines block no
 popups of their own: every new window a page asks for reaches Refrax as `openURL`, with
 `userGesture`, and Refrax decides.
+
+`contentBlocking` (2.0) hands the engine a blocking engine Refrax built: Refrax parses the lists
+(Adblock Plus / uBlock syntax) with adblock-rust and writes its serialized engine (`engine.path`,
+a `file:` URL) and its redirect and scriptlet resources (`resources.path`, a JSON array of
+adblock-rust resources). `format` names what wrote the engine file (`"adblock-0.13.3;shields-1"`);
+an engine that reads another format, or finds a file whose SHA-256 is not `sha256` (lowercase
+hex), leaves pages unfiltered. Refrax never rewrites a file while a policy names it. The engine
+answers each policy with the engine event `contentBlockingStatus` (§4.6) and filters pages with the
+previous engine until then. `lists` maps each list's `sourceIndex` in that engine to Refrax's list
+`id`, for the request log. Pages whose host is in `allowlistedHosts` (or a subdomain of one) or a
+`siteSettings` rule with `contentBlockingEnabled: false` are not filtered.
+
+What filtering covers: network requests of every kind (documents, subresources, workers,
+WebSockets), blocked, answered with a redirect resource (`$redirect`), or redirected without the
+parameters `$removeparam` removes; `$csp` policies added to document responses; a top-level page a
+`$document` rule names replaced by a page saying so (`navigationFailed` with `blockedByPolicy`);
+and cosmetic filtering in every frame: hiding, scriptlets, procedural filters. `mode` is
+`standard` or `aggressive`: standard spares a site's own (first-party) requests unless the rule
+is `$important`, and applies no generic class/id hiding; aggressive applies every rule.
 
 `notifications` is the only source of notification permission in the engine: `Notification.permission`
 and permission queries read it (`granted`, `denied`, or for other origins `default` when
@@ -262,6 +283,7 @@ What happens outside any page travels between the engine and Refrax directly
 |---|---|---|
 | `notificationShown` | `profile` (the page spec's profile), `notification` (as in §4.1) | A service worker showed a notification, or a page did and the engine can't name the page |
 | `notificationClosed` | `id` | The worker or page closed it |
+| `contentBlockingStatus` (2.0) | `status`: `applied` \| `unfiltered`, `sha256?`, `reason?` | Once per `contentBlocking` policy: the engine loaded the named engine file (`applied`, with its `sha256`), or pages stay unfiltered (`reason` says why; none when `isEnabled` is false) |
 
 | Command (Refrax → engine) | Fields |
 |---|---|
@@ -283,12 +305,39 @@ completes, since an engine may need its secrets to finish starting.
 Notification ids are unique across the engine's profiles, so an id alone names the notification in
 either direction.
 
+### 4.7 Request log (2.0)
+
+An engine declaring `requestLog` keeps each page's newest 2,000 content-blocking decisions, and
+Refrax pulls them (`requestLogSince:completion:` in `RFXEngine.h`) when it shows them; nothing
+streams. The answer is `{ "entries": [...], "nextSequence" }`: the entries numbered after the
+sequence asked for, oldest first, and the number the next entry will get. An entry:
+
+```json
+{ "seq": 1812, "time": 1793450000.25, "frameURL": "https://news.example/", "url": "https://ads.example/a.js",
+  "type": "script", "method": "GET", "decision": "blocked", "rule": "||ads.example^",
+  "list": "easylist", "line": 1204, "exceptionRule": null, "exactness": "exact" }
+```
+
+`decision` is `blocked`, `redirected`, `rewritten` (with `rewrittenURL`), `allowed`, `excepted`
+(an exception rule lifted a block) or `csp` (with the `csp` added). `type` is adblock-rust's
+request type. `rule`, `list` (a `lists[].id` of the policy) and `line` (zero-based, in that list)
+name the rule that matched; `sparedFirstParty` is true when standard mode let a first-party
+request through that a rule matched. `exactness` is `exact` when the engine recorded the decision
+as it made it, `attributed` when it was reconstructed afterwards.
+
+### 4.8 Accessibility
+
+The page's view carries the page's accessibility tree: assistive technologies read the page
+through the view's accessibility children like any other part of Refrax's window. An
+out-of-process engine's view exposes the tree its host process holds through remote elements
+(`NSAccessibilityRemoteUIElement`), and builds it only once something reads it.
+
 ## 5. Capabilities
 
 Declared in Info.plist; the browser hides or disables features an engine doesn't declare.
 `javaScriptEvaluation`, `findInPage`, `zoom`, `snapshots`, `devTools`, `downloads`,
 `contentBlocking`, `userScripts`, `webExtensions`, `pictureInPicture`, `mediaCapture`,
-`agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`.
+`agentPerception`, `autoFill`, `processInfo`, `rendererControl`, `notifications`, `requestLog` (2.0).
 
 `notifications`: Refrax answers `permission` requests of kind `notifications` from its per-origin
 store, pushes the `notifications` policy, and delivers `notificationShown` (page or engine event)

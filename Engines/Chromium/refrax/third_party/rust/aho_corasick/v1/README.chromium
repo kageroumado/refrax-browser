@@ -1,0 +1,11 @@
+Name: aho-corasick
+URL: https://crates.io/crates/aho-corasick
+Version: 1.1.5
+Revision: 5178060ce73d91938f8582d0360e3be031380440
+Update Mechanism: Manual (https://crbug.com/449898466)
+License: MIT
+License File: //third_party/refrax_crates/vendor/aho-corasick-v1/LICENSE-MIT
+Shipped: yes
+Security Critical: yes
+
+Description: Fast multiple substring searching.

@@ -5,15 +5,14 @@ assert(is_mac)
 import("//base/allocator/partition_allocator/partition_alloc.gni")
 import("//testing/test.gni")
 
-# The host's logic that needs no browser: contract JSON, filter-list compiling, URL matching,
-# secrets.
+# The host's logic that needs no browser: contract JSON, URL matching, the request log, secrets.
 # Its own target so refrax_unittests links it without //chrome.
 source_set("support") {
   sources = [
-    "content_blocking_compiler.cc",
-    "content_blocking_compiler.h",
     "contract_json.cc",
     "contract_json.h",
+    "request_log.cc",
+    "request_log.h",
     "secrets.cc",
     "secrets.h",
     "url_matching.cc",
@@ -21,12 +20,7 @@ source_set("support") {
   ]
   deps = [
     "//base",
-    "//components/subresource_filter/core/common",
-    "//components/subresource_filter/tools/rule_parser",
-    "//components/subresource_filter/tools/ruleset_converter:support",
-    "//components/url_pattern_index/proto:url_pattern_index",
     "//crypto",
-    "//third_party/protobuf:protobuf_lite",
     "//url",
   ]
 }
@@ -37,8 +31,8 @@ source_set("support") {
 # --refrax-bootstrap.
 source_set("host") {
   sources = [
-    "content_blocking.cc",
-    "content_blocking.h",
+    "devtools_frontend.h",
+    "devtools_frontend.mm",
     "download_delegate.cc",
     "download_delegate.h",
     "engine_connection.h",
@@ -61,12 +55,22 @@ source_set("host") {
     "page_downloads.h",
     "page_scripts.cc",
     "page_scripts.h",
+    "page_shields.mm",
+    "page_shields.h",
     "permission_prompt.cc",
     "permission_prompt.h",
     "refrax_browser_main_extra_parts.mm",
     "refrax_browser_main_extra_parts.h",
     "secret_key_provider.cc",
     "secret_key_provider.h",
+    "shields_document_throttle.cc",
+    "shields_document_throttle.h",
+    "shields_matching.cc",
+    "shields_matching.h",
+    "shields_service.cc",
+    "shields_service.h",
+    "shields_url_loader_factory.cc",
+    "shields_url_loader_factory.h",
     "site_settings.cc",
     "site_settings.h",
     "switches.cc",
@@ -78,6 +82,7 @@ source_set("host") {
     ":support",
     "//base",
     "//chrome/browser",
+    "//chrome/browser/devtools",
     "//chrome/browser/notifications",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui",
@@ -95,20 +100,20 @@ source_set("host") {
     "//components/permissions",
     "//components/remote_cocoa/browser",
     "//components/remote_cocoa/common:mojo",
-    "//components/subresource_filter/content/browser",
-    "//components/subresource_filter/core/browser",
-    "//components/subresource_filter/core/common",
-    "//components/subresource_filter/core/mojom",
-    "//components/url_pattern_index/proto:url_pattern_index",
     "//components/viz/common",
     "//content/public/browser",
     "//content/public/common",
+    "//crypto",
     "//mojo/public/cpp/bindings",
     "//mojo/public/cpp/platform",
     "//mojo/public/cpp/system",
     "//net",
     "//refrax/common/mojom",
+    "//refrax/shields",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
     "//third_party/blink/public/common",
+    "//ui/accessibility",
     "//ui/base",
     "//ui/events",
     "//ui/shell_dialogs",
@@ -126,8 +131,8 @@ source_set("host") {
 
 test("refrax_unittests") {
   sources = [
-    "content_blocking_compiler_unittest.cc",
     "contract_json_unittest.cc",
+    "request_log_unittest.cc",
     "secrets_unittest.cc",
     "url_matching_unittest.cc",
   ]
@@ -136,10 +141,7 @@ test("refrax_unittests") {
     "//base",
     "//base/test:run_all_unittests",
     "//base/test:test_support",
-    "//components/subresource_filter/core/common",
-    "//components/url_pattern_index/proto:url_pattern_index",
     "//testing/gtest",
-    "//third_party/protobuf:protobuf_lite",
     "//url",
   ]
 }

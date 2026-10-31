@@ -12,9 +12,6 @@ dcheck_is_configurable = true
 symbol_level = 1
 enable_dsyms = false
 
-# Non-official builds default to transpiling DevTools with esbuild, a binary ungoogled prunes;
-# tsc, as in the release build, is in the tree.
-devtools_skip_typecheck = false
 # ungoogled's LLVM 23 compiles build/precompile.h as a module interface unit and fails;
 # official builds never use precompiled headers either.
 enable_precompiled_headers = false
