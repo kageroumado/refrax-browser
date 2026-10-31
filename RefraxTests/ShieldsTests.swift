@@ -222,7 +222,7 @@ struct FilterListSourceTests {
 @Suite("Request log", .tags(.shields))
 struct RequestLogTests {
     @Test
-    func `An engine's log decodes with absent optional keys, and bad URLs are rejected`() throws {
+    func `An engine's log decodes with absent optional keys, and an entry with a bad URL is dropped alone`() throws {
         let json = Data(#"""
         {"entries":[
           {"seq":1,"time":1700000000.5,"frameURL":null,"url":"https://ads.test/a.js","type":"script","method":"GET","decision":"blocked","exactness":"exact"},
@@ -238,9 +238,13 @@ struct RequestLogTests {
 
         let hostile = Data(#"""
         {"entries":[{"seq":1,"time":1,"url":"javascript:alert(1)","type":"script","method":"GET",
-        "decision":"blocked","exactness":"exact"}],"nextSequence":1}
+        "decision":"blocked","exactness":"exact"},
+        {"seq":2,"time":2,"url":"https://ads.test/b.js","type":"script","method":"GET",
+        "decision":"blocked","exactness":"exact"}],"nextSequence":2}
         """#.utf8)
-        #expect(throws: EngineError.self) { try EngineWire.decodeRequestLog(hostile) }
+        let kept = try EngineWire.decodeRequestLog(hostile)
+        #expect(kept.entries.map(\.url.absoluteString) == ["https://ads.test/b.js"])
+        #expect(kept.nextSequence == 2)
     }
 
     @Test
