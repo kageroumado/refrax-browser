@@ -12,15 +12,18 @@ import UniformTypeIdentifiers
 /// visibility tracking, and modifier key hints.
 ///
 /// Architecture:
-/// - PositionedAdapter handles the NSView lifecycle with constant identity
+/// - PositionedAdapter handles the NSView lifecycle, one per page
 /// - This wrapper adds SwiftUI overlays and modifiers that need page context
 /// - Lifecycle callbacks (visibility, history) are scoped to when page exists
 struct PaneContentWrapper: View {
-    let position: PanePosition
     let tabPage: TabPage?
     let webPage: WebPage?
     let frame: CGRect
+    /// The pane's corners, clipped by the adapter's own layer so WebKit's layers round too.
+    let cornerRadius: CGFloat
     let isLayoutMode: Bool
+    /// A click landed in the pane.
+    let onActivate: () -> Void
 
     @Environment(DialogState.self) private var dialogState
     @Environment(WindowState.self) private var windowState
@@ -86,11 +89,9 @@ struct PaneContentWrapper: View {
                 isActive: isOwner,
                 isSnapshotMode: isLayoutMode && isOwner,
                 expectedFrame: frame,
+                cornerRadius: cornerRadius,
                 ignoresAllEvents: shouldIgnoreAllEvents,
-                onMouseDown: { [weak windowState] in
-                    guard let windowState, let tabPage else { return }
-                    windowState.recordInteraction(with: tabPage.id)
-                },
+                onMouseDown: onActivate,
             )
             .webViewFindNavigator(isPresented: findNavigatorBinding)
 
@@ -129,8 +130,9 @@ struct PaneContentWrapper: View {
         }
         .onDisappear { endLifecycle() }
         .onChange(of: webPage?.id) { oldValue, newValue in
-            // A tab switch arrives here rather than as onDisappear/onAppear: the
-            // outgoing page is hidden and released, the incoming one claimed and shown.
+            // A page replaced under the same tab page, or made after the pane appeared,
+            // arrives here rather than as onDisappear/onAppear: the outgoing page is hidden
+            // and released, the incoming one claimed and shown.
             guard oldValue != newValue else { return }
             hoveredLinkURL = nil
             endLifecycle()

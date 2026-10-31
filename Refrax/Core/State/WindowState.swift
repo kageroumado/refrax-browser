@@ -193,7 +193,9 @@ final class WindowState {
     /// Active space ID for this window.
     ///
     /// Use `activeSpace` property to get the actual Space object.
-    var activeSpaceID: Space.ID?
+    var activeSpaceID: Space.ID? {
+        didSet { followActiveTabWithLayoutMode() }
+    }
 
     /// Active space for this window.
     ///
@@ -490,8 +492,13 @@ final class WindowState {
 
     // MARK: - Layout Mode State
 
-    /// Whether the window is currently in layout editing mode
-    var isInLayoutMode = false
+    /// Layout mode: the tab whose pane grid is being edited, and the edit.
+    private(set) var paneEditor = PaneLayoutEditor()
+
+    /// Whether the window is editing a tab's panes.
+    var isInLayoutMode: Bool {
+        paneEditor.isEditing
+    }
 
     /// Whether a layout mode exit animation is in progress.
     ///
@@ -514,11 +521,9 @@ final class WindowState {
     /// Set via `.onHover` on the notification view itself.
     var isHoveringOverlayNotification = false
 
-    /// Target pane position for adding a page via command lens in layout mode
-    ///
-    /// When set, the command lens will add a new page to the active tab's layout
-    /// at this position instead of creating a new tab.
-    var layoutModeTargetPosition: PanePosition?
+    /// Where a page opened from the Command Lens joins the current tab as a pane; while it
+    /// is set, the lens adds a pane instead of a tab.
+    var newPanePlacement: PanePlacement?
 
     // MARK: - Toast Notification State
 
@@ -725,29 +730,88 @@ final class WindowState {
         webViewsShouldIgnoreAllEvents = false
         (window as? RefraxWindow)?.lockedFirstResponder = nil
         // Clear contextual creation flags when any lens closes
-        layoutModeTargetPosition = nil
+        newPanePlacement = nil
         newTabIsland = nil
     }
     
     // MARK: - Layout Mode Actions
-    
-    /// Enter layout editing mode for creating multi-page layouts
+
+    private enum LayoutModeMotion {
+        static let spring = Animation.spring(response: 0.4, dampingFraction: 0.78)
+        /// How long the spring takes to settle.
+        static let settle: Duration = .milliseconds(600)
+    }
+
+    /// Lifts the current tab's panes apart for editing; an edit of another tab is committed
+    /// first.
     func enterLayoutMode() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
-            isInLayoutMode = true
+        guard let tab = activeTab else { return }
+        if paneEditor.isEditing(tab: tab.id) {
+            return
+        }
+        if paneEditor.isEditing {
+            exitLayoutMode(animated: false)
+        }
+        withAnimation(LayoutModeMotion.spring) {
+            _ = paneEditor.enter(
+                tabID: tab.id, configuration: tab.layoutConfiguration, pageIDs: tab.pages.map(\.id), activePageID: focusedPage?.id,
+            )
         }
     }
-    
-    /// Exit layout editing mode and save layout
-    func exitLayoutMode() {
-        isAnimatingLayoutTransition = true
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
-            isInLayoutMode = false
+
+    /// Commits the edit to the tab it began on and lays the panes back edge to edge.
+    func exitLayoutMode(animated: Bool = true) {
+        guard paneEditor.isEditing else { return }
+        guard animated else {
+            commitLayoutMode()
+            return
         }
-        // Clear after the spring animation has settled (~0.6s for response 0.4, damping 0.78)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        isAnimatingLayoutTransition = true
+        withAnimation(LayoutModeMotion.spring) {
+            commitLayoutMode()
+        }
+        Task(name: "Settle layout mode exit") { [weak self] in
+            try? await Task.sleep(for: LayoutModeMotion.settle)
             self?.isAnimatingLayoutTransition = false
         }
+    }
+
+    /// Enters layout mode, or leaves it when it is on.
+    func toggleLayoutMode() {
+        if isInLayoutMode {
+            exitLayoutMode()
+        } else {
+            enterLayoutMode()
+        }
+    }
+
+    /// Changes the edit under way: `edit` returns whether it changed anything.
+    @discardableResult
+    func editLayout(animated: Bool = true, _ edit: (inout PaneLayoutEditor) -> Bool) -> Bool {
+        var editor = paneEditor
+        guard edit(&editor) else { return false }
+        withAnimation(animated ? LayoutModeMotion.spring : nil) {
+            paneEditor = editor
+        }
+        return true
+    }
+
+    private func commitLayoutMode() {
+        guard let tabID = paneEditor.session?.tabID else { return }
+        guard let tab = browserState.tab(for: tabID) else {
+            paneEditor.discard()
+            return
+        }
+        if let commit = paneEditor.exit(pageIDs: tab.pages.map(\.id)) {
+            tab.applyPaneLayout(commit)
+        }
+    }
+
+    /// Layout mode edits the shown tab only: once the window shows another tab, or none, the
+    /// edit is committed to the tab it began on.
+    private func followActiveTabWithLayoutMode() {
+        guard let session = paneEditor.session, session.tabID != activeTabID else { return }
+        exitLayoutMode(animated: false)
     }
     
     // MARK: - Detail Tray Actions
@@ -828,6 +892,7 @@ final class WindowState {
         } else {
             _activeTabIDs.removeValue(forKey: spaceID)
         }
+        followActiveTabWithLayoutMode()
     }
 
     /// Sets a tab as active in this window.
@@ -861,6 +926,7 @@ final class WindowState {
         // This ensures the page card and other UI that depends on focusedPageID
         // updates immediately when switching tabs, not just on user interaction.
         focusedPageID = tab.activePage.id
+        followActiveTabWithLayoutMode()
     }
 
     /// Clears the active live favorite, returning focus to the space's active tab.
@@ -870,6 +936,7 @@ final class WindowState {
     /// in the space's active page).
     func clearActiveLiveFavorite() {
         _activeLiveFavoriteTabID = nil
+        followActiveTabWithLayoutMode()
     }
 
     /// Gets the previous active tab ID for a specific space.
@@ -919,6 +986,7 @@ final class WindowState {
         if _activeLiveFavoriteTabID == tabID {
             _activeLiveFavoriteTabID = nil
         }
+        followActiveTabWithLayoutMode()
     }
 
     /// Removes all stale tab IDs that no longer exist in the browser state.
