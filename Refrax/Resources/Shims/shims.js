@@ -521,9 +521,9 @@
      * Permissions WebKit does not know. It throws on a `permissions.contains` or `request`
      * naming one, where Chrome and Firefox answer: Violentmonkey's background page stops on
      * `contains({permissions: ['downloads']})`, Vimium C's options page on `bookmarks`.
-     * Permissions Refrax provides with its own shims are granted whenever the manifest declares
-     * them, required or optional; any other unknown permission is not granted; WebKit answers
-     * for the rest.
+     * Permissions Refrax provides with its own shims are answered by the browser, which keeps
+     * their grants and asks the user on `request`; any other unknown permission is not
+     * granted; WebKit answers for the rest.
      */
     const refraxPermissions = new Set(['downloads', 'downloads.open', 'idle', 'notifications', 'privacy']);
 
@@ -531,8 +531,6 @@
         if (!namespace || typeof namespace.contains !== 'function' || namespace.__refraxPermissionsWrapped) {
             return;
         }
-        const manifest = browser.runtime.getManifest();
-        const declared = new Set([...(manifest.permissions || []), ...(manifest.optional_permissions || [])]);
         const native = {
             contains: namespace.contains,
             request: namespace.request,
@@ -541,7 +539,7 @@
         };
         defineRetained(namespace, '__refraxPermissionsWrapped', true);
 
-        // The query without Refrax's permissions, and whether each of those is declared.
+        // The query split into Refrax's permissions and the rest.
         function split(query) {
             const permissions = (query && query.permissions) || [];
             const ours = permissions.filter((permission) => refraxPermissions.has(permission));
@@ -549,7 +547,7 @@
                 permissions: permissions.filter((permission) => !refraxPermissions.has(permission)),
             });
             const isEmpty = rest.permissions.length === 0 && !(rest.origins && rest.origins.length);
-            return { declared: ours.every((permission) => declared.has(permission)), rest, isEmpty };
+            return { ours, rest, isEmpty };
         }
 
         function settle(promise, callback) {
@@ -559,45 +557,62 @@
             return promise;
         }
 
+        function askNative(method, query) {
+            let answer;
+            try {
+                answer = Promise.resolve(native[method].call(namespace, query));
+            } catch (error) {
+                answer = Promise.reject(error);
+            }
+            return answer.catch((error) => {
+                if (/not a valid permission/.test(String(error && error.message))) {
+                    return false;
+                }
+                throw error;
+            });
+        }
+
+        function askRefrax(method, permissions) {
+            return window.__refraxShimCall('permissions', method, { permissions });
+        }
+
         for (const method of ['contains', 'request']) {
             if (typeof native[method] !== 'function') {
                 continue;
             }
             defineRetained(namespace, method, function(query, callback) {
-                const { declared: allDeclared, rest, isEmpty } = split(query);
-                if (!allDeclared) {
-                    return settle(Promise.resolve(false), callback);
+                const { ours, rest, isEmpty } = split(query);
+                const answers = [];
+                if (ours.length > 0) {
+                    answers.push(askRefrax(method, ours));
                 }
-                if (isEmpty) {
-                    return settle(Promise.resolve(true), callback);
+                if (!isEmpty) {
+                    answers.push(askNative(method, rest));
                 }
-                let answer;
-                try {
-                    answer = Promise.resolve(native[method].call(namespace, rest));
-                } catch (error) {
-                    answer = Promise.reject(error);
-                }
-                return settle(answer.catch((error) => {
-                    if (/not a valid permission/.test(String(error && error.message))) {
-                        return false;
-                    }
-                    throw error;
-                }), callback);
+                const result = Promise.all(answers).then((values) => values.every(Boolean));
+                return settle(result, callback);
             });
         }
         if (typeof native.remove === 'function') {
             defineRetained(namespace, 'remove', function(query, callback) {
-                const { rest, isEmpty } = split(query);
-                const result = isEmpty ? Promise.resolve(false) : Promise.resolve(native.remove.call(namespace, rest));
+                const { ours, rest, isEmpty } = split(query);
+                const answers = [];
+                if (ours.length > 0) {
+                    answers.push(askRefrax('remove', ours));
+                }
+                if (!isEmpty) {
+                    answers.push(Promise.resolve(native.remove.call(namespace, rest)));
+                }
+                const result = Promise.all(answers).then((values) => values.length > 0 && values.every(Boolean));
                 return settle(result, callback);
             });
         }
         if (typeof native.getAll === 'function') {
             defineRetained(namespace, 'getAll', function(callback) {
-                const result = Promise.resolve(native.getAll.call(namespace)).then((all) => {
-                    const ours = [...declared].filter((permission) => refraxPermissions.has(permission));
-                    return Object.assign({}, all, { permissions: [...new Set([...(all.permissions || []), ...ours])] });
-                });
+                const result = Promise.all([Promise.resolve(native.getAll.call(namespace)), askRefrax('getAll', [])])
+                    .then(([all, ours]) => {
+                        return Object.assign({}, all, { permissions: [...new Set([...(all.permissions || []), ...ours])] });
+                    });
                 if (typeof callback === 'function') {
                     result.then(callback);
                 }
@@ -606,7 +621,7 @@
         }
     }
 
-    if (typeof browser !== 'undefined' && browser.runtime && typeof browser.runtime.getManifest === 'function') {
+    if (typeof browser !== 'undefined') {
         wrapPermissions(browser.permissions);
     }
 

@@ -34,6 +34,11 @@ nonisolated struct ExtensionActionBoard: Equatable, Sendable {
         appearances[key] = appearance
     }
 
+    /// The appearance recorded under exactly `key`.
+    func appearance(of key: Key) -> ExtensionActionAppearance? {
+        appearances[key]
+    }
+
     /// The appearance of `contextID`'s action in `tabPageID`: the tab's own, else the default.
     func appearance(contextID: String, tabPageID: UUID?) -> ExtensionActionAppearance? {
         tabPageID.flatMap { appearances[Key(contextID: contextID, tabPageID: $0)] }
@@ -85,16 +90,29 @@ struct ExtensionActionEntry: Identifiable {
 
 /// Keeps every extension action's appearance current for the UI, and remembers where the
 /// user clicked an action so its popup opens there.
+///
+/// Observation is per action: a view that reads one tab's actions redraws when one of those
+/// changes, not when uBlock Origin's badge counts another tab's blocked requests. An update
+/// that changes nothing visible changes nothing observed. Icons are drawn when read.
 @Observable
 final class ExtensionActionStore {
-    private(set) var board = ExtensionActionBoard()
-    /// Action icons, per action, at ``iconSize``.
-    @ObservationIgnored private var icons: [ExtensionActionBoard.Key: NSImage] = [:]
-    /// Bumped when an icon changes, so views reading icons redraw.
-    private(set) var iconRevision = 0
+    /// One action's observable revision, bumped when its appearance or icon changes.
+    @Observable
+    final class Slot {
+        fileprivate(set) var revision = 0
+        /// The action, for its icon.
+        @ObservationIgnored fileprivate weak var action: WKWebExtension.Action?
+        @ObservationIgnored fileprivate var icon: NSImage?
+        @ObservationIgnored fileprivate var iconIsCurrent = false
+    }
 
-    /// Where the next popup opens: the control that performed the action, in its window.
-    @ObservationIgnored var pendingPopupAnchor: ActionPopupAnchor?
+    /// The appearances, read through the slots so readers observe them.
+    @ObservationIgnored private var board = ExtensionActionBoard()
+    private var slots: [ExtensionActionBoard.Key: Slot] = [:]
+
+    /// Where the next popup of each context opens: the control that performed its action, in
+    /// its window. Keyed by context identifier.
+    @ObservationIgnored var pendingPopupAnchors: [String: ActionPopupAnchor] = [:]
 
     static let iconSize = CGSize(width: 32, height: 32)
 
@@ -105,22 +123,35 @@ final class ExtensionActionStore {
         if action.associatedTab != nil, tabPageID == nil {
             return
         }
-        let key = ExtensionActionBoard.Key(contextID: context.uniqueIdentifier, tabPageID: tabPageID)
-        board.record(Self.appearance(of: action), for: key)
-        icons[key] = action.icon(for: Self.iconSize)
-        iconRevision += 1
+        record(action, key: .init(contextID: context.uniqueIdentifier, tabPageID: tabPageID))
 
         // A default action's change shows through in every tab without its own value.
         if tabPageID == nil {
             for tabPageID in board.tabPageIDs(withActionsFor: context.uniqueIdentifier) {
                 guard let tab = context.openTabs.lazy.compactMap({ $0.base as? RefraxExtensionTab })
                     .first(where: { $0.tabPage?.id == tabPageID }),
-                    let tabAction = context.action(for: tab) else { continue }
-                let tabKey = ExtensionActionBoard.Key(contextID: context.uniqueIdentifier, tabPageID: tabPageID)
-                board.record(Self.appearance(of: tabAction), for: tabKey)
-                icons[tabKey] = tabAction.icon(for: Self.iconSize)
+                    let tabAction = context.action(for: tab)
+                else { continue }
+                record(tabAction, key: .init(contextID: context.uniqueIdentifier, tabPageID: tabPageID))
             }
         }
+    }
+
+    /// Records `action` under `key`. WebKit reports icon changes through the same callback as
+    /// the rest, so each update also marks the icon for redrawing on its next read.
+    private func record(_ action: WKWebExtension.Action, key: ExtensionActionBoard.Key) {
+        let appearance = Self.appearance(of: action)
+        let slot = slots[key] ?? {
+            let slot = Slot()
+            slots[key] = slot
+            return slot
+        }()
+        slot.action = action
+        slot.iconIsCurrent = false
+        if board.appearance(of: key) != appearance {
+            board.record(appearance, for: key)
+        }
+        slot.revision += 1
     }
 
     /// Records a newly loaded context's default action, before it first changes.
@@ -129,28 +160,73 @@ final class ExtensionActionStore {
         update(from: action)
     }
 
-    func icon(contextID: String, tabPageID: UUID?) -> NSImage? {
-        _ = iconRevision
-        return tabPageID.flatMap { icons[.init(contextID: contextID, tabPageID: $0)] }
-            ?? icons[.init(contextID: contextID, tabPageID: nil)]
+    /// The appearance of `contextID`'s action in `tabPageID`: the tab's own, else the default.
+    func appearance(contextID: String, tabPageID: UUID?) -> ExtensionActionAppearance? {
+        observe(contextID: contextID, tabPageID: tabPageID)
+        return board.appearance(contextID: contextID, tabPageID: tabPageID)
     }
 
-    /// Marks the badges of `contexts` in `tabPage` seen, here and in WebKit.
+    /// Whether any of `contextIDs` shows a badge the user has not seen in `tabPageID`.
+    func hasUnreadBadge(among contextIDs: [String], tabPageID: UUID?) -> Bool {
+        for contextID in contextIDs {
+            observe(contextID: contextID, tabPageID: tabPageID)
+        }
+        return board.hasUnreadBadge(among: contextIDs, tabPageID: tabPageID)
+    }
+
+    /// The icon `contextID`'s action shows in `tabPageID`, drawn on first read after a change.
+    func icon(contextID: String, tabPageID: UUID?) -> NSImage? {
+        let key = tabPageID.map { ExtensionActionBoard.Key(contextID: contextID, tabPageID: $0) }
+            .flatMap { slots[$0] == nil ? nil : $0 } ?? ExtensionActionBoard.Key(contextID: contextID, tabPageID: nil)
+        guard let slot = slots[key] else { return nil }
+        _ = slot.revision
+        if !slot.iconIsCurrent {
+            slot.icon = slot.action?.icon(for: Self.iconSize)
+            slot.iconIsCurrent = true
+        }
+        return slot.icon
+    }
+
+    /// Marks the badges of `contexts` in `tab` seen, here and in WebKit.
     func markRead(_ contexts: [WKWebExtensionContext], tab: RefraxExtensionTab?) {
+        let tabPageID = tab?.tabPage?.id
         for context in contexts {
             context.action(for: tab)?.hasUnreadBadgeText = false
         }
-        board.markRead(contexts.map(\.uniqueIdentifier), tabPageID: tab?.tabPage?.id)
+        let before = contexts.map { board.appearance(contextID: $0.uniqueIdentifier, tabPageID: tabPageID) }
+        board.markRead(contexts.map(\.uniqueIdentifier), tabPageID: tabPageID)
+        for (context, previous) in zip(contexts, before)
+            where board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) != previous {
+            slot(contextID: context.uniqueIdentifier, tabPageID: tabPageID)?.revision += 1
+        }
     }
 
     func removeTabPage(_ tabPageID: UUID) {
         board.removeTabPage(tabPageID)
-        icons = icons.filter { $0.key.tabPageID != tabPageID }
+        if slots.keys.contains(where: { $0.tabPageID == tabPageID }) {
+            slots = slots.filter { $0.key.tabPageID != tabPageID }
+        }
     }
 
     func removeContext(_ contextID: String) {
         board.removeContext(contextID)
-        icons = icons.filter { $0.key.contextID != contextID }
+        pendingPopupAnchors[contextID] = nil
+        if slots.keys.contains(where: { $0.contextID == contextID }) {
+            slots = slots.filter { $0.key.contextID != contextID }
+        }
+    }
+
+    /// Registers the reader on the slots `appearance(contextID:tabPageID:)` reads from.
+    private func observe(contextID: String, tabPageID: UUID?) {
+        if let tabPageID {
+            _ = slots[.init(contextID: contextID, tabPageID: tabPageID)]?.revision
+        }
+        _ = slots[.init(contextID: contextID, tabPageID: nil)]?.revision
+    }
+
+    /// The slot whose appearance `tabPageID` shows for `contextID`.
+    private func slot(contextID: String, tabPageID: UUID?) -> Slot? {
+        tabPageID.flatMap { slots[.init(contextID: contextID, tabPageID: $0)] } ?? slots[.init(contextID: contextID, tabPageID: nil)]
     }
 
     static func appearance(of action: WKWebExtension.Action) -> ExtensionActionAppearance {

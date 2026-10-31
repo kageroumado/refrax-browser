@@ -34,6 +34,8 @@ nonisolated struct ResolvedNativeMessagingHost: Equatable, Sendable {
     /// The manifest allows the extension only by an identity the extension claims, so the
     /// user decides whether it may start the host.
     let requiresConsent: Bool
+    /// The origin or add-on ID the manifest admitted the extension by.
+    let matchedIdentity: String
 }
 
 /// Finds the native messaging host an extension names, in the directories where Chrome,
@@ -114,6 +116,7 @@ nonisolated struct NativeMessagingHostLocator: Sendable {
                 executableURL: executableURL,
                 arguments: arguments,
                 requiresConsent: requiresConsent,
+                matchedIdentity: arguments.last ?? "",
             )
             if !requiresConsent {
                 return host

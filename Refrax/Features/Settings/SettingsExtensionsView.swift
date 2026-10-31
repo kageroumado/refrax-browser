@@ -410,9 +410,16 @@ private struct ExtensionDetailSheet: View {
                 Section {
                     ForEach(commands, id: \.id) { command in
                         LabeledContent(command.title.isEmpty ? command.id : command.title) {
-                            Text(ExtensionCommandHandler.shortcut(for: command) ?? "Not set")
-                                .foregroundStyle(.secondary)
-                                .monospaced()
+                            VStack(alignment: .trailing) {
+                                Text(ExtensionCommandHandler.shortcut(for: command) ?? "Not set")
+                                    .foregroundStyle(.secondary)
+                                    .monospaced()
+                                if let owner = ExtensionCommandHandler.conflict(for: command, mainMenu: NSApp.mainMenu) {
+                                    Text("Taken by \(owner)")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
                         }
                     }
                 } header: {

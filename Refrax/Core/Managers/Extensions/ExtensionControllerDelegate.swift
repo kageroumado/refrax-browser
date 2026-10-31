@@ -84,14 +84,15 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
     func webExtensionController(
         _: WKWebExtensionController,
         openNewWindowUsing configuration: WKWebExtension.WindowConfiguration,
-        for _: WKWebExtensionContext,
+        for context: WKWebExtensionContext,
     ) async throws -> (any WKWebExtensionWindow)? {
         guard let windowManager, let tabManager else { return nil }
 
-        let space = try space(forNewWindow: configuration.shouldBePrivate)
+        let space = try space(forNewWindow: configuration.shouldBePrivate, context: context)
         let previousKeyWindow = NSApp.keyWindow
 
         var tabs = configuration.tabs.compactMap { ($0 as? RefraxExtensionTab)?.tab }
+            .filter { manager.tab($0, belongsTo: context) }
         tabManager.moveTabs(tabs.filter { $0.space?.id != space.id }, to: space)
         for url in configuration.tabURLs {
             tabs.append(tabManager.createTab(
@@ -134,15 +135,15 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
         return manager.extensionWindow(for: controller.windowState, nsWindow: nsWindow)
     }
 
-    /// The space a new extension-requested window shows: the active window's space, or for a
-    /// private window, a private space.
+    /// The space a new extension-requested window shows: the active window's space, else the
+    /// first other space, private when a private window is requested; always one of the
+    /// extension's own spaces.
     ///
-    /// - Throws: ``ExtensionError/noPrivateSpace`` when a private window is requested and no
-    ///   private space exists.
-    private func space(forNewWindow isPrivate: Bool) throws -> Space {
+    /// - Throws: ``ExtensionError/noPrivateSpace`` when no such space exists.
+    private func space(forNewWindow isPrivate: Bool, context: WKWebExtensionContext) throws -> Space {
         let activeSpace = windowManager?.activeWindowController?.windowState.activeSpace
-        let candidates = [activeSpace].compactMap(\.self) + state.spaces
-        guard let space = candidates.first(where: { $0.dataStoreMode.isPrivate == isPrivate }) ?? (isPrivate ? nil : candidates.first) else {
+        let candidates = ([activeSpace].compactMap(\.self) + state.spaces).filter { manager.space($0, belongsTo: context) }
+        guard let space = candidates.first(where: { $0.dataStoreMode.isPrivate == isPrivate }) else {
             throw ExtensionError.noPrivateSpace
         }
         return space
@@ -157,23 +158,27 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
     ) async throws -> (any WKWebExtensionTab)? {
         guard let tabManager, let pagePool else { return nil }
 
-        // The parent tab's space, else the space of the window the extension named, else the active one.
+        // The parent tab's space, else the space of the window the extension named, else the
+        // active one, else any: the first of these that is one of the extension's own spaces.
         let parentTab = (configuration.parentTab as? RefraxExtensionTab)?.tab
         let windowState = (configuration.window as? RefraxExtensionWindow)?.windowState
             ?? windowManager?.activeWindowController?.windowState
-        guard let space = parentTab?.space ?? windowState?.activeSpace ?? state.spaces.first else { return nil }
+        let candidates = [parentTab?.space, windowState?.activeSpace].compactMap(\.self) + state.spaces
+        guard let space = candidates.first(where: { manager.space($0, belongsTo: context) }) else {
+            throw ExtensionError.permissionDenied
+        }
 
         let url = configuration.url ?? .blank
         let tab = tabManager.createTab(
             url: url,
             in: space,
-            groupID: parentTab?.groupID,
+            groupID: parentTab?.space === space ? parentTab?.groupID : nil,
             makeActive: false,
             loadImmediately: true,
             insertionStrategy: insertionStrategy(at: Int(configuration.index), in: space),
         )
-        // Extensions see favorites as pinned tabs.
-        if configuration.shouldBePinned {
+        // Extensions see favorites as pinned tabs. Favorites run in the default controller.
+        if configuration.shouldBePinned, context.webExtensionController === manager.defaultController {
             tabManager.makeFavorite(tab, in: windowState)
         }
 
@@ -215,7 +220,8 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
         if let existingPage {
             tabPage = existingPage
         } else {
-            guard let space = windowManager?.activeWindowController?.windowState.activeSpace ?? state.spaces.first else {
+            let activeSpace = windowManager?.activeWindowController?.windowState.activeSpace
+            guard let space = ([activeSpace].compactMap(\.self) + state.spaces).first(where: { manager.space($0, belongsTo: context) }) else {
                 throw ExtensionError.notInstalled
             }
             tabPage = tabManager.createTab(
@@ -336,8 +342,7 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
         for extensionContext: WKWebExtensionContext,
     ) async throws {
         let extensionName = extensionContext.webExtension.displayName ?? "Unknown Extension"
-        let clickedControl = manager.actions.pendingPopupAnchor
-        manager.actions.pendingPopupAnchor = nil
+        let clickedControl = manager.actions.pendingPopupAnchors.removeValue(forKey: extensionContext.uniqueIdentifier)
         guard let popover = action.popupPopover else {
             Logger.warning("Extension '\(extensionName)' action has no popup", category: Logger.extensions)
             return

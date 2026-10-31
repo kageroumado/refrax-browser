@@ -22,7 +22,12 @@ final class NativeMessagingRouter {
         let hostName: String
         let executablePath: String
         let extensionName: String
+        /// The Chrome origin or Firefox add-on ID the extension claims, unverified.
+        let claimedIdentity: String
     }
+
+    /// How long a one-off message waits for its host's reply before the host is stopped.
+    var oneOffTimeout = Duration.seconds(30)
 
     /// The identity of an extension, with the Chrome ID its installation verified.
     var identity: (WKWebExtensionContext) -> ExtensionIdentity = { context in
@@ -51,6 +56,7 @@ final class NativeMessagingRouter {
     private struct Connection {
         let port: WKWebExtension.MessagePort
         let process: NativeMessagingHostProcess?
+        let context: ObjectIdentifier
     }
 
     init(locator: NativeMessagingHostLocator = .standard()) {
@@ -78,6 +84,7 @@ final class NativeMessagingRouter {
     /// - Throws: ``NativeMessagingError`` when the host cannot be found or started, or exits
     ///   without replying.
     func send(_ message: Any, to applicationID: String?, from context: WKWebExtensionContext) async throws -> Any? {
+        try Self.requirePermission(of: context)
         let name = try Self.hostName(applicationID)
         if let inProcess = inProcessHosts[name] {
             return try await inProcess(message, context)
@@ -93,7 +100,7 @@ final class NativeMessagingRouter {
             }
             guard allowed else { throw NativeMessagingError.forbidden }
         }
-        let exchange = OneOffExchange()
+        let exchange = OneOffExchange(context: ObjectIdentifier(context))
         let key = ObjectIdentifier(exchange)
         let process = NativeMessagingHostProcess(host: host) { [weak self] event in
             switch event {
@@ -111,6 +118,12 @@ final class NativeMessagingRouter {
             exchange.finish(.failure(error))
             exchanges[key] = nil
         }
+        let timeout = oneOffTimeout
+        Task(name: "Native message timeout") { [weak self] in
+            try? await Task.sleep(for: timeout)
+            exchange.finish(.failure(NativeMessagingError.timedOut))
+            self?.exchanges[key] = nil
+        }
         let reply = try await withCheckedThrowingContinuation { continuation in
             exchange.wait(with: continuation)
         }
@@ -121,7 +134,13 @@ final class NativeMessagingRouter {
     /// once the exchange finishes, and a result that arrives before the caller waits is kept
     /// for it.
     private final class OneOffExchange {
+        let context: ObjectIdentifier
         var process: NativeMessagingHostProcess?
+
+        init(context: ObjectIdentifier) {
+            self.context = context
+        }
+
         private var continuation: CheckedContinuation<Data, any Error>?
         private var result: Result<Data, any Error>?
 
@@ -149,6 +168,7 @@ final class NativeMessagingRouter {
     ///
     /// - Throws: ``NativeMessagingError`` when the host cannot be found or started.
     func connect(_ port: WKWebExtension.MessagePort, from context: WKWebExtensionContext) throws {
+        try Self.requirePermission(of: context)
         let name = try Self.hostName(port.applicationIdentifier)
         let key = ObjectIdentifier(port)
 
@@ -168,7 +188,7 @@ final class NativeMessagingRouter {
             port.disconnectHandler = { [weak self] _ in
                 self?.connections[key] = nil
             }
-            connections[key] = Connection(port: port, process: nil)
+            connections[key] = Connection(port: port, process: nil, context: ObjectIdentifier(context))
             return
         }
 
@@ -213,7 +233,23 @@ final class NativeMessagingRouter {
             self?.connections.removeValue(forKey: key)?.process?.terminate()
         }
         try process.start()
-        connections[key] = Connection(port: port, process: process)
+        connections[key] = Connection(port: port, process: process, context: ObjectIdentifier(context))
+    }
+
+    /// Ends everything `context` has open: its ports disconnect and their hosts stop, and its
+    /// one-off messages fail. Called when the context unloads, since WebKit then forgets its
+    /// ports without telling the app.
+    func disconnectAll(for context: WKWebExtensionContext) {
+        let owner = ObjectIdentifier(context)
+        for (key, connection) in connections where connection.context == owner {
+            connections[key] = nil
+            connection.process?.terminate()
+            connection.port.disconnect()
+        }
+        for (key, exchange) in exchanges where exchange.context == owner {
+            exchanges[key] = nil
+            exchange.finish(.failure(NativeMessagingError.hostExited))
+        }
     }
 
     // MARK: - Resolution
@@ -223,7 +259,14 @@ final class NativeMessagingRouter {
             hostName: host.name,
             executablePath: host.executableURL.path,
             extensionName: context.webExtension.displayName ?? context.uniqueIdentifier,
+            claimedIdentity: host.matchedIdentity,
         )
+    }
+
+    /// WebKit checks the `nativeMessaging` permission in the page; this checks it again here,
+    /// where a page cannot reach around it.
+    private static func requirePermission(of context: WKWebExtensionContext) throws {
+        guard context.hasPermission(.nativeMessaging) else { throw NativeMessagingError.forbidden }
     }
 
     private func resolve(_ name: String, for context: WKWebExtensionContext) throws -> ResolvedNativeMessagingHost {

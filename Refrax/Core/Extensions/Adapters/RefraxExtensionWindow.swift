@@ -2,22 +2,21 @@ import AppKit
 import Foundation
 import WebKit
 
-// Bridges a Refrax window to WebKit's extension window interface.
-//
-// This adapter implements `WKWebExtensionWindow` to expose Refrax's window model
-// to browser extensions. Extensions can query window properties (state, tabs)
-// and perform actions (focus, resize, close).
-//
-// ## Space Mapping
-//
-// In Refrax, each window shows one space at a time and belongs to that space's
-// controller: only its extensions see the window, its tabs and act on it, and the window
-// moves to another controller when it switches to a space of another one.
-//
-// ## Thread Safety
-//
-// All methods are called on the main actor by WebKit's extension system.
-
+/// Bridges a Refrax window to WebKit's extension window interface.
+///
+/// This adapter implements `WKWebExtensionWindow` to expose Refrax's window model
+/// to browser extensions. Extensions can query window properties (state, tabs)
+/// and perform actions (focus, resize, close).
+///
+/// ## Space Mapping
+///
+/// In Refrax, each window shows one space at a time and belongs to that space's
+/// controller: only its extensions see the window, its tabs and act on it, and the window
+/// moves to another controller when it switches to a space of another one.
+///
+/// ## Thread Safety
+///
+/// All methods are called on the main actor by WebKit's extension system.
 final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
     // MARK: - Properties
 
