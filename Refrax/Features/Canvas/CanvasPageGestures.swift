@@ -150,15 +150,16 @@ final class CanvasPageGestures {
             canvas.dismissFloatingTabs()
             return event
         }
-        // Latched open with the reveal key up, the islands have the keyboard: the arrows choose
-        // a row, Return opens it, Delete closes it, Space previews it, typing finds it by
-        // title, and Escape steps back. Held, the arrows move between pages.
+        // Latched open with the reveal key up, an arrow starts browsing the islands' rows; from
+        // then on Return opens a row, Delete closes it, Space previews it, typing finds it by
+        // title, and Escape steps back (``IslandKeyRouting``). Held, the arrows move between pages.
         if canvas.floatingVisibility.isLatched, !canvas.floatingVisibility.isHeld, !floatingHasKeyboardFocus(), let islands {
             let flags = event.modifierFlags
+            let responder: IslandKeyResponder = event.window?.firstResponder is NSTextView ? .textInput : .other
             if let key = IslandKey(
                 keyCode: event.keyCode, characters: event.characters,
                 command: flags.contains(.command), control: flags.contains(.control), option: flags.contains(.option),
-            ), islands.handleKey(key) {
+            ), islands.handleKey(key, responder: responder) {
                 return nil
             }
         }
@@ -172,7 +173,9 @@ final class CanvasPageGestures {
         if floatingHasKeyboardFocus(), canvas.floatingVisibility.isHeld {
             return FloatingPreviewInput.removingRevealModifier(from: event)
         }
-        if canvas.floatingVisibility.isRevealed, !floatingHasKeyboardFocus() {
+        // Held, the arrows step between pages and Return opens the focused card; latched, those
+        // keys were the islands' to take above, and what they left is the page's.
+        if canvas.floatingVisibility.isHeld, !floatingHasKeyboardFocus() {
             let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control]).subtracting(FloatingRevealKey.current.flag)
             if modifiers.isEmpty, let islands,
                let direction = TableDirection.allCases.first(where: { $0.keyCode == event.keyCode }) {

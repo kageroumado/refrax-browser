@@ -1,5 +1,33 @@
 import Foundation
 
+/// What holds the window's keyboard focus when a key comes, as the islands weigh it.
+nonisolated enum IslandKeyResponder: Equatable, Sendable {
+    /// A text field or text view: every key is its own.
+    case textInput
+    /// The page, or anything else: it keeps every key but the arrows until browsing starts.
+    case other
+}
+
+/// Whether latched islands take a key, or leave it to the page.
+///
+/// Browsing starts only with an arrow, or from Command Lens: Return, Delete, Space, Escape,
+/// and letters typed into a page stay the page's until then, so a Delete meant for a form
+/// never closes its tab. Once started, the islands take every key they answer. Nothing is
+/// taken while a text field has focus, or while the library drawer or the centered lens
+/// covers the islands.
+nonisolated enum IslandKeyRouting {
+    static func takes(_ key: IslandKey, browsing: Bool, responder: IslandKeyResponder, covered: Bool) -> Bool {
+        guard responder != .textInput, !covered else { return false }
+        if browsing {
+            return true
+        }
+        return switch key {
+        case .up, .down, .left, .right: true
+        case .open, .close, .preview, .leave, .text: false
+        }
+    }
+}
+
 /// A key the islands answer while they have the keyboard.
 nonisolated enum IslandKey: Equatable, Sendable {
     case up

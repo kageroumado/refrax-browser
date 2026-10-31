@@ -28,6 +28,34 @@ struct IslandKeyTests {
     }
 }
 
+/// Which keys latched islands take from the page.
+struct IslandKeyRoutingTests {
+    private static let arrows: [IslandKey] = [.up, .down, .left, .right]
+    private static let others: [IslandKey] = [.open, .close, .preview, .leave, .text("a")]
+
+    @Test(arguments: arrows)
+    func `An arrow starts browsing over the page`(key: IslandKey) {
+        #expect(IslandKeyRouting.takes(key, browsing: false, responder: .other, covered: false))
+    }
+
+    @Test(arguments: others)
+    func `Before browsing starts, Return, Delete, Space, Escape and letters stay the page's`(key: IslandKey) {
+        #expect(!IslandKeyRouting.takes(key, browsing: false, responder: .other, covered: false))
+    }
+
+    @Test(arguments: arrows + others)
+    func `Once browsing, every key is the islands'`(key: IslandKey) {
+        #expect(IslandKeyRouting.takes(key, browsing: true, responder: .other, covered: false))
+    }
+
+    @Test(arguments: arrows + others)
+    func `A text field or the drawer over the islands keeps every key`(key: IslandKey) {
+        #expect(!IslandKeyRouting.takes(key, browsing: true, responder: .textInput, covered: false))
+        #expect(!IslandKeyRouting.takes(key, browsing: true, responder: .other, covered: true))
+        #expect(!IslandKeyRouting.takes(key, browsing: false, responder: .other, covered: true))
+    }
+}
+
 /// Moving through the islands' rows with the keyboard alone.
 struct IslandKeyboardNavigatorTests {
     private let left = IslandKeyboardNavigator.Column(id: UUID(), tabIDs: [UUID(), UUID(), UUID()])
@@ -233,6 +261,57 @@ struct IslandKeyboardTests {
     }
 
     @Test
+    func `Before an arrow, Delete over the page closes nothing and goes to the page`() throws {
+        let (fixture, _, _, _) = try fixtureWithTwoIslands()
+        let count = fixture.space.mainTabs.count
+        fixture.canvas.toggleFloatingTabs()
+        let parent = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 900, height: 700), styleMask: .titled, backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        defer { parent.close() }
+        let page = FocusablePage()
+        parent.contentView = page
+        parent.makeFirstResponder(page)
+        let gestures = CanvasPageGestures(
+            window: parent, canvas: fixture.canvas, floatingEligible: { true }, floatingContains: { _ in false }, floatingHasKeyboardFocus: { false },
+        )
+        gestures.islands = fixture.islands
+        for (keyCode, characters) in [(UInt16(51), "\u{7F}"), (49, " "), (36, "\r"), (0, "a")] {
+            let event = try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode,
+            ))
+            #expect(gestures.handle(event) != nil, "key \(keyCode) was taken")
+        }
+        #expect(fixture.space.mainTabs.count == count)
+        #expect(fixture.islands.keyboardCursorID == nil)
+        #expect(fixture.islands.previewedTabID == nil)
+    }
+
+    @Test
+    func `With the library drawer over the islands, keys pass through`() throws {
+        let (fixture, _, _, _) = try fixtureWithTwoIslands()
+        fixture.canvas.toggleFloatingTabs()
+        fixture.window.showDetailTray(.archive)
+        #expect(!fixture.islands.handleKey(.down))
+        #expect(fixture.islands.keyboardCursorID == nil)
+    }
+
+    @Test
+    func `Letting the latch go ends browsing and puts the preview away`() throws {
+        let (fixture, _, _, _) = try fixtureWithTwoIslands()
+        fixture.islands.beginKeyboardBrowsing()
+        fixture.islands.handleKey(.preview)
+        #expect(fixture.islands.previewedTabID != nil)
+        fixture.canvas.dismissFloatingTabs()
+        #expect(fixture.islands.previewedTabID == nil)
+        #expect(fixture.islands.keyboardCursorID == nil)
+        // The next latch starts with nothing chosen.
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.keyboardCursorID == nil)
+        #expect(!fixture.islands.handleKey(.close))
+    }
+
+    @Test
     func `Escape with no row chosen is left to the window`() throws {
         let (fixture, _, _, _) = try fixtureWithTwoIslands()
         fixture.canvas.toggleFloatingTabs()
@@ -263,5 +342,12 @@ struct IslandKeyboardTests {
         fixture.islands.beginKeyboardBrowsing()
         fixture.islands.handleKey(.text("del"))
         #expect(fixture.islands.keyboardCursorID == grouped[1].id)
+    }
+}
+
+/// A view that takes keyboard focus the way a page does.
+private final class FocusablePage: NSView {
+    override var acceptsFirstResponder: Bool {
+        true
     }
 }
