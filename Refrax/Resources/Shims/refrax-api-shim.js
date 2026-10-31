@@ -4,7 +4,10 @@
  * Provides Refrax-specific browser APIs to extensions.
  * These APIs are only available in Refrax and require the appropriate permissions.
  *
+ * Calls travel to the in-process native host "website.refrax.api" (RefraxAPIShim.swift).
+ *
  * Required permissions:
+ * - "nativeMessaging": the transport
  * - "refrax.tabs": Access to favorites APIs
  * - "refrax.spaces": Access to space listing APIs
  */
@@ -12,8 +15,10 @@
 (function () {
   "use strict";
 
-  // Skip if already defined
-  if (typeof browser.refrax !== "undefined") {
+  // The API travels over native messaging, which only pages of extensions with the
+  // nativeMessaging permission have.
+  if (typeof browser === "undefined" || typeof browser.refrax !== "undefined" ||
+      typeof browser.runtime?.sendNativeMessage !== "function") {
     return;
   }
 
@@ -25,7 +30,7 @@
    */
   async function callRefraxAPI(method, params = {}) {
     try {
-      const response = await browser.runtime.sendNativeMessage("refraxAPI", {
+      const response = await browser.runtime.sendNativeMessage("website.refrax.api", {
         method: method,
         params: params,
       });

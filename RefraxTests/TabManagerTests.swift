@@ -51,7 +51,9 @@ struct TabManagerTestEnvironment {
         container
     }
 
-    init() throws {
+    /// - Parameter extensionControllerConfiguration: The configuration of the extension
+    ///   manager's default controller.
+    init(extensionControllerConfiguration: WKWebExtensionController.Configuration? = nil) throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         self.container = try ModelContainer(for: schema, configurations: [config])
@@ -102,7 +104,7 @@ struct TabManagerTestEnvironment {
 
         // Create managers that are implicitly unwrapped on BrowserState
         self.downloadManager = DownloadManager(modelContext: modelContext)
-        self.extensionManager = ExtensionManager(state: browserState)
+        self.extensionManager = ExtensionManager(state: browserState, controllerConfiguration: extensionControllerConfiguration ?? .default())
         self.customSearchEngineManager = CustomSearchEngineManager(modelContext: modelContext)
         self.webInspectorManager = WebInspectorManager()
 

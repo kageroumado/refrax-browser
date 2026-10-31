@@ -5,9 +5,11 @@ import WebKit
 
 /// Represents an extension that can appear in the page menu.
 struct PageMenuExtension: Identifiable {
+    /// The extension context's unique identifier.
     let id: String
     let name: String
     let icon: NSImage?
+    let badgeText: String
     let isEnabled: Bool
 }
 
@@ -177,6 +179,7 @@ struct PageMenuContent: View {
                     ExtensionMenuItem(
                         name: ext.name,
                         icon: ext.icon,
+                        badgeText: ext.badgeText,
                         isEnabled: ext.isEnabled,
                     ) {
                         onExtensionAction(ext.id)
@@ -319,6 +322,7 @@ private struct ScreenshotButton: View {
 private struct ExtensionMenuItem: View {
     let name: String
     let icon: NSImage?
+    let badgeText: String
     let isEnabled: Bool
     let action: () -> Void
 
@@ -342,10 +346,8 @@ private struct ExtensionMenuItem: View {
 
                 Spacer()
 
-                if !isEnabled {
-                    Text("Disabled")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                if !badgeText.isEmpty {
+                    ExtensionBadge(text: badgeText)
                 }
             }
             .padding(.horizontal, Layout.horizontalPadding)
@@ -472,7 +474,7 @@ extension PageMenuContent {
             certificateInfo: actions.webPage?.certificateInfo,
             serverTrust: actions.webPage?.serverTrust,
             currentZoom: actions.currentZoom,
-            extensions: actions.installedExtensions,
+            extensions: actions.extensionActions,
             isRecording: actions.recording.isRecording,
             recordingStartTime: actions.recording.recordingStartTime,
             isPageCalmed: actions.isPageCalmed,
@@ -495,7 +497,7 @@ extension PageMenuContent {
             onShowCookies: closing(onShowCookies),
             onExtensionAction: { id in
                 dismiss()
-                actions.triggerExtension(id)
+                actions.performExtensionAction(id)
             },
         )
     }
