@@ -65,11 +65,11 @@ final class Context {
         apply("siteSettings", ["policy": ["javaScriptEnabled": javaScriptEnabled, "rules": rules]])
     }
 
-    /// The contract's `contentBlocking` policy, naming the conformance engine. Aggressive by
-    /// default: the fixtures' requests are mostly first-party. `format` replaces the engine's.
+    /// The contract's `contentBlocking` policy, naming the conformance engine. `format` replaces
+    /// the engine's.
     func contentBlocking(
         enabled: Bool = true,
-        mode: String = "aggressive",
+        mode: String = "standard",
         allowlistedHosts: [String] = [],
         format: String? = nil,
     ) throws {
@@ -80,7 +80,7 @@ final class Context {
     }
 
     /// Applies a `contentBlocking` policy and waits for the engine to report it applied.
-    func contentBlockingApplied(mode: String = "aggressive", allowlistedHosts: [String] = []) async throws {
+    func contentBlockingApplied(mode: String = "standard", allowlistedHosts: [String] = []) async throws {
         try engine.require("contentBlocking")
         let mark = engine.events.count
         try contentBlocking(mode: mode, allowlistedHosts: allowlistedHosts)
