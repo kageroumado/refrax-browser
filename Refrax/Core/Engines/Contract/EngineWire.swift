@@ -111,6 +111,8 @@ nonisolated enum EngineWire {
             .notificationClosed(id: capped(id))
         case let .findResultChanged(matches, activeMatch, isFinal):
             .findResultChanged(matches: clampedMatches(matches), activeMatch: min(max(activeMatch, 0), clampedMatches(matches)), isFinal: isFinal)
+        case let .loadedUnfiltered(url):
+            try .loadedUnfiltered(url: checked(url))
         case .devToolsChanged, .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
             event
@@ -135,14 +137,15 @@ nonisolated enum EngineWire {
         guard data.count <= maximumRequestLogSize else {
             throw EngineError.malformedMessage("\(data.count)-byte request log exceeds the \(maximumRequestLogSize)-byte limit")
         }
-        let log: RequestLog
+        let log: LossyRequestLog
         do {
-            log = try decoder.decode(RequestLog.self, from: data)
+            log = try decoder.decode(LossyRequestLog.self, from: data)
         } catch {
             throw EngineError.malformedMessage(String(describing: error))
         }
-        let entries = try log.entries.prefix(2_000).map { entry in
-            var valid = try RequestLogEntry(
+        // An entry that doesn't decode or validate is dropped, not the log around it.
+        let entries = log.entries.prefix(2_000).compactMap(\.entry).compactMap { entry -> RequestLogEntry? in
+            guard var valid = try? RequestLogEntry(
                 seq: entry.seq,
                 time: entry.time,
                 frameURL: entry.frameURL.map(checked),
@@ -151,17 +154,31 @@ nonisolated enum EngineWire {
                 method: capped(entry.method),
                 decision: entry.decision,
                 exactness: entry.exactness,
-            )
+            ) else { return nil }
             valid.rule = entry.rule.map(capped)
             valid.list = entry.list.map(capped)
             valid.line = entry.line.map { max($0, 0) }
             valid.exceptionRule = entry.exceptionRule.map(capped)
-            valid.rewrittenURL = try entry.rewrittenURL.map(checked)
+            valid.rewrittenURL = try? entry.rewrittenURL.map(checked)
             valid.csp = entry.csp.map(capped)
-            valid.sparedFirstParty = entry.sparedFirstParty
+            valid.truncated = entry.truncated
             return valid
         }
         return RequestLog(entries: entries, nextSequence: log.nextSequence)
+    }
+
+    /// A request log whose entries decode one by one.
+    private struct LossyRequestLog: Decodable {
+        struct Entry: Decodable {
+            let entry: RequestLogEntry?
+
+            init(from decoder: any Decoder) throws {
+                entry = try? RequestLogEntry(from: decoder)
+            }
+        }
+
+        let entries: [Entry]
+        let nextSequence: Int64
     }
 
     static func validated(_ request: EngineRequest) throws -> EngineRequest {

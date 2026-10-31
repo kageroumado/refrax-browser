@@ -121,8 +121,8 @@ nonisolated enum PageReducer {
             // Notifications outlive the page's state; `WebNotificationManager` tracks them.
             break
 
-        case .findResultChanged, .devToolsChanged:
-            // Panels of the page's own (the find bar, the engine's DevTools window) follow these.
+        case .findResultChanged, .devToolsChanged, .loadedUnfiltered:
+            // Panels of the page's own (the find bar, the engine's DevTools window, Shields) follow these.
             break
         }
     }

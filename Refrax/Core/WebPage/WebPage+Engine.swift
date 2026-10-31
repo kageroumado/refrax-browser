@@ -229,6 +229,9 @@ extension WebPage {
         case let .devToolsChanged(isShown):
             isEngineDevToolsShown = isShown
 
+        case let .loadedUnfiltered(url):
+            Logger.warning("\(activeEngineID) loaded \(url.host() ?? "a page") before its content-blocking engine was ready", category: Logger.engines)
+
         default:
             break
         }
