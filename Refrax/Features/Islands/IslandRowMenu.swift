@@ -46,7 +46,7 @@ struct IslandRowMenu {
         if !others.isEmpty {
             actions.append(MenuAction("island.moveTo", "Move to Island", symbol: "arrow.right.square", group: .move, children: others.map { other in
                 MenuAction("island.moveTo.\(other.id)", other.title, symbol: "circle.fill", group: .move) {
-                    islands.moveTab(tabID, to: Int.max, in: other.id)
+                    islands.moveTab(tabID, toEndOf: other.id)
                 }
             }))
         }

@@ -3,17 +3,37 @@ import Observation
 import SwiftUI
 
 /// One island on the window: a tab group, or the space's loose tabs, as a column of rows in
-/// the tab list's order, with its place on the window.
+/// the tab list's order, with its place on the window. A group nested in the island's group
+/// is a section of it, under a header that folds it.
 struct Island: Identifiable, Equatable {
     let id: UUID
     var title: String
     var colorString: String?
     /// The group's icon: an SF Symbol name or an emoji.
     var iconName: String?
-    var tabIDs: [UUID]
+    var layout: IslandRowLayout
     var placement: IslandPlacement
     /// The loose tabs' island, named after the space.
     var isDefault: Bool
+
+    /// The rows on the island: tabs and section headers.
+    var rows: [IslandRow] {
+        layout.rows
+    }
+
+    /// The tab rows shown, in order: what a step up or down moves through.
+    var tabIDs: [UUID] {
+        layout.tabIDs
+    }
+
+    /// Every tab of the island, its folded sections' included.
+    var allTabIDs: [UUID] {
+        layout.allTabIDs
+    }
+
+    var sections: [IslandSection] {
+        layout.sections
+    }
 }
 
 /// A dragged row drawn over the page at the pointer.
@@ -273,7 +293,7 @@ final class IslandController {
     }
 
     func island(holding tabID: UUID) -> Island? {
-        islands.first { $0.tabIDs.contains(tabID) }
+        islands.first { $0.allTabIDs.contains(tabID) }
     }
 
     /// The tabs taken out of their islands, floating as live cards.
@@ -330,7 +350,7 @@ final class IslandController {
         if let frame = automaticArrangement?.frames[island.id] {
             return CGRect(origin: frame.origin, size: CGSize(width: geometry(for: island).width, height: frame.height))
         }
-        let size = geometry(for: island).size(rows: island.tabIDs.count, in: area.size)
+        let size = geometry(for: island).size(rows: island.rows.count, in: area.size)
         let top = area.minY + IslandGeometry.headerReserve
         let origin = CGPoint(
             x: min(max(area.minX, area.minX + island.placement.x * area.width), max(area.minX, area.maxX - size.width)),
@@ -357,7 +377,7 @@ final class IslandController {
         var frames: [UUID: CGRect] = [:]
         for island in islands where island.placement.iconsOnly {
             let geometry = geometry(for: island)
-            let height = geometry.size(rows: island.tabIDs.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: island.rows.count, in: bounds.size).height + IslandGeometry.headerReserve
             let placement = island.placement.railPlacement ?? defaultRailPlacement(height: height)
             let frame = draggedIslandID == island.id ? placement.railFrame(in: bounds, height: height)
                 : IconRailLayout.frame(placement: placement, height: height, in: bounds, obstacles: occupied)
@@ -383,7 +403,7 @@ final class IslandController {
         let y = max(area.minY, rail.minY + ControlIslandPlacement.pageBranchHeight + Layout.islandGap)
         let lane = CGRect(x: x, y: y, width: max(0, area.maxX - x), height: max(0, area.maxY - y))
         let items = islands.map { island in
-            let size = geometry(for: island).size(rows: island.tabIDs.count, in: area.size)
+            let size = geometry(for: island).size(rows: island.rows.count, in: area.size)
             return IslandArrangement.Item(id: island.id, size: size)
         }
         return IslandArrangement(items: items, area: lane)
@@ -544,18 +564,34 @@ final class IslandController {
         let onIslands = space.mainTabs.filter {
             !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
         }
-        var sources: [(id: UUID, title: String, color: String?, icon: String?, members: [UUID], isDefault: Bool)] = [
-            (space.id, "Tabs", nil, nil, onIslands.filter { $0.group == nil }.map(\.id), true),
+        let current = windowState.activeTabID
+        func members(of groupID: UUID) -> [UUID] {
+            onIslands.filter { $0.group?.id == groupID }.map(\.id)
+        }
+        var sources: [(id: UUID, title: String, color: String?, icon: String?, layout: IslandRowLayout, isDefault: Bool)] = [
+            (space.id, "Tabs", nil, nil, IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), true),
         ]
-        for group in space.groups.filter({ !$0.isArchive }).sorted(by: { $0.position < $1.position }) {
-            let members = onIslands.filter { $0.group?.id == group.id }.map(\.id)
-            sources.append((group.id, group.name, group.colorString, group.iconName, members, false))
+        let groups = space.groups.filter { !$0.isArchive }.sorted { $0.position < $1.position }
+        let groupIDs = Set(groups.map(\.id))
+        // A group nested in another is a section of its parent's island; one whose parent is
+        // gone is an island of its own.
+        for group in groups where group.parentGroupID.map({ !groupIDs.contains($0) }) ?? true {
+            let sections = groups.filter { $0.parentGroupID == group.id }.compactMap { child -> IslandSection? in
+                let tabs = members(of: child.id)
+                guard !tabs.isEmpty else { return nil }
+                return IslandSection(
+                    id: child.id, title: child.name, colorString: child.colorString, iconName: child.iconName, tabIDs: tabs,
+                    isCollapsed: child.isCollapsed,
+                )
+            }
+            let layout = IslandRowLayout(ownTabIDs: members(of: group.id), sections: sections, currentTabID: current)
+            sources.append((group.id, group.name, group.colorString, group.iconName, layout, false))
         }
         var changed = false
         var built: [Island] = []
         var nextOrigin = firstIslandOrigin
         // The loose tabs' island folds away while every tab is in a group.
-        for source in sources where !source.members.isEmpty {
+        for source in sources where !source.layout.allTabIDs.isEmpty {
             if state.islands[source.id] == nil {
                 state.islands[source.id] = IslandPlacement(x: nextOrigin.x, y: nextOrigin.y)
                 changed = true
@@ -563,7 +599,7 @@ final class IslandController {
             let placement = state.islands[source.id]!
             nextOrigin.x = min(0.9, placement.x + Layout.newIslandOffset)
             built.append(Island(
-                id: source.id, title: source.title, colorString: source.color, iconName: source.icon, tabIDs: source.members,
+                id: source.id, title: source.title, colorString: source.color, iconName: source.icon, layout: source.layout,
                 placement: placement, isDefault: source.isDefault,
             ))
         }
@@ -681,13 +717,13 @@ final class IslandController {
     /// Closes every other tab of `tabID`'s island.
     func closeOthers(than tabID: UUID) {
         guard let island = island(holding: tabID) else { return }
-        tabManager.requestCloseTabs(island.tabIDs.filter { $0 != tabID }.compactMap(tab(for:)))
+        tabManager.requestCloseTabs(island.allTabIDs.filter { $0 != tabID }.compactMap(tab(for:)))
     }
 
     /// Closes the rows above (`below == false`) or below `tabID` on its island.
     func close(below: Bool, of tabID: UUID) {
-        guard let island = island(holding: tabID), let index = island.tabIDs.firstIndex(of: tabID) else { return }
-        let ids = below ? Array(island.tabIDs[(index + 1)...]) : Array(island.tabIDs[..<index])
+        guard let island = island(holding: tabID), let index = island.allTabIDs.firstIndex(of: tabID) else { return }
+        let ids = below ? Array(island.allTabIDs[(index + 1)...]) : Array(island.allTabIDs[..<index])
         tabManager.requestCloseTabs(ids.compactMap(tab(for:)))
     }
 
@@ -738,7 +774,7 @@ final class IslandController {
 
     func closeAll(in islandID: UUID) {
         guard let island = island(islandID) else { return }
-        tabManager.requestCloseTabs(island.tabIDs.compactMap(tab(for:)))
+        tabManager.requestCloseTabs(island.allTabIDs.compactMap(tab(for:)))
     }
 
     /// Removes the group; its tabs go to the loose tabs' island.
@@ -746,6 +782,38 @@ final class IslandController {
         guard let space = windowState.activeSpace, let group = space.groups.first(where: { $0.id == islandID }) else { return }
         state.islands.removeValue(forKey: islandID)
         groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
+        rebuild()
+    }
+
+    // MARK: - Sections
+
+    /// Folds or unfolds the nested group `sectionID` in its island; the fold is kept on the
+    /// group. A folded section keeps showing the current tab.
+    func toggleSection(_ sectionID: UUID) {
+        guard let group = group(sectionID), group.parentGroupID != nil else { return }
+        groupManager.toggleGroupCollapsed(group)
+        rebuild()
+    }
+
+    /// Nests island `islandID`'s group in island `parentID`'s, as a section of it. Groups nest
+    /// one level deep: an island with sections of its own stays an island.
+    func nest(_ islandID: UUID, in parentID: UUID) {
+        guard let child = group(islandID), let parent = group(parentID), canNest(islandID, in: parentID) else { return }
+        try? groupManager.nestGroup(child, in: parent)
+        rebuild()
+    }
+
+    /// Whether island `islandID` can become a section of island `parentID`.
+    func canNest(_ islandID: UUID, in parentID: UUID) -> Bool {
+        guard islandID != parentID, let child = group(islandID), let parent = group(parentID) else { return false }
+        let hasSections = windowState.activeSpace?.groups.contains { $0.parentGroupID == islandID } ?? false
+        return child.parentGroupID == nil && parent.parentGroupID == nil && !hasSections
+    }
+
+    /// Takes the section `sectionID` out of its island: it becomes an island of its own.
+    func unnest(_ sectionID: UUID) {
+        guard let group = group(sectionID), group.parentGroupID != nil else { return }
+        groupManager.unnestGroup(group)
         rebuild()
     }
 
@@ -824,9 +892,9 @@ final class IslandController {
         let frame = frame(of: target)
         let local = rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: target)
         let geometry = geometry(for: target)
-        let count = target.tabIDs.filter { $0 != tabID }.count
-        let candidate = geometry.joinedRow(at: local, count: target.tabIDs.count).flatMap { index in
-            canJoin(tabID, with: target.tabIDs[index]) ? target.tabIDs[index] : nil
+        let count = target.rows.count(where: { $0 != .tab(tabID) })
+        let candidate = geometry.joinedRow(at: local, count: target.rows.count).flatMap { index in
+            target.rows[index].tabID.flatMap { canJoin(tabID, with: $0) ? $0 : nil }
         }
         updateJoinDwell(candidate: candidate, point: point)
         update(\.drop, to: IslandDrop(island: target.id, row: geometry.insertion(at: local, count: count), joins: joinDwell.ready()))
@@ -898,23 +966,34 @@ final class IslandController {
         return IslandGhost(tabID: tabID, frame: frame, title: islandName(for: first), rows: members.count, iconsOnly: iconsOnly)
     }
 
-    /// Puts `tabID` before row `row` of island `islandID`, or after its last row, moving it
-    /// between groups when the island is another one. A card dropped here becomes a row again.
+    /// Puts `tabID` before row `row` of island `islandID`, counted without the row itself, or
+    /// after its last row: into the island's group, or the section that slot is in, moving
+    /// it between groups when it came from another. A card dropped here becomes a row again.
     func moveTab(_ tabID: UUID, to row: Int, in islandID: UUID) {
-        guard let tab = tab(for: tabID), let space = tab.space, let target = island(islandID) else { return }
+        guard let target = island(islandID) else { return }
+        moveTab(tabID, to: target.layout.insertion(at: row, moving: tabID), in: target)
+    }
+
+    /// Puts `tabID` after the last of island `islandID`'s own tabs, ahead of its sections.
+    func moveTab(_ tabID: UUID, toEndOf islandID: UUID) {
+        guard let target = island(islandID) else { return }
+        moveTab(tabID, to: target.layout.endOfOwnTabs(moving: tabID), in: target)
+    }
+
+    private func moveTab(_ tabID: UUID, to slot: IslandInsertion, in target: Island) {
+        guard let tab = tab(for: tabID), let space = tab.space else { return }
         if let location = location(of: tabID) {
             registerLocationUndo(location, actionName: "Move Tab")
         }
-        let group = target.isDefault ? nil : space.groups.first { $0.id == islandID }
+        let groupID = slot.section ?? (target.isDefault ? nil : target.id)
+        let group = groupID.flatMap { id in space.groups.first { $0.id == id } }
         if tab.group?.id != group?.id {
             groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
         }
         if state.detached.remove(tabID) != nil {
             windowState.clearFocusIfNeeded(for: tab.activePage.id)
         }
-        let rows = target.tabIDs.filter { $0 != tabID }.compactMap(self.tab(for:))
-        let at = min(row, rows.count)
-        tabManager.placeTab(tab, after: at > 0 ? rows[at - 1] : nil, before: at < rows.count ? rows[at] : nil)
+        tabManager.placeTab(tab, after: slot.after.flatMap(self.tab(for:)), before: slot.before.flatMap(self.tab(for:)))
         persist()
         rebuild()
     }
@@ -1064,7 +1143,7 @@ final class IslandController {
         guard state.detached.contains(tab.id), let island = visibleIslands.first(where: { frame(of: $0).contains(point) }) else { return false }
         let local = rowPoint(CGPoint(x: point.x - frame(of: island).minX, y: point.y - frame(of: island).minY), in: island)
         let geometry = geometry(for: island)
-        moveTab(tab.id, to: geometry.insertion(at: local, count: island.tabIDs.count), in: island.id)
+        moveTab(tab.id, to: geometry.insertion(at: local, count: island.rows.count), in: island.id)
         return true
     }
 
@@ -1075,7 +1154,7 @@ final class IslandController {
         guard let index = islands.firstIndex(where: { $0.id == islandID }) else { return }
         if islands[index].placement.iconsOnly {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].tabIDs.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
             var placement = islands[index].placement.railPlacement ?? defaultRailPlacement(height: height)
             placement.move(to: CGPoint(x: origin.x, y: origin.y - IslandGeometry.headerReserve), in: bounds, height: height)
             islands[index].placement.railPlacement = placement
@@ -1100,7 +1179,7 @@ final class IslandController {
         if let islandID, let index = islands.firstIndex(where: { $0.id == islandID }),
            var placement = islands[index].placement.railPlacement, islands[index].placement.iconsOnly {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].tabIDs.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
             placement = placement.snapped(in: bounds, height: height)
             islands[index].placement.railPlacement = placement
             state.islands[islandID] = islands[index].placement
@@ -1215,7 +1294,7 @@ final class IslandController {
         islands[index].placement.iconsOnly = compact
         if compact, islands[index].placement.railPlacement == nil {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].tabIDs.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
             islands[index].placement.railPlacement = defaultRailPlacement(height: height)
         }
         state.islands[islandID] = islands[index].placement
