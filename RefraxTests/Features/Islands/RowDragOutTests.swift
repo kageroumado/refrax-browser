@@ -119,7 +119,8 @@ struct RowDragExitTests {
     @Test
     func `A blank tab's drag stays a move past the edge`() throws {
         let fixture = try IslandFixture()
-        let tab = fixture.tab("Blank")
+        let tab = fixture.env.tabManager.createTab(url: .blank, in: fixture.space, makeActive: false, loadImmediately: false)
+        fixture.islands.refresh()
         fixture.canvas.toggleFloatingTabs()
         guard case .inside = fixture.islands.rowDragExit(tab.id, at: CGPoint(x: -40, y: 500)) else {
             Issue.record("a blank tab left the window")

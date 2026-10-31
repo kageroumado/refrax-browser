@@ -58,6 +58,7 @@ struct SpaceManagerTestEnvironment {
 
         // Store pagePool as property so it stays alive for the test duration
         self.pagePool = WebPagePool(state: browserState)
+        browserState.pagePool = pagePool
         spaceManager.pagePool = pagePool
     }
 

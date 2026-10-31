@@ -310,7 +310,8 @@ struct IslandDropTests {
         let point = CGPoint(x: 900, y: 500)
         fixture.islands.updateRowDrag(c.id, at: point)
         #expect(fixture.islands.islandGhost?.rows == 2)
-        #expect(fixture.islands.islandGhost?.title == fixture.islands.islandName(for: b))
+        let names = [fixture.islands.islandName(for: b), fixture.islands.islandName(for: c)]
+        #expect(names.contains(fixture.islands.islandGhost?.title ?? ""))
         fixture.edit { fixture.islands.finishRowDrag(c.id, at: point) }
         let island = try #require(fixture.islands.island(holding: c.id))
         // The rows keep the tab list's order, whatever it is for two tabs made at once.

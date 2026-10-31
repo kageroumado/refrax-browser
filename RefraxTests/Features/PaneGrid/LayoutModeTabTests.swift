@@ -51,7 +51,8 @@ struct LayoutModeTabTests {
         #expect(edited.paneGrid.span(of: first) == Fixtures.rightColumn)
         #expect(edited.pages.first { $0.id == first }?.position == .topRight)
         #expect(other.layoutConfiguration == otherLayout)
-        #expect(other.paneGrid.span(of: other.pages[0].id)?.isWide == true)
+        let top = try #require(other.paneGrid.page(at: .topLeft))
+        #expect(other.paneGrid.span(of: top)?.isWide == true)
     }
 
     @Test
