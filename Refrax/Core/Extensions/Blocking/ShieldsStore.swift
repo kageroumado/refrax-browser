@@ -117,8 +117,11 @@ final class ShieldsStore {
         Task(name: "Shields list toggle") { await manager.setFilterListEnabled(id, enabled: enabled) }
     }
 
-    func addCustomList(name: String, url: URL) {
-        Task(name: "Shields add list") { await manager.addCustomFilterList(name: name, url: url) }
+    /// Subscribes to a list over HTTPS; `allowsScriptlets` lets it run scriptlets in pages.
+    func addCustomList(name: String, url: URL, allowsScriptlets: Bool) {
+        Task(name: "Shields add list") {
+            await manager.addCustomFilterList(name: name, url: url, allowsScriptlets: allowsScriptlets)
+        }
     }
 
     func removeCustomList(_ id: String) {

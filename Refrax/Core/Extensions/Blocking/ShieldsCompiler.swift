@@ -21,6 +21,18 @@ nonisolated struct ShieldsList: Sendable, Hashable {
     var permissions: UInt8 {
         isTrusted ? 1 : 0
     }
+
+    /// `text` without its scriptlet injections (`host##+js(…)`); exceptions (`#@#+js(…)`) stay,
+    /// since they only turn scriptlets off.
+    static func removingScriptlets(from text: Data) -> Data {
+        let lines = String(decoding: text, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
+        let kept = lines.filter { line in
+            guard let sharp = line.firstIndex(of: "#") else { return true }
+            let rest = line[sharp...]
+            return !(rest.hasPrefix("##+js(") || rest.hasPrefix("#?#+js(") || rest.hasPrefix("#$#+js("))
+        }
+        return Data(kept.joined(separator: "\n").utf8)
+    }
 }
 
 /// Identifies one build: every input that changes what the compiler writes.

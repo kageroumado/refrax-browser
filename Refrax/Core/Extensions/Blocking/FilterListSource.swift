@@ -31,10 +31,40 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
     /// Why the last download failed; nil after a success.
     var lastError: String?
 
+    /// For a custom list: whether the user trusted it to run scriptlets (`+js()`) in pages when
+    /// adding it. Off unless chosen, so a list from anywhere cannot run code in every page.
+    var allowsScriptlets: Bool?
+
     /// uBlock Origin's own lists may use the scriptlets uBO reserves for trusted lists
     /// (`trusted-click-element`, `trusted-set-cookie`, …), as uBO itself allows them.
     var isTrusted: Bool {
         Self.trustedPrefixes.contains { id.hasPrefix($0) }
+    }
+
+    /// Whether the list may contribute scriptlets: every built-in list, and a custom list the
+    /// user trusted.
+    var contributesScriptlets: Bool {
+        category != .custom || allowsScriptlets == true
+    }
+
+    /// Lists are fetched only over HTTPS: their scriptlets and redirects become page code, so a
+    /// network attacker must not be able to rewrite them.
+    var isFetchable: Bool {
+        url.scheme?.lowercased() == "https" && url.host() != nil
+    }
+
+    /// The URL a custom list is fetched from: `text` as an HTTPS URL, an `http://` address
+    /// moved to `https://`, or nil for anything else.
+    static func customListURL(from text: String) -> URL? {
+        guard var components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              components.host?.isEmpty == false
+        else { return nil }
+        components.scheme = "https"
+        if components.port == 80 {
+            components.port = nil
+        }
+        return components.url
     }
 
     // MARK: - Categories

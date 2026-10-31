@@ -76,12 +76,18 @@ private final class LoopbackServer: @unchecked Sendable {
     }
 }
 
-/// Finishes a navigation and lets Shields' network lists take their redirect actions, as
-/// `WKNavigationDelegateAdapter` does in the browser.
+/// Finishes a navigation and sets its Shields preferences through
+/// ``ShieldsWebKit/configure(_:siteIsExempt:)``, as `WKNavigationDelegateAdapter` does.
 @MainActor
 private final class FixtureNavigationDelegate: NSObject, WKNavigationDelegate {
-    var actionPatterns: [String: Set<String>] = [:]
+    let webKit: ShieldsWebKit
+    let siteIsExempt: Bool
     private var finished: CheckedContinuation<Void, any Error>?
+
+    init(webKit: ShieldsWebKit, siteIsExempt: Bool = false) {
+        self.webKit = webKit
+        self.siteIsExempt = siteIsExempt
+    }
 
     func waitForLoad() async throws {
         try await withCheckedThrowingContinuation { finished = $0 }
@@ -92,7 +98,7 @@ private final class FixtureNavigationDelegate: NSObject, WKNavigationDelegate {
         decidePolicyFor _: WKNavigationAction,
         preferences: WKWebpagePreferences,
     ) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
-        preferences._activeContentRuleListActionPatterns = actionPatterns
+        webKit.configure(preferences, siteIsExempt: siteIsExempt)
         return (.allow, preferences)
     }
 
@@ -206,8 +212,7 @@ struct ShieldsWebKitTests {
         #expect(!webKit.actionPatterns.isEmpty)
 
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
-        let delegate = FixtureNavigationDelegate()
-        delegate.actionPatterns = webKit.actionPatterns
+        let delegate = FixtureNavigationDelegate(webKit: webKit)
         webView.navigationDelegate = delegate
         try webView.load(URLRequest(url: #require(URL(string: "http://localhost:\(port)/page.html"))))
         try await delegate.waitForLoad()
@@ -252,5 +257,49 @@ struct ShieldsWebKitTests {
         let frame = try #require(report, "the iframe reported")
         #expect(frame["genericHidden"] as? Bool == true)
         #expect(frame["marker"] as? Bool == true, "the iframe's host gets its own scriptlet")
+    }
+
+    @Test
+    func `A site exempt from Shields skips only Shields' rule lists; another list still blocks there`() async throws {
+        let root = try shieldsScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackServer()
+        defer { server.stop() }
+        let port = try await server.start()
+        server.route("/page.html", body: """
+        <!doctype html><html><head>
+        <script src="http://127.0.0.1:\(port)/ads/blocked.js"></script>
+        <script src="http://127.0.0.1:\(port)/other/blocked.js"></script>
+        </head><body><div class="generic-ad" id="generic">ad</div></body></html>
+        """)
+        server.route("/ads/blocked.js", type: "text/javascript", body: "window.shieldsBlockedRan = true;")
+        server.route("/other/blocked.js", type: "text/javascript", body: "window.otherBlockedRan = true;")
+
+        let lists = [ShieldsList(id: "easylist", text: Data("/ads/blocked.js$script\n##.generic-ad\n".utf8))]
+        let (artifacts, _) = try await ShieldsCompiler().build(lists: lists, resources: Data("[]".utf8), into: root)
+        let configuration = WKWebViewConfiguration()
+        let store = try #require(WKContentRuleListStore(url: root.appending(path: "store", directoryHint: .isDirectory)))
+        let webKit = ShieldsWebKit(userContentController: configuration.userContentController, scriptRegistry: ScriptRegistry(), store: store)
+        try await webKit.install(artifacts)
+
+        // A rule list Shields does not own, as an extension's declarativeNetRequest rules are.
+        let other = try #require(try await store.compileContentRuleList(
+            forIdentifier: "test.other-blocker",
+            encodedContentRuleList: #"[{"trigger":{"url-filter":"/other/blocked\\.js"},"action":{"type":"block"}}]"#,
+        ))
+        configuration.userContentController.add(other)
+
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+        let delegate = FixtureNavigationDelegate(webKit: webKit, siteIsExempt: true)
+        webView.navigationDelegate = delegate
+        try webView.load(URLRequest(url: #require(URL(string: "http://localhost:\(port)/page.html"))))
+        try await delegate.waitForLoad()
+
+        #expect(server.requested.contains("/ads/blocked.js"), "Shields' block is off on the exempt site")
+        #expect(try await webView.evaluateJavaScript("window.shieldsBlockedRan === true") as? Bool == true)
+        let hidden = try await webView.evaluateJavaScript("getComputedStyle(document.getElementById('generic')).display === 'none'")
+        #expect(hidden as? Bool == false, "Shields' cosmetic list is off too")
+        #expect(!server.requested.contains("/other/blocked.js"), "the other rule list still blocks")
+        #expect(try await webView.evaluateJavaScript("window.otherBlockedRan === true") as? Bool == false)
     }
 }

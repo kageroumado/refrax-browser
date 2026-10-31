@@ -11,6 +11,16 @@ import Foundation
 /// - A failed fetch keeps the list's previous text; a failed build keeps the previous build
 ///   attached. Neither blocks launch: ``start(onChange:onBuild:)`` returns once the cached
 ///   build is published, and fetching and building continue in the background.
+nonisolated enum ShieldsListError: LocalizedError {
+    case insecureURL
+
+    var errorDescription: String? {
+        switch self {
+        case .insecureURL: "Filter lists must be served over HTTPS."
+        }
+    }
+}
+
 actor ContentBlockingManager {
     private enum Constants {
         /// How long list changes settle before a rebuild, so toggling several lists builds once.
@@ -104,9 +114,12 @@ actor ContentBlockingManager {
         scheduleRebuild()
     }
 
+    /// Subscribes to a list at an HTTPS `url`; nil for any other URL.
+    ///
+    /// - Parameter allowsScriptlets: Whether the list may run scriptlets in pages.
     @discardableResult
-    func addCustomFilterList(name: String, url: URL) async -> FilterListSource {
-        let source = FilterListSource(
+    func addCustomFilterList(name: String, url: URL, allowsScriptlets: Bool = false) async -> FilterListSource? {
+        var source = FilterListSource(
             id: "custom-\(UUID().uuidString.prefix(8).lowercased())",
             name: name,
             url: url,
@@ -114,6 +127,8 @@ actor ContentBlockingManager {
             isEnabled: true,
             updateFrequency: FilterListSource.dailyUpdates,
         )
+        source.allowsScriptlets = allowsScriptlets
+        guard source.isFetchable else { return nil }
         filterLists.append(source)
         saveFilterLists()
         await publish()
@@ -170,7 +185,13 @@ actor ContentBlockingManager {
     @discardableResult
     private func fetch(_ list: FilterListSource) async -> Bool {
         do {
+            guard list.isFetchable else {
+                throw ShieldsListError.insecureURL
+            }
             let (data, response) = try await urlSession.data(from: list.url)
+            guard response.url?.scheme?.lowercased() == "https" else {
+                throw ShieldsListError.insecureURL
+            }
             guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
             }
@@ -212,9 +233,8 @@ actor ContentBlockingManager {
     /// Builds the enabled lists (or finds the build on disk) and hands a new build to
     /// `onBuild`. On failure the previous build stays.
     private func rebuild() async {
-        let lists = filterLists.filter(\.isEnabled).compactMap { source -> ShieldsList? in
-            guard let text = cachedText(for: source.id) else { return nil }
-            return ShieldsList(id: source.id, text: text, isTrusted: source.isTrusted)
+        let lists = filterLists.filter(\.isEnabled).compactMap { source in
+            cachedText(for: source.id).flatMap { Self.shieldsList(for: source, text: $0) }
         }
         guard !lists.isEmpty else {
             lastError = filterLists.contains(where: \.isEnabled) ? "No filter list has been downloaded yet." : nil
@@ -247,6 +267,14 @@ actor ContentBlockingManager {
             await publish()
             Logger.error("Shields build failed, keeping the previous build: \(error)", category: Logger.tabs)
         }
+    }
+
+    /// What a build reads from `source`: nothing from a list not fetched over HTTPS, and no
+    /// scriptlets from a custom list the user did not trust.
+    static func shieldsList(for source: FilterListSource, text: Data) -> ShieldsList? {
+        guard source.isFetchable else { return nil }
+        let text = source.contributesScriptlets ? text : ShieldsList.removingScriptlets(from: text)
+        return ShieldsList(id: source.id, text: text, isTrusted: source.isTrusted)
     }
 
     // MARK: - Engine

@@ -8,6 +8,7 @@ struct ShieldsSettingsSections: View {
     @Environment(BrowserState.self) private var browserState
     @Environment(ExtensionManager.self) private var extensionManager
     @State private var newListURL = ""
+    @State private var newListAllowsScriptlets = false
 
     private var shields: ShieldsStore {
         browserState.shields
@@ -53,13 +54,15 @@ struct ShieldsSettingsSections: View {
                 listRow(list)
             }
             HStack {
-                TextField("Filter list URL", text: $newListURL)
+                TextField("Filter list URL (https)", text: $newListURL)
                     .textFieldStyle(.roundedBorder)
                 Button("Add") {
                     addList()
                 }
-                .disabled(URL(string: newListURL)?.isWebURL != true)
+                .disabled(FilterListSource.customListURL(from: newListURL) == nil)
             }
+            Toggle("Trust this list to run scriptlets in pages", isOn: $newListAllowsScriptlets)
+                .font(.callout)
         } header: {
             Text("Filter Lists")
         } footer: {
@@ -131,7 +134,7 @@ struct ShieldsSettingsSections: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     } else if let count = list.ruleCount, list.isEnabled {
-                        Text("\(count.formatted()) filters")
+                        Text(list.contributesScriptlets ? "\(count.formatted()) filters" : "\(count.formatted()) filters · scriptlets off")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -151,8 +154,10 @@ struct ShieldsSettingsSections: View {
     }
 
     private func addList() {
-        guard let url = URL(string: newListURL), url.isWebURL else { return }
-        shields.addCustomList(name: url.lastPathComponent.isEmpty ? (url.host() ?? "Custom list") : url.lastPathComponent, url: url)
+        guard let url = FilterListSource.customListURL(from: newListURL) else { return }
+        let name = url.lastPathComponent.isEmpty || url.lastPathComponent == "/" ? (url.host() ?? "Custom list") : url.lastPathComponent
+        shields.addCustomList(name: name, url: url, allowsScriptlets: newListAllowsScriptlets)
         newListURL = ""
+        newListAllowsScriptlets = false
     }
 }

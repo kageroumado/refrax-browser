@@ -87,18 +87,14 @@ final class WKNavigationDelegateAdapter: NSObject, WKNavigationDelegate, WKDownl
         return (result, newPreferences)
     }
 
-    /// Lets Shields' network lists take their redirect actions, and turns the rule lists off
-    /// for a document on a site the user spared (a frame follows its page's site).
+    /// Lets Shields' network lists take their redirect actions, and skips Shields' lists (only
+    /// those) for a document on a site the user exempted; a frame follows its page's site.
     private func applyShields(to preferences: WKWebpagePreferences, for navigationAction: WKNavigationAction) {
         guard let shields = pagePool?.state.shields else { return }
-        if !shields.webKit.actionPatterns.isEmpty {
-            preferences._activeContentRuleListActionPatterns = shields.webKit.actionPatterns
-        }
         let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
         let siteURL = isMainFrame ? navigationAction.request.url : owner?.url
-        if let siteURL, let coordinator = owner?.siteSettingsCoordinator, !coordinator.contentBlockersEnabled(for: siteURL) {
-            preferences._contentBlockersEnabled = false
-        }
+        let isExempt = siteURL.map { owner?.siteSettingsCoordinator?.contentBlockersEnabled(for: $0) == false } ?? false
+        shields.webKit.configure(preferences, siteIsExempt: isExempt)
     }
 
     /// A Shields rule list blocked or redirected a load; recorded for the request logger.

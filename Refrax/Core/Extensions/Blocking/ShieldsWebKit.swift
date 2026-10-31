@@ -64,6 +64,23 @@ final class ShieldsWebKit {
         identifier.hasPrefix(Constants.identifierPrefix)
     }
 
+    /// The identifiers of the attached Shields rule lists.
+    var ruleListIdentifiers: Set<String> {
+        Set((networkLists + cosmeticLists).map(\.identifier))
+    }
+
+    /// Sets a navigation's Shields preferences: network lists may redirect, and on a site the
+    /// user exempted only Shields' lists are skipped. Every other rule list (extensions'
+    /// declarativeNetRequest rules, Refrax's cookie rules) still applies there.
+    func configure(_ preferences: WKWebpagePreferences, siteIsExempt: Bool) {
+        if !actionPatterns.isEmpty {
+            preferences._activeContentRuleListActionPatterns = actionPatterns
+        }
+        if siteIsExempt {
+            preferences._setContentRuleListsEnabled(true, exceptions: ruleListIdentifiers)
+        }
+    }
+
     // MARK: - Installing
 
     /// Attaches `artifacts`, compiling any rule list WebKit's store lacks.

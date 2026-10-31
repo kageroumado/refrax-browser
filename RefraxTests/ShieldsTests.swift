@@ -246,3 +246,69 @@ struct RequestLogTests {
         #expect(log.entries.first?.type == "script")
     }
 }
+
+@Suite("Custom filter lists", .tags(.shields))
+struct CustomFilterListTests {
+    private func custom(_ url: String, allowsScriptlets: Bool? = nil) throws -> FilterListSource {
+        var source = try FilterListSource(
+            id: "custom-abcd1234",
+            name: "Mine",
+            url: #require(URL(string: url)),
+            category: .custom,
+            isEnabled: true,
+            updateFrequency: FilterListSource.dailyUpdates,
+        )
+        source.allowsScriptlets = allowsScriptlets
+        return source
+    }
+
+    @Test
+    func `A custom list URL is HTTPS: http moves to https, other schemes are refused`() {
+        #expect(FilterListSource.customListURL(from: "https://lists.example/a.txt")?.absoluteString == "https://lists.example/a.txt")
+        #expect(FilterListSource.customListURL(from: " http://lists.example/a.txt ")?.absoluteString == "https://lists.example/a.txt")
+        #expect(FilterListSource.customListURL(from: "http://lists.example:80/a.txt")?.absoluteString == "https://lists.example/a.txt")
+        #expect(FilterListSource.customListURL(from: "ftp://lists.example/a.txt") == nil)
+        #expect(FilterListSource.customListURL(from: "javascript:alert(1)") == nil)
+        #expect(FilterListSource.customListURL(from: "https:///a.txt") == nil)
+    }
+
+    @Test
+    func `A stored http list is neither fetched nor built`() throws {
+        let insecure = try custom("http://lists.example/a.txt", allowsScriptlets: true)
+        #expect(!insecure.isFetchable)
+        #expect(ContentBlockingManager.shieldsList(for: insecure, text: Data("||ads.example^\n".utf8)) == nil)
+        let builtInListsAreHTTPS = FilterListSource.allAvailableLists.allSatisfy(\.isFetchable)
+        #expect(builtInListsAreHTTPS)
+    }
+
+    @Test
+    func `Adding an http list is refused`() async throws {
+        let directory = try shieldsScratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = ContentBlockingManager(storageDirectory: directory)
+        let added = try await manager.addCustomFilterList(name: "Mine", url: #require(URL(string: "http://lists.example/a.txt")))
+        #expect(added == nil)
+        #expect(await manager.filterLists.isEmpty)
+    }
+
+    @Test
+    func `A custom list runs scriptlets only when the user trusted it`() async throws {
+        let text = Data("example.com##+js(set-constant, adsEnabled, false)\nexample.com#@#+js(nowebrtc)\nexample.com##.banner\n".utf8)
+        let untrusted = try #require(ContentBlockingManager.shieldsList(for: custom("https://lists.example/a.txt"), text: text))
+        let trusted = try #require(ContentBlockingManager.shieldsList(for: custom("https://lists.example/a.txt", allowsScriptlets: true), text: text))
+        #expect(!String(decoding: untrusted.text, as: UTF8.self).contains("##+js("))
+        #expect(String(decoding: untrusted.text, as: UTF8.self).contains("#@#+js(nowebrtc)"))
+        #expect(!untrusted.isTrusted && !trusted.isTrusted, "custom lists never get uBO's trusted scriptlets")
+
+        let resources = try #require(ShieldsResources.bundled())
+        let page = try #require(URL(string: "https://example.com/"))
+        for (list, expectsScriptlet) in [(untrusted, false), (trusted, true)] {
+            let root = try shieldsScratchDirectory()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let engine = try #require(try await ShieldsCompiler().build(lists: [list], resources: resources, into: root).engine)
+            let cosmetics = try #require(engine.cosmeticResources(for: page))
+            #expect(cosmetics.injectedScript.contains("setConstant(") == expectsScriptlet)
+            #expect(cosmetics.hideSelectors.contains(".banner"))
+        }
+    }
+}
