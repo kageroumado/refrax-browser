@@ -177,8 +177,8 @@ extension WebNotificationManager {
             sendClick(to: source)
             showSite(for: userInfo, openingIfNeeded: true)
         } else if let data = userInfo.persistentRepresentation,
-           let representation = Self.decodePersistentRepresentation(data),
-           let dataStore = dataStore(withID: userInfo.dataStoreID) {
+                  let representation = Self.decodePersistentRepresentation(data),
+                  let dataStore = dataStore(withID: userInfo.dataStoreID) {
             // WebKit completes on the main thread, with the network process's reply.
             dataStore._processPersistentNotificationClick(representation) { [weak self] handled in
                 MainActor.assumeIsolated {
@@ -332,6 +332,8 @@ extension WebNotificationManager {
             show(notification, profile: profile, from: engineID)
         case let .notificationClosed(id):
             withdraw([.engineHost(engineID: engineID, identifier: id)])
+        case .contentBlockingStatus:
+            return
         }
     }
 

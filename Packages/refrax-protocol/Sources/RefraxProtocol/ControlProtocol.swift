@@ -101,6 +101,10 @@ public enum ControlRequest: Sendable {
     case pageSource(OptionalTabIDParams)
     case pageVideoViewer(PageVideoViewerParams)
     case pagePiP(PagePiPParams)
+    /// What Shields did to the page's requests (the request logger).
+    case pageRequests(PageRequestsParams)
+    /// Why Shields decides a URL as it does on the page.
+    case pageExplain(PageExplainParams)
 
     // Floating tabs
     case floatingTabs(FloatingTabsParams)
@@ -794,6 +798,38 @@ public extension ControlRequest {
             self.width = width
             self.height = height
             self.shape = shape
+        }
+    }
+
+    struct PageRequestsParams: Codable, Sendable {
+        /// Only blocked, redirected and rewritten requests.
+        public var blockedOnly: Bool
+        /// Entries after this sequence number.
+        public var since: Int64
+        public var tabID: String?
+        public var pageID: String?
+
+        public init(blockedOnly: Bool = false, since: Int64 = 0, tabID: String? = nil, pageID: String? = nil) {
+            self.blockedOnly = blockedOnly
+            self.since = since
+            self.tabID = tabID
+            self.pageID = pageID
+        }
+    }
+
+    struct PageExplainParams: Codable, Sendable {
+        public var url: String
+        /// adblock-rust's request type (`script`, `image`, `sub_frame`, …); guessed from the URL
+        /// when absent.
+        public var type: String?
+        public var tabID: String?
+        public var pageID: String?
+
+        public init(url: String, type: String? = nil, tabID: String? = nil, pageID: String? = nil) {
+            self.url = url
+            self.type = type
+            self.tabID = tabID
+            self.pageID = pageID
         }
     }
 
@@ -1571,6 +1607,8 @@ extension ControlRequest: Codable {
         case pageSource
         case pageVideoViewer
         case pagePiP
+        case pageRequests
+        case pageExplain
 
         // Floating tabs
         case floatingTabs
@@ -1755,6 +1793,8 @@ extension ControlRequest: Codable {
         case .pageSource: self = try .pageSource(OptionalTabIDParams(from: decoder))
         case .pageVideoViewer: self = try .pageVideoViewer(PageVideoViewerParams(from: decoder))
         case .pagePiP: self = try .pagePiP(PagePiPParams(from: decoder))
+        case .pageRequests: self = try .pageRequests(PageRequestsParams(from: decoder))
+        case .pageExplain: self = try .pageExplain(PageExplainParams(from: decoder))
         // Floating tabs
         case .floatingTabs: self = try .floatingTabs(FloatingTabsParams(from: decoder))
         case .canvasState: self = .canvasState
@@ -2029,6 +2069,12 @@ extension ControlRequest: Codable {
         case let .pagePiP(params):
             try container.encode("pagePiP", forKey: .type)
             try params.encode(to: encoder)
+        case let .pageRequests(params):
+            try container.encode("pageRequests", forKey: .type)
+            try params.encode(to: encoder)
+        case let .pageExplain(params):
+            try container.encode("pageExplain", forKey: .type)
+            try params.encode(to: encoder)
         // Floating tabs
         case let .floatingTabs(params):
             try container.encode("floatingTabs", forKey: .type)
@@ -2254,6 +2300,8 @@ public enum ControlResponse: Sendable {
     case humanRequested(CTL.HumanRequestInfo)
     case canvas(CTL.FloatingTabsInfo)
     case islands(CTL.IslandsInfo)
+    case requestLog(CTL.RequestLogInfo)
+    case requestExplanation(CTL.RequestExplanationInfo)
 }
 
 // MARK: - Response Data Types
@@ -2539,6 +2587,98 @@ public enum CTL {
             self.level = level
             self.message = message
             self.timestamp = timestamp
+        }
+    }
+
+    /// One request Shields decided, from `page requests`.
+    public struct RequestLogEntryInfo: Codable, Sendable {
+        public let seq: Int64
+        /// Seconds since 1970.
+        public let time: Double
+        public let frameURL: String?
+        public let url: String
+        public let type: String
+        public let method: String
+        /// `blocked`, `redirected`, `rewritten`, `allowed`, `excepted` or `csp`.
+        public let decision: String
+        public let rule: String?
+        public let list: String?
+        public let line: Int?
+        public let exceptionRule: String?
+        /// `exact` (the engine logged the decision) or `attributed` (Refrax named the rule).
+        public let exactness: String
+
+        public init(
+            seq: Int64, time: Double, frameURL: String?, url: String, type: String, method: String, decision: String,
+            rule: String?, list: String?, line: Int?, exceptionRule: String?, exactness: String,
+        ) {
+            self.seq = seq
+            self.time = time
+            self.frameURL = frameURL
+            self.url = url
+            self.type = type
+            self.method = method
+            self.decision = decision
+            self.rule = rule
+            self.list = list
+            self.line = line
+            self.exceptionRule = exceptionRule
+            self.exactness = exactness
+        }
+    }
+
+    public struct RequestLogInfo: Codable, Sendable {
+        public let engine: String
+        public let entries: [RequestLogEntryInfo]
+        /// Pass as `since` to get only newer entries.
+        public let nextSequence: Int64
+
+        public init(engine: String, entries: [RequestLogEntryInfo], nextSequence: Int64) {
+            self.engine = engine
+            self.entries = entries
+            self.nextSequence = nextSequence
+        }
+    }
+
+    /// Why Shields decides a URL as it does, from `page explain`.
+    public struct RequestExplanationInfo: Codable, Sendable {
+        public let url: String
+        public let source: String
+        public let type: String
+        public let shouldBlock: Bool
+        public let important: Bool
+        public let redirected: Bool
+        public let rewrittenURL: String?
+        public let rule: String?
+        public let list: String?
+        public let line: Int?
+        public let exceptionRule: String?
+        public let exceptionList: String?
+        public let exceptionLine: Int?
+        public let csp: String?
+        /// Whether Shields is off for the page's site.
+        public let siteAllowlisted: Bool
+
+        public init(
+            url: String, source: String, type: String, shouldBlock: Bool, important: Bool, redirected: Bool,
+            rewrittenURL: String?, rule: String?, list: String?, line: Int?, exceptionRule: String?,
+            exceptionList: String?, exceptionLine: Int?, csp: String?, siteAllowlisted: Bool,
+        ) {
+            self.url = url
+            self.source = source
+            self.type = type
+            self.shouldBlock = shouldBlock
+            self.important = important
+            self.redirected = redirected
+            self.rewrittenURL = rewrittenURL
+            self.rule = rule
+            self.list = list
+            self.line = line
+            self.exceptionRule = exceptionRule
+            self.exceptionList = exceptionList
+            self.exceptionLine = exceptionLine
+            self.csp = csp
+            self.siteAllowlisted = siteAllowlisted
         }
     }
 
@@ -2892,6 +3032,8 @@ extension ControlResponse: Codable {
         case siteSettings
         case consoleMessages
         case networkEntries
+        case requestLog
+        case requestExplanation
         case cookies
         case storageEntries
         case recentlyClosedTabs
@@ -2954,6 +3096,10 @@ extension ControlResponse: Codable {
             self = try .consoleMessages(c.decode([CTL.ConsoleMessage].self, forKey: .data))
         case .networkEntries:
             self = try .networkEntries(c.decode([CTL.NetworkEntry].self, forKey: .data))
+        case .requestLog:
+            self = try .requestLog(c.decode(CTL.RequestLogInfo.self, forKey: .data))
+        case .requestExplanation:
+            self = try .requestExplanation(c.decode(CTL.RequestExplanationInfo.self, forKey: .data))
         case .cookies:
             self = try .cookies(c.decode([CTL.CookieInfo].self, forKey: .data))
         case .storageEntries:
@@ -3043,6 +3189,12 @@ extension ControlResponse: Codable {
         case let .networkEntries(list):
             try container.encode("networkEntries", forKey: .type)
             try container.encode(list, forKey: .data)
+        case let .requestLog(info):
+            try container.encode("requestLog", forKey: .type)
+            try container.encode(info, forKey: .data)
+        case let .requestExplanation(info):
+            try container.encode("requestExplanation", forKey: .type)
+            try container.encode(info, forKey: .data)
         case let .cookies(list):
             try container.encode("cookies", forKey: .type)
             try container.encode(list, forKey: .data)

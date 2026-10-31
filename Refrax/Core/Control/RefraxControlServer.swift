@@ -260,6 +260,10 @@ final class RefraxControlServer {
             try await handlePageVideoViewer(params)
         case let .pagePiP(params):
             try await handlePagePiP(params)
+        case let .pageRequests(params):
+            try await handlePageRequests(params)
+        case let .pageExplain(params):
+            try await handlePageExplain(params)
         // Floating tabs
         case let .floatingTabs(params):
             try handleFloatingTabs(params)
@@ -2006,6 +2010,71 @@ final class RefraxControlServer {
             let after = await statusLine()
             return .ok("PiP \(params.action.rawValue): before [\(before)] → after [\(after)]")
         }
+    }
+
+    // MARK: - Shields
+
+    private func handlePageRequests(_ params: ControlRequest.PageRequestsParams) async throws -> ControlResponse {
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+        let log: RequestLog
+        do {
+            log = try await browserState.shields.requestLog(for: webPage, since: params.since)
+        } catch EngineError.unsupported {
+            return .error(CTL.ErrorInfo(code: "unsupported", message: "\(webPage.activeEngineID) keeps no request log"))
+        }
+        let shown: Set<RequestLogEntry.Decision> = [.blocked, .redirected, .rewritten]
+        let entries = log.entries
+            .filter { !params.blockedOnly || shown.contains($0.decision) }
+            .map { entry in
+                CTL.RequestLogEntryInfo(
+                    seq: entry.seq,
+                    time: entry.time.timeIntervalSince1970,
+                    frameURL: entry.frameURL?.absoluteString,
+                    url: entry.url.absoluteString,
+                    type: entry.type,
+                    method: entry.method,
+                    decision: entry.decision.rawValue,
+                    rule: entry.rule,
+                    list: entry.list,
+                    line: entry.line,
+                    exceptionRule: entry.exceptionRule,
+                    exactness: entry.exactness.rawValue,
+                )
+            }
+        return .requestLog(CTL.RequestLogInfo(
+            engine: webPage.activeEngineID.rawValue,
+            entries: entries,
+            nextSequence: log.nextSequence,
+        ))
+    }
+
+    private func handlePageExplain(_ params: ControlRequest.PageExplainParams) async throws -> ControlResponse {
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+        guard let url = URL(string: params.url), url.scheme != nil else {
+            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Not a URL: \(params.url)"))
+        }
+        let source = webPage.url ?? url
+        let type = params.type ?? ShieldsRequestType(guessingFrom: url).rawValue
+        guard let (explanation, list, exceptionList) = await browserState.shields.explain(url: url, source: source, type: type) else {
+            return .error(CTL.ErrorInfo(code: "unavailable", message: "Shields has no build yet, or the URL has no host"))
+        }
+        return .requestExplanation(CTL.RequestExplanationInfo(
+            url: url.absoluteString,
+            source: source.absoluteString,
+            type: type,
+            shouldBlock: explanation.shouldBlock,
+            important: explanation.important,
+            redirected: explanation.redirected,
+            rewrittenURL: explanation.rewrittenUrl,
+            rule: explanation.rule?.text,
+            list: list,
+            line: explanation.rule?.line,
+            exceptionRule: explanation.exception?.text,
+            exceptionList: exceptionList,
+            exceptionLine: explanation.exception?.line,
+            csp: explanation.csp,
+            siteAllowlisted: !browserState.siteSettingsCoordinator.contentBlockersEnabled(for: source),
+        ))
     }
 
     private func handlePageSource(_ params: ControlRequest.OptionalTabIDParams) async throws -> ControlResponse {

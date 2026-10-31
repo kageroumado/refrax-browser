@@ -1,8 +1,8 @@
 import Foundation
-import WebKit
-@testable import Refrax
 import Synchronization
 import Testing
+import WebKit
+@testable import Refrax
 
 extension Tag {
     @Tag static var engines: Self
@@ -19,8 +19,8 @@ struct PageReducerTests {
     private let example = URL(string: "https://example.com/")!
     private let other = URL(string: "https://other.example/")!
 
-    @Test("A navigation is pending until it commits")
-    func pendingUntilCommit() {
+    @Test
+    func `A navigation is pending until it commits`() {
         let state = reduce([.navigationStarted(url: other)], from: PageSnapshot(url: example))
         #expect(state.url == example)
         #expect(state.pendingURL == other)
@@ -30,12 +30,12 @@ struct PageReducerTests {
         #expect(committed.pendingURL == nil)
     }
 
-    @Test("Commit clears the previous document's decorations")
-    func commitClearsDocumentState() {
+    @Test
+    func `Commit clears the previous document's decorations`() throws {
         let red = RGBAColor(red: 1, green: 0, blue: 0, alpha: 1)
-        let state = reduce([
+        let state = try reduce([
             .navigationCommitted(url: example, isBackForward: false),
-            .faviconsChanged(urls: [URL(string: "https://example.com/icon.png")!]),
+            .faviconsChanged(urls: [#require(URL(string: "https://example.com/icon.png"))]),
             .themeColorChanged(color: red),
             .hoveredLinkChanged(url: other),
             .navigationFinished(url: example, statusCode: 200),
@@ -47,8 +47,8 @@ struct PageReducerTests {
         #expect(state.statusCode == nil)
     }
 
-    @Test("A provisional failure is shown; a cancellation is not")
-    func failures() {
+    @Test
+    func `A provisional failure is shown; a cancellation is not`() {
         let failure = NavigationFailure(
             kind: .cannotFindHost, url: other, isProvisional: true, engineCode: -105, description: "not resolved",
         )
@@ -63,9 +63,9 @@ struct PageReducerTests {
         #expect(recovered.failure == nil)
     }
 
-    @Test("A URL change moves the URL without resetting the page")
-    func sameDocument() {
-        let fragment = URL(string: "https://example.com/#section")!
+    @Test
+    func `A URL change moves the URL without resetting the page`() throws {
+        let fragment = try #require(URL(string: "https://example.com/#section"))
         let state = reduce([
             .navigationCommitted(url: example, isBackForward: false),
             .titleChanged(title: "Example"),
@@ -75,8 +75,8 @@ struct PageReducerTests {
         #expect(state.title == "Example")
     }
 
-    @Test("Progress is clamped and completes when loading stops")
-    func progress() {
+    @Test
+    func `Progress is clamped and completes when loading stops`() {
         #expect(reduce([.progressChanged(progress: 7)]).progress == 1)
         #expect(reduce([.progressChanged(progress: -1)]).progress == 0)
         let done = reduce([.loadingChanged(isLoading: true), .progressChanged(progress: 0.4), .loadingChanged(isLoading: false)])
@@ -84,16 +84,16 @@ struct PageReducerTests {
         #expect(!done.isLoading)
     }
 
-    @Test("Renderer health follows the latest report")
-    func rendererHealth() {
+    @Test
+    func `Renderer health follows the latest report`() {
         let state = reduce([.rendererHealthChanged(health: .terminated(reason: .crashed))])
         #expect(state.rendererHealth == .terminated(reason: .crashed))
         #expect(reduce([.rendererHealthChanged(health: .running)], from: state).rendererHealth == .running)
     }
 
-    @Test("PageState writes only fields that changed")
+    @Test
     @MainActor
-    func observableStateMatchesReducer() {
+    func `PageState writes only fields that changed`() {
         let state = PageState()
         let events: [PageEvent] = [
             .navigationStarted(url: example),
@@ -124,14 +124,14 @@ struct EngineWireTests {
         Data(json.utf8)
     }
 
-    @Test("Decodes the JSON shapes engines emit")
-    func decodesEngineEvents() throws {
+    @Test
+    func `Decodes the JSON shapes engines emit`() throws {
         #expect(try EngineWire.decodeEvent(data(#"{"titleChanged":{"title":"Hi"}}"#)) == .titleChanged(title: "Hi"))
         #expect(try EngineWire.decodeEvent(data(#"{"navigationCommitted":{"url":"https://a.test/","isBackForward":true}}"#))
-            == .navigationCommitted(url: URL(string: "https://a.test/")!, isBackForward: true))
+            == .navigationCommitted(url: #require(URL(string: "https://a.test/")), isBackForward: true))
         #expect(try EngineWire.decodeEvent(data(#"{"hoveredLinkChanged":{"url":null}}"#)) == .hoveredLinkChanged(url: nil))
         #expect(try EngineWire.decodeEvent(data(#"{"navigationFinished":{"url":"https://a.test/","statusCode":null}}"#))
-            == .navigationFinished(url: URL(string: "https://a.test/")!, statusCode: nil))
+            == .navigationFinished(url: #require(URL(string: "https://a.test/")), statusCode: nil))
         #expect(try EngineWire.decodeEvent(data(#"{"rendererHealthChanged":{"health":{"terminated":{"reason":"crashed"}}}}"#))
             == .rendererHealthChanged(health: .terminated(reason: .crashed)))
         #expect(try EngineWire.decodeEvent(data(#"{"fullscreenChanged":{"state":"active"}}"#)) == .fullscreenChanged(state: .active))
@@ -145,30 +145,41 @@ struct EngineWireTests {
         #expect(decoded.urlErrorCode == NSURLErrorCannotFindHost)
     }
 
-    @Test("Encodes commands and requests in the documented shape")
-    func encodesDocumentedShapes() throws {
-        let load = try EngineWire.encode(PageCommand.load(request: URLRequestSpec(url: URL(string: "https://a.test/")!)))
+    @Test
+    func `Encodes commands and requests in the documented shape`() throws {
+        let load = try EngineWire.encode(PageCommand.load(request: URLRequestSpec(url: #require(URL(string: "https://a.test/")))))
         #expect(String(decoding: load, as: UTF8.self) == #"{"load":{"request":{"headers":{},"url":"https:\/\/a.test\/"}}}"#)
-        #expect(String(decoding: try EngineWire.encode(PageCommand.goBack), as: UTF8.self) == #"{"goBack":{}}"#)
+        #expect(try String(decoding: EngineWire.encode(PageCommand.goBack), as: UTF8.self) == #"{"goBack":{}}"#)
         let spec = EnginePageSpec(id: EnginePageID(), profile: .shared, initialURL: nil, opener: nil)
         let object = try JSONSerialization.jsonObject(with: EngineWire.encode(spec)) as? [String: Any]
         #expect((object?["profile"] as? [String: Any])?["shared"] != nil)
         #expect(object?["id"] is String)
     }
 
-    @Test("Encodes policy with the field names the Chromium host reads")
-    func encodesPolicy() throws {
+    @Test
+    func `Encodes policy with the field names the Chromium host reads`() throws {
         // Engines/Chromium/refrax/host reads these by name; a renamed field silently turns
         // the feature off in Chromium pages.
         let blocking = PolicyUpdate.contentBlocking(policy: ContentBlockingPolicy(
-            isEnabled: false,
-            lists: [.init(id: "easylist", contents: "||ads.test^")],
+            isEnabled: true,
+            mode: .aggressive,
+            engine: .init(path: URL(filePath: "/tmp/k/engine.dat"), sha256: "ab", format: "adblock-0.13.3;shields-1"),
+            resources: .init(path: URL(filePath: "/tmp/k/resources.json"), sha256: "cd"),
+            lists: [.init(id: "easylist", sourceIndex: 0)],
             allowlistedHosts: ["a.test"],
         ))
         let blockingObject = try JSONSerialization.jsonObject(with: EngineWire.encode(blocking)) as? [String: Any]
         let policy = (blockingObject?["contentBlocking"] as? [String: Any])?["policy"] as? [String: Any]
-        #expect(policy?["isEnabled"] as? Bool == false)
-        #expect((policy?["lists"] as? [[String: Any]])?.first?["contents"] as? String == "||ads.test^")
+        #expect(policy?["isEnabled"] as? Bool == true)
+        #expect(policy?["mode"] as? String == "aggressive")
+        let engine = policy?["engine"] as? [String: Any]
+        #expect(engine?["path"] as? String == "file:///tmp/k/engine.dat")
+        #expect(engine?["sha256"] as? String == "ab")
+        #expect(engine?["format"] as? String == "adblock-0.13.3;shields-1")
+        #expect((policy?["resources"] as? [String: Any])?["path"] as? String == "file:///tmp/k/resources.json")
+        let list = (policy?["lists"] as? [[String: Any]])?.first
+        #expect(list?["id"] as? String == "easylist")
+        #expect(list?["sourceIndex"] as? Int == 0)
         #expect(policy?["allowlistedHosts"] as? [String] == ["a.test"])
 
         let script = InjectedScript(
@@ -195,8 +206,8 @@ struct EngineWireTests {
         #expect(decisions?["asksByDefault"] as? Bool == false)
     }
 
-    @Test("Decodes engine notification events and encodes their commands")
-    func engineNotifications() throws {
+    @Test
+    func `Decodes engine notification events and encodes their commands`() throws {
         let shown = try EngineWire.decodeEngineEvent(data(#"""
         {"notificationShown":{"profile":{"isolated":{"id":"6F1C2D3E-0000-4000-8000-000000000001"}},
          "notification":{"id":"space-x/p#https://a.test#1","origin":"https://a.test","title":"T","body":"B","isSilent":false}}}
@@ -205,7 +216,7 @@ struct EngineWireTests {
             Issue.record("decoded \(shown)")
             return
         }
-        #expect(profile == .isolated(id: UUID(uuidString: "6F1C2D3E-0000-4000-8000-000000000001")!))
+        #expect(try profile == .isolated(id: #require(UUID(uuidString: "6F1C2D3E-0000-4000-8000-000000000001"))))
         #expect(notification.origin == URL(string: "https://a.test"))
         #expect(notification.tag == nil)
         #expect(throws: EngineError.self) {
@@ -218,22 +229,22 @@ struct EngineWireTests {
         #expect(String(decoding: click, as: UTF8.self) == #"{"notificationClicked":{"id":"n#https:\/\/a.test#t"}}"#)
     }
 
-    @Test("Script values round-trip as plain JSON")
-    func scriptValues() throws {
+    @Test
+    func `Script values round-trip as plain JSON`() throws {
         let value = ScriptValue.object(["a": .array([.number(1), .bool(true), .null, .string("x")])])
-        #expect(String(decoding: try EngineWire.encode(value), as: UTF8.self) == #"{"a":[1,true,null,"x"]}"#)
+        #expect(try String(decoding: EngineWire.encode(value), as: UTF8.self) == #"{"a":[1,true,null,"x"]}"#)
         #expect(try EngineWire.decode(ScriptValue.self, from: data("42")) == .number(42))
         #expect(ScriptValue(foundation: ["k": NSNumber(value: true)]) == .object(["k": .bool(true)]))
     }
 
-    @Test("Rejects oversized messages")
-    func oversized() {
+    @Test
+    func `Rejects oversized messages`() {
         let huge = Data(repeating: UInt8(ascii: " "), count: EngineWire.maximumMessageSize + 1)
         #expect(throws: EngineError.self) { try EngineWire.decodeEvent(huge) }
     }
 
-    @Test("Rejects URLs with schemes an engine may not report")
-    func rejectsSchemes() {
+    @Test
+    func `Rejects URLs with schemes an engine may not report`() {
         #expect(throws: EngineError.self) {
             try EngineWire.decodeEvent(data(#"{"navigationCommitted":{"url":"javascript:alert(1)","isBackForward":false}}"#))
         }
@@ -242,8 +253,8 @@ struct EngineWireTests {
         }
     }
 
-    @Test("Clamps numbers and caps strings")
-    func clamps() throws {
+    @Test
+    func `Clamps numbers and caps strings`() throws {
         #expect(try EngineWire.decodeEvent(data(#"{"zoomChanged":{"factor":1000}}"#)) == .zoomChanged(factor: 10))
         let long = String(repeating: "a", count: EngineWire.maximumStringLength * 2)
         guard case let .titleChanged(title) = try EngineWire.decodeEvent(EngineWire.encode(PageEvent.titleChanged(title: long))) else {
@@ -253,13 +264,13 @@ struct EngineWireTests {
         #expect(title.count == EngineWire.maximumStringLength)
     }
 
-    @Test("Rejects unknown message cases")
-    func unknownCase() {
+    @Test
+    func `Rejects unknown message cases`() {
         #expect(throws: EngineError.self) { try EngineWire.decodeEvent(data(#"{"formatHardDrive":{}}"#)) }
     }
 
-    @Test("Secret requests carry a plain name; answers carry base64 in the shape the host parses")
-    func secretRequests() throws {
+    @Test
+    func `Secret requests carry a plain name; answers carry base64 in the shape the host parses`() throws {
         #expect(try EngineWire.decodeEngineRequest(data(#"{"secret":{"name":"storageKey"}}"#)) == .secret(name: "storageKey"))
         for name in ["", "../other", "a b", "ключ", String(repeating: "k", count: 65)] {
             let request = try String(decoding: JSONSerialization.data(withJSONObject: ["secret": ["name": name]]), as: UTF8.self)
@@ -267,14 +278,14 @@ struct EngineWireTests {
         }
         let answer = try EngineWire.encode(EngineRequestAnswer.secret(value: Data([0xFF, 0x00, 0x7F])))
         #expect(String(decoding: answer, as: UTF8.self) == #"{"secret":{"value":"\/wB\/"}}"#)
-        #expect(String(decoding: try EngineWire.encode(EngineRequestAnswer.unavailable), as: UTF8.self) == #"{"unavailable":{}}"#)
+        #expect(try String(decoding: EngineWire.encode(EngineRequestAnswer.unavailable), as: UTF8.self) == #"{"unavailable":{}}"#)
     }
 }
 
 @Suite("Engine secrets", .tags(.engines))
 struct EngineSecretsTests {
-    @Test("A secret is created once, stays the same, and goes with its engine's data")
-    func lifecycle() throws {
+    @Test
+    func `A secret is created once, stays the same, and goes with its engine's data`() throws {
         let engine = EngineID(rawValue: "test.secrets.\(UUID().uuidString)")
         defer { EngineSecrets.removeSecrets(for: engine) }
         let first = try #require(EngineSecrets.secret(named: "storageKey", for: engine))
@@ -295,8 +306,8 @@ struct EngineSecretsTests {
 
 @Suite("Engine contract versioning and bundles", .tags(.engines))
 struct EngineBundleTests {
-    @Test("Accepts same-major engines no newer than Refrax")
-    func versioning() {
+    @Test
+    func `Accepts same-major engines no newer than Refrax`() {
         let refrax = EngineContractVersion(major: 1, minor: 2)
         #expect(refrax.accepts(EngineContractVersion(major: 1, minor: 0)))
         #expect(refrax.accepts(EngineContractVersion(major: 1, minor: 2)))
@@ -304,13 +315,13 @@ struct EngineBundleTests {
         #expect(!refrax.accepts(EngineContractVersion(major: 2, minor: 0)))
     }
 
-    @Test("Capability names parse, ignoring unknown ones")
-    func capabilityNames() {
+    @Test
+    func `Capability names parse, ignoring unknown ones`() {
         #expect(EngineCapabilities(names: ["zoom", "devTools", "teleportation"]) == [.zoom, .devTools])
     }
 
-    @Test("Reads an engine bundle's descriptor from its Info.plist")
-    func readsDescriptor() throws {
+    @Test
+    func `Reads an engine bundle's descriptor from its Info.plist`() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let bundle = root.appending(path: "Test.engine")
@@ -337,8 +348,8 @@ struct EngineBundleTests {
         #expect(throws: EngineError.self) { try parsed.verifySignature() }
     }
 
-    @Test("Ignores bundles without a contract version")
-    func ignoresNonEngines() throws {
+    @Test
+    func `Ignores bundles without a contract version`() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let bundle = root.appending(path: "NotAnEngine.engine")
@@ -354,8 +365,8 @@ struct EngineBundleTests {
 
 @Suite("Renderer termination policy", .tags(.engines))
 struct RendererTerminationPolicyTests {
-    @Test("Intentional terminations stay unloaded; crashes recover and count")
-    func recoverability() {
+    @Test
+    func `Intentional terminations stay unloaded; crashes recover and count`() {
         #expect(!RendererTerminationReason.requestedByBrowser.isRecoverable)
         #expect(RendererTerminationReason.exceededMemoryLimit.isRecoverable)
         #expect(!RendererTerminationReason.exceededMemoryLimit.isCrash)
@@ -363,17 +374,17 @@ struct RendererTerminationPolicyTests {
         #expect(RendererTerminationReason.sharedProcessCrashed.isCrash)
     }
 
-    @Test("WebKit termination reasons map to contract reasons")
-    func webKitReasons() {
+    @Test
+    func `WebKit termination reasons map to contract reasons`() {
         #expect(RendererTerminationReason(_WKProcessTerminationReason.crash) == .crashed)
         #expect(RendererTerminationReason(_WKProcessTerminationReason.exceededMemoryLimit) == .exceededMemoryLimit)
         #expect(RendererTerminationReason(_WKProcessTerminationReason.requestedByClient) == .requestedByBrowser)
         #expect(RendererTerminationReason(_WKProcessTerminationReason.exceededSharedProcessCrashLimit) == .sharedProcessCrashed)
     }
 
-    @Test("WebKit navigation errors map to failure kinds")
-    func webKitFailures() {
-        let url = URL(string: "https://nope.test/")!
+    @Test
+    func `WebKit navigation errors map to failure kinds`() throws {
+        let url = try #require(URL(string: "https://nope.test/"))
         func kind(_ domain: String, _ code: Int) -> NavigationFailure.Kind? {
             guard case let .navigationFailed(failure) = PageEvent.webKitNavigationFailed(
                 NSError(domain: domain, code: code), url: url, isProvisional: true,
@@ -386,10 +397,10 @@ struct RendererTerminationPolicyTests {
         #expect(kind("WebKitErrorDomain", 102) == .cancelled)
     }
 
-    @Test("A commit revives a terminated renderer")
-    func commitRevives() {
+    @Test
+    func `A commit revives a terminated renderer`() throws {
         var state = PageSnapshot(rendererHealth: .terminated(reason: .crashed))
-        PageReducer.reduce(&state, .navigationCommitted(url: URL(string: "https://a.test/")!, isBackForward: false))
+        try PageReducer.reduce(&state, .navigationCommitted(url: #require(URL(string: "https://a.test/")), isBackForward: false))
         #expect(state.rendererHealth == .running)
     }
 }
@@ -414,8 +425,8 @@ struct EngineRegistryTests {
         return root
     }
 
-    @Test("Discovers installed bundles after system WebKit and resolves names")
-    func discovery() throws {
+    @Test
+    func `Discovers installed bundles after system WebKit and resolves names`() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let registry = EngineRegistry(applicationSupport: root)
@@ -425,8 +436,8 @@ struct EngineRegistryTests {
         #expect(registry.resolve("gecko") == nil)
     }
 
-    @Test("An engine's icon comes from its bundle's CFBundleIconFile")
-    func icon() throws {
+    @Test
+    func `An engine's icon comes from its bundle's CFBundleIconFile`() throws {
         let id = EngineID(rawValue: "test.engine.example")
         let plain = try makeRoot()
         defer { try? FileManager.default.trashItem(at: plain, resultingItemURL: nil) }
@@ -450,8 +461,8 @@ struct EngineRegistryTests {
         #expect(registry.icon(for: .systemWebKit) == nil)
     }
 
-    @Test("A page starts in the engine its tab was moved to, else the default")
-    func startingEngine() throws {
+    @Test
+    func `A page starts in the engine its tab was moved to, else the default`() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let registry = EngineRegistry(applicationSupport: root)
@@ -465,8 +476,8 @@ struct EngineRegistryTests {
         #expect(WebPagePool.startingEngine(pinned: missing.rawValue, default: example, registry: registry) == .systemWebKit)
     }
 
-    @Test("The default engine setting stores WebKit as empty")
-    func defaultEngineSetting() {
+    @Test
+    func `The default engine setting stores WebKit as empty`() {
         let settings = BrowserSettings()
         #expect(settings.defaultEngineID == .systemWebKit)
         settings.defaultEngineID = EngineID(rawValue: "test.engine.example")
@@ -475,8 +486,8 @@ struct EngineRegistryTests {
         #expect(settings.defaultEngineIDRaw.isEmpty)
     }
 
-    @Test("Uninstalling removes the engine; system WebKit can't be removed")
-    func uninstall() throws {
+    @Test
+    func `Uninstalling removes the engine; system WebKit can't be removed`() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let registry = EngineRegistry(applicationSupport: root)
@@ -491,8 +502,8 @@ struct EngineRegistryTests {
 @Suite("Engine scripts and channels", .tags(.engines))
 @MainActor
 struct EngineScriptTests {
-    @Test("The registry exports scripts in injection order with their worlds")
-    func exportsScripts() {
+    @Test
+    func `The registry exports scripts in injection order with their worlds`() {
         let registry = ScriptRegistry()
         let isolated = WKContentWorld.world(name: "RefraxScripts")
         registry.register(
@@ -512,8 +523,8 @@ struct EngineScriptTests {
         #expect(scripts[1].mainFrameOnly)
     }
 
-    @Test("Applying scripts announces them to engines")
-    func announcesOnApply() {
+    @Test
+    func `Applying scripts announces them to engines`() {
         let registry = ScriptRegistry()
         var announced: [InjectedScript]?
         registry.onApply = { announced = $0 }
@@ -522,8 +533,8 @@ struct EngineScriptTests {
         #expect(announced?.map(\.source) == ["x()"])
     }
 
-    @Test("The router grants channels per world and delivers to the right handler")
-    func routes() {
+    @Test
+    func `The router grants channels per world and delivers to the right handler`() {
         let router = ScriptChannelRouter(userContentController: WKUserContentController())
         var received: [String] = []
         router.register("pageChannel") { message, _ in received.append("page:\(message.body["n"]?.stringValue ?? "")") }
@@ -539,8 +550,8 @@ struct EngineScriptTests {
         #expect(received == ["page:1"])
     }
 
-    @Test("A channel name opened in two worlds reaches the handler of the posting world")
-    func routesByWorld() {
+    @Test
+    func `A channel name opened in two worlds reaches the handler of the posting world`() {
         let router = ScriptChannelRouter(userContentController: WKUserContentController())
         let worldA = ScriptRequest.World.isolated(name: "userscript.a")
         let worldB = ScriptRequest.World.isolated(name: "userscript.b")
@@ -559,14 +570,22 @@ struct EngineScriptTests {
         #expect(router.channelNames(in: worldB).isEmpty)
     }
 
-    @Test("Every dispatch settles the script's promise exactly once")
-    func replies() async {
+    @Test
+    func `Every dispatch settles the script's promise exactly once`() async {
         struct Failure: LocalizedError {
-            var errorDescription: String? { "nope" }
+            var errorDescription: String? {
+                "nope"
+            }
         }
         let router = ScriptChannelRouter(userContentController: WKUserContentController())
         router.register("oneWay") { _, _ in }
-        router.register("answers", replyingWith: { message, _ in .number((message.body["n"].flatMap { if case let .number(n) = $0 { n } else { nil } } ?? 0) * 2) })
+        router.register("answers", replyingWith: { message, _ in .number((message.body["n"].flatMap {
+            if case let .number(n) = $0 {
+                n
+            } else {
+                nil
+            }
+        } ?? 0) * 2) })
         router.register("fails", replyingWith: { _, _ in throw Failure() })
 
         let replies = Mutex<[String: [ScriptReply]]>([:])
@@ -589,33 +608,32 @@ struct EngineScriptTests {
         }
     }
 
-    @Test("Download events and requests are validated like every other message")
-    func downloadWire() throws {
+    @Test
+    func `Download events and requests are validated like every other message`() throws {
         let progressed = try EngineWire.decodeEvent(Data(#"{"downloadProgressed":{"id":"7","receivedBytes":-5,"totalBytes":-1}}"#.utf8))
         #expect(progressed == .downloadProgressed(id: "7", receivedBytes: 0, totalBytes: 0))
 
         let request = try EngineWire.decodeRequest(Data(#"{"download":{"id":"7","url":"https://a.example/f.zip","suggestedFilename":"f.zip","totalBytes":42}}"#.utf8))
-        #expect(request == .download(id: "7", url: URL(string: "https://a.example/f.zip")!, suggestedFilename: "f.zip", mimeType: nil, totalBytes: 42))
+        #expect(try request == .download(id: "7", url: #require(URL(string: "https://a.example/f.zip")), suggestedFilename: "f.zip", mimeType: nil, totalBytes: 42))
 
         #expect(throws: (any Error).self) {
             try EngineWire.decodeRequest(Data(#"{"download":{"id":"7","url":"javascript:alert(1)","suggestedFilename":"f"}}"#.utf8))
         }
     }
 
-    @Test("Replies use the contract's labeled-case wire form")
-    func replyWire() throws {
+    @Test
+    func `Replies use the contract's labeled-case wire form`() throws {
         let value = try String(decoding: EngineWire.encode(ScriptReply.value(value: .object(["a": .bool(true)]))), as: UTF8.self)
         #expect(value == #"{"value":{"value":{"a":true}}}"#)
         let error = try String(decoding: EngineWire.encode(ScriptReply.error(message: "x")), as: UTF8.self)
         #expect(error == #"{"error":{"message":"x"}}"#)
     }
 
-    @Test("Foundation numbers bridge to Int for handlers written against WebKit messages")
-    func foundationNumbers() {
+    @Test
+    func `Foundation numbers bridge to Int for handlers written against WebKit messages`() {
         let body = ScriptValue.object(["index": .number(3), "ratio": .number(0.5)]).foundationValue as? [String: Any]
         #expect(body?["index"] as? Int == 3)
         #expect(body?["ratio"] as? Int == nil)
         #expect(body?["ratio"] as? Double == 0.5)
     }
-
 }

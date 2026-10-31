@@ -19,7 +19,7 @@ final class EngineRegistry {
         capabilities: [
             .javaScriptEvaluation, .findInPage, .zoom, .snapshots, .devTools, .downloads, .contentBlocking,
             .userScripts, .webExtensions, .pictureInPicture, .mediaCapture, .agentPerception,
-            .autoFill, .processInfo, .rendererControl, .notifications,
+            .autoFill, .processInfo, .rendererControl, .notifications, .requestLog,
         ],
         isOutOfProcess: false,
     )
@@ -41,6 +41,17 @@ final class EngineRegistry {
 
     /// Receives every running engine's events that belong to no page.
     @ObservationIgnored var engineEventHandler: ((EngineID, EngineEvent) -> Void)?
+
+    /// What each engine last reported about the `contentBlocking` policy: whether it filters
+    /// with Shields' current build, or why not.
+    private(set) var contentBlockingStatus: [EngineID: (status: ContentBlockingStatus, sha256: String?, reason: String?)] = [:]
+
+    func recordContentBlockingStatus(_ status: ContentBlockingStatus, sha256: String?, reason: String?, for id: EngineID) {
+        contentBlockingStatus[id] = (status, sha256, reason)
+        if status == .unfiltered, let reason {
+            Logger.warning("\(id) filters nothing: \(reason)", category: Logger.engines)
+        }
+    }
 
     let enginesDirectory: URL
     let dataDirectory: URL

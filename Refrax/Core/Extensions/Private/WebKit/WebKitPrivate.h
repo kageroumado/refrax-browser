@@ -118,6 +118,7 @@
 
 // Per-navigation webpage preferences (autoplay policy)
 #import "WKWebpagePreferencesPrivate.h"
+#import "WKContentBlockingPrivate.h"
 
 // QuartzCore private layer APIs (CAPortalLayer, CALayerHost, CABackdropLayer)
 #import "QuartzCoreSPI.h"

@@ -18,8 +18,83 @@ struct PageCommand: AsyncParsableCommand {
             FindDismiss.self,
             VideoViewer.self,
             Pip.self,
+            Requests.self,
+            Explain.self,
         ],
     )
+
+    struct Requests: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "requests",
+            abstract: "Show what Shields did to the page's requests",
+            discussion: """
+            Lists the page's requests Shields decided, oldest first, with the filter that \
+            decided each and its list. The Chromium engine logs every decision it makes; \
+            WebKit reports only the loads it blocked or redirected, and Refrax names the rule.
+            
+            Examples:
+              refrax-ctl page requests
+              refrax-ctl page requests --blocked
+              refrax-ctl page requests --since 120 --json
+            """,
+        )
+
+        @Flag(name: .long, help: "Only blocked, redirected and rewritten requests")
+        var blocked = false
+
+        @Option(name: .long, help: "Only entries after this sequence number")
+        var since: Int64 = 0
+
+        @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
+        var tab: String?
+
+        @Option(name: .long, help: "Page ID (for multi-page tabs)")
+        var page: String?
+
+        @Flag(name: .long, help: "Print JSON")
+        var json = false
+
+        func run() async throws {
+            try sendAndHandle(
+                .pageRequests(.init(blockedOnly: blocked, since: since, tabID: tab, pageID: page)),
+                json: json,
+            )
+        }
+    }
+
+    struct Explain: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "explain",
+            abstract: "Explain why Shields blocks or allows a URL on the page",
+            discussion: """
+            Runs the URL through Shields as a request from the current page and prints the \
+            deciding filter, any exception that lifts it, and the list and line of each.
+            
+            Examples:
+              refrax-ctl page explain https://securepubads.g.doubleclick.net/tag/js/gpt.js
+              refrax-ctl page explain https://example.com/ad.png --type image
+            """,
+        )
+
+        @Argument(help: "The URL to explain")
+        var url: String
+
+        @Option(name: .long, help: "Request type: script, image, stylesheet, xmlhttprequest, sub_frame, …")
+        var type: String?
+
+        @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
+        var tab: String?
+
+        @Option(name: .long, help: "Page ID (for multi-page tabs)")
+        var page: String?
+
+        @Flag(name: .long, help: "Print JSON")
+        var json = false
+
+        func run() async throws {
+            try sendAndHandle(.pageExplain(.init(url: url, type: type, tabID: tab, pageID: page)), json: json)
+        }
+    }
 
     struct ZoomIn: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -205,13 +280,13 @@ struct PageCommand: AsyncParsableCommand {
             Drives WebKit's in-window video viewer: the current video expands to \
             fill the web view while browser chrome stays visible, without creating \
             a macOS fullscreen space.
-
+            
             Requires an active playback session — the video must have started \
             playing so it is registered as the page's playback-controls element; \
             without one, enter/exit/toggle are silent no-ops. The `canToggle` \
             status field is advisory (it can read false while enter still works); \
             `active` in the after-state is the authoritative signal.
-
+            
             Examples:
               refrax-ctl page video-viewer status
               refrax-ctl page video-viewer enter
@@ -247,12 +322,12 @@ struct PageCommand: AsyncParsableCommand {
             discussion: """
             Enters or exits the system Picture-in-Picture window for the page's \
             predominant video.
-
+            
             Requires an active playback session — the video must have started \
             playing so it is registered as the page's playback-controls element; \
             without one, enter/exit/toggle are silent no-ops. `active` in the \
             after-state is the authoritative signal.
-
+            
             Examples:
               refrax-ctl page pip status
               refrax-ctl page pip enter

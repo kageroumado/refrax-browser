@@ -30,7 +30,7 @@ final class ExternalEngineHost: NSObject, EngineHost {
     init(bundle: EngineBundle, configuration: EngineConfiguration) {
         self.bundle = bundle
         self.configuration = configuration
-        (events, eventContinuation) = AsyncStream.makeStream()
+        (self.events, self.eventContinuation) = AsyncStream.makeStream()
         super.init()
     }
 
@@ -182,9 +182,9 @@ final class ExternalEnginePage: NSObject, EnginePage {
         self.id = id
         self.engine = engine
         self.runtimePage = runtimePage
-        (events, eventContinuation) = AsyncStream.makeStream()
-        (requests, requestContinuation) = AsyncStream.makeStream()
-        (messages, messageContinuation) = AsyncStream.makeStream()
+        (self.events, self.eventContinuation) = AsyncStream.makeStream()
+        (self.requests, self.requestContinuation) = AsyncStream.makeStream()
+        (self.messages, self.messageContinuation) = AsyncStream.makeStream()
         super.init()
         runtimePage.delegate = self
     }
@@ -215,7 +215,7 @@ final class ExternalEnginePage: NSObject, EnginePage {
 
     func snapshot(of rect: CGRect?) async throws -> CGImage {
         guard let runtimePage else { throw EngineError.pageClosed }
-        let image: CGImage = try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             runtimePage.snapshotRect(rect ?? .zero) { image, error in
                 if let image {
                     continuation.resume(returning: image)
@@ -224,7 +224,17 @@ final class ExternalEnginePage: NSObject, EnginePage {
                 }
             }
         }
-        return image
+    }
+
+    func requestLog(since sequence: Int64) async throws -> RequestLog {
+        guard let runtimePage else { throw EngineError.pageClosed }
+        guard engine.capabilities.contains(.requestLog), runtimePage.responds(to: #selector(RFXEnginePage.requestLog(since:completion:))) else {
+            throw EngineError.unsupported(.requestLog)
+        }
+        let data: Data = await withCheckedContinuation { continuation in
+            runtimePage.requestLog?(since: sequence) { continuation.resume(returning: $0) }
+        }
+        return try EngineWire.decodeRequestLog(data)
     }
 
     func close() {
@@ -297,7 +307,7 @@ extension ExternalEnginePage: RFXEnginePageDelegate {
 }
 
 /// Guarantees an engine's reply block runs exactly once, on the main thread.
-private nonisolated final class ReplyOnce: @unchecked Sendable {
+private final nonisolated class ReplyOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var reply: ((Data) -> Void)?
 

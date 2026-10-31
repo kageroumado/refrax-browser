@@ -526,25 +526,9 @@ extension WebPage {
     }
 }
 
-// MARK: - Content Blocker Bypass
+// MARK: - Stopping
 
 extension WebPage {
-    /// Reloads the page without content blockers if we haven't already bypassed for this host.
-    func reloadWithoutContentBlockersIfNeeded(for url: URL) {
-        guard let host = url.host else { return }
-        guard lastContentBlockerBypassHost != host else { return }
-        lastContentBlockerBypassHost = host
-        reloadWithoutContentBlockers()
-    }
-
-    /// Clears any recorded content blocker bypass for the host.
-    func clearContentBlockerBypass(for url: URL) {
-        guard let host = url.host else { return }
-        if lastContentBlockerBypassHost == host {
-            lastContentBlockerBypassHost = nil
-        }
-    }
-
     /// Stops loading the current page.
     ///
     /// When stopping a provisional navigation on a page with no prior committed
@@ -748,6 +732,7 @@ extension WebPage {
 
         updateAutoFillURL(newURL)
         lastCommittedURL = newURL
+        shieldsLog.documentCommitted()
 
         if let siteSettingsCoordinator {
             siteSettingsCoordinator.apply(to: self, for: newURL)

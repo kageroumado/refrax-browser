@@ -8,7 +8,7 @@ import AppKit
 /// adds messages or optional fields. Refrax loads an engine when the majors
 /// match and the engine's minor is not newer than Refrax's.
 nonisolated struct EngineContractVersion: Codable, Hashable, Sendable, Comparable, CustomStringConvertible {
-    static let current = EngineContractVersion(major: 1, minor: 2)
+    static let current = EngineContractVersion(major: 2, minor: 0)
 
     let major: Int
     let minor: Int
@@ -104,6 +104,8 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
     static let rendererControl = EngineCapabilities(rawValue: 1 << 15)
     /// The engine reports notifications with `notificationShown` and handles the click and close commands.
     static let notifications = EngineCapabilities(rawValue: 1 << 16)
+    /// The engine answers ``EnginePage/requestLog(since:)`` with its content-blocking decisions.
+    static let requestLog = EngineCapabilities(rawValue: 1 << 17)
 
     /// Names used in an engine bundle's `RFXEngineCapabilities` Info.plist array.
     static let namesByCapability: [(String, EngineCapabilities)] = [
@@ -113,6 +115,7 @@ nonisolated struct EngineCapabilities: OptionSet, Codable, Hashable, Sendable {
         ("pictureInPicture", .pictureInPicture), ("mediaCapture", .mediaCapture),
         ("agentPerception", .agentPerception), ("autoFill", .autoFill), ("processInfo", .processInfo),
         ("rendererControl", .rendererControl), ("notifications", .notifications),
+        ("requestLog", .requestLog),
     ]
 }
 

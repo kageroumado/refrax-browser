@@ -98,6 +98,13 @@ ShieldsStatus shields_filter_set_add_list(ShieldsFilterSet *set,
 ShieldsStatus shields_filter_set_to_webkit_rules(const ShieldsFilterSet *set,
                                                  ShieldsBuffer *out_json);
 
+// Per-list counts for the Filters settings, as a JSON array in list order:
+//   [{"sourceIndex", "network", "cosmetic", "scriptlets", "procedural", "invalid",
+//     "invalidExamples": [line...]}]
+// "invalid" counts lines that are neither comments nor filters adblock-rust understands; up to
+// five of them are quoted. The set stays usable.
+ShieldsStatus shields_filter_set_stats(const ShieldsFilterSet *set, ShieldsBuffer *out_json);
+
 // MARK: Engines
 
 typedef struct ShieldsEngine ShieldsEngine;
@@ -180,13 +187,60 @@ ShieldsStatus shields_engine_csp_directives(const ShieldsEngine *engine,
                                             const char *request_type,
                                             ShieldsBuffer *out);
 
+// Why a request is decided as it is, for the request logger and `refrax-ctl page explain`, as
+// JSON:
+//   {"shouldBlock", "important", "redirected", "rewrittenUrl"?,
+//    "rule"?: {"text"?, "sourceIndex"?, "line"?}, "exception"?: {...}, "csp"?}
+// Unlike shields_engine_check_request it reports a matching exception even when no filter
+// blocks. Rule text and locations need an engine built from a debug set.
+ShieldsStatus shields_engine_explain(const ShieldsEngine *engine,
+                                     const char *url,
+                                     const char *source_url,
+                                     const char *request_type,
+                                     const char *method,
+                                     ShieldsBuffer *out_json);
+
+// MARK: Resources
+
+// Validates a resources.json (shields_engine_use_resources' input) before it replaces a known
+// good one: it must decode, and every dependency must name a resource in it. Writes
+//   {"resources", "redirects", "scriptlets"}   (counts)
+// SHIELDS_INVALID_DATA when it fails either check.
+ShieldsStatus shields_resources_check(const uint8_t *json, size_t json_len, ShieldsBuffer *out_json);
+
+// MARK: WebKit (app only)
+
+// Version of the WebKit pass below; part of the app's cache key. 0 without `content-blocking`.
+uint32_t shields_webkit_pass_version(void);
+
+// Writes WebKit artifacts for `set` into `directory` (created if needed):
+//   network-<n>.json    WKContentRuleList JSON: blocks, every exception after them,
+//                       $important blocks after those, $redirect (data: URL) and $removeparam
+//                       (query transform) actions, which need the list enabled through
+//                       _activeContentRuleListActionPatterns
+//   cosmetic-<n>.json   css-display-none rules with $generichide/$document exceptions
+//   scripts.json        [{"name", "world": "page"|"shields", "source", "includes": [pattern]}]:
+//                       scriptlets and procedural/:style() filters as document-start user
+//                       scripts for every frame
+// and returns {"passVersion", "networkLists", "cosmeticLists", "scripts", "counts": {...,
+// "unsupported": {reason: count}}}. `engine` must be built from `set` with resources installed;
+// `options_json` is {"maxRulesPerList"?} or empty. The set must be a debug set.
+ShieldsStatus shields_webkit_compile(const ShieldsFilterSet *set,
+                                     const ShieldsEngine *engine,
+                                     const uint8_t *options_json,
+                                     size_t options_len,
+                                     const char *directory,
+                                     ShieldsBuffer *out_summary_json);
+
 // MARK: Cosmetic filtering
 
 // What to apply to a document at `url` before its scripts run, as JSON:
 //   {"hide_selectors": [css selector...],       hide with display:none !important
 //    "procedural_actions": [json string...],    procedural/action filters for the page script
 //    "exceptions": [selector...],               pass to hidden_class_id_selectors
-//    "injected_script": "<js>",                 scriptlets, run in the page's main world
+//    "injected_script": "<js>",                 scriptlets, run in the page's main world as
+//                                               (function(){ const scriptletGlobals = {};
+//                                               <js> })(); uBO's scriptlets read that object
 //    "generichide": bool}                       true: skip generic class/id hiding
 ShieldsStatus shields_engine_url_cosmetic_resources(const ShieldsEngine *engine,
                                                     const char *url,

@@ -48,6 +48,8 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     case enableAutoConsent
     case hideSignInPrompts
     case enableFingerprintingProtection
+    case enableContentBlocking
+    case aggressiveContentBlocking
     case allowWebsiteNotificationRequests
     case automaticHistoryCleanup
     case contentProtectionBypassEnabled
@@ -385,6 +387,26 @@ extension BrowserSettingKey {
                 highlightID: "privacy.fingerprinting",
                 valueKind: .toggle,
             )
+        case .enableContentBlocking:
+            SettingMetadata(
+                displayName: "Block Ads and Trackers",
+                description: "Filter ads, trackers and annoyances with Shields",
+                keywords: ["ad", "ads", "adblock", "block", "tracker", "shields", "ublock", "filter", "content blocking"],
+                icon: "shield.lefthalf.filled",
+                category: .privacy,
+                highlightID: "privacy.shields",
+                valueKind: .toggle,
+            )
+        case .aggressiveContentBlocking:
+            SettingMetadata(
+                displayName: "Aggressive Blocking",
+                description: "Also block first-party requests filters match (Chromium engine)",
+                keywords: ["aggressive", "first-party", "shields", "adblock", "strict"],
+                icon: "shield.fill",
+                category: .privacy,
+                highlightID: "privacy.shieldsMode",
+                valueKind: .toggle,
+            )
         case .allowWebsiteNotificationRequests:
             SettingMetadata(
                 displayName: "Allow Websites to Ask for Notifications",
@@ -561,6 +583,8 @@ extension BrowserSettingKey {
         case .enableAutoConsent: .bool(settings.enableAutoConsent)
         case .hideSignInPrompts: .bool(settings.hideSignInPrompts)
         case .enableFingerprintingProtection: .bool(settings.enableFingerprintingProtection)
+        case .enableContentBlocking: .bool(settings.enableContentBlocking)
+        case .aggressiveContentBlocking: .bool(settings.aggressiveContentBlocking)
         case .allowWebsiteNotificationRequests: .bool(settings.allowWebsiteNotificationRequests)
         case .automaticHistoryCleanup: .bool(settings.automaticHistoryCleanup)
         case .contentProtectionBypassEnabled: .bool(settings.contentProtectionBypassEnabled)
@@ -714,6 +738,14 @@ extension BrowserSettingKey {
         case .enableFingerprintingProtection:
             if case let .bool(v) = value {
                 settings.enableFingerprintingProtection = v
+            }
+        case .enableContentBlocking:
+            if case let .bool(v) = value {
+                settings.enableContentBlocking = v
+            }
+        case .aggressiveContentBlocking:
+            if case let .bool(v) = value {
+                settings.aggressiveContentBlocking = v
             }
         case .allowWebsiteNotificationRequests:
             if case let .bool(v) = value {

@@ -99,6 +99,21 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property (nonatomic, setter=_setNetworkConnectionIntegrityPolicy:) _WKWebsiteNetworkConnectionIntegrityPolicy _networkConnectionIntegrityPolicy API_AVAILABLE(macos(13.3), ios(16.4));
 
+/**
+ * Which content rule lists the navigation's document applies: all of them when `enabled`, except
+ * the identifiers in `exceptions` (or none of them, except those). Replaces any earlier setting,
+ * including `_contentBlockersEnabled`. Subresources and subframes follow their main document's
+ * setting.
+ */
+- (void)_setContentRuleListsEnabled:(BOOL)enabled exceptions:(NSSet<NSString *> *)exceptions API_AVAILABLE(macos(14.0));
+
+/**
+ * Content rule list identifier → URL match patterns whose loads may take that list's
+ * `redirect` and `modify-headers` actions. Lists not named here only block, hide and lift.
+ * Matched by exact identifier (`DocumentLoader::allowsActiveContentRuleListActionsForURL`).
+ */
+@property (nonatomic, copy, setter=_setActiveContentRuleListActionPatterns:) NSDictionary<NSString *, NSSet<NSString *> *> *_activeContentRuleListActionPatterns API_AVAILABLE(macos(13.0), ios(16.0));
+
 @end
 
 NS_ASSUME_NONNULL_END

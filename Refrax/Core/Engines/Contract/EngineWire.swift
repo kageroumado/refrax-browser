@@ -9,9 +9,9 @@ import Foundation
 /// misbehaving engine.
 nonisolated enum EngineWire {
     /// Largest event, request, or reply accepted from an engine.
-    static let maximumMessageSize = 256 * 1024
-    static let maximumStringLength = 8 * 1024
-    static let maximumURLLength = 64 * 1024
+    static let maximumMessageSize = 256 * 1_024
+    static let maximumStringLength = 8 * 1_024
+    static let maximumURLLength = 64 * 1_024
     static let maximumFavicons = 32
 
     /// Schemes an engine may report for page URLs.
@@ -68,17 +68,17 @@ nonisolated enum EngineWire {
     static func validated(_ event: PageEvent) throws -> PageEvent {
         switch event {
         case let .navigationStarted(url):
-            return try .navigationStarted(url: checked(url))
+            try .navigationStarted(url: checked(url))
         case let .navigationRedirected(url):
-            return try .navigationRedirected(url: checked(url))
+            try .navigationRedirected(url: checked(url))
         case let .navigationCommitted(url, isBackForward):
-            return try .navigationCommitted(url: checked(url), isBackForward: isBackForward)
+            try .navigationCommitted(url: checked(url), isBackForward: isBackForward)
         case let .urlChanged(url):
-            return try .urlChanged(url: checked(url))
+            try .urlChanged(url: checked(url))
         case let .navigationFinished(url, statusCode):
-            return try .navigationFinished(url: checked(url), statusCode: statusCode.map { min(max($0, 0), 999) })
+            try .navigationFinished(url: checked(url), statusCode: statusCode.map { min(max($0, 0), 999) })
         case let .navigationFailed(failure):
-            return try .navigationFailed(failure: NavigationFailure(
+            try .navigationFailed(failure: NavigationFailure(
                 kind: failure.kind,
                 url: failure.url.map(checked),
                 isProvisional: failure.isProvisional,
@@ -86,42 +86,80 @@ nonisolated enum EngineWire {
                 description: capped(failure.description),
             ))
         case let .titleChanged(title):
-            return .titleChanged(title: capped(title))
+            .titleChanged(title: capped(title))
         case let .progressChanged(progress):
-            return .progressChanged(progress: clamped(progress, 0 ... 1))
+            .progressChanged(progress: clamped(progress, 0 ... 1))
         case let .faviconsChanged(urls):
-            return try .faviconsChanged(urls: urls.prefix(maximumFavicons).map(checked))
+            try .faviconsChanged(urls: urls.prefix(maximumFavicons).map(checked))
         case let .themeColorChanged(color):
-            return .themeColorChanged(color: color.map(clamped))
+            .themeColorChanged(color: color.map(clamped))
         case let .topEdgeColorChanged(color):
-            return .topEdgeColorChanged(color: color.map(clamped))
+            .topEdgeColorChanged(color: color.map(clamped))
         case let .hoveredLinkChanged(url):
-            return try .hoveredLinkChanged(url: url.map(checked))
+            try .hoveredLinkChanged(url: url.map(checked))
         case let .zoomChanged(factor):
-            return .zoomChanged(factor: clamped(factor, 0.1 ... 10))
+            .zoomChanged(factor: clamped(factor, 0.1 ... 10))
         case let .downloadProgressed(id, receivedBytes, totalBytes):
-            return .downloadProgressed(id: capped(id), receivedBytes: max(receivedBytes, 0), totalBytes: totalBytes.map { max($0, 0) })
+            .downloadProgressed(id: capped(id), receivedBytes: max(receivedBytes, 0), totalBytes: totalBytes.map { max($0, 0) })
         case let .downloadFinished(id):
-            return .downloadFinished(id: capped(id))
+            .downloadFinished(id: capped(id))
         case let .downloadFailed(id, reason):
-            return .downloadFailed(id: capped(id), reason: capped(reason))
+            .downloadFailed(id: capped(id), reason: capped(reason))
         case let .notificationShown(notification):
-            return try .notificationShown(notification: validated(notification))
+            try .notificationShown(notification: validated(notification))
         case let .notificationClosed(id):
-            return .notificationClosed(id: capped(id))
+            .notificationClosed(id: capped(id))
         case .loadingChanged, .backForwardChanged, .securityChanged, .mediaChanged, .fullscreenChanged,
              .rendererHealthChanged:
-            return event
+            event
         }
     }
 
     static func validated(_ event: EngineEvent) throws -> EngineEvent {
         switch event {
         case let .notificationShown(profile, notification):
-            return try .notificationShown(profile: profile, notification: validated(notification))
+            try .notificationShown(profile: profile, notification: validated(notification))
         case let .notificationClosed(id):
-            return .notificationClosed(id: capped(id))
+            .notificationClosed(id: capped(id))
+        case let .contentBlockingStatus(status, sha256, reason):
+            .contentBlockingStatus(status: status, sha256: sha256.map(capped), reason: reason.map(capped))
         }
+    }
+
+    /// Largest request log reply accepted: 2,000 entries of a few hundred bytes each.
+    static let maximumRequestLogSize = 4 * 1_024 * 1_024
+
+    static func decodeRequestLog(_ data: Data) throws -> RequestLog {
+        guard data.count <= maximumRequestLogSize else {
+            throw EngineError.malformedMessage("\(data.count)-byte request log exceeds the \(maximumRequestLogSize)-byte limit")
+        }
+        let log: RequestLog
+        do {
+            log = try decoder.decode(RequestLog.self, from: data)
+        } catch {
+            throw EngineError.malformedMessage(String(describing: error))
+        }
+        let entries = try log.entries.prefix(2_000).map { entry in
+            var valid = try RequestLogEntry(
+                seq: entry.seq,
+                time: entry.time,
+                frameURL: entry.frameURL.map(checked),
+                url: checked(entry.url),
+                type: capped(entry.type),
+                method: capped(entry.method),
+                decision: entry.decision,
+                exactness: entry.exactness,
+            )
+            valid.rule = entry.rule.map(capped)
+            valid.list = entry.list.map(capped)
+            valid.line = entry.line.map { max($0, 0) }
+            valid.exceptionRule = entry.exceptionRule.map(capped)
+            valid.rewrittenURL = try entry.rewrittenURL.map(checked)
+            valid.csp = entry.csp.map(capped)
+            valid.sparedFirstParty = entry.sparedFirstParty
+            return valid
+        }
+        return RequestLog(entries: entries, nextSequence: log.nextSequence)
     }
 
     static func validated(_ request: EngineRequest) throws -> EngineRequest {
@@ -153,25 +191,25 @@ nonisolated enum EngineWire {
     static func validated(_ request: PageRequestKind) throws -> PageRequestKind {
         switch request {
         case let .openURL(url, disposition, userGesture, isNewWindowRequest):
-            return try .openURL(
+            try .openURL(
                 url: checked(url),
                 disposition: disposition,
                 userGesture: userGesture,
                 isNewWindowRequest: isNewWindowRequest,
             )
         case let .navigation(url, kind, initiatorOrigin):
-            return try .navigation(url: checked(url), kind: kind, initiatorOrigin: initiatorOrigin.map(capped))
+            try .navigation(url: checked(url), kind: kind, initiatorOrigin: initiatorOrigin.map(capped))
         case let .permission(kind, origin):
-            return try .permission(kind: kind, origin: checked(origin))
+            try .permission(kind: kind, origin: checked(origin))
         case let .javaScriptDialog(dialog):
-            return try .javaScriptDialog(dialog: JavaScriptDialog(
+            try .javaScriptDialog(dialog: JavaScriptDialog(
                 kind: dialog.kind,
                 message: capped(dialog.message),
                 defaultText: dialog.defaultText.map(capped),
                 origin: dialog.origin.map(checked),
             ))
         case let .download(id, url, suggestedFilename, mimeType, totalBytes):
-            return try .download(
+            try .download(
                 id: capped(id),
                 url: checked(url),
                 suggestedFilename: capped(suggestedFilename),

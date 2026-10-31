@@ -35,11 +35,6 @@ final class ContentScriptManager {
     /// Content world for scripts (isolated from page scripts).
     private let scriptWorld = WKContentWorld.world(name: "RefraxScripts")
 
-    // MARK: - Content Blocking
-
-    /// The content blocking manager for dynamic filter lists.
-    let contentBlockingManager = ContentBlockingManager()
-
     // MARK: - State
 
     private var isSetUp = false
@@ -49,6 +44,7 @@ final class ContentScriptManager {
     private var isGPCChannelOpen = false
     private var gpcTelemetryHosts: Set<String> = []
     private var settingsObservationTask: Task<Void, Never>?
+    private var shieldsSettingsTask: Task<Void, Never>?
 
     // Content script IDs
     private var contentProtectionScriptID: UUID?
@@ -74,7 +70,7 @@ final class ContentScriptManager {
     private var webStorePageScriptID: UUID?
     private var webStoreScriptID: UUID?
 
-    // Appearance observation
+    /// Appearance observation
     private var appearanceObserver: NSKeyValueObservation?
 
     // MARK: - Rule List Templates
@@ -244,15 +240,15 @@ final class ContentScriptManager {
       if (window.top === window.self) return;
       if (window.__refraxAutoFillFocusInstalled) return;
       window.__refraxAutoFillFocusInstalled = true;
-
+    
       const handlerName = '\(Constants.App.autoFillFocusHandlerName)';
-
+    
       function post(body) {
         try {
           window.webkit?.messageHandlers?.[handlerName]?.postMessage(body);
         } catch (e) {}
       }
-
+    
       function describe(el) {
         let label = null;
         if (el.id) {
@@ -261,7 +257,7 @@ final class ContentScriptManager {
         }
         if (!label && el.closest('label')) label = el.closest('label').textContent.trim();
         if (!label && el.getAttribute('aria-label')) label = el.getAttribute('aria-label');
-
+    
         const rect = el.getBoundingClientRect();
         return {
           type: (el.type || 'text').toLowerCase(),
@@ -274,16 +270,16 @@ final class ContentScriptManager {
           rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
         };
       }
-
+    
       function isField(el) {
         return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
       }
-
+    
       document.addEventListener('focusin', (e) => {
         if (!isField(e.target)) return;
         post({ action: 'focus', href: location.href, field: describe(e.target) });
       }, true);
-
+    
       document.addEventListener('focusout', (e) => {
         if (!isField(e.target)) return;
         post({ action: 'blur', href: location.href });
@@ -332,13 +328,25 @@ final class ContentScriptManager {
 
     // MARK: - Content Blocking
 
+    /// Starts Shields with the current settings and per-site allowlist, and keeps both current.
     private func setupContentBlocking() async {
-        // Use the new dynamic content blocking manager
-        await contentBlockingManager.setup(
-            userContentController: state.webPageConfiguration.userContentController,
-        )
+        let shields = state.shields
+        let settings = state.settings
+        shields.setEnabled(settings.enableContentBlocking)
+        shields.setMode(settings.aggressiveContentBlocking ? .aggressive : .standard)
+        shields.setAllowlistedHosts(state.siteSettingsCoordinator.contentBlockingAllowlist)
+        state.siteSettingsCoordinator.onContentBlockingAllowlistChange = { [weak shields] hosts in
+            shields?.setAllowlistedHosts(hosts)
+        }
+        let changes = Observations { (settings.enableContentBlocking, settings.aggressiveContentBlocking) }
+        shieldsSettingsTask = Task(name: "Shields settings") { [weak shields] in
+            for await (enabled, aggressive) in changes {
+                shields?.setEnabled(enabled)
+                shields?.setMode(aggressive ? .aggressive : .standard)
+            }
+        }
+        await shields.start()
         state.setContentBlockingReady(true)
-        Logger.info("Content blocker enabled via ContentBlockingManager", category: Logger.tabs)
     }
 
     private func attachThirdPartyCookieRuleList(_ ruleList: WKContentRuleList) {
@@ -1038,5 +1046,3 @@ private final class AutoFillFocusHandler: NSObject, WKScriptMessageHandler {
         }
     }
 }
-
-

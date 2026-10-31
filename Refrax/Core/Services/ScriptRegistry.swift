@@ -78,6 +78,10 @@ final class ScriptRegistry {
 
         /// MCP agent session scripts.
         case agent(sessionID: UUID)
+
+        /// Shields' scriptlets and procedural filters for WebKit. Other engines apply the same
+        /// filters with their own cosmetic layer, so these stay out of ``injectedScripts``.
+        case shields
     }
 
     // MARK: - Properties
@@ -89,10 +93,14 @@ final class ScriptRegistry {
     var onApply: (([InjectedScript]) -> Void)?
 
     /// The current number of registered scripts.
-    var count: Int { registrations.count }
+    var count: Int {
+        registrations.count
+    }
 
     /// Whether the registry has no registered scripts.
-    var isEmpty: Bool { registrations.isEmpty }
+    var isEmpty: Bool {
+        registrations.isEmpty
+    }
 
     // MARK: - Registration
 
@@ -230,9 +238,9 @@ final class ScriptRegistry {
         onApply?(injectedScripts)
     }
 
-    /// The registered scripts in engine-neutral form, in injection order.
+    /// The registered scripts in engine-neutral form, in injection order, without Shields'.
     var injectedScripts: [InjectedScript] {
-        orderedRegistrations.map { registration in
+        orderedRegistrations.filter { $0.source != .shields }.map { registration in
             InjectedScript(
                 id: "\(registration.source).\(registration.id.uuidString)",
                 source: registration.script.source,
@@ -267,6 +275,8 @@ extension ScriptRegistry.ScriptSource: CustomStringConvertible {
             "extension(\(id))"
         case let .agent(sessionID):
             "agent(\(sessionID.uuidString.prefix(8)))"
+        case .shields:
+            "shields"
         }
     }
 }

@@ -225,7 +225,7 @@ struct ControlIslandPageBranch: View {
     // MARK: - Controls
 
     /// Copy Address (its slot reserved at the leading edge, shown while the card is hovered),
-    /// Reload, Favorite, and the page options.
+    /// Shields, Reload, Favorite, and the page options.
     private func controls(_ tab: Tab) -> some View {
         let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabs, bookmarks: bookmarks)
         return HStack(spacing: Layout.controlSpacing) {
@@ -235,6 +235,7 @@ struct ControlIslandPageBranch: View {
                 .accessibilityHidden(!showsCopyAddress)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsCopyAddress)
             PageCardPromptControls(page: page)
+            PageCardShieldsControl(page: page)
             reloadControl
             control(actions.isFavorite ? "Remove from Favorites" : "Favorite", symbol: actions.isFavorite ? "star.fill" : "star") {
                 actions.toggleFavorite()

@@ -36,6 +36,9 @@ struct EnginesSettingsView: View {
                         isRunning: registry.runningEngines.contains(descriptor.id),
                         bundleURL: registry.bundleURL(for: descriptor.id),
                         securityFloor: registry.securityFloor(blocking: descriptor.id)?.description,
+                        unfilteredReason: registry.contentBlockingStatus[descriptor.id].flatMap { status in
+                            status.status == .unfiltered ? (status.reason ?? "") : nil
+                        },
                         onRemove: { pendingRemoval = descriptor },
                     )
                 }
@@ -107,6 +110,8 @@ private struct EngineRow: View {
     let bundleURL: URL?
     /// The release this one is below, when it may not run.
     let securityFloor: String?
+    /// Why the running engine filters nothing (Shields' build was refused), when it doesn't.
+    let unfilteredReason: String?
     let onRemove: () -> Void
 
     private var isBuiltIn: Bool {
@@ -148,6 +153,11 @@ private struct EngineRow: View {
                     Text("This release has known security problems. Its pages render with WebKit until it's updated to \(securityFloor) or later.")
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+                if let unfilteredReason {
+                    Text(unfilteredReason.isEmpty ? "Unfiltered: Shields is off in this engine." : "Unfiltered: \(unfilteredReason)")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
                 Text(capabilitySummary)
                     .font(.caption)
