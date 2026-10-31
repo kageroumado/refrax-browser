@@ -235,6 +235,26 @@ final class ControlIslandState {
         edgeReveal = nil
     }
 
+    /// ⌘S: turns Hide at the Edge on or off for the rail and the File Island together. Turned on,
+    /// both leave past their edges at once and the edge brings them back as before; turned off,
+    /// both come back and stay. Returns whether they hide now.
+    @discardableResult
+    func toggleEdgeHiding(with fileIsland: FileIslandState, now: Date = Date()) -> Bool {
+        let hides = !configuration.hidesAtEdge
+        setHidesAtEdge(hides, now: now)
+        configuration.setFileIslandHidesAtEdge(hides)
+        if hides {
+            if !isNeededOnScreen {
+                hideAtEdge()
+            }
+            fileIsland.rest()
+        } else {
+            wake()
+            fileIsland.wake()
+        }
+        return hides
+    }
+
     /// Escape on a rail the pointer brought back: it hides at once. Returns whether it hid.
     @discardableResult
     func hideAfterPointerReveal() -> Bool {

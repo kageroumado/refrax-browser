@@ -27,4 +27,7 @@ enum MenuItemTag: Int {
 
     /// View menu - Favorite Current Page / Remove from Favorites
     case favoriteCurrentPage = 3_030
+
+    /// View menu - Hide / Show Browser Controls (⌘S)
+    case browserControlsEdgeHiding = 3_040
 }

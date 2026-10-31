@@ -138,6 +138,11 @@ final class FileIslandState {
         return edge == .left ? point.x <= revealStrip.maxX : point.x >= revealStrip.minX
     }
 
+    /// Rests the island at once, as the pointer staying away would: hiding at an edge, it leaves.
+    func rest() {
+        setQuiet(true)
+    }
+
     func wake() {
         setQuiet(false)
         watchForStillness()

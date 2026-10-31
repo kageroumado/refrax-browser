@@ -109,7 +109,8 @@ extension MenuBarManager {
             action: #selector(savePageAs(_:)),
             keyEquivalent: "s",
         )
-        saveAsItem.keyEquivalentModifierMask = [.command]
+        // ⌘S hides and shows the browser controls (View menu).
+        saveAsItem.keyEquivalentModifierMask = [.command, .option]
         saveAsItem.image = NSImage(systemSymbolName: "arrow.up.document", accessibilityDescription: nil)
         saveAsItem.target = self
         fileMenu.addItem(saveAsItem)

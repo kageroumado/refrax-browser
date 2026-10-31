@@ -198,6 +198,18 @@ extension MenuBarManager {
         favoritesDrawerItem.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
         favoritesDrawerItem.target = self
         viewMenu.addItem(favoritesDrawerItem)
+        // The title tracks Hide at the Edge; see updateViewMenu.
+        let edgeHidingItem = NSMenuItem(
+            title: "Hide Browser Controls",
+            action: #selector(toggleBrowserControlsEdgeHiding(_:)),
+            keyEquivalent: "s",
+        )
+        edgeHidingItem.keyEquivalentModifierMask = [.command]
+        edgeHidingItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: nil)
+        edgeHidingItem.toolTip = "The controls and the File Island slide past the window's edge; the pointer coming to that edge brings them back"
+        edgeHidingItem.tag = MenuItemTag.browserControlsEdgeHiding.rawValue
+        edgeHidingItem.target = self
+        viewMenu.addItem(edgeHidingItem)
         let controlsItem = NSMenuItem(title: "Focus Browser Controls", action: #selector(focusBrowserControls(_:)), keyEquivalent: "")
         controlsItem.target = self
         viewMenu.addItem(controlsItem)
@@ -373,6 +385,12 @@ extension MenuBarManager {
     }
 
     @objc
+    func toggleBrowserControlsEdgeHiding(_: Any?) {
+        guard let windowState = activeWindowController?.windowState else { return }
+        windowState.controlIsland.toggleEdgeHiding(with: windowState.fileIsland)
+    }
+
+    @objc
     func showCurrentTabInfo(_: Any?) {
         activeWindowController?.windowState.controlIsland.tabInfo.show()
     }
@@ -423,7 +441,7 @@ extension MenuBarManager {
 
     // MARK: - View Menu Validation
 
-    /// Updates the engine, favorite, and mute items for the focused page.
+    /// Updates the engine, favorite, mute, and browser controls items for the focused page.
     func updateViewMenu(_ menu: NSMenu) {
         guard menu.title == "View" else { return }
 
@@ -438,6 +456,11 @@ extension MenuBarManager {
             let isFavorite = activeWindowController?.windowState.focusedPage?.tab?.isFavorite == true
             favoriteItem.title = isFavorite ? "Remove from Favorites" : "Favorite Current Page"
             favoriteItem.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
+        }
+
+        if let edgeHidingItem = menu.item(withTag: MenuItemTag.browserControlsEdgeHiding.rawValue) {
+            let hides = activeWindowController?.windowState.controlIsland.configuration.hidesAtEdge == true
+            edgeHidingItem.title = hides ? "Show Browser Controls" : "Hide Browser Controls"
         }
 
         if let muteItem = menu.item(withTag: MenuItemTag.muteTab.rawValue) {

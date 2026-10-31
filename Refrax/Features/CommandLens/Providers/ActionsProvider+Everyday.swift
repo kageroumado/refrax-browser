@@ -69,7 +69,7 @@ extension ActionsProvider {
             actions.append(EverydayAction(
                 action: .saveCurrentPageAs,
                 title: "Save Page As…",
-                description: "Current page  ⌘S",
+                description: "Current page  ⌥⌘S",
                 icon: "arrow.up.document",
                 terms: ["save", "save as", "save page", "save page as", "download", "download page", "export page", "keep a copy"],
             ))
