@@ -274,7 +274,6 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         _ context: WKWebExtensionContext,
         manager: ExtensionManager,
     ) -> Bool {
-        let extensionID = context.uniqueIdentifier
-        return manager.installedExtensions.first { $0.uniqueIdentifier == extensionID }?.allowedInPrivateMode ?? false
+        manager.installedExtension(for: context)?.allowedInPrivateMode ?? false
     }
 }

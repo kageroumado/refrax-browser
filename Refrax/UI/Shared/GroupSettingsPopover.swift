@@ -1,15 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// A unified popover for editing tab group settings.
-///
-/// Combines name, icon, and color editing in a single compact interface.
-/// Replaces the separate icon and color popovers and inline rename functionality.
+/// A tab group's name, icon, and color in one popover: a name field, a grid of emoji or
+/// symbols, and the palette with a custom color. Every choice is written as it is made.
 struct GroupSettingsPopover: View {
     @Binding var name: String
     @Binding var selectedIcon: String?
     @Binding var selectedColorHex: String
-    @Binding var isPresented: Bool
 
     @State private var editingName: String = ""
     @State private var selectedIconTab: IconTab = .emoji
@@ -44,7 +41,7 @@ struct GroupSettingsPopover: View {
         .onAppear {
             editingName = name
             // Detect if current icon is emoji or SF Symbol
-            selectedIconTab = isEmoji(displayIcon) ? .emoji : .sfSymbol
+            selectedIconTab = IslandAppearance.isEmoji(displayIcon) ? .emoji : .sfSymbol
             DispatchQueue.main.async {
                 isNameFieldFocused = true
             }
@@ -122,7 +119,7 @@ struct GroupSettingsPopover: View {
 
     @ViewBuilder
     private var iconPreview: some View {
-        if isEmoji(displayIcon) {
+        if IslandAppearance.isEmoji(displayIcon) {
             Text(displayIcon)
                 .font(.system(size: 16))
         } else {
@@ -334,15 +331,6 @@ struct GroupSettingsPopover: View {
             name = trimmed
         }
     }
-
-    // MARK: - Helpers
-
-    private func isEmoji(_ string: String) -> Bool {
-        guard string.count == 1,
-              let scalar = string.unicodeScalars.first
-        else { return false }
-        return scalar.properties.isEmoji && (scalar.value > 0x238C || string.unicodeScalars.count > 1)
-    }
 }
 
 // MARK: - Custom Symbol Input
@@ -518,7 +506,7 @@ private struct EmojiTextField: NSViewRepresentable {
             guard let textField = obj.object as? NSTextField else { return }
             let newValue = textField.stringValue
 
-            if let firstEmoji = newValue.first, firstEmoji.isEmoji {
+            if let firstEmoji = newValue.first, IslandAppearance.isEmoji(String(firstEmoji)) {
                 let emoji = String(firstEmoji)
                 // Defer SwiftUI state mutations to next runloop
                 DispatchQueue.main.async {
@@ -527,15 +515,6 @@ private struct EmojiTextField: NSViewRepresentable {
                 }
             }
         }
-    }
-}
-
-// MARK: - Character Extension
-
-private extension Character {
-    var isEmoji: Bool {
-        guard let scalar = unicodeScalars.first else { return false }
-        return scalar.properties.isEmoji && (scalar.value > 0x238C || unicodeScalars.count > 1)
     }
 }
 

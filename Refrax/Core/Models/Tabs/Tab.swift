@@ -581,48 +581,28 @@ final class Tab {
         lastAccessed = Date()
     }
     
-    /// Adds a page to this tab at the specified position.
+    /// Adds a page to this tab as a pane at `placement`.
     ///
-    /// Converts a single-page tab into a multi-page layout. Updates
-    /// ``layoutConfiguration`` to track the new page's position.
-    ///
-    /// - Parameters:
-    ///   - page: The page to add.
-    ///   - position: Where to place the page in the layout.
+    /// A page that finds no room at `placement` takes the first place that has some.
     ///
     /// - Important: Internal use only. Call ``TabManager/addPageToTab(_:url:at:)``
     ///   to ensure proper state synchronization.
-    func _addPage(_ page: TabPage, at position: PanePosition) {
-        page.position = position
+    func _addPage(_ page: TabPage, at placement: PanePlacement) {
+        let grid = paneGrid
         pages.append(page)
-
-        var config = layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
-        config.panePositions[page.id] = position
-        layoutConfiguration = config
+        let joined = grid.inserting(page.id, at: placement) ?? grid.inserting(page.id, at: .automatic) ?? grid
+        storePaneGrid(joined)
     }
-    
-    /// Removes a page from this tab.
-    ///
-    /// If only one page remains after removal, clears the layout configuration
-    /// and resets that page to `.single` position.
-    ///
-    /// - Parameter page: The page to remove.
+
+    /// Removes a page from this tab; its neighbors grow over its cells, and a lone page
+    /// left behind fills the tab.
     ///
     /// - Important: Internal use only. Call ``TabManager/removePageFromTab(_:page:)``
     ///   to ensure proper session cleanup and state synchronization.
     func _removePage(_ page: TabPage) {
+        let grid = paneGrid.removing(page.id)
         pages.removeAll { $0.id == page.id }
-
-        var config = layoutConfiguration
-        config?.panePositions.removeValue(forKey: page.id)
-
-        // Revert to single-page if only one remains
-        if pages.count == 1 {
-            layoutConfiguration = nil
-            pages[0].position = .single
-        } else {
-            layoutConfiguration = config
-        }
+        storePaneGrid(grid)
     }
     
     /// Sets the active page in a multi-page layout.

@@ -117,7 +117,10 @@ extension MenuBarManager {
 
 extension MenuBarManager: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        switch menuItem.tag {
+        if let isEnabled = validatePaneMenuItem(menuItem) {
+            return isEnabled
+        }
+        return switch menuItem.tag {
         case MenuItemTag.browserUndo.rawValue: editingUndoManager(redo: false).canUndo
         case MenuItemTag.browserRedo.rawValue: editingUndoManager(redo: true).canRedo
         default: true

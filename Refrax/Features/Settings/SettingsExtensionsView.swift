@@ -299,7 +299,6 @@ private struct ExtensionDetailSheet: View {
         .frame(minWidth: 480, minHeight: 400)
     }
 
-    @ViewBuilder
     private func extensionDetailContent(_ ext: InstalledExtension) -> some View {
         Form {
             // Header section — always renders, uses captured data that is always present.
@@ -404,6 +403,22 @@ private struct ExtensionDetailSheet: View {
                             Spacer()
                         }
                     }
+                }
+            }
+
+            if let commands = extensionManager.context(for: ext)?.commands, !commands.isEmpty {
+                Section {
+                    ForEach(commands, id: \.id) { command in
+                        LabeledContent(command.title.isEmpty ? command.id : command.title) {
+                            Text(ExtensionCommandHandler.shortcut(for: command) ?? "Not set")
+                                .foregroundStyle(.secondary)
+                                .monospaced()
+                        }
+                    }
+                } header: {
+                    Text("Keyboard Shortcuts")
+                } footer: {
+                    Text("Refrax's own shortcuts come first.")
                 }
             }
 
@@ -596,7 +611,6 @@ private struct ExtensionDetailSheet: View {
 
     // MARK: - Section Views
 
-    @ViewBuilder
     private func compatibilitySection(for ext: InstalledExtension) -> some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
@@ -615,15 +629,14 @@ private struct ExtensionDetailSheet: View {
     }
 
     private func compatibilityMessage(for ext: InstalledExtension) -> AttributedString {
-        let raw: String
-        if isICloudPasswords(ext) {
-            raw = """
+        let raw = if isICloudPasswords(ext) {
+            """
             **iCloud Passwords** requires private Apple APIs available only to Safari. \
             In Refrax, it may show saved usernames but **cannot autofill passwords or passkeys**, \
             and there is no way for us to enable this — Apple restricts the APIs to Safari's Team ID and Bundle ID.
             """
         } else {
-            raw = """
+            """
             Safari Web Extensions like this one are designed for Safari's sandbox. \
             Refrax can load them, but some features — especially **iCloud Passwords autofill** and **passkey support** — \
             require private system APIs that Apple restricts to Safari's Team ID and Bundle ID. \
@@ -637,14 +650,13 @@ private struct ExtensionDetailSheet: View {
 
     private func isICloudPasswords(_ ext: InstalledExtension) -> Bool {
         if case let .bundled(name) = ext.source,
-           name.localizedCaseInsensitiveContains("icloud")
-               && name.localizedCaseInsensitiveContains("password") {
+           name.localizedCaseInsensitiveContains("icloud"),
+           name.localizedCaseInsensitiveContains("password") {
             return true
         }
         return ext.displayName.localizedCaseInsensitiveContains("iCloud Passwords")
     }
 
-    @ViewBuilder
     private var resourceUsageSection: some View {
         Section {
             if let metrics {
@@ -694,7 +706,6 @@ private struct ExtensionDetailSheet: View {
     }
 
     #if DEBUG
-        @ViewBuilder
         private func developerSection(for ext: InstalledExtension) -> some View {
             Section {
                 Button {
@@ -722,7 +733,6 @@ private struct ExtensionDetailSheet: View {
         }
     #endif
 
-    @ViewBuilder
     private func errorConsoleSection(for ext: InstalledExtension) -> some View {
         Section {
             ForEach(Array(extensionErrors.prefix(5))) { error in

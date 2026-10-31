@@ -182,6 +182,17 @@ func printIslands(_ info: CTL.IslandsInfo) {
     for card in info.cards {
         print("  card \(Int(card.x)),\(Int(card.y)) \(Int(card.width))×\(Int(card.height))  \(card.title)  [\(card.tabID.prefix(8))]")
     }
+    if let panes = info.panes, panes.panes.count > 1 || panes.isEditing {
+        let splits = String(format: "columns %.2f · rows %.2f", panes.columnSplit, panes.rowSplit)
+        print("Panes: \(panes.panes.count)\(panes.isEditing ? " · editing" : "") · \(splits)")
+        for (index, pane) in panes.panes.enumerated() {
+            let cells = pane.cells.joined(separator: "+")
+            print("  \(index)\(pane.isActive ? " ▸" : "  ") \(cells)  \(Int(pane.x)),\(Int(pane.y)) \(Int(pane.width))×\(Int(pane.height))  \(pane.title)  [\(pane.pageID.prefix(8))]")
+        }
+        if !panes.emptyCells.isEmpty {
+            print("  empty: \(panes.emptyCells.joined(separator: ", "))")
+        }
+    }
 }
 
 /// Sends a `ControlRequest` via `ControlClient`, handles errors, and prints the response.

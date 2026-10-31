@@ -138,7 +138,9 @@ final class CanvasPageGestures {
     }
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
-        if event.window?.firstResponder is NSTextView { return event }
+        if event.window?.firstResponder is NSTextView {
+            return event
+        }
         if FloatingRevealKey.current == .command, event.modifierFlags.contains(.command) {
             interruptControl()
             return event
@@ -148,7 +150,20 @@ final class CanvasPageGestures {
             canvas.dismissFloatingTabs()
             return event
         }
+        // Latched open with the reveal key up, the islands have the keyboard: the arrows choose
+        // a row, Return opens it, Delete closes it, Space previews it, typing finds it by
+        // title, and Escape steps back. Held, the arrows move between pages.
+        if canvas.floatingVisibility.isLatched, !canvas.floatingVisibility.isHeld, !floatingHasKeyboardFocus(), let islands {
+            let flags = event.modifierFlags
+            if let key = IslandKey(
+                keyCode: event.keyCode, characters: event.characters,
+                command: flags.contains(.command), control: flags.contains(.control), option: flags.contains(.option),
+            ), islands.handleKey(key) {
+                return nil
+            }
+        }
         if canvas.floatingVisibility.isRevealed, event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus() {
+            islands?.endKeyboardBrowsing()
             islands?.cancelRowDrag()
             interruptControl()
             canvas.dismissFloatingTabs()

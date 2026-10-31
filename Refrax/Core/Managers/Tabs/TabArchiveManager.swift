@@ -169,14 +169,18 @@ final class TabArchiveManager {
     /// - Parameter context: The ModelContext for deletion.
     func deleteArchivedTab(_ tab: Tab, in context: ModelContext) {
         guard tab.isArchived else { return }
+        let title = tab.activePage.title
 
-        // Remove from model context
+        // The tab leaves the index and its space's list before the store, so no lookup
+        // returns the deleted model.
+        state.removeFromIndex(tab)
+        tab.space?.tabs.removeAll { $0.id == tab.id }
         context.delete(tab)
 
         state.incrementListVersion()
 
         Logger.debug(
-            "Permanently deleted archived tab: \(tab.activePage.title)",
+            "Permanently deleted archived tab: \(title)",
             category: Logger.tabs,
         )
     }

@@ -128,8 +128,14 @@ refrax-ctl islands step up|down|left|right            # One wheel notch: the row
 refrax-ctl islands open --tab TAB                     # Open a row's page
 refrax-ctl islands move-row --tab TAB --island I [--row N]   # Put a row before row N of an island (the end when left out); a card goes back in
 refrax-ctl islands detach --tab TAB [--to X,Y]        # Take a row out as a live card at a point (the page's center when left out)
-refrax-ctl islands join --tab TAB --with OTHER        # One tab of two panes: TAB joins OTHER beside it
-refrax-ctl islands join-page --tab TAB left|right     # TAB joins the current page as a pane on that side
+refrax-ctl islands join --tab TAB --with OTHER        # TAB joins OTHER as a pane, where its 2x2 grid has room
+refrax-ctl islands join-page --tab TAB left|right|up|down [--pane P]  # TAB joins the current page beside pane P (or the focused one)
+refrax-ctl islands edit-panes                          # Layout mode: the current tab's panes lifted apart for editing
+refrax-ctl islands move-pane --pane P top-left|top-right|bottom-left|bottom-right  # Trade places (layout mode)
+refrax-ctl islands grow-pane --pane P left|right|up|down     # Grow over empty cells (layout mode); shrink-pane frees a half
+refrax-ctl islands done-panes                          # Store the edit and lay the panes back
+refrax-ctl islands separate-pane --pane P              # The pane leaves as a tab of its own
+refrax-ctl islands splits --to 0.4,0.5                 # Where the columns and rows divide (0.2–0.8)
 refrax-ctl islands pin|unpin --island I               # Keep an island up when the reveal key is up, or stop
 refrax-ctl islands new-island --tab TAB               # A new island (group) from a row
 refrax-ctl islands move --island I --to X,Y           # Put an island's top-left corner at a point

@@ -2661,9 +2661,9 @@ final class RefraxControlServer {
             }
             islands.join(source.id, with: target.id)
         case .joinPage:
-            let side = try direction(params.direction)
-            guard side == .left || side == .right else { throw ControlError.invalidParams("Direction must be left or right") }
-            try islands.joinPage(tab(params.tab).id, at: side == .left ? .topLeft : .topRight)
+            try PaneControl.perform(params, source: tab(params.tab), in: activeWindowState(), tabs: tabManager, islands: islands)
+        case .editPanes, .donePanes, .movePane, .growPane, .shrinkPane, .separatePane, .splits:
+            try PaneControl.perform(params, source: nil, in: activeWindowState(), tabs: tabManager, islands: islands)
         case .pin, .unpin:
             let target = try island(params.island)
             if target.placement.isPinned != (params.action == .pin) {
@@ -2682,6 +2682,13 @@ final class RefraxControlServer {
         }
         islands.refresh()
         return islandsStateResponse(islands, canvas: canvas, bounds: bounds)
+    }
+
+    private func activeWindowState() throws -> WindowState {
+        guard let windowState = windowManager.activeWindowController?.windowState else {
+            throw ControlError.invalidParams("No browser window is open")
+        }
+        return windowState
     }
 
     private func islandsStateResponse(_ islands: IslandController, canvas: TabCanvasManager, bounds: CGRect) -> ControlResponse {
@@ -2711,6 +2718,7 @@ final class RefraxControlServer {
                     isPinned: placement.isPinned, isVisible: tab.id != current,
                 )
             },
+            panes: windowManager.activeWindowController.flatMap { PaneControl.info(in: $0.windowState, islands: islands) },
         ))
     }
 

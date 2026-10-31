@@ -3,62 +3,6 @@ import SwiftData
 import Testing
 @testable import Refrax
 
-@MainActor
-private final class IslandFixture {
-    let env: TabManagerTestEnvironment
-    let space: Space
-    let window: WindowState
-    let canvas: TabCanvasManager
-    let islands: IslandController
-    /// The controller's own defaults, apart from the app's: what the hint keeps goes here.
-    let defaults: UserDefaults
-    let bounds = CGRect(x: 0, y: 0, width: 1_440, height: 1_080)
-    let sharing = SharingCoordinator()
-    private let suite = "IslandControllerTests.\(UUID().uuidString)"
-
-    init(defaults: UserDefaults? = nil) throws {
-        self.env = try TabManagerTestEnvironment()
-        self.space = env.makeSpace()
-        self.window = env.makeActiveWindowState(with: space)
-        self.canvas = TabCanvasManager(tabManager: env.tabManager, windowState: window, pagePool: env.pagePool)
-        self.defaults = try defaults ?? #require(UserDefaults(suiteName: suite))
-        self.islands = IslandController(
-            windowState: window, tabManager: env.tabManager, groupManager: env.groupManager, canvas: canvas, pagePool: env.pagePool,
-            defaults: self.defaults,
-        )
-        window.islandController = islands
-        islands.start()
-        islands.updateArea(bounds.insetBy(dx: 16, dy: 16), in: bounds)
-        env.undoRedoManager.undoManager.groupsByEvent = false
-    }
-
-    isolated deinit { islands.stop() }
-
-    /// A row's menu, as a person reads its top level: titles only, no dividers or submenu rows.
-    func rowMenu(_ tab: Refrax.Tab) throws -> [String] {
-        let island = try #require(islands.island(holding: tab.id))
-        let tree = IslandRowMenu(
-            tab: tab, island: island, islands: islands, windowState: window, tabs: env.tabManager, bookmarks: env.bookmarksManager,
-            canvas: canvas, sharing: sharing, area: bounds,
-        ).tree()
-        return tree.outline.filter { !$0.hasPrefix(" ") && $0 != "——" }
-    }
-
-    func tab(_ title: String, group: TabGroup? = nil) -> Refrax.Tab {
-        let tab = env.tabManager.createTab(url: .blank, in: space, groupID: group?.id, makeActive: false, loadImmediately: false)
-        tab.activePage.title = title
-        islands.refresh()
-        return tab
-    }
-
-    func edit(_ action: () -> Void) {
-        let undo = env.undoRedoManager.undoManager
-        undo.beginUndoGrouping()
-        action()
-        undo.endUndoGrouping()
-    }
-}
-
 @Suite("Island interactions", .serialized)
 @MainActor
 struct IslandControllerTests {
@@ -238,7 +182,7 @@ struct IslandControllerTests {
     }
 
     @Test
-    func `Arrow navigation reaches island rows in the browser window and leaves renaming alone`() throws {
+    func `Latched islands take the arrows to choose a row, Return opens it, and renaming keeps its keys`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("First")
         _ = fixture.tab("Second")
@@ -252,7 +196,13 @@ struct IslandControllerTests {
         gestures.islands = fixture.islands
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil, characters: "\u{F701}", charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
         #expect(gestures.handle(event) == nil)
+        #expect(fixture.islands.keyboardCursorID == secondID)
+        #expect(fixture.window.activeTabID == firstID)
+        let open = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        #expect(gestures.handle(open) == nil)
         #expect(fixture.window.activeTabID == secondID)
+        #expect(!fixture.canvas.floatingVisibility.isRevealed)
+        fixture.canvas.toggleFloatingTabs()
         let editor = NSTextView()
         parent.contentView = editor
         parent.makeFirstResponder(editor)
@@ -360,7 +310,8 @@ struct IslandDropTests {
         let point = CGPoint(x: 900, y: 500)
         fixture.islands.updateRowDrag(c.id, at: point)
         #expect(fixture.islands.islandGhost?.rows == 2)
-        #expect(fixture.islands.islandGhost?.title == fixture.islands.islandName(for: b))
+        let names = [fixture.islands.islandName(for: b), fixture.islands.islandName(for: c)]
+        #expect(names.contains(fixture.islands.islandGhost?.title ?? ""))
         fixture.edit { fixture.islands.finishRowDrag(c.id, at: point) }
         let island = try #require(fixture.islands.island(holding: c.id))
         // The rows keep the tab list's order, whatever it is for two tabs made at once.

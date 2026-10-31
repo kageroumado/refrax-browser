@@ -32,10 +32,6 @@ extension TabManager {
             windowState.pageVisit.end()
         }
 
-        if windowState.isInLayoutMode {
-            windowState.exitLayoutMode()
-        }
-
         // Capture active tab BEFORE state changes for PiP/extension callbacks
         let previousTabID = windowState.activeTabID
 
@@ -47,8 +43,14 @@ extension TabManager {
             page.claimOwnership(for: windowState)
         }
 
-        // Update window state (handles both live favorites and space tabs)
+        // Update window state (handles both live favorites and space tabs). Layout mode on
+        // the outgoing tab is committed to that tab here (``WindowState/setActiveTab(_:trackPrevious:)``).
         windowState.setActiveTab(tab)
+
+        // The pages are made here, before the page view draws them, so its body only reads them.
+        for page in tab.pages where !page.url.isDeepLink {
+            pagePool.page(for: page)
+        }
 
         tab.updateLastAccessed()
         tab.isUnread = false

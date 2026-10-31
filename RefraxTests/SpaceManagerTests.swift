@@ -58,6 +58,7 @@ struct SpaceManagerTestEnvironment {
 
         // Store pagePool as property so it stays alive for the test duration
         self.pagePool = WebPagePool(state: browserState)
+        browserState.pagePool = pagePool
         spaceManager.pagePool = pagePool
     }
 
@@ -319,6 +320,10 @@ struct SpaceManagerSwitchTests {
 
         let windowState = env.makeWindowState()
         env.spaceManager.switchToSpaceSync(space1, for: windowState)
+        let tab = try Refrax.Tab(space: space1, url: #require(URL(string: "https://one.com")))
+        env.browserState.modelContext.insert(tab)
+        env.browserState.indexTab(tab)
+        windowState.setActiveTabID(tab.id, for: space1.id)
 
         // Enter layout mode
         windowState.enterLayoutMode()

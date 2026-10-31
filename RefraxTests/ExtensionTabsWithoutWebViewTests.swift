@@ -142,7 +142,7 @@ struct ExtensionTabsWithoutWebViewTests {
         let undo = fixture.env.undoRedoManager.undoManager
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let joined = try #require(fixture.env.tabManager.moveTabToLayout(source, into: target, at: .topRight))
+        let joined = try #require(fixture.env.tabManager.moveTabToLayout(source, into: target, at: .cell(.topRight)))
         undo.endUndoGrouping()
         try fixture.env.modelContext.save()
         #expect(adapter.tabPage == nil)

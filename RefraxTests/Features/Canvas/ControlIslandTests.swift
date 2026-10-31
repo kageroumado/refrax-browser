@@ -176,11 +176,11 @@ struct ControlIslandTests {
     }
 
     @Test @MainActor
-    func `the default rail keeps Now Playing and the update badge`() {
+    func `the default rail keeps extensions, Now Playing and the update badge`() {
         let visible = ControlIslandConfiguration.defaultItems.filter(\.isVisible).map(\.item)
-        #expect(visible == [.windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs, .nowPlaying, .updates])
+        #expect(visible == [.windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs, .extensions, .nowPlaying, .updates])
         #expect(ControlIslandItem.allCases.allSatisfy { ($0.section == .main) == $0.isDefault || $0.isConditional })
-        #expect(ControlIslandItem.allCases.filter(\.isConditional) == [.nowPlaying, .updates])
+        #expect(ControlIslandItem.allCases.filter(\.isConditional) == [.nowPlaying, .updates, .extensions])
     }
 
     @Test @MainActor

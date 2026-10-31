@@ -121,6 +121,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case newSpace
     /// Move around the table or reshape the current slab.
     case table(TableCommand)
+    /// Edit, add to, or separate the current tab's panes.
+    case panes(PaneCommand)
     /// Copy the current page's address, or its Markdown link.
     case copyCurrentAddress(asMarkdown: Bool)
     /// Download the PDF or image the current page shows.
@@ -131,6 +133,12 @@ nonisolated enum AppAction: Hashable, Sendable {
     case openAppearanceSettings
     /// List this space's open tabs in the lens.
     case showOpenTabs
+    /// Keep only the tabs a quick filter matches on the islands, or every tab with `nil`.
+    case filterIslands(IslandFilter?)
+    /// Open the archive in the library drawer.
+    case showArchive
+    /// Latch the islands open with the current row chosen, for the arrow keys.
+    case browseIslands
 }
 
 /// Scope of a setting (global or per-site).

@@ -514,37 +514,6 @@ extension TabManager {
         }
     }
 
-    func nextAvailablePosition(in tab: Tab) -> PanePosition {
-        let used: Set<PanePosition>
-        if let config = tab.layoutConfiguration {
-            used = Set(config.panePositions.values)
-        } else if tab.pages.count == 1 {
-            return .topRight
-        } else {
-            used = Set(tab.pages.compactMap(\.position))
-        }
-
-        let order: [PanePosition] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
-        return order.first { !used.contains($0) } ?? .topRight
-    }
-
-    func setupLayoutIfNeeded(for tab: Tab, newPage: TabPage, position: PanePosition) {
-        guard tab.pages.count == 2 else { return }
-
-        guard let firstPage = tab.pages.first(where: { $0.id != newPage.id }),
-              firstPage.position == nil || firstPage.position == .single else {
-            return
-        }
-
-        let firstPosition: PanePosition = position == .topLeft ? .topRight : .topLeft
-        firstPage.position = firstPosition
-
-        var config = tab.layoutConfiguration ?? LayoutConfiguration(panePositions: [:])
-        config.panePositions[firstPage.id] = firstPosition
-        config.panePositions[newPage.id] = position
-        tab.layoutConfiguration = config
-    }
-
     // MARK: - Popup Relationship Management
 
     /// Deferred cleanup of popup opener references.

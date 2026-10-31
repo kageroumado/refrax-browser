@@ -10,8 +10,8 @@ import WebKit
 @Suite("TabManager Multi-Page Layout", .tags(.tabManager), .serialized)
 @MainActor
 struct TabManagerMultiPageLayoutTests {
-    @Test("Add page to tab creates multi-page layout")
-    func addPageToTabCreatesLayout() throws {
+    @Test
+    func `Add page to tab creates multi-page layout`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -28,7 +28,7 @@ struct TabManagerMultiPageLayoutTests {
         let newPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         #expect(tab.pages.count == 2, "Should have 2 pages")
@@ -36,8 +36,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(tab.isMultiPage, "Should have layout after adding page")
     }
 
-    @Test("Add page increments list version")
-    func addPageIncrementsVersion() throws {
+    @Test
+    func `Add page increments list version`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -50,13 +50,13 @@ struct TabManagerMultiPageLayoutTests {
 
         let versionBefore = env.browserState.tabListVersion
 
-        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://second.com")), at: .topRight)
+        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://second.com")), at: .cell(.topRight))
 
         #expect(env.browserState.tabListVersion > versionBefore)
     }
 
-    @Test("Remove page from tab updates layout")
-    func removePageFromTabUpdatesLayout() throws {
+    @Test
+    func `Remove page from tab updates layout`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -70,7 +70,7 @@ struct TabManagerMultiPageLayoutTests {
         let secondPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         #expect(tab.pages.count == 2)
@@ -80,8 +80,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(tab.pages.count == 1, "Should have 1 page")
     }
 
-    @Test("Move tab to layout requires single-page source")
-    func moveTabToLayoutRequiresSinglePage() throws {
+    @Test
+    func `Move tab to layout requires single-page source`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -99,17 +99,17 @@ struct TabManagerMultiPageLayoutTests {
         )
 
         // Make source multi-page
-        try env.tabManager.addPageToTab(sourceTab, url: #require(URL(string: "https://extra.com")), at: .topRight)
+        try env.tabManager.addPageToTab(sourceTab, url: #require(URL(string: "https://extra.com")), at: .cell(.topRight))
 
         #expect(sourceTab.pages.count == 2)
 
-        let result = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .topRight)
+        let result = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .cell(.topRight))
 
         #expect(result == nil, "Should not move multi-page tab into layout")
     }
 
-    @Test("Move tab to layout transfers page")
-    func moveTabToLayoutTransfersPage() throws {
+    @Test
+    func `Move tab to layout transfers page`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -129,7 +129,7 @@ struct TabManagerMultiPageLayoutTests {
         let sourceTabID = sourceTab.id
         let initialTabCount = space.tabs.count
 
-        let newPage = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .topRight)
+        let newPage = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .cell(.topRight))
 
         #expect(newPage != nil, "Should return new page")
         #expect(destTab.pages.count == 2, "Destination should have 2 pages")
@@ -137,8 +137,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(!space.tabs.contains(where: { $0.id == sourceTabID }), "Source tab should be gone")
     }
 
-    @Test("Move tab to layout preserves favicon")
-    func moveTabToLayoutPreservesFavicon() throws {
+    @Test
+    func `Move tab to layout preserves favicon`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -158,13 +158,13 @@ struct TabManagerMultiPageLayoutTests {
         let faviconData = Data([0x89, 0x50, 0x4E, 0x47])
         sourceTab.activePage.faviconData = faviconData
 
-        let newPage = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .topRight)
+        let newPage = env.tabManager.moveTabToLayout(sourceTab, into: destTab, at: .cell(.topRight))
 
         #expect(newPage?.faviconData == faviconData, "Favicon should be preserved")
     }
 
-    @Test("Move page to new tab requires multi-page source")
-    func movePageToNewTabRequiresMultiPage() throws {
+    @Test
+    func `Move page to new tab requires multi-page source`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -182,8 +182,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(result == nil, "Should not move from single-page tab")
     }
 
-    @Test("Move page to new tab creates tab")
-    func movePageToNewTabCreatesTab() throws {
+    @Test
+    func `Move page to new tab creates tab`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -197,7 +197,7 @@ struct TabManagerMultiPageLayoutTests {
         let secondPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         let initialTabCount = space.tabs.count
@@ -209,8 +209,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(space.tabs.count == initialTabCount + 1, "Should have one more tab")
     }
 
-    @Test("Move page to new tab activates if makeActive=true")
-    func movePageToNewTabActivates() throws {
+    @Test
+    func `Move page to new tab activates if makeActive=true`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         let windowState = env.makeActiveWindowState(with: space)
@@ -224,7 +224,7 @@ struct TabManagerMultiPageLayoutTests {
         let secondPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         let newTab = env.tabManager.movePageToNewTab(secondPage, from: tab, makeActive: true)
@@ -232,8 +232,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(windowState.activeTabID == newTab?.id, "New tab should be active")
     }
 
-    @Test("Move page to new tab updates source active page")
-    func movePageToNewTabUpdatesSourceActivePage() throws {
+    @Test
+    func `Move page to new tab updates source active page`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -247,7 +247,7 @@ struct TabManagerMultiPageLayoutTests {
         let secondPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         // Make second page active via manager (mutation methods are internal)
@@ -260,8 +260,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(tab.activePage.id == tab.pages.first?.id, "Should fall back to first page")
     }
 
-    @Test("Set active page updates active page property")
-    func setActivePageUpdatesProperty() throws {
+    @Test
+    func `Set active page updates active page property`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -275,7 +275,7 @@ struct TabManagerMultiPageLayoutTests {
         let secondPage = try env.tabManager.addPageToTab(
             tab,
             url: #require(URL(string: "https://second.com")),
-            at: .topRight,
+            at: .cell(.topRight),
         )
 
         let originalActivePage = tab.activePage
@@ -286,8 +286,8 @@ struct TabManagerMultiPageLayoutTests {
         #expect(tab.activePage.id != originalActivePage.id)
     }
 
-    @Test("Next available position returns topRight for single page tab")
-    func nextAvailablePositionSinglePage() throws {
+    @Test
+    func `Add multiple pages fills positions`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -298,28 +298,9 @@ struct TabManagerMultiPageLayoutTests {
             makeActive: true,
         )
 
-        #expect(tab.pages.count == 1)
-
-        let nextPos = env.tabManager.nextAvailablePosition(in: tab)
-
-        #expect(nextPos == .topRight, "First additional page should be at topRight")
-    }
-
-    @Test("Add multiple pages fills positions")
-    func addMultiplePagesFillsPositions() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let tab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://main.com")),
-            in: space,
-            makeActive: true,
-        )
-
-        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://two.com")), at: .topRight)
-        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://three.com")), at: .bottomLeft)
-        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://four.com")), at: .bottomRight)
+        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://two.com")), at: .cell(.topRight))
+        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://three.com")), at: .cell(.bottomLeft))
+        try env.tabManager.addPageToTab(tab, url: #require(URL(string: "https://four.com")), at: .cell(.bottomRight))
 
         #expect(tab.pages.count == 4, "Should have 4 pages")
 

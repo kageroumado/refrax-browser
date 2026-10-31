@@ -175,6 +175,7 @@ final class CommandLensManager {
             HistoryProvider(historyManager: historyManager),
             PopularWebsitesProvider(frequentDestinations: historyManager.frequentDestinations),
             ActionsProvider(tabs: tabManager, windowState: windowState),
+            IslandsProvider(windowState: windowState),
         ]
         // The tour's page comes before every other suggestion while a tour step asks for one.
         if let floatingTour {
@@ -1557,7 +1558,7 @@ final class CommandLensManager {
         switch suggestion.type {
         case let .openTab(tabID):
             if let tab = tabManager.state.tab(for: tabID) {
-                if let targetPosition = windowState.layoutModeTargetPosition,
+                if let placement = windowState.newPanePlacement,
                    let activeTab = windowState.activeTab {
                     if tab.isMultiPage || tab.pages.count > 1 {
                         closeCurrentLens()
@@ -1565,8 +1566,8 @@ final class CommandLensManager {
                         return
                     }
 
-                    tabManager.moveTabToLayout(tab, into: activeTab, at: targetPosition)
-                    windowState.layoutModeTargetPosition = nil
+                    tabManager.moveTabToLayout(tab, into: activeTab, at: placement)
+                    windowState.newPanePlacement = nil
                 } else {
                     tabManager.setActiveTab(tab, in: windowState)
                 }
@@ -1700,6 +1701,14 @@ final class CommandLensManager {
                 windowState.controlIsland.spaceRequest = .create
             case let .table(command):
                 windowState.islandController?.perform(command)
+            case let .panes(command):
+                if case let .openBeside(edge) = command {
+                    // The lens stays open to take the page that goes there.
+                    windowState.newPanePlacement = PaneCommand.placement(beside: edge, in: windowState)
+                    reset()
+                    return
+                }
+                PaneCommand.perform(command, in: windowState, tabs: tabManager)
             case let .copyCurrentAddress(asMarkdown):
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab {
                     let actions = ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: tabManager.bookmarksManager)
@@ -1721,6 +1730,18 @@ final class CommandLensManager {
             case .showOpenTabs:
                 showOpenTabs()
                 return
+            case .showArchive:
+                windowState.showDetailTray(.archive)
+            case .browseIslands:
+                windowState.islandController?.beginKeyboardBrowsing()
+            case let .filterIslands(filter):
+                if let islands = windowState.islandController {
+                    islands.setFilter(filter)
+                    // The islands come up to show what the filter kept.
+                    if filter != nil, !islands.isRevealed {
+                        (windowState.window?.windowController as? RefraxWindowController)?.tabCanvasManager.toggleFloatingTabs()
+                    }
+                }
             }
             closeCurrentLens()
             reset()
@@ -1777,11 +1798,11 @@ final class CommandLensManager {
             return
         }
 
-        if let targetPosition = windowState.layoutModeTargetPosition,
+        if let placement = windowState.newPanePlacement,
            let activeTab = windowState.activeTab {
-            let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
+            let newPage = tabManager.addPageToTab(activeTab, url: url, at: placement)
             newPage.title = url.host ?? "New Page"
-            windowState.layoutModeTargetPosition = nil
+            windowState.newPanePlacement = nil
         } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
@@ -1826,11 +1847,11 @@ final class CommandLensManager {
             return
         }
 
-        if let targetPosition = windowState.layoutModeTargetPosition,
+        if let placement = windowState.newPanePlacement,
            let activeTab = windowState.activeTab {
-            let newPage = tabManager.addPageToTab(activeTab, url: url, at: targetPosition)
+            let newPage = tabManager.addPageToTab(activeTab, url: url, at: placement)
             newPage.title = query
-            windowState.layoutModeTargetPosition = nil
+            windowState.newPanePlacement = nil
         } else if isAddressMode, makeActive, let activePage = windowState.focusedPage {
             if let webPage = tabManager.pagePool.page(for: activePage) {
                 webPage.load(url)
@@ -1857,7 +1878,7 @@ final class CommandLensManager {
 
     private func closeCurrentLens() {
         // Clear contextual creation flags
-        windowState.layoutModeTargetPosition = nil
+        windowState.newPanePlacement = nil
 
         if windowState.showsCommandLens {
             windowState.closeCommandLens()

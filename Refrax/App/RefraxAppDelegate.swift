@@ -386,6 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         self.keyboardShortcutsManager = KeyboardShortcutsManager(windowManager: windowManager)
+        keyboardShortcutsManager.setExtensionManager(extensionManager)
         
         self.menuBarManager = MenuBarManager(
             windowManager: windowManager,

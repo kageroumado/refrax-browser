@@ -108,42 +108,55 @@ struct WindowStateRegressionTests {
     }
 
     @Test
-    func `WindowState enterLayoutMode sets flag`() throws {
+    func `WindowState enterLayoutMode edits the current tab`() throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        let tab = try env.createActiveTab(url: #require(URL(string: "https://one.com")), in: space, for: windowState)
+
+        windowState.enterLayoutMode()
+
+        #expect(windowState.isInLayoutMode)
+        #expect(windowState.paneEditor.isEditing(tab: tab.id))
+    }
+
+    @Test
+    func `WindowState enterLayoutMode without a tab stays off`() throws {
         let env = try TabManagerTestEnvironment()
         let windowState = env.makeWindowState()
 
         windowState.enterLayoutMode()
 
-        #expect(windowState.isInLayoutMode)
+        #expect(windowState.isInLayoutMode == false)
     }
 
     @Test
     func `WindowState exitLayoutMode clears flag`() throws {
         let env = try TabManagerTestEnvironment()
-        let windowState = env.makeWindowState()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        try env.createActiveTab(url: #require(URL(string: "https://one.com")), in: space, for: windowState)
 
         windowState.enterLayoutMode()
         #expect(windowState.isInLayoutMode)
 
         windowState.exitLayoutMode()
-        #expect(!windowState.isInLayoutMode)
+        #expect(windowState.isInLayoutMode == false)
     }
 
     @Test
     func `Switching space exits layout mode`() throws {
-        let env = try SpaceManagerTestEnvironment()
-
-        let space1 = env.spaceManager.createSpace(name: "Space 1", iconName: "1.circle")
-        let space2 = env.spaceManager.createSpace(name: "Space 2", iconName: "2.circle")
-
-        let windowState = env.makeWindowState()
-        env.spaceManager.switchToSpaceSync(space1, for: windowState)
+        let env = try TabManagerTestEnvironment()
+        let space1 = env.makeSpace(name: "Space 1")
+        let space2 = env.makeSpace(name: "Space 2")
+        let windowState = env.makeActiveWindowState(with: space1)
+        try env.createActiveTab(url: #require(URL(string: "https://one.com")), in: space1, for: windowState)
 
         windowState.enterLayoutMode()
         #expect(windowState.isInLayoutMode)
 
         env.spaceManager.switchToSpaceSync(space2, for: windowState)
-        #expect(!windowState.isInLayoutMode)
+        #expect(windowState.isInLayoutMode == false)
     }
 
     // MARK: - Multiple Windows Tests

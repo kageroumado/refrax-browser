@@ -2,21 +2,21 @@ import AppKit
 import Foundation
 import WebKit
 
-/// Bridges a Refrax window to WebKit's extension window interface.
-///
-/// This adapter implements `WKWebExtensionWindow` to expose Refrax's window model
-/// to browser extensions. Extensions can query window properties (state, tabs)
-/// and perform actions (focus, resize, close).
-///
-/// ## Space Mapping
-///
-/// In Refrax, each window shows one space at a time. The extension sees tabs from
-/// the currently active space only. When the user switches spaces, the tab list
-/// changes accordingly.
-///
-/// ## Thread Safety
-///
-/// All methods are called on the main actor by WebKit's extension system.
+// Bridges a Refrax window to WebKit's extension window interface.
+//
+// This adapter implements `WKWebExtensionWindow` to expose Refrax's window model
+// to browser extensions. Extensions can query window properties (state, tabs)
+// and perform actions (focus, resize, close).
+//
+// ## Space Mapping
+//
+// In Refrax, each window shows one space at a time and belongs to that space's
+// controller: only its extensions see the window, its tabs and act on it, and the window
+// moves to another controller when it switches to a space of another one.
+//
+// ## Thread Safety
+//
+// All methods are called on the main actor by WebKit's extension system.
 
 final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
     // MARK: - Properties
@@ -74,7 +74,7 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
         }
 
         return space.tabs.compactMap { tab in
-            guard let page = tab.pages.first else { return nil }
+            guard let page = tab.pages.first, manager.controller(for: tab) === context.webExtensionController else { return nil }
             return manager.extensionTab(for: page, pagePool: pagePool)
         }
     }
@@ -94,9 +94,11 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
             return nil
         }
 
+        let ownsTab = { (tab: Tab) in manager.controller(for: tab) === context.webExtensionController }
+
         // Try to get the explicitly active tab
         if let activeTabID = windowState.activeTabID(for: activeSpaceID),
-           let tab = state.tab(for: activeTabID),
+           let tab = state.tab(for: activeTabID), ownsTab(tab),
            let page = tab.pages.first {
             return manager.extensionTab(for: page, pagePool: pagePool)
         }
@@ -104,7 +106,7 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
         // Fallback: return first tab as active to satisfy WebKit's expectation that
         // activeTab should be in the tabs array. This avoids log spam when Refrax
         // has no explicit active tab (which is a valid state in our UI).
-        if let firstTab = space.tabs.first,
+        if let firstTab = space.tabs.first(where: ownsTab),
            let page = firstTab.pages.first {
             return manager.extensionTab(for: page, pagePool: pagePool)
         }
@@ -150,21 +152,32 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
 
     // MARK: - Actions
 
-    func focus(for _: WKWebExtensionContext) async throws {
+    /// Refuses an action by an extension of another controller than the one of the space the
+    /// window shows: an extension acts only on windows it can see.
+    private func requireOwnership(by context: WKWebExtensionContext) throws {
+        guard let windowState, let manager, manager.windowBelongs(windowState, to: context) else {
+            throw ExtensionError.permissionDenied
+        }
+    }
+
+    func focus(for context: WKWebExtensionContext) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func close(for _: WKWebExtensionContext) async throws {
+    func close(for context: WKWebExtensionContext) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.performClose(nil)
     }
 
     func setWindowState(
         _ state: WKWebExtension.WindowState,
-        for _: WKWebExtensionContext,
+        for context: WKWebExtensionContext,
     ) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
 
         switch state {
@@ -199,8 +212,9 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
 
     func setFrame(
         _ frame: CGRect,
-        for _: WKWebExtensionContext,
+        for context: WKWebExtensionContext,
     ) async throws {
+        try requireOwnership(by: context)
         guard let nsWindow else { return }
         nsWindow.setFrame(frame, display: true, animate: true)
     }
@@ -217,7 +231,6 @@ final class RefraxExtensionWindow: NSObject, WKWebExtensionWindow {
         _ context: WKWebExtensionContext,
         manager: ExtensionManager,
     ) -> Bool {
-        let extensionID = context.uniqueIdentifier
-        return manager.installedExtensions.first { $0.uniqueIdentifier == extensionID }?.allowedInPrivateMode ?? false
+        manager.installedExtension(for: context)?.allowedInPrivateMode ?? false
     }
 }

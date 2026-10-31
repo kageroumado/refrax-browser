@@ -135,6 +135,9 @@ final class ExtensionManager {
     /// launch that were never shown, and tabs whose page was evicted.
     private(set) var tabsWithoutWebView: Set<TabPage.ID> = []
 
+    /// The controller each browser window is reported to, keyed by WindowState object identity.
+    private var windowOwners: [ObjectIdentifier: WKWebExtensionController] = [:]
+
     /// Extension window adapters, keyed by WindowState object identity.
     private var windowAdapters: [ObjectIdentifier: RefraxExtensionWindow] = [:]
 
@@ -163,6 +166,16 @@ final class ExtensionManager {
 
     /// Shim injector for API compatibility.
     let shimInjector: ShimInjector
+
+    /// Every extension action's badge, title and icon, as the rail and the page menu show them.
+    let actions = ExtensionActionStore()
+
+    /// Routes `runtime.sendNativeMessage` and `runtime.connectNative` to native hosts.
+    let nativeMessaging = NativeMessagingRouter()
+
+    /// Refrax's own `refrax.*` API, served as the in-process native host
+    /// ``RefraxAPIShim/hostName``.
+    @ObservationIgnored private lazy var refraxAPI = RefraxAPIShim(state: state)
 
     /// The controller delegate handling extension callbacks (for default controller).
     private var controllerDelegate: ExtensionControllerDelegate?
@@ -196,6 +209,9 @@ final class ExtensionManager {
     /// Task for observing app activation state changes.
     private var activationObservationTask: Task<Void, Never>?
 
+    /// Consent questions on screen, by installation and host name.
+    @ObservationIgnored private var pendingNativeHostConsents: [String: Task<Bool, Never>] = [:]
+
     isolated deinit {
         activationObservationTask?.cancel()
     }
@@ -212,14 +228,17 @@ final class ExtensionManager {
 
     /// Creates an extension manager.
     ///
-    /// - Parameter state: The browser state for configuration access.
-    init(state: BrowserState) {
+    /// - Parameters:
+    ///   - state: The browser state for configuration access.
+    ///   - controllerConfiguration: The default controller's configuration; the shims are
+    ///     installed on it.
+    init(state: BrowserState, controllerConfiguration: WKWebExtensionController.Configuration = .default()) {
         self.state = state
 
         // Create the default extension controller
         let shimInjector = ShimInjector()
         self.shimInjector = shimInjector
-        let configuration = WKWebExtensionController.Configuration.default()
+        let configuration = controllerConfiguration
         shimInjector.install(on: configuration)
         self.defaultController = WKWebExtensionController(configuration: configuration)
 
@@ -232,6 +251,23 @@ final class ExtensionManager {
 
         // Wire up recovery manager
         recoveryManager.extensionManager = self
+
+        nativeMessaging.register({ [unowned self] message, context in
+            try await refraxAPI.handle(message, from: context)
+        }, named: RefraxAPIShim.hostName)
+        nativeMessaging.identity = { [unowned self] context in
+            ExtensionIdentity(
+                manifest: context.webExtension.manifest,
+                verifiedChromeID: installedExtension(for: context)?.verifiedChromeID,
+                refraxOrigin: context.baseURL.absoluteString,
+            )
+        }
+        nativeMessaging.storedConsent = { [unowned self] request, context in
+            installedExtension(for: context)?.nativeHostConsents?[request.hostName]
+        }
+        nativeMessaging.askConsent = { [unowned self] request, context in
+            await askNativeHostConsent(request, for: context)
+        }
 
         // Wire up update checker
         Task {
@@ -311,7 +347,7 @@ final class ExtensionManager {
     @discardableResult
     private func installBundledExtension(from url: URL, name: String) async throws -> InstalledExtension {
         // Extract to extensions directory (runs on background thread)
-        let extractedURL = try await extractArchive(url)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(url)
 
         // Create the WKWebExtension from the extracted folder
         let extension_ = try await WKWebExtension(resourceBaseURL: extractedURL)
@@ -332,6 +368,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -349,7 +386,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist the extension
@@ -593,7 +630,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -627,7 +664,7 @@ final class ExtensionManager {
         }
 
         // Extract to extensions directory (runs on background thread)
-        let extractedURL = try await extractArchive(url)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(url)
 
         // Determine source type
         let source: ExtensionSource = fileExtension == "crx"
@@ -653,6 +690,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -669,7 +707,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load the extension into the default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -746,7 +784,12 @@ final class ExtensionManager {
         defer { try? FileManager.default.removeItem(at: archiveURL) }
 
         // Extract the archive
-        let extractedURL = try await extractArchive(archiveURL)
+        let (extractedURL, verifiedChromeID) = try await extractArchive(archiveURL)
+
+        if store == .chrome, verifiedChromeID != extensionID {
+            try? FileManager.default.removeItem(at: extractedURL)
+            throw ExtensionError.invalidSignature
+        }
 
         // Create the WKWebExtension from the extracted folder
         let extension_ = try await WKWebExtension(resourceBaseURL: extractedURL)
@@ -766,6 +809,7 @@ final class ExtensionManager {
             manifestVersion: extension_.manifest["manifest_version"] as? Double ?? 3,
         )
         installedExtension.description = extension_.displayDescription
+        installedExtension.verifiedChromeID = verifiedChromeID
 
         // Create the context
         let context = WKWebExtensionContext(for: extension_)
@@ -782,7 +826,7 @@ final class ExtensionManager {
         configureInspection(for: context)
 
         // Load into default controller
-        try load(context, into: defaultController)
+        try load(context, installedID: installedExtension.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[installedExtension.uniqueIdentifier] = context
 
         // Persist
@@ -800,175 +844,17 @@ final class ExtensionManager {
         return installedExtension
     }
 
-    /// Extracts a CRX or XPI archive to the extensions directory.
+    /// Extracts a CRX or XPI archive into a new folder under `Extensions/Extracted`, named
+    /// with a new UUID that becomes the extension's unique identifier.
     ///
     /// - Parameter archiveURL: Path to the archive file.
-    /// - Returns: Path to the extracted extension folder.
-    ///
-    /// - Note: All blocking I/O is performed on a background thread to avoid
-    ///   main-thread stalls during extension installation.
-    private func extractArchive(_ archiveURL: URL) async throws -> URL {
-        // Capture values needed for background work
-        let stateURL = stateFileURL
-
-        // Perform all blocking I/O on background thread
-        return try await Task.detached(priority: .userInitiated) {
-            let fileExtension = archiveURL.pathExtension.lowercased()
-            let data = try Data(contentsOf: archiveURL)
-
-            // CRX files have a header before the ZIP data
-            let zipData: Data = if fileExtension == "crx" {
-                try Self.extractZipFromCRX(data)
-            } else {
-                // XPI files are just ZIP files
-                data
-            }
-
-            // Generate unique folder name
-            let extensionID = UUID().uuidString
-            let extensionsDir = stateURL.deletingLastPathComponent().appendingPathComponent("Extracted", isDirectory: true)
-            let extractDir = extensionsDir.appendingPathComponent(extensionID, isDirectory: true)
-
-            // Create directories
-            try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
-
-            // Extract ZIP using Process (unzip command)
-            let tempZipPath = FileManager.default.temporaryDirectory.appendingPathComponent("\(extensionID).zip")
-            try zipData.write(to: tempZipPath)
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-            process.arguments = ["-q", "-o", tempZipPath.path, "-d", extractDir.path]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-
-            // Use async continuation instead of blocking waitUntilExit()
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                process.terminationHandler = { _ in
-                    continuation.resume()
-                }
-                do {
-                    try process.run()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-
-            // Clean up temp file
-            try? FileManager.default.removeItem(at: tempZipPath)
-
-            if process.terminationStatus != 0 {
-                try? FileManager.default.removeItem(at: extractDir)
-                throw ExtensionError.extractionFailed
-            }
-
-            Logger.debug(
-                "Extracted archive to: \(extractDir.path)",
-                category: Logger.extensions,
-            )
-
-            // Apply manifest fixups for WebKit compatibility
-            Self.fixupManifest(at: extractDir)
-
-            return extractDir
-        }.value
-    }
-
-    /// Applies fixes to the manifest.json for WebKit compatibility.
-    ///
-    /// WebKit's WKWebExtension is stricter than Firefox/Chrome about certain
-    /// manifest entries. This method patches known issues:
-    ///
-    /// - Empty command objects (e.g., `"_execute_browser_action": {}`)
-    /// - Other Firefox-specific entries that WebKit rejects
-    ///
-    /// - Parameter extensionDir: The extracted extension directory.
-    private nonisolated static func fixupManifest(at extensionDir: URL) {
-        let manifestURL = extensionDir.appendingPathComponent("manifest.json")
-
-        guard let data = try? Data(contentsOf: manifestURL),
-              var manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            Logger.warning("Could not read manifest for fixup at: \(manifestURL.path)", category: Logger.extensions)
-            return
-        }
-
-        var modified = false
-
-        // Fix 1: Remove empty command entries
-        // WebKit rejects commands like `"_execute_browser_action": {}`
-        if var commands = manifest["commands"] as? [String: Any] {
-            let originalCount = commands.count
-            commands = commands.filter { _, value in
-                guard let commandObj = value as? [String: Any] else { return false }
-                // Keep commands that have at least one property (description, suggested_key, etc.)
-                return !commandObj.isEmpty
-            }
-
-            if commands.count != originalCount {
-                manifest["commands"] = commands
-                modified = true
-                Logger.debug(
-                    "Removed \(originalCount - commands.count) empty command(s) from manifest",
-                    category: Logger.extensions,
-                )
-            }
-        }
-
-        // Fix 2: Remove browser_specific_settings if present (Firefox-only)
-        if manifest["browser_specific_settings"] != nil {
-            manifest.removeValue(forKey: "browser_specific_settings")
-            modified = true
-            Logger.debug("Removed browser_specific_settings from manifest", category: Logger.extensions)
-        }
-
-        // Write back if modified
-        if modified {
-            do {
-                let fixedData = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
-                try fixedData.write(to: manifestURL, options: .atomic)
-                Logger.info("Applied manifest fixups for WebKit compatibility", category: Logger.extensions)
-            } catch {
-                Logger.error("Failed to write fixed manifest: \(error)", category: Logger.extensions)
-            }
-        }
-    }
-
-    /// Extracts the ZIP portion from a CRX3 file.
-    ///
-    /// CRX3 format:
-    /// - 4 bytes: "Cr24" magic number
-    /// - 4 bytes: version (3)
-    /// - 4 bytes: header length (little-endian)
-    /// - header_length bytes: protobuf header
-    /// - remaining: ZIP data
-    private nonisolated static func extractZipFromCRX(_ data: Data) throws -> Data {
-        guard data.count > 12 else {
-            throw ExtensionError.invalidArchiveFormat
-        }
-
-        // Check magic number "Cr24"
-        let magic = String(data: data[0 ..< 4], encoding: .ascii)
-        guard magic == "Cr24" else {
-            throw ExtensionError.invalidArchiveFormat
-        }
-
-        // Check version (should be 3 for CRX3)
-        let version = data[4 ..< 8].withUnsafeBytes { $0.load(as: UInt32.self) }
-        guard version == 3 else {
-            throw ExtensionError.invalidArchiveFormat
-        }
-
-        // Get header length
-        let headerLength = data[8 ..< 12].withUnsafeBytes { $0.load(as: UInt32.self) }
-        let zipStart = 12 + Int(headerLength)
-
-        guard zipStart < data.count else {
-            throw ExtensionError.invalidArchiveFormat
-        }
-
-        // Return ZIP portion
-        return data[zipStart...]
+    /// - Returns: The extracted extension folder, and the Chrome ID a CRX's signature proves.
+    private func extractArchive(_ archiveURL: URL) async throws -> (folder: URL, verifiedChromeID: String?) {
+        let directory = stateFileURL.deletingLastPathComponent()
+            .appendingPathComponent("Extracted", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let extracted = try await ExtensionArchive.extract(archiveURL, into: directory)
+        return (directory, extracted.verifiedChromeID)
     }
 
     /// Uninstalls an extension.
@@ -980,14 +866,14 @@ final class ExtensionManager {
     func uninstall(_ extension_: InstalledExtension) async throws {
         // Unload from default controller
         if let context = loadedContexts[extension_.uniqueIdentifier] {
-            try defaultController.unload(context)
+            try unload(context, from: defaultController)
             loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
         }
 
         // Unload from all isolated controllers
         for (key, context) in isolatedContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
             if let controller = isolatedControllers[key.spaceID] {
-                try controller.unload(context)
+                try unload(context, from: controller)
             }
         }
         isolatedContexts = isolatedContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
@@ -995,7 +881,7 @@ final class ExtensionManager {
         // Unload from all private controllers
         for (key, context) in privateContexts where key.extensionIdentifier == extension_.uniqueIdentifier {
             if let controller = privateControllers[key.spaceID] {
-                try controller.unload(context)
+                try unload(context, from: controller)
             }
         }
         privateContexts = privateContexts.filter { $0.key.extensionIdentifier != extension_.uniqueIdentifier }
@@ -1064,7 +950,7 @@ final class ExtensionManager {
 
         // Unload from default controller
         if let context = loadedContexts[extension_.uniqueIdentifier] {
-            try defaultController.unload(context)
+            try unload(context, from: defaultController)
             loadedContexts.removeValue(forKey: extension_.uniqueIdentifier)
         }
 
@@ -1122,41 +1008,6 @@ final class ExtensionManager {
             "Set update behavior to '\(behavior.rawValue)' for '\(extension_.displayName)'",
             category: Logger.extensions,
         )
-    }
-
-    // MARK: - Extension Actions
-
-    /// Triggers a page action for an extension.
-    ///
-    /// This is called when the user clicks an extension in the page menu.
-    /// It triggers the extension's browser/page action, which may show a popup.
-    ///
-    /// - Parameters:
-    ///   - extensionID: The unique identifier of the extension.
-    ///   - webPage: The current web page, if any.
-    func triggerPageAction(for extensionID: String, in webPage: WebPage?) async {
-        guard let context = loadedContexts[extensionID] else {
-            Logger.warning(
-                "Cannot trigger action: extension '\(extensionID)' not loaded",
-                category: Logger.extensions,
-            )
-            return
-        }
-
-        Logger.info(
-            "Triggering page action for extension '\(extensionID)'",
-            category: Logger.extensions,
-        )
-
-        // Get the tab if available
-        var tab: (any WKWebExtensionTab)?
-        if let webPage,
-           let pagePool = state.pagePool {
-            tab = extensionTab(for: webPage.tabPage, pagePool: pagePool)
-        }
-
-        // Perform the action - this will trigger the delegate callback if a popup is needed
-        context.performAction(for: tab)
     }
 
     // MARK: - Tab/Window Adapter Access
@@ -1222,8 +1073,20 @@ final class ExtensionManager {
     /// `tabs(for:)` listing doesn't count. Tabs restored at launch predate every
     /// context, so without this their content scripts fail with "Tab not found"
     /// and blockers like uBlock Origin never apply their filters to them.
-    private func load(_ context: WKWebExtensionContext, into controller: WKWebExtensionController) throws {
+    ///
+    /// The context first gets its stable identifier and base URL, as
+    /// ``ExtensionContextIdentifier`` describes, so its storage survives relaunches.
+    private func load(
+        _ context: WKWebExtensionContext,
+        installedID: String,
+        spaceID: UUID?,
+        into controller: WKWebExtensionController,
+    ) throws {
+        let identifier = ExtensionContextIdentifier.identifier(installedID: installedID, spaceID: spaceID)
+        context.uniqueIdentifier = identifier
+        context.baseURL = ExtensionContextIdentifier.baseURL(for: identifier)
         try controller.load(context)
+        actions.refresh(context)
 
         for space in state.spaces where space.isLoaded {
             reportExistingTabs(space.tabs, to: context)
@@ -1258,6 +1121,69 @@ final class ExtensionManager {
         }
     }
 
+    /// Unloads a context and forgets its actions.
+    private func unload(_ context: WKWebExtensionContext, from controller: WKWebExtensionController) throws {
+        try controller.unload(context)
+        actions.removeContext(context.uniqueIdentifier)
+    }
+
+    // MARK: - Window Event Dispatching
+
+    /// Every controller: the default one and each space's.
+    var allControllers: [WKWebExtensionController] {
+        [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
+    }
+
+    /// Reports a browser window to the controller of the space it shows. Only that
+    /// controller's extensions see the window; it moves to another controller when the window
+    /// switches to a space of another one (``dispatchActiveSpaceChanged(_:)``).
+    func dispatchWindowOpened(_ windowState: WindowState, nsWindow: NSWindow) {
+        let owner = windowOwner(for: windowState)
+        windowOwners[ObjectIdentifier(windowState)] = owner
+        owner.didOpenWindow(extensionWindow(for: windowState, nsWindow: nsWindow))
+    }
+
+    /// Tells the window's controller it became the focused window.
+    func dispatchWindowFocused(_ windowState: WindowState, nsWindow: NSWindow) {
+        dispatchActiveSpaceChanged(windowState)
+        windowOwners[ObjectIdentifier(windowState)]?.didFocusWindow(extensionWindow(for: windowState, nsWindow: nsWindow))
+    }
+
+    /// Tells the window's controller it closed, and drops its adapter.
+    func dispatchWindowClosed(_ windowState: WindowState, nsWindow: NSWindow) {
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        windowOwners.removeValue(forKey: ObjectIdentifier(windowState))?.didCloseWindow(window)
+        removeWindowAdapter(for: windowState)
+    }
+
+    /// Moves a window to the controller of the space it now shows: the old controller's
+    /// extensions see it close, the new one's see it open.
+    func dispatchActiveSpaceChanged(_ windowState: WindowState) {
+        let key = ObjectIdentifier(windowState)
+        guard let current = windowOwners[key], let nsWindow = windowState.window else { return }
+        let owner = windowOwner(for: windowState)
+        guard owner !== current else { return }
+        let window = extensionWindow(for: windowState, nsWindow: nsWindow)
+        current.didCloseWindow(window)
+        windowOwners[key] = owner
+        owner.didOpenWindow(window)
+        if nsWindow.isKeyWindow {
+            owner.didFocusWindow(window)
+        }
+    }
+
+    /// Whether `context` runs in the controller of the space `windowState` shows, so its
+    /// extension may act on the window.
+    func windowBelongs(_ windowState: WindowState, to context: WKWebExtensionContext) -> Bool {
+        guard let owner = context.webExtensionController else { return false }
+        guard let space = windowState.activeSpace else { return owner === defaultController }
+        return existingController(for: space) === owner
+    }
+
+    private func windowOwner(for windowState: WindowState) -> WKWebExtensionController {
+        windowState.activeSpace.map(controller(for:)) ?? defaultController
+    }
+
     /// Notes that an open tab's page went away while the tab stays open, as when the
     /// page pool evicts it.
     ///
@@ -1284,6 +1210,27 @@ final class ExtensionManager {
         controller.didCloseTab(adapter, windowIsClosing: false)
         removeTabAdapter(for: tabPage)
         controller.didOpenTab(extensionTab(for: tabPage, pagePool: pagePool))
+    }
+
+    /// The controller a space's tabs run in, or `nil` for an isolated or private space whose
+    /// controller does not exist yet. Never creates one.
+    func existingController(for space: Space) -> WKWebExtensionController? {
+        if space.dataStoreMode.isPrivate {
+            return privateControllers[space.id]
+        }
+        if space.dataStoreMode.usesSeparateDataStore {
+            return isolatedControllers[space.id]
+        }
+        return defaultController
+    }
+
+    /// The controller a tab's web views run in, as `controller(for:)` picks it, without
+    /// creating a space's controller.
+    func existingController(for tab: Tab) -> WKWebExtensionController? {
+        guard !tab.status.usesGlobalDataStore, let space = tab.space else {
+            return defaultController
+        }
+        return existingController(for: space)
     }
 
     /// The controller for a tab's web views: its space's, matching the data store
@@ -1326,6 +1273,7 @@ final class ExtensionManager {
             controller.didCloseTab(adapter, windowIsClosing: windowClosing)
         }
         removeTabAdapter(for: tabPage)
+        actions.removeTabPage(tabPage.id)
     }
 
     /// Notifies extensions that a tab was activated.
@@ -1433,6 +1381,148 @@ final class ExtensionManager {
         loadedContexts[extension_.uniqueIdentifier]
     }
 
+    /// The installed extension a loaded context, in any controller, runs.
+    func installedExtension(for context: WKWebExtensionContext) -> InstalledExtension? {
+        let installedID = loadedContexts.first { $0.value === context }?.key
+            ?? isolatedContexts.first { $0.value === context }?.key.extensionIdentifier
+            ?? privateContexts.first { $0.value === context }?.key.extensionIdentifier
+        return installedID.flatMap { id in installedExtensions.first { $0.uniqueIdentifier == id } }
+    }
+
+    // MARK: - Actions
+
+    /// The actions of the extensions that run in `tab`, as that tab shows them, by name.
+    ///
+    /// - Parameter tab: The tab the actions act on; the default controller's when `nil`.
+    func actionEntries(for tab: Tab?) -> [ExtensionActionEntry] {
+        let tabPageID = tab?.pages.first?.id
+        let url = tab?.activePage.url
+        return actionContexts(for: tab)
+            .filter { context in
+                guard let url, let installed = installedExtension(for: context) else { return true }
+                return !isExtensionDisabled(installed, for: url)
+            }
+            .compactMap { context in
+                guard let appearance = actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) else {
+                    return nil
+                }
+                return ExtensionActionEntry(
+                    id: context.uniqueIdentifier,
+                    name: context.webExtension.displayName ?? appearance.label,
+                    icon: actions.icon(contextID: context.uniqueIdentifier, tabPageID: tabPageID)
+                        ?? context.webExtension.icon(for: ExtensionActionStore.iconSize),
+                    appearance: appearance,
+                )
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Whether an extension running in `tab` has an action to show.
+    func hasActions(in tab: Tab?) -> Bool {
+        let tabPageID = tab?.pages.first?.id
+        return actionContexts(for: tab).contains { context in
+            actions.board.appearance(contextID: context.uniqueIdentifier, tabPageID: tabPageID) != nil
+        }
+    }
+
+    /// Whether an action in `tab` shows a badge the user has not seen.
+    func hasUnreadActionBadge(in tab: Tab?) -> Bool {
+        actions.board.hasUnreadBadge(among: actionContexts(for: tab).map(\.uniqueIdentifier), tabPageID: tab?.pages.first?.id)
+    }
+
+    /// Marks every action badge in `tab` as seen.
+    func markActionBadgesRead(in tab: Tab?) {
+        actions.markRead(actionContexts(for: tab), tab: extensionTab(for: tab))
+    }
+
+    /// Performs an extension's action in `tab`, as clicking its toolbar button does in other
+    /// browsers: its popup opens at `anchor`, or the extension gets `action.onClicked`.
+    ///
+    /// - Parameters:
+    ///   - contextID: The extension context's unique identifier.
+    ///   - tab: The tab the action acts on.
+    ///   - anchor: The control the user clicked, where the popup opens.
+    func performAction(contextID: String, in tab: Tab?, anchor: ActionPopupAnchor?) {
+        guard let context = actionContexts(for: tab).first(where: { $0.uniqueIdentifier == contextID }) else {
+            Logger.warning("Cannot perform action: extension context \(contextID) not loaded", category: Logger.extensions)
+            return
+        }
+        actions.pendingPopupAnchor = anchor
+        let extensionTab = extensionTab(for: tab)
+        if let extensionTab {
+            context.userGesturePerformed(in: extensionTab)
+        }
+        context.performAction(for: extensionTab)
+    }
+
+    /// The loaded contexts of `tab`'s controller whose extension declares an action.
+    private func actionContexts(for tab: Tab?) -> [WKWebExtensionContext] {
+        let controller = tab.map(controller(for:)) ?? defaultController
+        return controller.extensionContexts.filter { context in
+            let manifest = context.webExtension.manifest
+            return manifest["action"] != nil || manifest["browser_action"] != nil || manifest["page_action"] != nil
+        }
+    }
+
+    private func extensionTab(for tab: Tab?) -> RefraxExtensionTab? {
+        guard let tabPage = tab?.pages.first, let pagePool = state.pagePool else { return nil }
+        return extensionTab(for: tabPage, pagePool: pagePool)
+    }
+
+    // MARK: - Native Host Consent
+
+    /// Asks once whether an extension may start a native host that admits it only by an
+    /// identity it claims, and remembers the answer on the installed extension. Requests for
+    /// the same extension and host while the question is up share it.
+    private func askNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest, for context: WKWebExtensionContext) async -> Bool {
+        guard let installed = installedExtension(for: context) else { return false }
+        if let answer = installed.nativeHostConsents?[request.hostName] {
+            return answer
+        }
+        let key = "\(installed.id)/\(request.hostName)"
+        if let pending = pendingNativeHostConsents[key] {
+            return await pending.value
+        }
+        let question = Task(name: "Ask to start native host") {
+            await Self.presentNativeHostConsent(request)
+        }
+        pendingNativeHostConsents[key] = question
+        let allowed = await question.value
+        pendingNativeHostConsents[key] = nil
+
+        if let index = installedExtensions.firstIndex(where: { $0.id == installed.id }) {
+            installedExtensions[index].nativeHostConsents = (installedExtensions[index].nativeHostConsents ?? [:])
+                .merging([request.hostName: allowed]) { $1 }
+            savePersistedState()
+        }
+        Logger.info(
+            "Native host '\(request.hostName)' \(allowed ? "allowed" : "refused") for '\(installed.displayName)'",
+            category: Logger.extensions,
+        )
+        return allowed
+    }
+
+    /// The consent question, as a sheet on the key window or a standalone alert.
+    private static func presentNativeHostConsent(_ request: NativeMessagingRouter.ConsentRequest) async -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Allow “\(request.extensionName)” to start “\(request.hostName)”?"
+        alert.informativeText = """
+        The extension asks to exchange messages with the app at \(request.executablePath). \
+        That app trusts a particular extension, and Refrax cannot confirm this is it: \
+        Refrax did not install it from a signed package. Allow only if you installed this \
+        extension from its developer.
+        """
+        alert.addButton(withTitle: "Don’t Allow")
+        alert.addButton(withTitle: "Allow")
+        let response: NSApplication.ModalResponse = if let window = NSApp.keyWindow {
+            await alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+        return response == .alertSecondButtonReturn
+    }
+
     /// The loaded extension context that owns `url`, searched across the default controller
     /// and every space controller.
     ///
@@ -1443,8 +1533,7 @@ final class ExtensionManager {
     /// - Returns: The owning context, or `nil` when `url` is no loaded extension's page.
     func extensionContext(for url: URL) -> WKWebExtensionContext? {
         guard ExtensionPageRouting.isExtensionURL(url) else { return nil }
-        let controllers = [defaultController] + Array(isolatedControllers.values) + Array(privateControllers.values)
-        for controller in controllers {
+        for controller in allControllers {
             if let context = controller.extensionContext(for: url) {
                 return context
             }
@@ -1588,7 +1677,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try load(context, into: defaultController)
+        try load(context, installedID: extension_.uniqueIdentifier, spaceID: nil, into: defaultController)
         loadedContexts[extension_.uniqueIdentifier] = context
     }
 
@@ -1624,7 +1713,7 @@ final class ExtensionManager {
                     Logger.error("Failed to load '\(current.displayName)' into space \(space.spaceID): \(error)", category: Logger.extensions)
                 }
             } else if !wanted, let loaded {
-                try? space.controller.unload(loaded)
+                try? unload(loaded, from: space.controller)
                 if space.isPrivate {
                     privateContexts[key] = nil
                 } else {
@@ -1670,7 +1759,7 @@ final class ExtensionManager {
         // Enable Web Inspector for debug builds
         configureInspection(for: context)
 
-        try load(context, into: controller)
+        try load(context, installedID: extension_.uniqueIdentifier, spaceID: spaceID, into: controller)
 
         let key = SpaceExtensionKey(spaceID: spaceID, extensionIdentifier: extension_.uniqueIdentifier)
 
@@ -1820,8 +1909,10 @@ final class ExtensionManager {
         of webExtension: WKWebExtension,
         to installedExtension: inout InstalledExtension,
     ) {
+        let refraxPermissions = (webExtension.manifest["permissions"] as? [String] ?? [])
+            .filter { $0.hasPrefix(RefraxAPIShim.permissionPrefix) }
         installedExtension.grantPermanently(
-            permissions: webExtension.requestedPermissions.map(\.rawValue),
+            permissions: webExtension.requestedPermissions.map(\.rawValue) + refraxPermissions,
             matchPatterns: webExtension.requestedPermissionMatchPatterns.map(\.string),
         )
     }
@@ -2170,6 +2261,9 @@ enum ExtensionError: Error, LocalizedError {
     /// Failed to extract the extension archive.
     case extractionFailed
 
+    /// A CRX file's developer signature does not verify.
+    case invalidSignature
+
     /// Extension exceeded its resource budget.
     case resourceBudgetExceeded(String)
 
@@ -2199,6 +2293,8 @@ enum ExtensionError: Error, LocalizedError {
             "Invalid extension archive format"
         case .extractionFailed:
             "Failed to extract extension archive"
+        case .invalidSignature:
+            "The extension archive's signature is invalid"
         case let .resourceBudgetExceeded(resource):
             "Extension exceeded \(resource) resource budget"
         case .alreadyInstalled:

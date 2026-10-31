@@ -80,6 +80,16 @@ nonisolated struct InstalledExtension: Codable, Identifiable, Hashable, Sendable
     /// URL match patterns explicitly denied.
     var deniedMatchPatterns: [String: Date]
 
+    // MARK: - Native Messaging
+
+    /// The Chrome extension ID the extension proved at install: the ID of the developer key
+    /// that signed its CRX. `nil` for an extension installed from anything but a signed CRX.
+    var verifiedChromeID: String?
+
+    /// The user's answers, by host name, to whether this extension may start a native
+    /// messaging host that lists an identity the extension only claims.
+    var nativeHostConsents: [String: Bool]?
+
     // MARK: - Per-Site Overrides
 
     /// Domains where this extension is disabled regardless of global state.

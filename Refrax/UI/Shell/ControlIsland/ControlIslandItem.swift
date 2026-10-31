@@ -17,6 +17,9 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case nowPlaying
     /// A downloaded update waiting for a restart. On the rail only while one is ready.
     case updates
+    /// The extensions' toolbar actions with their badges. On the rail only while an extension
+    /// with an action runs.
+    case extensions
     /// The current page's icon, which unfolds the page card. Stored under its original name.
     case page = "address"
 
@@ -35,7 +38,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
         .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs,
-        .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates,
+        .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .extensions, .nowPlaying, .updates,
     ]
 
     var title: String {
@@ -54,6 +57,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .settings: "Settings"
         case .nowPlaying: "Now Playing"
         case .updates: "Update ready"
+        case .extensions: "Extensions"
         }
     }
 
@@ -73,6 +77,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .settings: "gearshape"
         case .nowPlaying: "speaker.wave.2"
         case .updates: "arrow.down.circle.fill"
+        case .extensions: "puzzlepiece.extension"
         }
     }
 
@@ -92,6 +97,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .settings: "Open browser settings · ⌘,"
         case .nowPlaying: "Play, pause, and mute the tabs playing sound · ⌃M mutes this tab; on the rail only while something plays"
         case .updates: "Restart to install a downloaded update; on the rail only while one is ready"
+        case .extensions: "Your extensions' buttons and badges; on the rail only while an extension with a button runs"
         }
     }
 
@@ -102,18 +108,18 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     var section: Section {
         switch self {
         case .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs: .main
-        case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .nowPlaying, .updates: .additional
+        case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .extensions, .nowPlaying, .updates: .additional
         }
     }
 
-    /// Shown before anyone customizes the rail. Now Playing and the update badge are on by
-    /// default because they occupy the rail only while something plays or an update is ready.
+    /// Shown before anyone customizes the rail. Now Playing, Extensions and the update badge
+    /// are on by default because they occupy the rail only while their subject exists.
     var isDefault: Bool {
         section == .main || isConditional
     }
 
     /// On the rail only while its subject exists, so it costs no height the rest of the time.
     var isConditional: Bool {
-        self == .nowPlaying || self == .updates
+        self == .nowPlaying || self == .updates || self == .extensions
     }
 }

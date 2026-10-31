@@ -804,7 +804,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
 
                 guard let self,
                       case .portal = self.displayMode,
-                      let portal = self.portalLayer else { return }
+                      let portal = portalLayer else { return }
 
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
@@ -944,6 +944,19 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         return r > 250 && g > 250 && b > 250
     }
 
+    /// Rounds the adapter's corners on its own layer: Core Animation clips the web view's
+    /// remote layers, the portal, and the snapshot to them, which a SwiftUI shape above the
+    /// adapter does not do.
+    func setCornerRadius(_ radius: CGFloat) {
+        guard let layer, layer.cornerRadius != radius else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.cornerRadius = radius
+        layer.cornerCurve = .continuous
+        layer.masksToBounds = radius > 0
+        CATransaction.commit()
+    }
+
     /// Sets the adapter to inactive mode with no content.
     func setInactiveMode() {
         guard displayMode != .inactive else {
@@ -1029,9 +1042,12 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     ///     this duration before removal.
     func exitSnapshotMode(webView: WebPageWebView, expectedFrame: CGRect, animationDuration: TimeInterval = 0.5) {
         guard case .snapshot = displayMode else { return }
+        let targetSize = expectedFrame.size
+        let hasTarget = targetSize.width > 0 && targetSize.height > 0
 
-        // Prevent layout() from resizing the webView during the animation.
-        isHoldingWebViewFrame = true
+        // Prevent layout() from resizing the webView during the animation. Without a known
+        // final size there is nothing to hold it at, and holding would pin it at tile size.
+        isHoldingWebViewFrame = hasTarget
 
         // Add webView to the hierarchy (sets it to current bounds,
         // which is tile-size — we'll override this below).
@@ -1041,11 +1057,10 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         // Override: set webView to the FINAL target size so WebKit renders at full size
         // from the start, avoiding re-layout at every intermediate animation frame.
         // Clear autoresizingMask so AppKit doesn't resize it during the animation either.
-        let targetSize = expectedFrame.size
-        if targetSize.width > 0, targetSize.height > 0 {
+        if hasTarget {
             webView.frame = CGRect(origin: .zero, size: targetSize)
+            webView.autoresizingMask = []
         }
-        webView.autoresizingMask = []
 
         // Move snapshot layer ABOVE the webView so it covers during the animation.
         // (installTransitionSnapshot inserts at position 0, which is below the webView)
@@ -1174,7 +1189,9 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
 
         let snapshot = CALayer()
         snapshot.contents = image
-        snapshot.contentsGravity = .resizeAspectFill
+        // At its captured scale, pinned to the top-leading corner as a page is: a pane that
+        // narrows or widens around it shows more or less of it, never a zoomed copy.
+        snapshot.contentsGravity = .topLeft
         snapshot.contentsScale = scale
         snapshot.frame = bounds
 
@@ -1195,7 +1212,9 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     /// the snapshot IS the primary content. Only `exitSnapshotMode()` should remove it
     /// (it changes displayMode to `.active` first, then schedules removal).
     private func removeTransitionSnapshot() {
-        if case .snapshot = displayMode { return }
+        if case .snapshot = displayMode {
+            return
+        }
         guard transitionSnapshotLayer != nil else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

@@ -53,6 +53,8 @@ struct DetailTrayContent: View {
             SnapshotBrowserView()
         case .lightboard:
             LightboardView()
+        case .archive:
+            ArchiveTrayView()
         case .hidden:
             EmptyView()
         }
@@ -220,6 +222,11 @@ private struct DetailTrayTitleMenuOverlay: NSViewRepresentable {
         func selectLightboard(_: NSMenuItem) {
             DispatchQueue.main.async { [self] in onSelectMode(.lightboard) }
         }
+
+        @objc
+        func selectArchive(_: NSMenuItem) {
+            DispatchQueue.main.async { [self] in onSelectMode(.archive) }
+        }
     }
 }
 
@@ -259,6 +266,7 @@ private final class DetailTrayTitleMenuOverlayView: NSView {
         case .bookmarks: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectBookmarks(_:))
         case .tabSnapshots: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectTabSnapshots(_:))
         case .lightboard: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectLightboard(_:))
+        case .archive: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectArchive(_:))
         case .hidden, .backForward: #selector(DetailTrayTitleMenuOverlay.Coordinator.selectHistory(_:))
         }
     }
@@ -291,7 +299,7 @@ private struct DetailTrayHeaderButtonStyle: ButtonStyle {
 // MARK: - DetailTrayMode Extensions
 
 extension DetailTrayMode {
-    static let drawerModes: [Self] = [.favorites, .history, .bookmarks, .lightboard, .downloads, .tabSnapshots]
+    static let drawerModes: [Self] = [.favorites, .history, .archive, .bookmarks, .lightboard, .downloads, .tabSnapshots]
     /// Display title for the mode.
     var title: String {
         switch self {
@@ -303,6 +311,7 @@ extension DetailTrayMode {
         case .backForward: "Navigation"
         case .tabSnapshots: "Tab Snapshots"
         case .lightboard: "Tab Statistics"
+        case .archive: "Archive"
         }
     }
 
@@ -317,6 +326,7 @@ extension DetailTrayMode {
         case .backForward: "arrow.left.arrow.right"
         case .tabSnapshots: "clock.arrow.trianglehead.counterclockwise.rotate.90"
         case .lightboard: "light.recessed.3"
+        case .archive: "archivebox"
         }
     }
 }
