@@ -69,7 +69,8 @@ struct IslandsLayer: View {
                         SideDropZone(side: side, bounds: islands.pageArea)
                             .transition(.opacity)
                     }
-                    if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID), let island = islands.island(holding: tabID) {
+                    if let tabID = islands.previewedTabID, let tab = islands.tab(for: tabID),
+                       let island = islands.visibleIslands.first(where: { $0.allTabIDs.contains(tabID) }) {
                         RowPreview(tab: tab, islandFrame: islands.frame(of: island), bounds: bounds)
                             .zIndex(5)
                             .transition(.opacity)
@@ -207,6 +208,11 @@ struct IslandView: View {
                     }
                 }
                 .onChange(of: windowState.activeTabID) { revealCurrentRow(using: reader) }
+                .onChange(of: islands.keyboardCursorID) { _, cursor in
+                    if let cursor {
+                        reveal(cursor, using: reader)
+                    }
+                }
                 .onChange(of: islands.isRevealed, initial: true) { revealCurrentRow(using: reader) }
                 .task(id: islands.draggedTabID) { await scrollDuringDrag(using: reader) }
             }
@@ -219,7 +225,13 @@ struct IslandView: View {
     }
 
     private func revealCurrentRow(using reader: ScrollViewProxy) {
-        guard let id = windowState.activeTabID, let index = island.layout.row(of: id) else { return }
+        guard let id = windowState.activeTabID else { return }
+        reveal(id, using: reader)
+    }
+
+    /// Scrolls `id`'s row into view when it is on this island and out of sight.
+    private func reveal(_ id: UUID, using reader: ScrollViewProxy) {
+        guard let index = island.layout.row(of: id) else { return }
         let offset = islands.scrollOffsets[island.id] ?? 0
         let row = geometry.rowFrame(index)
         let height = islands.frame(of: island).height - 2 * IslandGeometry.padding
@@ -490,6 +502,11 @@ private struct IslandTabRow: View, Equatable {
         islands.selectedTabIDs.contains(tab.id)
     }
 
+    /// The keyboard has chosen this row while the islands are latched open.
+    private var isKeyboardChoice: Bool {
+        islands.keyboardCursorID == tab.id && canvas.floatingVisibility.isLatched
+    }
+
     /// How far the row moves while another is dragged: the rows below the lifted one close
     /// its hole, and the rows at and past the drop row open a gap for it.
     private var shift: CGFloat {
@@ -565,6 +582,12 @@ private struct IslandTabRow: View, Equatable {
             }
         }
         .animation(.easeOut(duration: 0.12), value: isJoinTarget)
+        // The keyboard's choice wears a focus ring, apart from the current row's fill.
+        .overlay {
+            if isKeyboardChoice {
+                shape.stroke(Color.appAccentColor, lineWidth: 2).padding(1)
+            }
+        }
         .contentShape(shape)
         .opacity(islands.draggedTabID == tab.id ? Layout.draggedOpacity : 1)
         .onHover { hovering in

@@ -169,6 +169,9 @@ final class IslandController {
     private(set) var startHintDismissed: Bool
     @ObservationIgnored private let defaults: UserDefaults
     static let startHintKey = "islands.startHintDismissed"
+    /// The row the keyboard has chosen while the islands have the keyboard.
+    private(set) var keyboardCursorID: UUID?
+    @ObservationIgnored private var keyboard: IslandKeyboardNavigator?
     /// The quick filter on the islands: only the tabs it matches keep their rows.
     private(set) var filter: IslandFilter?
     /// Rows chosen with ⇧ or ⌘, on one island, for actions on several tabs at once.
@@ -545,6 +548,11 @@ final class IslandController {
     /// The island in `direction` from the current one, by their places on the window.
     func island(toward direction: TableDirection) -> Island? {
         guard let current = currentTab, let here = island(holding: current.id) else { return nil }
+        return island(toward: direction, from: here)
+    }
+
+    /// The island in `direction` from `here`, by their places on the window.
+    func island(toward direction: TableDirection, from here: Island) -> Island? {
         let origin = frame(of: here)
         let candidates = islands.filter { $0.id != here.id }.compactMap { island -> (Island, CGFloat)? in
             let frame = frame(of: island)
@@ -637,6 +645,11 @@ final class IslandController {
         if built != islands {
             islands = built
             resolveOverlaps()
+        }
+        if var keyboard {
+            keyboard.sync(keyboardColumns)
+            self.keyboard = keyboard
+            update(\.keyboardCursorID, to: keyboard.cursor)
         }
         // An island exists: the hint has nothing left to teach.
         if !startHintDismissed, built.contains(where: { !$0.isDefault }) {
@@ -844,6 +857,81 @@ final class IslandController {
     /// What a filter reads of `tab`.
     func facts(for tab: Tab) -> IslandRowFacts {
         IslandRowFacts(state: TabMediaControl(tab: tab, pagePool: pagePool).state, isUnread: tab.isUnread)
+    }
+
+    // MARK: - The keyboard
+
+    /// The islands on screen as the keyboard moves through them: each its shown tab rows.
+    var keyboardColumns: [IslandKeyboardNavigator.Column] {
+        visibleIslands.map { IslandKeyboardNavigator.Column(id: $0.id, tabIDs: $0.tabIDs) }
+    }
+
+    /// Whether the islands have the keyboard: they are latched open and a key has chosen a row.
+    var hasKeyboard: Bool {
+        keyboard != nil
+    }
+
+    /// Latches the islands open with the current tab's row chosen, for the arrows to move.
+    func beginKeyboardBrowsing() {
+        if !canvas.floatingVisibility.isLatched {
+            canvas.toggleFloatingTabs()
+        }
+        keyboard = IslandKeyboardNavigator(current: currentTab?.id, columns: keyboardColumns)
+        update(\.keyboardCursorID, to: keyboard?.cursor)
+    }
+
+    /// The keyboard goes back to the page: no row is chosen, and the preview it showed goes.
+    func endKeyboardBrowsing() {
+        if keyboard?.isPreviewing == true {
+            previewedTabID = nil
+        }
+        keyboard = nil
+        update(\.keyboardCursorID, to: nil)
+    }
+
+    /// Answers `key` while the islands are latched open. The first key other than Escape
+    /// starts on the current tab's row. Returns whether the islands took the key; Escape with
+    /// nothing chosen is left to whoever else answers it.
+    @discardableResult
+    func handleKey(_ key: IslandKey) -> Bool {
+        if keyboard == nil {
+            guard key != .leave else { return false }
+            keyboard = IslandKeyboardNavigator(current: currentTab?.id, columns: keyboardColumns)
+        }
+        guard var navigator = keyboard else { return false }
+        let effect = navigator.handle(
+            key, columns: keyboardColumns,
+            neighbor: { [self] id, direction in island(id).flatMap { island(toward: direction, from: $0)?.id } },
+            title: { [self] id in tab(for: id)?.displayTitle ?? "" },
+        )
+        keyboard = navigator
+        update(\.keyboardCursorID, to: navigator.cursor)
+        switch effect {
+        case .none, .moved:
+            break
+        case let .open(tabID):
+            endKeyboardBrowsing()
+            if let tab = tab(for: tabID) {
+                open(tab)
+            }
+            canvas.dismissFloatingTabs()
+        case let .close(tabID):
+            if previewedTabID == tabID {
+                previewedTabID = navigator.isPreviewing ? navigator.cursor : nil
+            }
+            if let tab = tab(for: tabID) {
+                tabManager.requestCloseTab(tab)
+            }
+        case let .preview(tabID):
+            if let tabID, let tab = tab(for: tabID) {
+                requestStoredSnapshot(for: tab)
+            }
+            previewedTabID = tabID
+        case .leave:
+            endKeyboardBrowsing()
+            canvas.dismissFloatingTabs()
+        }
+        return true
     }
 
     // MARK: - Sections

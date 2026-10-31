@@ -122,9 +122,9 @@ struct WeblocFileTests {
 }
 
 /// Links and tabs let go on an island land on the row under the pointer.
-@Suite("Island drops", .serialized)
+@Suite("Island drops from outside", .serialized)
 @MainActor
-struct IslandDropTests {
+struct IslandExternalDropTests {
     private let page = URL(string: "https://example.com/dropped")!
 
     /// A point on row `row` of `island` as drawn, a little under the row's top.

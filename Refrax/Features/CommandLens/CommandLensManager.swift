@@ -1724,6 +1724,8 @@ final class CommandLensManager {
                 return
             case .showArchive:
                 windowState.showDetailTray(.archive)
+            case .browseIslands:
+                windowState.islandController?.beginKeyboardBrowsing()
             case let .filterIslands(filter):
                 if let islands = windowState.islandController {
                     islands.setFilter(filter)

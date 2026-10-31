@@ -135,6 +135,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case filterIslands(IslandFilter?)
     /// Open the archive in the library drawer.
     case showArchive
+    /// Latch the islands open with the current row chosen, for the arrow keys.
+    case browseIslands
 }
 
 /// Scope of a setting (global or per-site).

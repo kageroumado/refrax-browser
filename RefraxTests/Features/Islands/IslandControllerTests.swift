@@ -182,7 +182,7 @@ struct IslandControllerTests {
     }
 
     @Test
-    func `Arrow navigation reaches island rows in the browser window and leaves renaming alone`() throws {
+    func `Latched islands take the arrows to choose a row, Return opens it, and renaming keeps its keys`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("First")
         _ = fixture.tab("Second")
@@ -196,7 +196,13 @@ struct IslandControllerTests {
         gestures.islands = fixture.islands
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil, characters: "\u{F701}", charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
         #expect(gestures.handle(event) == nil)
+        #expect(fixture.islands.keyboardCursorID == secondID)
+        #expect(fixture.window.activeTabID == firstID)
+        let open = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        #expect(gestures.handle(open) == nil)
         #expect(fixture.window.activeTabID == secondID)
+        #expect(!fixture.canvas.floatingVisibility.isRevealed)
+        fixture.canvas.toggleFloatingTabs()
         let editor = NSTextView()
         parent.contentView = editor
         parent.makeFirstResponder(editor)

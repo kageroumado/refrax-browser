@@ -1,7 +1,7 @@
 import Foundation
 
-/// The islands' own commands: the quick filters and showing every tab again, and the
-/// archive in the library drawer.
+/// The islands' own commands: the quick filters and showing every tab again, the archive in
+/// the library drawer, and moving through the rows with the keyboard.
 struct IslandsProvider: CommandLensSuggestionProvider {
     weak var windowState: WindowState?
 
@@ -35,6 +35,9 @@ struct IslandsProvider: CommandLensSuggestionProvider {
         }
         if matches(["archive", "archived tabs", "show archive", "open archive", "empty archive", "restore archived"]) {
             results.append(suggestion(.showArchive, "Show Archive", "Archived tabs in the library drawer", "archivebox"))
+        }
+        if islands.currentTab != nil, matches(["browse tabs", "keyboard", "move through tabs", "choose tab with keyboard", "tab list", "go to tab"]) {
+            results.append(suggestion(.browseIslands, "Browse Tabs with the Keyboard", "↑↓ choose · ←→ islands · Return opens · Esc leaves", "keyboard"))
         }
         return results
     }
