@@ -36,3 +36,17 @@ Looks dead; scope or origin unverified.
 - **Not deleted because**: they are persisted `@Model` properties synced through CloudKit; removing them is a schema change
 - **To confirm**: `rg 'boardAnchor|isMagnet|stackSite|stacksBySite|TabGroup.*boardFrame' Refrax`, then remove with a schema migration
 - **Found**: 2026-10-23
+
+## `Refrax/Core/Models/Extensions/InstalledExtension.swift:247` — `ExtensionGlobalSettings.installedBundledExtensions`
+- **What**: the set of bundled extensions Refrax auto-installed, and its one write in `ExtensionManager.installBundledExtension(from:name:)`
+- **Looks dead because**: only the removed first-launch auto-install read it; uBlock Origin now installs on request (`installBundledUBlockOrigin()`)
+- **Not deleted because**: it is persisted extension state, and the extensions work in parallel may want it back for another bundled extension
+- **To confirm**: `rg installedBundledExtensions Refrax`; if nothing reads it, drop the property and the write
+- **Found**: 2026-10-31
+
+## `Refrax/Core/Managers/Tabs/BrowserState.swift:243` — `isContentBlockingReady`
+- **What**: a flag set once Shields has started, reported through the API's state query
+- **Looks dead because**: nothing gates on it; Shields attaches its cached build or builds in the background and pages never wait
+- **Not deleted because**: `RefraxAPI` exposes it to API clients (`APIQuery.isContentBlockingReady`), which may read it
+- **To confirm**: check API clients (the MCP/agent side) for `isContentBlockingReady`, or ask Kiri
+- **Found**: 2026-10-31

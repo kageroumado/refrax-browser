@@ -84,6 +84,8 @@ extension BrowserSettings: Syncable {
         record["enableAutoConsent"] = enableAutoConsent as NSNumber
         record["hideSignInPrompts"] = hideSignInPrompts as NSNumber
         record["enableFingerprintingProtection"] = enableFingerprintingProtection as NSNumber
+        record["enableContentBlocking"] = enableContentBlocking as NSNumber
+        record["aggressiveContentBlocking"] = aggressiveContentBlocking as NSNumber
         record["allowWebsiteNotificationRequests"] = allowWebsiteNotificationRequests as NSNumber
 
         // MARK: - Privacy: History
@@ -275,6 +277,8 @@ extension BrowserSettings: Syncable {
         settings.enableAutoConsent = (record["enableAutoConsent"] as? Bool) ?? false
         settings.hideSignInPrompts = (record["hideSignInPrompts"] as? Bool) ?? true
         settings.enableFingerprintingProtection = (record["enableFingerprintingProtection"] as? Bool) ?? true
+        settings.enableContentBlocking = (record["enableContentBlocking"] as? Bool) ?? true
+        settings.aggressiveContentBlocking = (record["aggressiveContentBlocking"] as? Bool) ?? false
         settings.allowWebsiteNotificationRequests = (record["allowWebsiteNotificationRequests"] as? Bool) ?? true
 
         // MARK: - Privacy: History

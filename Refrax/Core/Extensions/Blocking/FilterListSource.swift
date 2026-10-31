@@ -1,10 +1,8 @@
 import Foundation
 
-/// Represents a filter list source URL for content blocking.
+/// A filter list Shields can subscribe to.
 ///
-/// Filter lists can come from various sources like EasyList, EasyPrivacy,
-/// uBlock filters, or user-added custom lists. Each list has an update
-/// frequency and category for organization.
+/// Built-in lists come from EasyList and uBlock Origin; users add their own by URL.
 nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
     /// Unique identifier for this filter list.
     let id: String
@@ -24,17 +22,20 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
     /// How often to check for updates (in seconds).
     var updateFrequency: TimeInterval
 
-    /// Last time this list was successfully updated.
+    /// Last time this list was successfully downloaded.
     var lastUpdated: Date?
 
-    /// Number of rules parsed from this list.
+    /// Filters the last build read from this list (network and cosmetic).
     var ruleCount: Int?
 
-    /// Number of WebKit rule list chunks this list compiled to.
-    var chunkCount: Int?
+    /// Why the last download failed; nil after a success.
+    var lastError: String?
 
-    /// ``WebKitRuleCompiler/version`` that produced the cached compiled chunks.
-    var compilerVersion: Int? = nil
+    /// uBlock Origin's own lists may use the scriptlets uBO reserves for trusted lists
+    /// (`trusted-click-element`, `trusted-set-cookie`, …), as uBO itself allows them.
+    var isTrusted: Bool {
+        Self.trustedPrefixes.contains { id.hasPrefix($0) }
+    }
 
     // MARK: - Categories
 
@@ -52,166 +53,82 @@ nonisolated struct FilterListSource: Codable, Identifiable, Hashable, Sendable {
 // MARK: - Default Lists
 
 nonisolated extension FilterListSource {
-    /// `lists` with each built-in list fetched from its current default URL.
+    /// Daily, the update interval of every list but uBO's quick fixes.
+    static let dailyUpdates: TimeInterval = 86_400
+    /// Quick fixes carry the day's anti-adblock and YouTube fixes; uBO refreshes it hourly.
+    static let hourlyUpdates: TimeInterval = 3_600
+
+    private static let trustedPrefixes = ["ublock-"]
+
+    /// `saved` with each built-in list fetched from its current default URL and every
+    /// built-in list it lacks appended, on or off as shipped.
     ///
-    /// Saved lists keep the URL they were saved with, so a built-in list whose host
-    /// moved, like EasyList Cookie leaving easylist.to, would otherwise fail every update.
-    static func updatingDefaultURLs(in lists: [FilterListSource]) -> [FilterListSource] {
-        lists.map { list in
-            guard let current = defaultLists.first(where: { $0.id == list.id }) else { return list }
+    /// Saved lists keep the URL they were saved with, so a built-in list whose host moved, like
+    /// EasyList Cookie leaving easylist.to, would otherwise fail every update.
+    static func reconciled(_ saved: [FilterListSource]) -> [FilterListSource] {
+        let builtIn = Dictionary(uniqueKeysWithValues: allAvailableLists.map { ($0.id, $0) })
+        var lists = saved.map { list in
+            guard let current = builtIn[list.id] else { return list }
             var list = list
             list.url = current.url
+            list.updateFrequency = current.updateFrequency
             return list
         }
+        let savedIDs = Set(saved.map(\.id))
+        lists += allAvailableLists.filter { !savedIDs.contains($0.id) }
+        return lists
     }
 
-    /// Default filter lists.
-    ///
-    /// Includes EasyList, EasyPrivacy, and uBlock's filter lists for
-    /// comprehensive ad blocking and privacy protection.
+    private static func list(
+        _ id: String,
+        _ name: String,
+        _ url: StaticString,
+        _ category: FilterCategory,
+        enabled: Bool = true,
+        updateFrequency: TimeInterval = dailyUpdates,
+    ) -> FilterListSource {
+        FilterListSource(
+            id: id,
+            name: name,
+            url: URL.staticRequired(url),
+            category: category,
+            isEnabled: enabled,
+            updateFrequency: updateFrequency,
+        )
+    }
+
+    /// Lists on by default: uBlock Origin's default set, with its unbreak and quick-fix lists
+    /// that keep the others from breaking sites.
     static let defaultLists: [FilterListSource] = [
-        FilterListSource(
-            id: "easylist",
-            name: "EasyList",
-            url: URL.staticRequired("https://easylist.to/easylist/easylist.txt"),
-            category: .ads,
-            isEnabled: true,
-            updateFrequency: 86_400, // 24 hours
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
+        list("easylist", "EasyList", "https://easylist.to/easylist/easylist.txt", .ads),
+        list("easyprivacy", "EasyPrivacy", "https://easylist.to/easylist/easyprivacy.txt", .privacy),
+        list("ublock-filters", "uBlock filters", "https://ublockorigin.github.io/uAssets/filters/filters.txt", .ads),
+        list("ublock-privacy", "uBlock filters – Privacy", "https://ublockorigin.github.io/uAssets/filters/privacy.txt", .privacy),
+        list("ublock-badware", "uBlock filters – Badware", "https://ublockorigin.github.io/uAssets/filters/badware.txt", .malware),
+        list("ublock-unbreak", "uBlock filters – Unbreak", "https://ublockorigin.github.io/uAssets/filters/unbreak.txt", .ads),
+        list(
+            "ublock-quick-fixes", "uBlock filters – Quick fixes",
+            "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt", .ads,
+            updateFrequency: hourlyUpdates,
         ),
-        FilterListSource(
-            id: "easyprivacy",
-            name: "EasyPrivacy",
-            url: URL.staticRequired("https://easylist.to/easylist/easyprivacy.txt"),
-            category: .privacy,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
+        list(
+            "ublock-annoyances", "uBlock filters – Annoyances (Cookies)",
+            "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt", .annoyances,
         ),
-        FilterListSource(
-            id: "ublock-filters",
-            name: "uBlock filters",
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/filters/filters.txt"),
-            category: .ads,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "ublock-privacy",
-            name: "uBlock filters – Privacy",
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/filters/privacy.txt"),
-            category: .privacy,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "ublock-badware",
-            name: "uBlock filters – Badware",
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/filters/badware.txt"),
-            category: .malware,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "ublock-annoyances",
-            name: "uBlock filters – Annoyances (Cookies)",
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt"),
-            category: .annoyances,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "easylist-cookie",
-            name: "EasyList Cookie",
-            // easylist.to no longer serves this list; uBlock Origin's assets mirror it
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt"),
-            category: .annoyances,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "ublock-annoyances-other",
-            name: "uBlock filters – Annoyances (Other)",
-            url: URL.staticRequired("https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt"),
-            category: .annoyances,
-            isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
+        // easylist.to no longer serves this list; uBlock Origin's assets mirror it.
+        list("easylist-cookie", "EasyList Cookie", "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt", .annoyances),
+        list(
+            "ublock-annoyances-other", "uBlock filters – Annoyances (Other)",
+            "https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt", .annoyances,
         ),
     ]
 
-    /// Additional filter lists that users can enable.
+    /// Lists users can turn on.
     static let additionalLists: [FilterListSource] = [
-        // Malware protection
-        FilterListSource(
-            id: "malware-domains",
-            name: "Malware Domain List",
-            url: URL.staticRequired("https://malware-filter.gitlab.io/malware-filter/urlhaus-filter.txt"),
-            category: .malware,
-            isEnabled: false,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-
-        // Social
-        FilterListSource(
-            id: "fanboy-social",
-            name: "Fanboy's Social Blocking List",
-            url: URL.staticRequired("https://easylist.to/easylist/fanboy-social.txt"),
-            category: .annoyances,
-            isEnabled: false,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-
-        // Regional
-        FilterListSource(
-            id: "easylist-germany",
-            name: "EasyList Germany",
-            url: URL.staticRequired("https://easylist.to/easylistgermany/easylistgermany.txt"),
-            category: .regional,
-            isEnabled: false,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
-        FilterListSource(
-            id: "liste-fr",
-            name: "Liste FR",
-            url: URL.staticRequired("https://easylist.to/easylist/liste_fr.txt"),
-            category: .regional,
-            isEnabled: false,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
-        ),
+        list("malware-domains", "Malware Domain List", "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter.txt", .malware, enabled: false),
+        list("fanboy-social", "Fanboy's Social Blocking List", "https://easylist.to/easylist/fanboy-social.txt", .annoyances, enabled: false),
+        list("easylist-germany", "EasyList Germany", "https://easylist.to/easylistgermany/easylistgermany.txt", .regional, enabled: false),
+        list("liste-fr", "Liste FR", "https://easylist.to/easylist/liste_fr.txt", .regional, enabled: false),
     ]
 
     /// All available filter lists.

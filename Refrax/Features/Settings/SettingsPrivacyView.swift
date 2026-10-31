@@ -50,6 +50,8 @@ struct PrivacySettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            ShieldsSettingsSections(highlightedItemId: highlightedItemId)
+
             Section("Tracking") {
                 Toggle("Block third-party cookies", isOn: $settings.blockThirdPartyCookies)
                     .highlightable(id: "privacy.thirdPartyCookies", highlightedItemId: highlightedItemId)

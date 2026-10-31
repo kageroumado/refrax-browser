@@ -152,6 +152,10 @@ final class BrowserState {
     @ObservationIgnored
     let scriptRegistry: ScriptRegistry
 
+    /// Content blocking: filter lists, builds, WebKit installation, the request logger.
+    @ObservationIgnored
+    let shields: ShieldsStore
+
     /// Channels Refrax-injected scripts post to, delivered to handlers for any engine.
     let scriptChannels: ScriptChannelRouter
 
@@ -376,7 +380,8 @@ final class BrowserState {
             siteSettingsManager: siteSettingsManager,
             browserSettings: settings,
         )
-        self.scriptRegistry = ScriptRegistry()
+        let scriptRegistry = ScriptRegistry()
+        self.scriptRegistry = scriptRegistry
 
         // Basic WebPage configuration (scripts loaded async later)
         var config = WebPage.Configuration()
@@ -384,6 +389,10 @@ final class BrowserState {
         settingsApplier.apply(to: &config)
         self.webPageConfiguration = config
         self.scriptChannels = ScriptChannelRouter(userContentController: config.userContentController)
+        self.shields = ShieldsStore(webKit: ShieldsWebKit(
+            userContentController: config.userContentController,
+            scriptRegistry: scriptRegistry,
+        ))
         webNotifications.adopt(.default())
 
         // Start observing settings changes

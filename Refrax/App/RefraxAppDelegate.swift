@@ -361,25 +361,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.groupManager = TabGroupManager(state: browserState)
         self.undoRedoManager = UndoRedoManager()
         self.contentScriptManager = ContentScriptManager(state: browserState)
-        Task { [contentScriptManager, engineRegistry] in
-            await contentScriptManager.contentBlockingManager.setPolicyHandler { policy in
-                engineRegistry.apply(.contentBlocking(policy: policy))
-            }
+        browserState.shields.onPolicy = { [engineRegistry] policy in
+            engineRegistry.apply(.contentBlocking(policy: policy))
         }
         self.autoConsentManager = AutoConsentManager(state: browserState)
         self.extensionManager = ExtensionManager(state: browserState)
-        extensionManager.onPackagesChanged = { [engineRegistry] packages in
+        extensionManager.onPackagesChanged = { [engineRegistry, weak extensionManager, shields = browserState.shields] packages in
             engineRegistry.apply(.extensions(extensions: packages))
+            shields.setUBlockOriginActive(extensionManager?.isUBlockOriginEnabled ?? false)
         }
         engineRegistry.apply(.extensions(extensions: extensionManager.enginePackages))
+        browserState.shields.setUBlockOriginActive(extensionManager.isUBlockOriginEnabled)
         browserState.webNotifications.onEnginePolicyChange = { [engineRegistry] policy in
             engineRegistry.apply(.notifications(policy: policy))
         }
         browserState.siteSettingsCoordinator.onEnginePolicyChange = { [engineRegistry] policy in
             engineRegistry.apply(.siteSettings(policy: policy))
         }
-        engineRegistry.engineEventHandler = { [webNotifications = browserState.webNotifications] engineID, event in
-            webNotifications.handle(event, from: engineID)
+        engineRegistry.engineEventHandler = { [webNotifications = browserState.webNotifications, engineRegistry] engineID, event in
+            if case let .contentBlockingStatus(status, sha256, reason) = event {
+                engineRegistry.recordContentBlockingStatus(status, sha256: sha256, reason: reason, for: engineID)
+            } else {
+                webNotifications.handle(event, from: engineID)
+            }
         }
         self.keyboardShortcutsManager = KeyboardShortcutsManager(windowManager: windowManager)
         
@@ -563,6 +567,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tier 3: Extensions (variable, potentially slow) - not needed immediately
         Task(priority: .utility) {
             await self.extensionManager.setup()
+            await self.offerUBlockOriginRetirement()
+        }
+    }
+
+    /// Asks once whether to turn off a uBlock Origin that runs beside Shields: both would hide
+    /// elements and run scriptlets on every page. Shields leaves cosmetics to uBO while it runs.
+    private func offerUBlockOriginRetirement() async {
+        let key = "ShieldsOfferedUBlockOriginRetirement"
+        // An ephemeral session (the unit-test host, --in-memory) asks nothing.
+        guard extensionManager.isUBlockOriginEnabled, !arguments.forceInMemory,
+              !UserDefaults.standard.bool(forKey: key)
+        else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let alert = NSAlert()
+        alert.messageText = "Refrax Shields now blocks ads and trackers"
+        alert.informativeText = """
+        Shields applies uBlock Origin's filter lists, scriptlets and element hiding in every engine. \
+        With uBlock Origin on too, both filter each page. You can turn uBlock Origin back on in \
+        Settings → Extensions.
+        """
+        alert.addButton(withTitle: "Turn Off uBlock Origin")
+        alert.addButton(withTitle: "Keep Both")
+        if alert.runModal() == .alertFirstButtonReturn {
+            await extensionManager.disableUBlockOrigin()
         }
     }
 
@@ -806,9 +834,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduledTasksManager.registerTask { @MainActor in
             await historyMaintenanceService.performMaintenanceIfNeeded()
         }
-        let contentBlockingManager = contentScriptManager.contentBlockingManager
+        let shieldsManager = browserState.shields.manager
         scheduledTasksManager.registerTask { @MainActor in
-            await contentBlockingManager.checkAndUpdateIfNeeded()
+            await shieldsManager.checkAndUpdateIfNeeded()
         }
         let extensionUpdateChecker = extensionManager.updateChecker
         scheduledTasksManager.registerTask { @MainActor in

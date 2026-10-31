@@ -115,6 +115,56 @@ func handleResponse(_ response: ControlResponse, json: Bool = false) {
         printCanvas(info)
     case let .islands(info):
         printIslands(info)
+    case let .requestLog(info):
+        printRequestLog(info)
+    case let .requestExplanation(info):
+        printRequestExplanation(info)
+    }
+}
+
+func printRequestLog(_ info: CTL.RequestLogInfo) {
+    if info.entries.isEmpty {
+        print("No requests logged (\(info.engine))")
+        return
+    }
+    for entry in info.entries {
+        let decision = entry.decision.uppercased().padding(toLength: 10, withPad: " ", startingAt: 0)
+        print("\(entry.seq) \(decision) \(entry.type.padding(toLength: 14, withPad: " ", startingAt: 0)) \(entry.url)")
+        if let rule = entry.rule {
+            let location = [entry.list, entry.line.map { "line \($0 + 1)" }].compactMap(\.self).joined(separator: ", ")
+            print("    rule: \(rule)\(location.isEmpty ? "" : "  (\(location))")")
+        }
+        if let exception = entry.exceptionRule {
+            print("    exception: \(exception)")
+        }
+    }
+    let attributed = info.entries.contains { $0.exactness == "attributed" }
+    print("\(info.entries.count) entries · \(info.engine) · next --since \(info.nextSequence)\(attributed ? " · rules attributed by Refrax" : "")")
+}
+
+func printRequestExplanation(_ info: CTL.RequestExplanationInfo) {
+    let verdict = info.shouldBlock ? (info.redirected ? "REDIRECTED" : "BLOCKED") : (info.rewrittenURL != nil ? "REWRITTEN" : "ALLOWED")
+    print("\(verdict)  \(info.url)")
+    print("  from \(info.source) as \(info.type)")
+    if info.siteAllowlisted {
+        print("  Shields is off for this site: nothing is filtered here")
+    }
+    if let rule = info.rule {
+        let location = [info.list, info.line.map { "line \($0 + 1)" }].compactMap(\.self).joined(separator: ", ")
+        print("  rule: \(rule)\(location.isEmpty ? "" : "  (\(location))")\(info.important ? "  [important]" : "")")
+    }
+    if let exception = info.exceptionRule {
+        let location = [info.exceptionList, info.exceptionLine.map { "line \($0 + 1)" }].compactMap(\.self).joined(separator: ", ")
+        print("  exception: \(exception)\(location.isEmpty ? "" : "  (\(location))")")
+    }
+    if let rewritten = info.rewrittenURL {
+        print("  loads: \(rewritten)")
+    }
+    if let csp = info.csp {
+        print("  adds Content-Security-Policy: \(csp)")
+    }
+    if info.rule == nil, info.exceptionRule == nil {
+        print("  no filter matches")
     }
 }
 

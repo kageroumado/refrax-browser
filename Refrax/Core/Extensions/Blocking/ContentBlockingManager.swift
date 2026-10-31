@@ -1,544 +1,309 @@
 import Foundation
-import WebKit
 
-/// Manages content blocking via WebKit content rules.
+/// Owns Shields' filter lists and builds: which lists are on, their downloaded text, the
+/// resources file, and the last good build.
 ///
-/// This manager handles:
-/// - Fetching filter lists from URLs (EasyList, EasyPrivacy, etc.)
-/// - Parsing AdBlock Plus / uBlock filter syntax
-/// - Compiling rules to WebKit content rule format
-/// - Applying rules to WKUserContentController
-/// - Updating rules on a schedule
-///
-/// ## Architecture
-///
-/// Content blocking uses a dual-path system:
-/// - **Network blocking**: Handled by this manager via WKContentRuleList
-/// - **Cosmetic filtering**: Handled by uBlock Origin extension via content scripts
-///
-/// This separation allows us to leverage WebKit's efficient native blocking
-/// while still getting uBlock's advanced cosmetic and scriptlet features.
-///
-/// ## Usage
-///
-/// ```swift
-/// let manager = ContentBlockingManager()
-/// await manager.setup(userContentController: controller)
-///
-/// // Later: trigger manual update
-/// await manager.updateFilterLists()
-/// ```
+/// - Lists are fetched on their own schedule (``checkAndUpdateIfNeeded()``, from
+///   `ScheduledTasksManager`) and cached as text in `Filters/<id>.txt`.
+/// - The enabled lists build together, as one union (``ShieldsCompiler``): an exception in any
+///   list lifts a block from any other, in both engines.
+/// - A build is keyed by its inputs (``ShieldsKey``), so an unchanged launch compiles nothing.
+/// - A failed fetch keeps the list's previous text; a failed build keeps the previous build
+///   attached. Neither blocks launch: ``start(onChange:onBuild:)`` returns once the cached
+///   build is published, and fetching and building continue in the background.
 actor ContentBlockingManager {
-    // MARK: - Constants
+    private enum Constants {
+        /// How long list changes settle before a rebuild, so toggling several lists builds once.
+        static let rebuildDelay: Duration = .seconds(2)
+        static let requestTimeout: TimeInterval = 30
+        static let resourceTimeout: TimeInterval = 120
+        /// Larger downloads are not filter lists.
+        static let maximumListBytes = 32 * 1_024 * 1_024
+    }
 
-    /// Maximum chunks to clean up per filter list during reset.
-    private static let maxChunksPerList = 10
+    /// What the store shows.
+    nonisolated struct Snapshot: Sendable {
+        var lists: [FilterListSource]
+        var artifacts: ShieldsArtifacts?
+        var isUpdating: Bool
+        var lastUpdate: Date?
+        var lastError: String?
+    }
 
-    // MARK: - Storage
-
-    /// Directory for storing filter lists and compiled rules.
     private let storageDirectory: URL
-
-    /// File for persisting filter list metadata.
-    private var filterListsFile: URL {
-        storageDirectory.appendingPathComponent("filter-lists.json")
-    }
-
-    // MARK: - State
-
-    /// Current filter list sources.
-    private(set) var filterLists: [FilterListSource] = []
-
-    /// Compiled WebKit rule lists (keyed by filter list ID + chunk index).
-    private var compiledRuleLists: [String: WKContentRuleList] = [:]
-
-    /// Whether initial setup has completed.
-    private var isSetUp = false
-
-    /// Closure to add rule lists (runs on MainActor).
-    private var addRuleList: (@MainActor (WKContentRuleList) -> Void)?
-
-    /// Closure to remove rule lists (runs on MainActor).
-    private var removeRuleList: (@MainActor (WKContentRuleList) -> Void)?
-
-    // MARK: - Dependencies
-
-    private let parser = FilterParser()
-    private let compiler = WebKitRuleCompiler()
     private let urlSession: URLSession
+    private let compiler = ShieldsCompiler()
 
-    // MARK: - Update Scheduling
-
-    /// Tracks whether an update is currently in progress.
+    private(set) var filterLists: [FilterListSource] = []
+    private(set) var artifacts: ShieldsArtifacts?
+    /// The engine of ``artifacts`` with rule text, loaded on first use.
+    private var engine: ShieldsEngine?
     private var isUpdating = false
+    private var lastUpdate: Date?
+    private var lastError: String?
+    private var isStarted = false
 
-    // MARK: - Statistics
+    private var rebuildTask: Task<Void, Never>?
+    private var onChange: (@MainActor @Sendable (Snapshot) -> Void)?
+    private var onBuild: (@MainActor @Sendable (ShieldsArtifacts) async -> Void)?
 
-    /// Total number of active blocking rules.
-    private(set) var totalRuleCount: Int = 0
+    private var filterListsFile: URL {
+        storageDirectory.appending(path: "filter-lists.json")
+    }
 
-    /// Receives the enabled lists' raw text whenever they change, for engines other than WebKit.
-    private var policyHandler: (@MainActor @Sendable (ContentBlockingPolicy) -> Void)?
+    private var buildsDirectory: URL {
+        storageDirectory.appending(path: "shields", directoryHint: .isDirectory)
+    }
 
-    /// Timestamp of last successful update.
-    private(set) var lastUpdateTime: Date?
+    private var resourcesDirectory: URL {
+        storageDirectory.appending(path: "resources", directoryHint: .isDirectory)
+    }
 
-    // MARK: - Initialization
-
-    init() {
-        // Create storage directory
-        self.storageDirectory = Directories.appStorage.appendingPathComponent("Filters", isDirectory: true)
-
+    init(storageDirectory: URL = Directories.appStorage.appending(path: "Filters", directoryHint: .isDirectory)) {
+        self.storageDirectory = storageDirectory
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-
-        // Configure URL session for filter fetching
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-        config.waitsForConnectivity = true
-        self.urlSession = URLSession(configuration: config)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = Constants.requestTimeout
+        configuration.timeoutIntervalForResource = Constants.resourceTimeout
+        configuration.waitsForConnectivity = true
+        self.urlSession = URLSession(configuration: configuration)
     }
 
-    // MARK: - Setup
+    // MARK: - Starting
 
-    /// Performs initial setup of content blocking.
-    ///
-    /// - Parameter userContentController: The controller to add rules to.
-    func setup(userContentController: WKUserContentController) async {
-        guard !isSetUp else { return }
-        isSetUp = true
-
-        // Capture the controller in closures for MainActor-safe access
-        addRuleList = { @MainActor [weak userContentController] ruleList in
-            userContentController?.add(ruleList)
-        }
-        removeRuleList = { @MainActor [weak userContentController] ruleList in
-            userContentController?.remove(ruleList)
-        }
-
-        // Load persisted filter list state
-        await loadFilterListState()
-
-        // If no lists configured, use defaults
-        if filterLists.isEmpty {
-            filterLists = FilterListSource.defaultLists
-            saveFilterListState()
-        }
-
-        // Load cached compiled rules or compile from cached filter data
-        await loadOrCompileRules()
-
-        Logger.info("ContentBlockingManager setup complete (\(totalRuleCount) rules)", category: Logger.tabs)
-        await publishPolicy()
-    }
-
-    /// Sends the current lists to `handler` now (once set up) and after every change.
-    func setPolicyHandler(_ handler: @escaping @MainActor @Sendable (ContentBlockingPolicy) -> Void) async {
-        policyHandler = handler
-        if isSetUp {
-            await publishPolicy()
-        }
-    }
-
-    /// Reads the enabled lists' cached text and hands it to the policy handler.
-    private func publishPolicy() async {
-        guard let policyHandler else { return }
-        let lists = filterLists.filter(\.isEnabled).compactMap { list in
-            loadCachedFilterContent(forListID: list.id).map { ContentBlockingPolicy.FilterList(id: list.id, contents: $0) }
-        }
-        await policyHandler(ContentBlockingPolicy(isEnabled: true, lists: lists, allowlistedHosts: []))
-    }
-
-    // MARK: - Filter List Management
-
-    /// Enables or disables a filter list.
+    /// Publishes the cached build (compiling it first only when no build matches the cached
+    /// lists), then fetches missing and stale lists in the background.
     ///
     /// - Parameters:
-    ///   - id: The filter list identifier.
-    ///   - enabled: Whether to enable the list.
+    ///   - onChange: Receives the state after every change.
+    ///   - onBuild: Installs a new build; called once per build that differs from the last.
+    func start(
+        onChange: @escaping @MainActor @Sendable (Snapshot) -> Void,
+        onBuild: @escaping @MainActor @Sendable (ShieldsArtifacts) async -> Void,
+    ) async {
+        guard !isStarted else { return }
+        isStarted = true
+        self.onChange = onChange
+        self.onBuild = onBuild
+        filterLists = loadFilterLists()
+        saveFilterLists()
+        await rebuild()
+        Task(name: "Shields list refresh") { await self.updateFilterLists(force: false) }
+    }
+
+    // MARK: - Lists
+
     func setFilterListEnabled(_ id: String, enabled: Bool) async {
         guard let index = filterLists.firstIndex(where: { $0.id == id }) else { return }
-
         filterLists[index].isEnabled = enabled
-        saveFilterListState()
-
-        if enabled {
-            // Fetch and compile the list
-            await updateFilterList(filterLists[index])
-        } else {
-            // Remove compiled rules for this list
-            await removeCompiledRules(forListID: id)
+        saveFilterLists()
+        await publish()
+        if enabled, cachedText(for: id) == nil {
+            await fetch(filterLists[index])
         }
-        await publishPolicy()
+        scheduleRebuild()
     }
 
-    /// Adds a custom filter list.
-    ///
-    /// - Parameters:
-    ///   - name: Display name for the list.
-    ///   - url: URL to fetch the filter list from.
-    /// - Returns: The created filter list source.
+    @discardableResult
     func addCustomFilterList(name: String, url: URL) async -> FilterListSource {
-        let id = "custom-\(UUID().uuidString.prefix(8))"
         let source = FilterListSource(
-            id: id,
+            id: "custom-\(UUID().uuidString.prefix(8).lowercased())",
             name: name,
             url: url,
             category: .custom,
             isEnabled: true,
-            updateFrequency: 86_400,
-            lastUpdated: nil,
-            ruleCount: nil,
-            chunkCount: nil,
+            updateFrequency: FilterListSource.dailyUpdates,
         )
-
         filterLists.append(source)
-        saveFilterListState()
-
-        await updateFilterList(source)
-
+        saveFilterLists()
+        await publish()
+        await fetch(source)
+        scheduleRebuild()
         return source
     }
 
-    /// Removes a custom filter list.
-    ///
-    /// - Parameter id: The filter list identifier.
     func removeCustomFilterList(_ id: String) async {
         guard let index = filterLists.firstIndex(where: { $0.id == id && $0.category == .custom }) else { return }
-
-        await removeCompiledRules(forListID: id)
-
         filterLists.remove(at: index)
-        saveFilterListState()
-
-        // Delete cached filter data
-        let cacheFile = storageDirectory.appendingPathComponent("\(id).txt")
-        try? FileManager.default.removeItem(at: cacheFile)
+        saveFilterLists()
+        try? FileManager.default.removeItem(at: textURL(for: id))
+        await publish()
+        scheduleRebuild()
     }
 
-    // MARK: - Update
+    // MARK: - Updating
 
-    /// Updates all enabled filter lists.
-    func updateFilterLists() async {
-        Logger.info("Starting filter list update", category: Logger.tabs)
-
+    /// Fetches the enabled lists that are due (all of them when `force`) and the resources
+    /// file, then rebuilds if anything changed.
+    func updateFilterLists(force: Bool) async {
+        guard !isUpdating else { return }
+        isUpdating = true
+        await publish()
+        let now = Date.now
+        var changed = false
         for list in filterLists where list.isEnabled {
-            await updateFilterList(list)
+            let isDue = list.lastUpdated.map { now.timeIntervalSince($0) >= list.updateFrequency } ?? true
+            if force || isDue || cachedText(for: list.id) == nil {
+                changed = await fetch(list) || changed
+            }
         }
-
-        lastUpdateTime = Date()
-        Logger.info("Filter list update complete (\(totalRuleCount) rules)", category: Logger.tabs)
-        await publishPolicy()
-    }
-
-    /// Updates a single filter list.
-    private func updateFilterList(_ list: FilterListSource) async {
-        guard list.isEnabled else { return }
-
-        Logger.debug("Updating filter list: \(list.name)", category: Logger.tabs)
-
-        // Fetch filter list
-        guard let content = await fetchFilterList(list) else {
-            Logger.warning("Failed to fetch filter list: \(list.name)", category: Logger.tabs)
-            return
+        if let refreshed = try? await ShieldsResources.refresh(into: resourcesDirectory) {
+            changed = refreshed || changed
         }
-
-        // Cache the raw content
-        cacheFilterContent(content, forListID: list.id)
-
-        // Parse and compile
-        await compileAndApplyRules(content: content, listID: list.id)
-
-        // Update metadata
-        if let index = filterLists.firstIndex(where: { $0.id == list.id }) {
-            filterLists[index].lastUpdated = Date()
-            saveFilterListState()
+        lastUpdate = .now
+        isUpdating = false
+        await publish()
+        if changed {
+            await rebuild()
         }
     }
 
-    // MARK: - Fetching
+    /// The scheduled check (`ScheduledTasksManager`): fetches only what is due.
+    func checkAndUpdateIfNeeded() async {
+        await updateFilterLists(force: false)
+    }
 
-    private func fetchFilterList(_ list: FilterListSource) async -> String? {
+    /// Downloads `list` and caches its text. A failed or implausible download keeps the
+    /// previous text.
+    ///
+    /// - Returns: Whether the cached text changed.
+    @discardableResult
+    private func fetch(_ list: FilterListSource) async -> Bool {
         do {
             let (data, response) = try await urlSession.data(from: list.url)
-
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200 ... 299).contains(httpResponse.statusCode) else {
-                return nil
+            guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
             }
-
-            return String(data: data, encoding: .utf8)
+            guard data.count <= Constants.maximumListBytes,
+                  let text = String(data: data, encoding: .utf8),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<")
+            else { throw URLError(.cannotDecodeContentData) }
+            let previous = cachedText(for: list.id)
+            if previous != data {
+                try data.write(to: textURL(for: list.id), options: .atomic)
+            }
+            if let index = filterLists.firstIndex(where: { $0.id == list.id }) {
+                filterLists[index].lastUpdated = .now
+                filterLists[index].lastError = nil
+                saveFilterLists()
+            }
+            return previous != data
         } catch {
-            Logger.error("Failed to fetch \(list.url): \(error)", category: Logger.tabs)
-            return nil
-        }
-    }
-
-    // MARK: - Caching
-
-    private func cacheFilterContent(_ content: String, forListID id: String) {
-        let file = storageDirectory.appendingPathComponent("\(id).txt")
-        try? content.write(to: file, atomically: true, encoding: .utf8)
-    }
-
-    private func loadCachedFilterContent(forListID id: String) -> String? {
-        let file = storageDirectory.appendingPathComponent("\(id).txt")
-        return try? String(contentsOf: file, encoding: .utf8)
-    }
-
-    // MARK: - Compilation
-
-    private func compileAndApplyRules(content: String, listID: String) async {
-        // Remove existing rules for this list
-        await removeCompiledRules(forListID: listID)
-
-        // Parse filter rules (network + cosmetic)
-        let parseResult = parser.parse(content)
-        let totalRules = parseResult.networkRules.count + parseResult.cosmeticRules.count
-        Logger.debug(
-            "Parsed \(parseResult.networkRules.count) network + \(parseResult.cosmeticRules.count) cosmetic rules from \(listID)",
-            category: Logger.tabs,
-        )
-
-        // Compile to WebKit format (in chunks)
-        let chunks = compiler.compileInChunks(parseResult)
-
-        // Compile each chunk, tracking success/failure
-        var compiledChunks = 0
-        var failedChunks = 0
-
-        for (chunkIndex, chunk) in chunks.enumerated() {
-            let identifier = "\(listID)-\(chunkIndex)"
-
-            do {
-                if let ruleList = try await Self.compileOnMainActor(json: chunk, identifier: identifier) {
-                    compiledRuleLists[identifier] = ruleList
-                    await addRuleList?(ruleList)
-                    compiledChunks += 1
-                }
-            } catch {
-                failedChunks += 1
-                Logger.error("Failed to compile chunk \(chunkIndex) for \(listID): \(error)", category: Logger.tabs)
+            Logger.warning("Shields could not fetch \(list.id): \(error.localizedDescription)", category: Logger.network)
+            if let index = filterLists.firstIndex(where: { $0.id == list.id }) {
+                filterLists[index].lastError = error.localizedDescription
+                saveFilterLists()
             }
+            return false
         }
+    }
 
-        // Update metadata
-        if let index = filterLists.firstIndex(where: { $0.id == listID }) {
-            filterLists[index].ruleCount = totalRules
-            filterLists[index].chunkCount = chunks.count
-            filterLists[index].compilerVersion = WebKitRuleCompiler.version
-            saveFilterListState()
+    // MARK: - Building
+
+    private func scheduleRebuild() {
+        rebuildTask?.cancel()
+        rebuildTask = Task(name: "Shields rebuild") {
+            try? await Task.sleep(for: Constants.rebuildDelay)
+            guard !Task.isCancelled else { return }
+            await self.rebuild()
         }
+    }
 
-        recalculateTotalRuleCount()
-
-        // Log with accurate success/failure breakdown
-        if failedChunks == 0 {
-            Logger.info("Compiled \(totalRules) rules for \(listID) in \(compiledChunks) chunks", category: Logger.tabs)
-        } else {
-            Logger.warning(
-                "Compiled \(totalRules) rules for \(listID): \(compiledChunks)/\(chunks.count) chunks succeeded, \(failedChunks) failed (unsupported regex patterns)",
+    /// Builds the enabled lists (or finds the build on disk) and hands a new build to
+    /// `onBuild`. On failure the previous build stays.
+    private func rebuild() async {
+        let lists = filterLists.filter(\.isEnabled).compactMap { source -> ShieldsList? in
+            guard let text = cachedText(for: source.id) else { return nil }
+            return ShieldsList(id: source.id, text: text, isTrusted: source.isTrusted)
+        }
+        guard !lists.isEmpty else {
+            lastError = filterLists.contains(where: \.isEnabled) ? "No filter list has been downloaded yet." : nil
+            await publish()
+            return
+        }
+        let resources = ShieldsResources.current(in: resourcesDirectory)
+        do {
+            let (built, engine) = try await compiler.build(lists: lists, resources: resources, into: buildsDirectory)
+            guard built.key != artifacts?.key else { return }
+            artifacts = built
+            self.engine = engine
+            lastError = nil
+            for list in built.manifest.lists {
+                if let index = filterLists.firstIndex(where: { $0.id == list.id }) {
+                    filterLists[index].ruleCount = list.stats.network + list.stats.cosmetic
+                }
+            }
+            saveFilterLists()
+            await publish()
+            await onBuild?(built)
+            Logger.info(
+                "Shields build \(built.key.shortForm): \(lists.count) lists in \(String(format: "%.2f", built.manifest.buildSeconds)) s",
                 category: Logger.tabs,
             )
+        } catch is CancellationError {
+            return
+        } catch {
+            lastError = error.localizedDescription
+            await publish()
+            Logger.error("Shields build failed, keeping the previous build: \(error)", category: Logger.tabs)
         }
     }
 
-    @MainActor
-    private static func compileOnMainActor(json: String, identifier: String) async throws -> WKContentRuleList? {
-        try await WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: identifier,
-            encodedContentRuleList: json,
-        )
-    }
+    // MARK: - Engine
 
-    private func removeCompiledRules(forListID listID: String) async {
-        // Identifiers are "<listID>-<chunkIndex>". A bare prefix match would also catch
-        // "easylist-cookies-0" when removing "easylist", so the remainder must be the index.
-        let chunkPrefix = "\(listID)-"
-        let keysToRemove = Array(compiledRuleLists.keys.filter { key in
-            key.hasPrefix(chunkPrefix) && Int(key.dropFirst(chunkPrefix.count)) != nil
-        })
-
-        for key in keysToRemove {
-            if let ruleList = compiledRuleLists.removeValue(forKey: key) {
-                await removeRuleList?(ruleList)
-            }
+    /// The current build's engine with rule text, for the request logger and `explain`.
+    func debugEngine() async -> ShieldsEngine? {
+        if let engine {
+            return engine
         }
-
-        // Batch remove from WebKit's persistent store (single MainActor hop)
-        await Self.removeRulesOnMainActor(identifiers: keysToRemove)
-
-        recalculateTotalRuleCount()
-    }
-
-    @MainActor
-    private static func removeRulesOnMainActor(identifiers: [String]) async {
-        for identifier in identifiers {
-            try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier)
+        guard let artifacts else { return nil }
+        let engine = await Self.loadEngine(artifacts)
+        if artifacts.key == self.artifacts?.key {
+            self.engine = engine
         }
+        return engine
     }
 
-    private func recalculateTotalRuleCount() {
-        totalRuleCount = filterLists
-            .filter(\.isEnabled)
-            .compactMap(\.ruleCount)
-            .reduce(0, +)
-    }
-
-    // MARK: - Initial Load
-
-    private func loadOrCompileRules() async {
-        for list in filterLists where list.isEnabled {
-            // Rules compiled by an older compiler are rebuilt from the cached filter text
-            let isCompiledByCurrentVersion = list.compilerVersion == WebKitRuleCompiler.version
-
-            // Determine how many chunks to try loading (use stored count or default to max)
-            let expectedChunks = isCompiledByCurrentVersion ? list.chunkCount ?? Self.maxChunksPerList : 0
-
-            // Try to load all chunks from WebKit's cache
-            var loadedFromCache = false
-            var loadedChunks = 0
-
-            for chunkIndex in 0 ..< expectedChunks {
-                let identifier = "\(list.id)-\(chunkIndex)"
-                let cached = await Self.loadCachedRuleOnMainActor(identifier: identifier)
-
-                if let cached {
-                    compiledRuleLists[identifier] = cached
-                    await addRuleList?(cached)
-                    loadedChunks += 1
-                } else if chunkIndex == 0 {
-                    // If even chunk 0 isn't cached, stop trying
-                    break
-                } else {
-                    // No more chunks in cache
-                    break
-                }
-            }
-
-            if loadedChunks > 0 {
-                loadedFromCache = true
-                Logger.info("Loaded \(list.ruleCount ?? 0) cached rules for \(list.id) (\(loadedChunks) chunks)", category: Logger.tabs)
-            }
-
-            if loadedFromCache {
-                continue
-            }
-
-            // Fall back to compiling from cached filter data
-            if let content = loadCachedFilterContent(forListID: list.id) {
-                await compileAndApplyRules(content: content, listID: list.id)
-            } else {
-                // Need to fetch fresh
-                await updateFilterList(list)
-            }
-        }
-
-        recalculateTotalRuleCount()
-    }
-
-    @MainActor
-    private static func loadCachedRuleOnMainActor(identifier: String) async -> WKContentRuleList? {
-        try? await WKContentRuleListStore.default().contentRuleList(forIdentifier: identifier)
+    @concurrent
+    private static func loadEngine(_ artifacts: ShieldsArtifacts) async -> ShieldsEngine? {
+        guard let dat = try? Data(contentsOf: artifacts.debugEngineURL),
+              let resources = try? Data(contentsOf: artifacts.resourcesURL)
+        else { return nil }
+        return try? ShieldsEngine(dat: dat, resources: resources)
     }
 
     // MARK: - Persistence
 
-    private func loadFilterListState() async {
-        let url = filterListsFile
-
-        // Move file I/O and JSON decoding to background to avoid blocking actor
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<[FilterListSource], any Error> in
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                return .success([])
-            }
-            do {
-                let data = try Data(contentsOf: url)
-                let lists = try JSONDecoder().decode([FilterListSource].self, from: data)
-                return .success(lists)
-            } catch {
-                return .failure(error)
-            }
-        }.value
-
-        switch result {
-        case let .success(lists):
-            if !lists.isEmpty {
-                filterLists = FilterListSource.updatingDefaultURLs(in: lists)
-            }
-        case let .failure(error):
-            Logger.error("Failed to load filter list state: \(error)", category: Logger.tabs)
-        }
+    private func textURL(for id: String) -> URL {
+        storageDirectory.appending(path: "\(id).txt")
     }
 
-    private func saveFilterListState() {
+    private func cachedText(for id: String) -> Data? {
+        try? Data(contentsOf: textURL(for: id))
+    }
+
+    private func loadFilterLists() -> [FilterListSource] {
+        let saved = (try? Data(contentsOf: filterListsFile))
+            .flatMap { try? JSONDecoder().decode([FilterListSource].self, from: $0) } ?? []
+        return FilterListSource.reconciled(saved)
+    }
+
+    private func saveFilterLists() {
         do {
-            let data = try JSONEncoder().encode(filterLists)
-            try data.write(to: filterListsFile, options: .atomic)
+            try JSONEncoder().encode(filterLists).write(to: filterListsFile, options: .atomic)
         } catch {
-            Logger.error("Failed to save filter list state: \(error)", category: Logger.tabs)
+            Logger.error("Failed to save filter lists: \(error)", category: Logger.tabs)
         }
     }
 
-    // MARK: - Scheduled Update Check
-
-    /// Checks if any filter lists need updating and updates them if necessary.
-    ///
-    /// This method is designed to be called from `ScheduledTasksManager` on an hourly
-    /// schedule. It checks each enabled filter list's `lastUpdated` timestamp against
-    /// its configured `updateFrequency` and updates any lists that are stale.
-    ///
-    /// The method is idempotent and safe to call frequently - it will only perform
-    /// network requests when lists actually need updating.
-    func checkAndUpdateIfNeeded() async {
-        guard !isUpdating else { return }
-        isUpdating = true
-        defer { isUpdating = false }
-
-        let now = Date()
-        let listsToUpdate = filterLists.filter { list in
-            guard list.isEnabled else { return false }
-            guard let lastUpdated = list.lastUpdated else { return true }
-            return now.timeIntervalSince(lastUpdated) >= list.updateFrequency
-        }
-
-        guard !listsToUpdate.isEmpty else { return }
-
-        Logger.debug("Checking \(listsToUpdate.count) filter lists for updates", category: Logger.tabs)
-
-        for list in listsToUpdate {
-            await updateFilterList(list)
-        }
-    }
-
-    // MARK: - Cleanup
-
-    /// Removes all compiled rules and cached data.
-    func reset() async {
-        // Remove from content controller
-        for ruleList in compiledRuleLists.values {
-            await removeRuleList?(ruleList)
-        }
-        compiledRuleLists.removeAll()
-
-        // Clear WebKit's cache (batched to avoid per-item MainActor dispatch)
-        let identifiersToRemove = filterLists.flatMap { list in
-            (0 ..< Self.maxChunksPerList).map { "\(list.id)-\($0)" }
-        }
-        await Self.removeRulesOnMainActor(identifiers: identifiersToRemove)
-
-        // Clear local cache
-        try? FileManager.default.removeItem(at: storageDirectory)
-        try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-
-        // Reset to defaults
-        filterLists = FilterListSource.defaultLists
-        saveFilterListState()
-        totalRuleCount = 0
-        lastUpdateTime = nil
-
-        addRuleList = nil
-        removeRuleList = nil
-        isSetUp = false
+    private func publish() async {
+        let snapshot = Snapshot(
+            lists: filterLists,
+            artifacts: artifacts,
+            isUpdating: isUpdating,
+            lastUpdate: lastUpdate ?? filterLists.compactMap(\.lastUpdated).max(),
+            lastError: lastError,
+        )
+        await onChange?(snapshot)
     }
 }

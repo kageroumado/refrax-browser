@@ -3,14 +3,14 @@
  *
  * Provides a noop shim for browser.webRequest API. This allows extensions like
  * uBlock Origin to load and function for cosmetic filtering and scriptlet
- * injection, while network blocking is handled natively by WebKit content rules.
+ * injection, while Shields blocks requests with WebKit content rule lists.
  *
  * Why this approach:
  * - WebKit has no webRequest API equivalent
  * - Network blocking MUST use WKContentRuleList (declarative rules)
  * - uBlock's cosmetic filtering and scriptlets work via content scripts
  * - This shim lets uBlock load without errors and handle cosmetic/scriptlets
- * - Refrax's native filter compiler handles actual network blocking
+ * - Shields (Refrax/Core/Extensions/Blocking) blocks requests with WebKit rule lists
  *
  * @version 1.0.0
  */

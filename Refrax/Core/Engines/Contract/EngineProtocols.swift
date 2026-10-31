@@ -35,18 +35,106 @@ nonisolated extension PolicyUpdate {
     }
 }
 
+/// Content blocking as one compiled Shields engine (`Engines/CONTRACT.md` §4.5).
+///
+/// Refrax parses every filter list; engines load the serialized engine (a DAT) it names and
+/// match with the same adblock-rust build, so both engines decide alike.
 nonisolated struct ContentBlockingPolicy: Codable, Hashable, Sendable {
+    nonisolated enum Mode: String, Codable, Hashable, Sendable {
+        /// First-party requests are blocked only by `$important` and `$document` filters, and
+        /// first-party generic cosmetics are skipped.
+        case standard
+        /// Every filter applies.
+        case aggressive
+    }
+
+    /// A file Refrax wrote and will not rewrite while a policy names it.
+    nonisolated struct Artifact: Codable, Hashable, Sendable {
+        /// A `file:` URL.
+        let path: URL
+        /// Lowercase hex SHA-256 of the file; a new value means a new file.
+        let sha256: String
+    }
+
+    nonisolated struct Engine: Codable, Hashable, Sendable {
+        let path: URL
+        let sha256: String
+        /// The writer's `shields_engine_format()`; an engine refuses a DAT in another format.
+        let format: String
+    }
+
+    /// One filter list in the engine, so a log entry can name the list a rule came from.
     nonisolated struct FilterList: Codable, Hashable, Sendable {
         /// Stable identifier, e.g. "easylist".
         let id: String
-        /// Adblock Plus / uBlock syntax, as downloaded.
-        let contents: String
+        /// The list's `rule_source_index` in the engine.
+        let sourceIndex: Int
     }
 
     var isEnabled = true
+    var mode = Mode.standard
+    /// Required while enabled.
+    var engine: Engine?
+    /// Redirect and scriptlet resources; without them `$redirect` and `+js()` do nothing.
+    var resources: Artifact?
     var lists: [FilterList] = []
-    /// Hosts where blocking is off (per-site bypass).
+    /// Hosts where blocking is off (per-site bypass); each covers its subdomains.
     var allowlistedHosts: [String] = []
+}
+
+/// One request an engine decided, for the request logger (`refrax-ctl page requests`).
+nonisolated struct RequestLogEntry: Codable, Hashable, Sendable {
+    nonisolated enum Decision: String, Codable, Hashable, Sendable {
+        case blocked
+        /// Answered with a redirect resource in place of the load.
+        case redirected
+        /// Loaded from a rewritten URL (`$removeparam`).
+        case rewritten
+        case allowed
+        /// A blocking filter matched and an exception lifted it.
+        case excepted
+        /// A `$csp` filter added a Content-Security-Policy.
+        case csp
+    }
+
+    nonisolated enum Exactness: String, Codable, Hashable, Sendable {
+        /// The engine reported the decision as it made it.
+        case exact
+        /// The engine reported only that it acted; Refrax re-ran the URL through its own
+        /// engine to name the rule, guessing the request type from the URL.
+        case attributed
+    }
+
+    /// Increases by one per entry within a page.
+    let seq: Int64
+    let time: Date
+    let frameURL: URL?
+    let url: URL
+    /// adblock-rust's request type name (`script`, `image`, `xmlhttprequest`, …).
+    let type: String
+    let method: String
+    let decision: Decision
+    /// The deciding filter as written, when known.
+    var rule: String?
+    /// The id of the list `rule` came from.
+    var list: String?
+    /// `rule`'s zero-based line in that list.
+    var line: Int?
+    var exceptionRule: String?
+    /// The URL loaded instead, for `rewritten`.
+    var rewrittenURL: URL?
+    /// The policy added, for `csp`.
+    var csp: String?
+    /// Standard mode let a first-party request through that a filter matched (`allowed`).
+    var sparedFirstParty: Bool?
+    let exactness: Exactness
+}
+
+/// A page's request log entries after a sequence number, oldest first.
+nonisolated struct RequestLog: Codable, Hashable, Sendable {
+    let entries: [RequestLogEntry]
+    /// The sequence number to ask from next time.
+    let nextSequence: Int64
 }
 
 nonisolated struct InjectedScript: Codable, Hashable, Sendable {
@@ -157,6 +245,14 @@ nonisolated enum EngineEvent: Codable, Hashable, Sendable {
     case notificationShown(profile: EngineProfileSpec, notification: EngineNotification)
     /// The worker or page closed a notification it showed.
     case notificationClosed(id: String)
+    /// Sent once per `contentBlocking` policy: the engine loaded the DAT with this `sha256`
+    /// (`applied`), or filters nothing (`unfiltered`, with the reason).
+    case contentBlockingStatus(status: ContentBlockingStatus, sha256: String?, reason: String?)
+}
+
+nonisolated enum ContentBlockingStatus: String, Codable, Hashable, Sendable {
+    case applied
+    case unfiltered
 }
 
 /// A command for an engine that concerns no one page.
@@ -246,6 +342,10 @@ protocol EnginePage: AnyObject {
     func perform(_ command: PageCommand)
     func evaluate(_ request: ScriptRequest) async throws -> ScriptValue
     func snapshot(of rect: CGRect?) async throws -> CGImage
+
+    /// Content-blocking decisions numbered after `sequence`, oldest first. Throws
+    /// ``EngineError/unsupported(_:)`` for engines without ``EngineCapabilities/requestLog``.
+    func requestLog(since sequence: Int64) async throws -> RequestLog
 
     /// Tears the page down. Its streams finish.
     func close()

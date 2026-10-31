@@ -39,14 +39,8 @@ final class SiteSettingsCoordinator {
             webPage.setZoom(pageZoom)
         }
 
-        let contentBlockersEnabled = siteSettings?.enableContentBlockers ?? true
-        if contentBlockersEnabled {
-            webPage.clearContentBlockerBypass(for: url)
-        } else {
-            webPage.reloadWithoutContentBlockersIfNeeded(for: url)
-        }
-
-        // Note: Autoplay policy is enforced natively by WebKit via _autoplayPolicy
+        // Note: Content blocking is decided per navigation (``contentBlockersEnabled(for:)``
+        // on WKWebpagePreferences) and autoplay policy is enforced natively by WebKit via _autoplayPolicy
         // set on WKWebpagePreferences during navigation decisions. No need to apply here.
 
         // Apply per-site content appearance overrides
@@ -170,8 +164,12 @@ final class SiteSettingsCoordinator {
         return SiteSettingsPolicy(javaScriptEnabled: javaScriptByDefault, rules: rules)
     }
 
+    /// Receives ``contentBlockingAllowlist`` whenever a site setting changes.
+    var onContentBlockingAllowlistChange: (([String]) -> Void)?
+
     private func publishEnginePolicy() {
         onEnginePolicyChange?(enginePolicy)
+        onContentBlockingAllowlistChange?(contentBlockingAllowlist)
     }
 
     /// Publishes the policy whenever the JavaScript defaults change. Tracking re-arms on the main
@@ -203,6 +201,16 @@ final class SiteSettingsCoordinator {
         }
 
         return browserSettings.allowPopups ? .allow : .blockAndNotify
+    }
+
+    /// Whether Shields filters a page at `url`; off for sites the user spared.
+    func contentBlockersEnabled(for url: URL) -> Bool {
+        siteSettingsManager.settings(for: url)?.enableContentBlockers ?? true
+    }
+
+    /// Sites (registrable domains) where Shields is off, each covering its subdomains.
+    var contentBlockingAllowlist: [String] {
+        enginePolicy.rules.filter { $0.contentBlockingEnabled == false }.map(\.host).sorted()
     }
 
     /// Resolves the autoplay policy for a URL.

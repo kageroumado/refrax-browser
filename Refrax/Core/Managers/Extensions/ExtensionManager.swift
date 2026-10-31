@@ -247,14 +247,10 @@ final class ExtensionManager {
     /// Completes async setup after initialization.
     ///
     /// Call this after dependencies are wired up. It:
-    /// 1. Installs bundled extensions on first launch
-    /// 2. Loads and enables persisted extensions
-    /// 3. Starts resource monitoring for each extension
-    /// 4. Registers extension scripts with ScriptRegistry
+    /// 1. Loads and enables persisted extensions
+    /// 2. Starts resource monitoring for each extension
+    /// 3. Registers extension scripts with ScriptRegistry
     func setup() async {
-        // Install bundled extensions on first launch
-        await installBundledExtensionsIfNeeded()
-
         // Load each installed extension that was enabled
         for installedExtension in installedExtensions where installedExtension.isEnabled {
             do {
@@ -274,58 +270,35 @@ final class ExtensionManager {
         }
     }
 
-    // MARK: - Bundled Extensions
+    // MARK: - Bundled uBlock Origin
 
-    /// Bundled extensions shipped with Refrax.
-    ///
-    /// Each entry is (bundleName, resourceFileName).
-    /// These are auto-installed on first launch.
-    private static let bundledExtensions: [(name: String, fileName: String)] = [
-        ("ublock-origin", "ublock_origin-1.68.0.xpi"),
-    ]
+    /// The uBlock Origin release the app bundle carries. Shields filters pages without it; it
+    /// installs only when the user asks (Settings → Privacy → Shields).
+    private static let bundledUBlockOrigin = (name: "ublock-origin", resource: "ublock_origin-1.68.0")
 
-    /// Installs bundled extensions that haven't been installed yet.
-    ///
-    /// This is called during `setup()` to auto-install extensions shipped
-    /// with the app bundle. Extensions are only installed once - the installed
-    /// set is tracked in global settings.
-    private func installBundledExtensionsIfNeeded() async {
-        for (name, fileName) in Self.bundledExtensions {
-            // Skip if already installed
-            guard !globalSettings.installedBundledExtensions.contains(name) else {
-                Logger.debug("Bundled extension '\(name)' already installed, skipping", category: Logger.extensions)
-                continue
-            }
+    /// Whether a uBlock Origin (or uBlock Origin Lite) extension is installed and on.
+    var isUBlockOriginEnabled: Bool {
+        installedExtensions.contains { $0.isEnabled && $0.displayName.hasPrefix("uBlock Origin") }
+    }
 
-            // Find the XPI in the app bundle
-            // First try BundledExtensions subdirectory, then fall back to main Resources
-            let bundleURL: URL? = Bundle.main.url(
-                forResource: fileName.replacingOccurrences(of: ".xpi", with: ""),
-                withExtension: "xpi",
-                subdirectory: "BundledExtensions",
-            ) ?? Bundle.main.url(
-                forResource: fileName.replacingOccurrences(of: ".xpi", with: ""),
-                withExtension: "xpi",
-            )
+    /// Installs the bundled uBlock Origin, or enables it when it is already installed.
+    func installBundledUBlockOrigin() async throws {
+        if let installed = installedExtensions.first(where: { $0.displayName.hasPrefix("uBlock Origin") }) {
+            try await enable(installed)
+            return
+        }
+        let bundled = Self.bundledUBlockOrigin
+        guard let url = Bundle.main.url(forResource: bundled.resource, withExtension: "xpi", subdirectory: "BundledExtensions")
+            ?? Bundle.main.url(forResource: bundled.resource, withExtension: "xpi")
+        else { throw ExtensionError.notInstalled }
+        let installed = try await installBundledExtension(from: url, name: bundled.name)
+        Logger.info("Installed bundled extension '\(installed.displayName)' v\(installed.version)", category: Logger.extensions)
+    }
 
-            guard let bundleURL else {
-                Logger.warning("Bundled extension '\(name)' not found in bundle: \(fileName)", category: Logger.extensions)
-                continue
-            }
-
-            do {
-                let installedExtension = try await installBundledExtension(
-                    from: bundleURL,
-                    name: name,
-                )
-
-                Logger.info(
-                    "Installed bundled extension '\(installedExtension.displayName)' v\(installedExtension.version)",
-                    category: Logger.extensions,
-                )
-            } catch {
-                Logger.error("Failed to install bundled extension '\(name)': \(error)", category: Logger.extensions)
-            }
+    /// Turns off every enabled uBlock Origin extension.
+    func disableUBlockOrigin() async {
+        for installed in installedExtensions where installed.isEnabled && installed.displayName.hasPrefix("uBlock Origin") {
+            try? await disable(installed)
         }
     }
 
@@ -1030,8 +1003,7 @@ final class ExtensionManager {
         // Unregister scripts
         state.scriptRegistry.unregisterExtension(extension_.uniqueIdentifier)
 
-        // Remove the folder Refrax extracted it into. Bundled extensions keep theirs:
-        // installBundledExtensionsIfNeeded restores them from it.
+        // Remove the folder Refrax extracted it into. Bundled extensions keep theirs.
         switch extension_.source {
         case .crxFile, .xpiFile, .chromeWebStore, .firefoxAddons, .refraxGallery:
             try? FileManager.default.removeItem(at: extractedFolderURL(for: extension_))

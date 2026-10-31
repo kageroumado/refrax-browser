@@ -966,10 +966,11 @@ final class WebPage: Identifiable {
     /// Cached form data state (updated via `checkFormDataState()`).
     var hasUnsavedFormData: Bool = false
 
-    // MARK: - Content Blocker Bypass
+    // MARK: - Shields
 
+    /// What Shields did to this page's loads while WebKit rendered it.
     @ObservationIgnored
-    var lastContentBlockerBypassHost: String?
+    let shieldsLog = ShieldsRequestLog()
 
     // MARK: - Zoom Control
 
