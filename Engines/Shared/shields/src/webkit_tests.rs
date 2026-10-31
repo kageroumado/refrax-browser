@@ -239,6 +239,130 @@ fn scriptlets_become_per_function_scripts_with_host_tables() {
 }
 
 #[test]
+fn removeparam_follows_every_block_and_triggers_only_on_its_parameter() {
+    let list =
+        "||tracker.example^$removeparam=utm_id\n||tracker.example/pixel^\n||other.example^\n||third.example^\n||fourth.example^\n";
+    let built = Built::new(&[list]);
+    let output = built.compile(4);
+    assert!(output.network.len() > 1, "small lists force several chunks");
+    for chunk in &output.network {
+        let transform = position(chunk, |rule| {
+            rule["action"]["redirect"]["transform"].is_object()
+        })
+        .expect("every list carries the transform");
+        let filter = url_filter(&chunk[transform]);
+        assert!(
+            filter.contains("tracker") && filter.ends_with(".*[?&]utm_id="),
+            "{filter}"
+        );
+        let last_block = chunk
+            .iter()
+            .rposition(|rule| action(rule) == "block")
+            .unwrap();
+        let fp_documents = chunk
+            .iter()
+            .rposition(|rule| rule["trigger"]["load-type"] == serde_json::json!(["first-party"]))
+            .unwrap();
+        assert!(transform > last_block && transform > fp_documents);
+    }
+}
+
+#[test]
+fn page_exceptions_cover_every_load_of_the_page() {
+    let built = Built::new(&[
+        "##.ad\n@@||news.example^$generichide\n||ads.example^\n@@||shop.example^$document\n",
+    ]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    let page_wide = |rule: &Value, host: &str| {
+        action(rule) == "ignore-previous-rules"
+            && url_filter(rule) == ".*"
+            && rule["trigger"]["if-top-url"][0]
+                .as_str()
+                .is_some_and(|top| top.contains(host))
+            && rule["trigger"]["resource-type"].is_null()
+    };
+    let cosmetic = &output.cosmetic[0];
+    assert!(
+        position(cosmetic, |rule| page_wide(rule, "news")).is_some(),
+        "generichide"
+    );
+    assert!(
+        position(cosmetic, |rule| page_wide(rule, "shop")).is_some(),
+        "document, cosmetics"
+    );
+    let network = &output.network[0];
+    let lift = position(network, |rule| page_wide(rule, "shop")).expect("document, network");
+    let block = position(network, |rule| url_filter(rule).contains("ads")).unwrap();
+    assert!(lift > block);
+}
+
+#[test]
+fn a_redirect_without_its_resource_still_blocks() {
+    let built = Built::new(&["||ads.example/x.js$script,redirect=no-such-resource.js\n"]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    assert!(position(&output.network[0], |rule| {
+        action(rule) == "block" && url_filter(rule).contains("ads")
+    })
+    .is_some());
+}
+
+#[test]
+fn cosmetic_lists_stay_within_the_rule_cap() {
+    let mut list = String::from("@@||news.example^$generichide\n@@||shop.example^$document\n");
+    for index in 0..9 {
+        list.push_str(&format!(
+            "##.generic-{index}\nexample.com##.specific-{index}\n"
+        ));
+    }
+    let built = Built::new(&[&list]);
+    let output = built.compile(6);
+    assert!(output.cosmetic.len() > 1);
+    for chunk in &output.cosmetic {
+        assert!(chunk.len() <= 6, "{} rules", chunk.len());
+    }
+    let hides: usize = output
+        .cosmetic
+        .iter()
+        .map(|chunk| {
+            chunk
+                .iter()
+                .filter(|rule| action(rule) == "css-display-none")
+                .count()
+        })
+        .sum();
+    assert_eq!(hides, 18);
+}
+
+#[test]
+fn entity_filters_run_from_every_frame_keyed_by_label() {
+    let built = Built::new(&["example.*##+js(set-constant, entityAds, false)\nexample.*##.entity-banner\nexample.com#@#+js(set-constant, entityAds, false)\nexample.com##+js(set-constant, other, 1)\n"]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    assert_eq!(output.counts.entities, 1);
+    let entity_script = output
+        .scripts
+        .iter()
+        .find(|script| script.name == "set-constant.js" && script.includes == ["*://*/*"])
+        .expect("an entity script");
+    assert!(entity_script
+        .source
+        .contains(r#""example.*":[["entityAds","false"]]"#));
+    assert!(
+        entity_script.source.contains(r#""example.com":[]"#),
+        "the exception's host stops the walk"
+    );
+    assert!(entity_script
+        .source
+        .contains("Symbol.for(\"refrax.shields.pending\")"));
+    let procedural = output
+        .scripts
+        .iter()
+        .find(|script| script.name == "procedural" && script.includes == ["*://*/*"])
+        .expect("an entity hide script");
+    assert!(procedural.source.contains(".entity-banner"));
+    assert!(output.counts.unsupported.get("entity").is_none());
+}
+
+#[test]
 fn resources_serve_redirects_and_scriptlets() {
     let built = Built::new(&[
         "||ads.example/x.js$script,redirect=noop.js\nexample.com##+js(set-constant, ads, false)\n",

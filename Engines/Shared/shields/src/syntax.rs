@@ -54,8 +54,11 @@ pub fn has_option(line: &str, name: &str) -> bool {
 pub struct CosmeticLocations {
     pub hostnames: Vec<String>,
     pub not_hostnames: Vec<String>,
-    /// `example.*` style entries, which WebKit match patterns and domain lists cannot express.
-    pub entities: usize,
+    /// The labels of `example.*` entries, which WebKit match patterns and domain lists cannot
+    /// express; user scripts resolve them at run time.
+    pub entities: Vec<String>,
+    /// Negated (`~example.*`), multi-label (`example.co.*`) and regex locations.
+    pub unsupported: usize,
 }
 
 pub fn cosmetic_locations(line: &str) -> CosmeticLocations {
@@ -72,8 +75,15 @@ pub fn cosmetic_locations(line: &str) -> CosmeticLocations {
             Some(rest) => (true, rest),
             None => (false, part),
         };
-        if location.ends_with(".*") || location.contains('/') {
-            locations.entities += 1;
+        if location.contains('/') {
+            locations.unsupported += 1;
+            continue;
+        }
+        if let Some(label) = location.strip_suffix(".*") {
+            match ascii_hostname(label) {
+                Some(label) if !negated && !label.contains('.') => locations.entities.push(label),
+                _ => locations.unsupported += 1,
+            }
             continue;
         }
         let Some(hostname) = ascii_hostname(location) else {
@@ -148,7 +158,10 @@ mod tests {
         let locations = cosmetic_locations("example.com,~sub.example.com,google.*##.ad");
         assert_eq!(locations.hostnames, ["example.com"]);
         assert_eq!(locations.not_hostnames, ["sub.example.com"]);
-        assert_eq!(locations.entities, 1);
+        assert_eq!(locations.entities, ["google"]);
         assert_eq!(cosmetic_locations("##.ad"), CosmeticLocations::default());
+        let odd = cosmetic_locations("~bing.*,google.co.*##.ad");
+        assert!(odd.entities.is_empty());
+        assert_eq!(odd.unsupported, 2);
     }
 }

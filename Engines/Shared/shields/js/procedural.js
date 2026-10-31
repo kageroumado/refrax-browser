@@ -14,7 +14,9 @@
 // Actions: none (hide), remove, style (inline declarations), remove-attr, remove-class.
 //
 // It runs in an isolated world: the page cannot see or patch it. It re-applies on DOM changes,
-// at most once per animation frame.
+// at most once per animation frame, and each action writes only what differs from its target
+// state, so a page that un-hides an element gets it hidden again without the runner's own
+// writes waking it.
 //
 // Defines `shieldsApplyProcedural(filters)`; the generated bundle calls it with this host's
 // filters.
@@ -130,14 +132,22 @@ function shieldsApplyProcedural(filters) {
         return colon < 0 ? null : [declaration.slice(0, colon).trim(), declaration.slice(colon + 1).replace(/!important/i, '').trim()];
     }).filter((pair) => pair && pair[0]);
 
+    // Sets an inline declaration with !important unless it already holds.
+    const enforce = (element, property, value) => {
+        const style = element.style;
+        if (style.getPropertyValue(property) !== value || style.getPropertyPriority(property) !== 'important') {
+            style.setProperty(property, value, 'important');
+        }
+    };
+
     const actions = {
-        hide: () => (element) => element.style.setProperty('display', 'none', 'important'),
+        hide: () => (element) => enforce(element, 'display', 'none'),
         remove: () => (element) => element.remove(),
         style: (arg) => {
             const pairs = declarations(arg);
             return (element) => {
                 for (const [property, value] of pairs) {
-                    element.style.setProperty(property, value, 'important');
+                    enforce(element, property, value);
                 }
             };
         },
@@ -172,11 +182,19 @@ function shieldsApplyProcedural(filters) {
         if (steps.length === 0 || !actions[action.type]) { continue; }
         try {
             const [first, ...rest] = steps;
-            const start = first.type === 'css-selector'
-                ? () => Array.from(document.querySelectorAll(first.arg))
-                : () => operators[first.type](first.arg)(Array.from(document.querySelectorAll('*')));
+            let start;
+            if (first.type === 'css-selector') {
+                start = () => Array.from(document.querySelectorAll(first.arg));
+            } else if (first.type === 'xpath') {
+                // One evaluation from the document, not one per element.
+                const select = operators.xpath(first.arg);
+                start = () => select([document.documentElement]);
+            } else {
+                const select = operators[first.type](first.arg);
+                start = () => select(Array.from(document.querySelectorAll('*')));
+            }
             const transforms = rest.map((step) => operators[step.type](step.arg));
-            compiled.push({ start, transforms, apply: actions[action.type](action.arg), applied: new WeakSet() });
+            compiled.push({ start, transforms, apply: actions[action.type](action.arg) });
         } catch (error) {
             // A malformed filter skips itself.
         }
@@ -202,10 +220,7 @@ function shieldsApplyProcedural(filters) {
                     elements = transform(elements);
                 }
                 for (const element of elements) {
-                    if (!filter.applied.has(element)) {
-                        filter.applied.add(element);
-                        filter.apply(element);
-                    }
+                    filter.apply(element);
                 }
             } catch (error) {
                 // One failing filter leaves the others running.
