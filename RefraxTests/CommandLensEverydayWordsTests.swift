@@ -268,7 +268,7 @@ struct TabLayoutMenuTests {
     }
 
     @Test
-    func `Save Page As is on Command-S`() throws {
+    func `Save Page As is on Option-Command-S`() throws {
         let env = try TabManagerTestEnvironment()
         let menuBar = MenuBarManager(windowManager: env.windowManager, undoRedoManager: UndoRedoManager())
 
@@ -276,6 +276,6 @@ struct TabLayoutMenuTests {
         let save = try #require(fileMenu.items.first { $0.title == "Save Page As…" })
 
         #expect(save.keyEquivalent == "s")
-        #expect(save.keyEquivalentModifierMask == [.command])
+        #expect(save.keyEquivalentModifierMask == [.command, .option])
     }
 }
