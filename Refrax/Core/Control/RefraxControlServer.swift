@@ -385,6 +385,8 @@ final class RefraxControlServer {
             try handleSettingsGet(params)
         case let .settingsSet(params):
             try handleSettingsSet(params)
+        case let .settingsEngineSites(params):
+            try handleSettingsEngineSites(params)
         // Headless Fetch
         case let .fetch(params):
             try await handleFetch(params)
@@ -1745,8 +1747,46 @@ final class RefraxControlServer {
             let known = registry.descriptors.map { "\($0.displayName) (\($0.id))" }.joined(separator: ", ")
             throw ControlError.invalidParams("Unknown engine '\(name)'. Installed engines: \(known)")
         }
-        try await webPage.switchEngine(to: id, registry: registry)
+        try await webPage.move(to: id, registry: registry)
         return .ok("Reloading in \(descriptor.displayName)")
+    }
+
+    private func handleSettingsEngineSites(_ params: ControlRequest.SettingsEngineSitesParams) throws -> ControlResponse {
+        let registry = NSApp.typedDelegate.engineRegistry
+        var rules = browserSettings.siteEngineRules
+        switch params.action {
+        case .list:
+            let usable = registry.usableEngines
+            let lines = rules.rules.map { rule in
+                "\(rule.host) → \(registry.displayName(for: rule.engine))" + (usable.contains(rule.engine) ? "" : " (not installed)")
+            }
+            return .ok(lines.isEmpty ? "No site rules" : lines.joined(separator: "\n"))
+        case .add:
+            guard let host = params.host, let name = params.engine else {
+                throw ControlError.invalidParams("add needs a host and an engine")
+            }
+            guard let id = registry.resolve(name) ?? (name.lowercased() == "chromium" ? .chromium : nil) else {
+                let known = registry.descriptors.map { "\($0.displayName) (\($0.id))" }.joined(separator: ", ")
+                throw ControlError.invalidParams("Unknown engine '\(name)'. Installed engines: \(known)")
+            }
+            guard let canonical = rules.set(id, for: host) else {
+                throw ControlError.invalidParams("'\(host)' isn't a host name")
+            }
+            browserSettings.siteEngineRules = rules
+            return .ok("\(canonical) opens in \(registry.displayName(for: id))")
+        case .remove:
+            guard let host = params.host else {
+                throw ControlError.invalidParams("remove needs a host")
+            }
+            guard let removed = rules.remove(host: host) else {
+                throw ControlError.invalidParams("No site rule for '\(host)'")
+            }
+            browserSettings.siteEngineRules = rules
+            return .ok("\(removed.host) follows the default engine")
+        case .reset:
+            browserSettings.siteEngineRulesJSON = nil
+            return .ok("Site rules reset to the defaults")
+        }
     }
 
     private func handleTabIsLoading(_ params: ControlRequest.OptionalTabIDParams) throws -> ControlResponse {
