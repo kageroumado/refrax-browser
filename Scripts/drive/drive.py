@@ -92,7 +92,13 @@ def launch(*, in_memory: bool = True) -> int:
     deadline = time.time() + 120
     while time.time() < deadline:
         if ctl_ok("ping"):
-            time.sleep(1.5)
+            # `ping` needs no authorization; the first real request raises the access prompt.
+            for _ in range(40):
+                if ctl_ok("tab", "list"):
+                    break
+                allow_harness_client()
+                time.sleep(0.5)
+            time.sleep(1)
             park()
             return process.pid
         allow_harness_client()

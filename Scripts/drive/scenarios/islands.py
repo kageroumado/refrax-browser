@@ -60,9 +60,10 @@ def keys(*sequence: str, why: str = "browse the islands with the keyboard") -> d
     steps = [{"command": "activate", "why": "type into the private test copy"}]
     for item in sequence:
         if item.startswith("text:"):
-            steps.append({"command": "type", "text": item[5:], "why": why})
+            steps.append({"command": "type", "text": item[5:], "why": why, "onFail": "continue"})
         else:
-            steps.append({"command": "key", "keys": item, "why": why})
+            # A key's effect can't be read back by rocuronium; the scenario checks it instead.
+            steps.append({"command": "key", "keys": item, "why": why, "onFail": "continue"})
     return drive.plan(steps, profile="visible")
 
 
@@ -77,7 +78,10 @@ def drag(start: tuple[float, float], end: tuple[float, float], why: str) -> dict
     """A real-cursor drag between two window points, as one plan step."""
     a, b = drive.to_screen(start), drive.to_screen(end)
     return drive.plan(
-        [{"command": "drag", "from": f"{a[0]},{a[1]}", "to": f"{b[0]},{b[1]}", "why": why}], profile="visible",
+        # A plan's drag takes `start` and `end` ("x,y"); the CLI's --from/--to map onto them.
+        # Activate first: an inactive app spends the drag's first click on becoming active.
+        [{"command": "activate", "why": "focus the private test copy"},
+         {"command": "drag", "start": f"{a[0]},{a[1]}", "end": f"{b[0]},{b[1]}", "why": why}], profile="visible",
     )
 
 
@@ -244,3 +248,85 @@ def chromium_find(check):
     drive.screenshot("find")
     found = drive.roc("find", "--pid", str(drive.pid()), "--label", " of ")
     check.expect(bool(found.get("matches")), "no match count shown in the find bar")
+
+
+# MARK: - E: split view (layout mode, real cursor)
+
+
+def panes() -> dict:
+    return islands().get("panes") or {}
+
+
+def make_split() -> None:
+    """A three-pane split: Example on the left, WebKit on the right, Swift below Example."""
+    open_pages(PAGES[:3])
+    state = islands()
+    by_title = {row["title"].split(" ")[0]: row["tabID"] for row in rows()}
+    drive.ctl("tab", "activate", by_title["Example"])
+    time.sleep(1)
+    drive.ctl("islands", "join-page", "right", "--tab", by_title["WebKit"])
+    drive.ctl("islands", "join-page", "down", "--tab", by_title["Swift"], "--pane", "0")
+    time.sleep(1.5)
+
+
+@scenario("E61", "Dragging a pane onto another trades their places", needs_cursor=True, fresh=True)
+def drag_pane_swap(check):
+    if not cursor_allowed(check):
+        return
+    make_split()
+    drive.ctl("islands", "edit-panes")
+    time.sleep(1.2)
+    before = {p["title"].split(" ")[0]: p for p in panes()["panes"]}
+    drive.screenshot("before")
+    source, target = before["Example"], before["Swift"]
+    drag(centre(source), centre(target), "drag the Example pane onto the Swift pane")
+    time.sleep(1.2)
+    after = {p["title"].split(" ")[0]: p for p in panes()["panes"]}
+    drive.screenshot("after")
+    check.expect(after["Example"]["cells"] == before["Swift"]["cells"], f"Example is in {after['Example']['cells']}")
+    check.expect(after["Swift"]["cells"] == before["Example"]["cells"], f"Swift is in {after['Swift']['cells']}")
+
+
+@scenario("E61b", "Dragging a one-cell pane onto a two-cell pane trades their places", needs_cursor=True)
+def drag_pane_swap_spans(check):
+    if not cursor_allowed(check):
+        return
+    if not panes().get("isEditing"):
+        drive.ctl("islands", "edit-panes")
+        time.sleep(1.2)
+    before = {p["title"].split(" ")[0]: p for p in panes()["panes"]}
+    one = next(p for p in before.values() if len(p["cells"]) == 1)
+    two = next(p for p in before.values() if len(p["cells"]) == 2)
+    drag(centre(one), centre(two), "drag a one-cell pane onto the tall pane")
+    time.sleep(1.2)
+    after = {p["title"].split(" ")[0]: p for p in panes()["panes"]}
+    name_one = one["title"].split(" ")[0]
+    check.expect(after[name_one]["cells"] == two["cells"], f"{name_one} is in {after[name_one]['cells']}, expected {two['cells']}")
+
+
+@scenario("E62", "Dragging the bar between columns resizes them", needs_cursor=True)
+def drag_bar_resize(check):
+    if not cursor_allowed(check):
+        return
+    if not panes().get("isEditing"):
+        drive.ctl("islands", "edit-panes")
+        time.sleep(1.2)
+    state = panes()
+    left = min(state["panes"], key=lambda p: p["x"])
+    right = max(state["panes"], key=lambda p: p["x"])
+    bar_x = (left["x"] + left["width"] + right["x"]) / 2
+    y = right["y"] + right["height"] / 2
+    before = state["columnSplit"]
+    drag((bar_x, y), (bar_x + 160, y), "drag the bar between the columns to the right")
+    time.sleep(1)
+    after = panes()["columnSplit"]
+    drive.screenshot("resized")
+    check.expect(after > before + 0.05, f"column split {before:.2f} → {after:.2f}")
+
+
+@scenario("E66", "Done lays the split back on the page")
+def done_lays_back(check):
+    if panes().get("isEditing"):
+        press("Done", "finish editing the split")
+        drive.until(lambda: not panes().get("isEditing"), message="layout mode ended")
+    drive.screenshot("done")
