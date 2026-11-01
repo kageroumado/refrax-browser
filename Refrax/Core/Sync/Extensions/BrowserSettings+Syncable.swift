@@ -75,6 +75,10 @@ extension BrowserSettings: Syncable {
         record["appShortcutColorsJSON"] = appShortcutColorsJSON as NSString
         record["appShortcutNamesJSON"] = appShortcutNamesJSON as NSString
 
+        // MARK: - Rendering Engine
+
+        record["siteEngineRulesJSON"] = siteEngineRulesJSON as NSString?
+
         // MARK: - Privacy: Tracking Protection
 
         record["blockThirdPartyCookies"] = blockThirdPartyCookies as NSNumber
@@ -266,6 +270,10 @@ extension BrowserSettings: Syncable {
         settings.enabledAppShortcutsRaw = record["enabledAppShortcutsRaw"] as? String ?? ""
         settings.appShortcutColorsJSON = record["appShortcutColorsJSON"] as? String ?? "{}"
         settings.appShortcutNamesJSON = record["appShortcutNamesJSON"] as? String ?? "{}"
+
+        // MARK: - Rendering Engine
+
+        settings.siteEngineRulesJSON = record["siteEngineRulesJSON"] as? String
 
         // MARK: - Privacy: Tracking Protection
 

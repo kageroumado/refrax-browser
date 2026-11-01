@@ -259,6 +259,8 @@ struct ControlIslandPageBranch: View {
             onReloadWithoutContentBlockers: { page?.reloadWithoutContentBlockers() },
             otherEngines: engineRegistry.descriptors.filter { $0.id != (page?.activeEngineID ?? .systemWebKit) },
             onReloadInEngine: { page?.reload(in: $0, registry: engineRegistry) },
+            siteRuleActions: { page?.siteRuleActions(registry: engineRegistry) ?? [] },
+            onSiteRuleAction: { page?.apply($0, registry: engineRegistry) },
         ))
         .disabled(page == nil)
     }

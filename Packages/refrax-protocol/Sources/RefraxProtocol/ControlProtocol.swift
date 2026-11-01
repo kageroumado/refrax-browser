@@ -175,6 +175,7 @@ public enum ControlRequest: Sendable {
     case settingsList(SettingsListParams)
     case settingsGet(SettingsGetParams)
     case settingsSet(SettingsSetParams)
+    case settingsEngineSites(SettingsEngineSitesParams)
 
     // MARK: - Compound Commands
 
@@ -1254,6 +1255,28 @@ public extension ControlRequest {
         }
     }
 
+    /// Lists or edits the sites opened in a particular engine.
+    struct SettingsEngineSitesParams: Codable, Sendable {
+        public enum Action: String, Codable, Sendable {
+            case list
+            case add
+            case remove
+            /// Restores the default rules.
+            case reset
+        }
+
+        public var action: Action
+        public var host: String?
+        /// An engine name ("chromium", "webkit") or identifier, for `add`.
+        public var engine: String?
+
+        public init(action: Action, host: String? = nil, engine: String? = nil) {
+            self.action = action
+            self.host = host
+            self.engine = engine
+        }
+    }
+
     // -- Compound Command params --
 
     struct NavigateAndReadParams: Codable, Sendable {
@@ -1678,6 +1701,7 @@ extension ControlRequest: Codable {
         case settingsList
         case settingsGet
         case settingsSet
+        case settingsEngineSites
 
         // Compound Commands
         case navigateAndRead
@@ -1854,6 +1878,7 @@ extension ControlRequest: Codable {
         case .settingsList: self = try .settingsList(SettingsListParams(from: decoder))
         case .settingsGet: self = try .settingsGet(SettingsGetParams(from: decoder))
         case .settingsSet: self = try .settingsSet(SettingsSetParams(from: decoder))
+        case .settingsEngineSites: self = try .settingsEngineSites(SettingsEngineSitesParams(from: decoder))
         // Compound Commands
         case .navigateAndRead: self = try .navigateAndRead(NavigateAndReadParams(from: decoder))
         case .clickAndRead: self = try .clickAndRead(ClickAndReadParams(from: decoder))
@@ -2216,6 +2241,9 @@ extension ControlRequest: Codable {
             try params.encode(to: encoder)
         case let .settingsSet(params):
             try container.encode("settingsSet", forKey: .type)
+            try params.encode(to: encoder)
+        case let .settingsEngineSites(params):
+            try container.encode("settingsEngineSites", forKey: .type)
             try params.encode(to: encoder)
         // Compound Commands
         case let .navigateAndRead(params):

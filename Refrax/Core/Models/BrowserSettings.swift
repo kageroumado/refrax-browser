@@ -106,6 +106,11 @@ final class BrowserSettings {
     /// Mac. Use ``defaultEngineID`` for type-safe access.
     var defaultEngineIDRaw: String = ""
 
+    /// The sites opened in a particular engine, as JSON-encoded ``SiteEngineRules``; nil until
+    /// the user edits them, which means ``SiteEngineRules/defaults``. Synced: a rule naming an
+    /// engine this Mac lacks is inert. Use ``siteEngineRules`` for type-safe access.
+    var siteEngineRulesJSON: String?
+
     // MARK: - Appearance: Page
 
     /// Global dark mode preference for web pages.
@@ -819,6 +824,19 @@ final class BrowserSettings {
         }
     }
 
+    /// The sites opened in a particular engine.
+    var siteEngineRules: SiteEngineRules {
+        get {
+            guard let data = siteEngineRulesJSON?.data(using: .utf8) else { return .defaults }
+            return (try? JSONDecoder().decode(SiteEngineRules.self, from: data)) ?? .defaults
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                siteEngineRulesJSON = String(data: data, encoding: .utf8)
+            }
+        }
+    }
+
     /// The preferred handler for mailto: links.
     var preferredMailHandler: MailHandler {
         get {
@@ -978,6 +996,7 @@ final class BrowserSettings {
         enableWebsiteWindowColoring = false
         websiteColorUseSolidBlend = true
         defaultEngineID = .systemWebKit
+        siteEngineRulesJSON = nil
         blockThirdPartyCookies = true
         doNotTrack = true
         enableGlobalPrivacyControl = true

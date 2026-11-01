@@ -8,7 +8,7 @@ struct PageAddressField: View {
     /// The page the field shows and drives.
     let webPage: WebPage?
     /// What a click on the address does, where the address can be edited.
-    var onEdit: (() -> Void)? = nil
+    var onEdit: (() -> Void)?
 
     @Environment(EngineRegistry.self) private var engineRegistry
 
@@ -165,6 +165,8 @@ struct PageAddressField: View {
             onReloadWithoutContentBlockers: { webPage?.reloadWithoutContentBlockers() },
             otherEngines: engineRegistry.descriptors.filter { $0.id != (webPage?.activeEngineID ?? .systemWebKit) },
             onReloadInEngine: { engine in webPage?.reload(in: engine, registry: engineRegistry) },
+            siteRuleActions: { webPage?.siteRuleActions(registry: engineRegistry) ?? [] },
+            onSiteRuleAction: { action in webPage?.apply(action, registry: engineRegistry) },
         ))
     }
 

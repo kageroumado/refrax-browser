@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
-@testable import Refrax
 import Testing
+@testable import Refrax
 
 @Suite("Engine distribution", .tags(.engines))
 @MainActor
@@ -57,8 +57,8 @@ struct EngineDistributionTests {
         #expect(ditto.terminationStatus == 0)
     }
 
-    @Test("Release versions order by upstream version, then revision, never lexically")
-    func versions() throws {
+    @Test
+    func `Release versions order by upstream version, then revision, never lexically`() throws {
         let r1 = try #require(EngineReleaseVersion("152.0.7977.82-r1"))
         #expect(r1.description == "152.0.7977.82-r1")
         #expect(try #require(EngineReleaseVersion("152.0.7977.82-r2")) > r1)
@@ -70,8 +70,8 @@ struct EngineDistributionTests {
         }
     }
 
-    @Test("The catalog validates what Refrax would refuse to install")
-    func catalogProblems() {
+    @Test
+    func `The catalog validates what Refrax would refuse to install`() {
         let good = EngineCatalog(schema: 1, engines: [engine.rawValue: .init(displayName: "Chromium", channels: ["stable": release()])])
         #expect(good.problems().isEmpty)
         #expect(good.release(for: engine)?.version == "152.0.7977.82-r1")
@@ -87,23 +87,23 @@ struct EngineDistributionTests {
         #expect(throws: EngineDistributionError.self) { try EngineCatalog.decode(Data(#"{"schema":2,"engines":{}}"#.utf8)) }
     }
 
-    @Test("Downloads are accepted only from refrax-engines releases over HTTPS")
-    func downloadURLs() throws {
+    @Test
+    func `Downloads are accepted only from refrax-engines releases over HTTPS`() throws {
         let allowed = "https://github.com/kageroumado/refrax-engines/releases/download/catalog/engines.json"
-        #expect(EngineSignature.isAllowedDownloadURL(try #require(URL(string: allowed))))
+        #expect(try EngineSignature.isAllowedDownloadURL(#require(URL(string: allowed))))
         for url in [
             "http://github.com/kageroumado/refrax-engines/releases/download/catalog/engines.json",
             "https://github.com/kageroumado/refrax-browser/releases/download/v1/Refrax.dmg",
             "https://github.com.evil.test/kageroumado/refrax-engines/releases/download/x/y.zip",
             "https://user@github.com/kageroumado/refrax-engines/releases/download/x/y.zip",
         ] {
-            #expect(!EngineSignature.isAllowedDownloadURL(try #require(URL(string: url))), "\(url)")
+            #expect(try !EngineSignature.isAllowedDownloadURL(#require(URL(string: url))), "\(url)")
         }
         #expect(EngineSignature.signatureURL(for: EngineCatalog.url).absoluteString == allowed + ".sig")
     }
 
-    @Test("An archive must match the catalog's size, hash and signature")
-    func verifyArchive() throws {
+    @Test
+    func `An archive must match the catalog's size, hash and signature`() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let bytes = Data("the engine".utf8)
@@ -131,8 +131,8 @@ struct EngineDistributionTests {
         }
     }
 
-    @Test("Unpacking yields the catalog's engine and release, or refuses")
-    func unpack() throws {
+    @Test
+    func `Unpacking yields the catalog's engine and release, or refuses`() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = directory.appending(path: "source", directoryHint: .isDirectory)
@@ -152,8 +152,8 @@ struct EngineDistributionTests {
         #expect(throws: EngineDistributionError.self) { try unpack(release(), as: EngineID(rawValue: "other.engine")) }
     }
 
-    @Test("A newer contract than Refrax speaks is refused at unpack")
-    func unpackRefusesNewerContract() throws {
+    @Test
+    func `A newer contract than Refrax speaks is refused at unpack`() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let archive = directory.appending(path: "engine.zip")
@@ -166,8 +166,8 @@ struct EngineDistributionTests {
         }
     }
 
-    @Test("An update waits in .pending while its engine runs, else replaces it in place; the registry reads either")
-    func pendingInstall() throws {
+    @Test
+    func `An update waits in .pending while its engine runs, else replaces it in place; the registry reads either`() throws {
         let support = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
         let engines = support.appending(path: "Engines", directoryHint: .isDirectory)
@@ -197,8 +197,8 @@ struct EngineDistributionTests {
         #expect(registry.descriptor(for: engine)?.version == "152.0.7977.82-r2")
     }
 
-    @Test("Offers new engines and newer releases, never a local build or one Refrax can't run")
-    func offers() {
+    @Test
+    func `Offers new engines and newer releases, never a local build or one Refrax can't run`() {
         let catalog = EngineCatalog(schema: 1, engines: [
             engine.rawValue: .init(displayName: "Chromium", channels: ["stable": release(version: "152.0.7977.82-r2")]),
             "future.engine": .init(displayName: "Future", channels: ["stable": release(version: "1.0-r1", contract: "9.0")]),
@@ -215,8 +215,8 @@ struct EngineDistributionTests {
         #expect(offers(installed: "dev-28").isEmpty)
     }
 
-    @Test("The catalog's security floor must name a release no newer than stable")
-    func securityFloorRules() {
+    @Test
+    func `The catalog's security floor must name a release no newer than stable`() {
         func catalog(floor: String?) -> EngineCatalog {
             var entry = EngineCatalog.Engine(displayName: "Chromium", channels: ["stable": release(version: "152.0.7977.82-r2")])
             entry.securityFloor = floor
@@ -229,8 +229,8 @@ struct EngineDistributionTests {
         #expect(catalog(floor: "recent").problems().contains { $0.contains("securityFloor") })
     }
 
-    @Test("A cached catalog counts only while its signature verifies")
-    func cachedCatalog() throws {
+    @Test
+    func `A cached catalog counts only while its signature verifies`() throws {
         let cache = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: cache) }
         let data = Data(#"{"schema":1,"engines":{"website.refrax.engine.chromium":{"displayName":"Chromium","channels":{},"securityFloor":"152.0.7977.82-r2"}}}"#.utf8)
@@ -242,8 +242,8 @@ struct EngineDistributionTests {
         #expect(EngineCatalog.cached(in: cache, keys: ReleaseKeys([key.publicKey])) == nil, "a catalog edited on disk is ignored")
     }
 
-    @Test("An engine below the security floor doesn't start; its pages render with WebKit")
-    func securityFloorBlocksEngine() async throws {
+    @Test
+    func `An engine below the security floor doesn't start; its pages render with WebKit`() async throws {
         let support = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
         let engines = support.appending(path: "Engines/\(engine.rawValue)", directoryHint: .isDirectory)
@@ -256,7 +256,7 @@ struct EngineDistributionTests {
         registry.updateSecurityFloors(from: EngineCatalog(schema: 1, engines: [engine.rawValue: entry]))
 
         #expect(registry.securityFloor(blocking: engine)?.description == "152.0.7977.82-r2")
-        #expect(WebPagePool.startingEngine(pinned: engine.rawValue, default: .systemWebKit, registry: registry) == .systemWebKit)
+        #expect(!registry.usableEngines.contains(engine))
         await #expect(throws: EngineError.belowSecurityFloor(engine: "Chromium", floor: "152.0.7977.82-r2")) {
             _ = try await registry.host(for: engine)
         }
@@ -264,11 +264,11 @@ struct EngineDistributionTests {
         entry.securityFloor = "152.0.7977.82-r1"
         registry.updateSecurityFloors(from: EngineCatalog(schema: 1, engines: [engine.rawValue: entry]))
         #expect(registry.securityFloor(blocking: engine) == nil)
-        #expect(WebPagePool.startingEngine(pinned: engine.rawValue, default: .systemWebKit, registry: registry) == engine)
+        #expect(registry.usableEngines.contains(engine))
     }
 
-    @Test("A local build is never held to the security floor")
-    func securityFloorSparesLocalBuilds() throws {
+    @Test
+    func `A local build is never held to the security floor`() throws {
         let support = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
         let engines = support.appending(path: "Engines/\(engine.rawValue)", directoryHint: .isDirectory)

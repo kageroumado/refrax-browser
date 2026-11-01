@@ -314,6 +314,9 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
                exitRoute.pool.replaceIfExtensionBoundaryCrossed(exitRoute.page, toLoad: exitRoute.url) {
                 return .cancel
             }
+            if continuesInAnotherEngine(action) {
+                return .cancel
+            }
         default:
             break
         }
@@ -513,7 +516,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         let policy = await actionChain.evaluate(action)
         switch policy {
         case .allow, .next:
-            return true
+            return !continuesInAnotherEngine(action)
         case .download:
             // The engine saves it through its own `download` request.
             return true
@@ -539,6 +542,23 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
         case .cancel:
             break
         }
+    }
+
+    // MARK: - Site Engine Rules
+
+    /// Hands a main-frame navigation to the engine the site rules give its URL, when that
+    /// isn't the engine rendering the page (``EngineChoice/engineSwitch(for:)``).
+    ///
+    /// - Returns: Whether the page continues the navigation in another engine, so the active
+    ///   engine must cancel it.
+    private func continuesInAnotherEngine(_ action: some NavigationActionInput) -> Bool {
+        guard action.isMainFrame, !action.isNewWindowRequest, let url = action.url,
+              let pagePool, let registry = pagePool.engineRegistry,
+              let page = pagePool.activePages[tabPage.id],
+              let engine = page.engineSwitch(forNavigationTo: url, isUserInitiated: action.isUserInitiated, registry: registry)
+        else { return false }
+        page.continueNavigation(to: url, in: engine, registry: registry)
+        return true
     }
 
     // MARK: - Extension Pages

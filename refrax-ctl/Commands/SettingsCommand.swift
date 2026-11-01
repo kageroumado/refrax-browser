@@ -10,9 +10,40 @@ struct SettingsCommand: AsyncParsableCommand {
             List.self,
             Get.self,
             Set.self,
+            EngineSites.self,
         ],
         defaultSubcommand: List.self,
     )
+
+    struct EngineSites: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "engine-sites",
+            abstract: "List or edit the sites opened in a particular engine",
+            discussion: """
+            A rule covers its host and every subdomain; the most specific rule wins. \
+            A page the user moved with Reload in… keeps its engine.
+            
+            Examples:
+              refrax-ctl settings engine-sites
+              refrax-ctl settings engine-sites add youtube.com chromium
+              refrax-ctl settings engine-sites remove youtube.com
+              refrax-ctl settings engine-sites reset
+            """,
+        )
+
+        @Argument(help: "list, add, remove, or reset")
+        var action: ControlRequest.SettingsEngineSitesParams.Action = .list
+
+        @Argument(help: "The site's host, for add and remove")
+        var host: String?
+
+        @Argument(help: "The engine (chromium, webkit), for add")
+        var engine: String?
+
+        func run() async throws {
+            try sendAndHandle(.settingsEngineSites(.init(action: action, host: host, engine: engine)))
+        }
+    }
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -98,3 +129,5 @@ struct SettingsCommand: AsyncParsableCommand {
         }
     }
 }
+
+extension ControlRequest.SettingsEngineSitesParams.Action: @retroactive ExpressibleByArgument {}
