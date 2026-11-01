@@ -16,8 +16,17 @@ final class CommandLensWindow: NSWindow {
         collectionBehavior = [.fullScreenAuxiliary, .transient]
     }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    /// Whether the lens is up. Only then may the window be key: it sits above the browser
+    /// window, so AppKit would otherwise hand it the keyboard on activation (⌘-Tab, a Dock
+    /// click) and every key would land in an empty overlay.
+    var isLensShown = false
+
+    override var canBecomeKey: Bool {
+        isLensShown
+    }
+    override var canBecomeMain: Bool {
+        false
+    }
 }
 
 /// Keeps the lens window over the browser window's content, brings it to the front of the
@@ -94,9 +103,11 @@ final class CommandLensWindowPresenter {
             parent.removeChildWindow(window)
             parent.addChildWindow(window, ordered: .above)
             window.ignoresMouseEvents = false
+            window.isLensShown = true
             window.makeKeyAndOrderFront(nil)
         } else {
             window.ignoresMouseEvents = true
+            window.isLensShown = false
             if window.isKeyWindow {
                 parent.makeKey()
             }

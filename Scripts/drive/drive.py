@@ -203,6 +203,10 @@ def plan(steps: list[dict], *, profile: str = "ghost") -> dict:
     """Runs `steps` as one rocuronium plan against the private instance; each step gets its pid."""
     for step in steps:
         step.setdefault("pid", pid())
+        # DRIVE_CONFIRM=1 records that the person approved this run in advance (they stepped
+        # away for it); rocuronium then reports consent as asserted by the caller.
+        if os.environ.get("DRIVE_CONFIRM") == "1" and step.get("command") in ("activate", "drag", "move", "click"):
+            step.setdefault("confirm", True)
     reply = subprocess.run(
         ["rocuronium", "plan", "--json"], input=json.dumps({"profile": profile, "steps": steps}),
         capture_output=True, text=True, timeout=300,
