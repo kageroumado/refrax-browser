@@ -2671,6 +2671,15 @@ final class RefraxControlServer {
             }
         case .newIsland:
             try islands.makeIsland(from: tab(params.tab).id)
+        case .filter:
+            let name = params.direction ?? "none"
+            if name == "none" {
+                islands.setFilter(nil)
+            } else if let filter = IslandFilter(rawValue: name) {
+                islands.setFilter(filter)
+            } else {
+                throw ControlError.invalidParams("Filter must be one of: \(IslandFilter.allCases.map(\.rawValue).joined(separator: ", ")), none")
+            }
         case .iconRail, .titles:
             let target = try island(params.island)
             islands.setIconsOnly(params.action == .iconRail, for: target.id)
@@ -2724,6 +2733,8 @@ final class RefraxControlServer {
                 )
             },
             panes: windowManager.activeWindowController.flatMap { PaneControl.info(in: $0.windowState, islands: islands) },
+            filter: islands.filter?.rawValue,
+            keyboardTabID: islands.keyboardCursorID?.uuidString,
         ))
     }
 

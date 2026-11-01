@@ -16,7 +16,8 @@ struct IslandsCommand: AsyncParsableCommand {
         Actions: state · show · hide · hold · release · step <up|down|left|right> · open --tab · \
         move-row --tab --island [--row N] · detach --tab [--to X,Y] · join --tab --with · \
         join-page --tab <left|right|up|down> [--pane P] · pin --island · unpin --island · \
-        new-island --tab · move --island --to X,Y · icon-rail --island · titles --island
+        new-island --tab · move --island --to X,Y · icon-rail --island · titles --island · \
+        filter <unread|playingAudio|microphone|camera|none>
         
         Panes (the current tab's split view, a two-by-two grid): edit-panes · done-panes · \
         move-pane --pane P <top-left|top-right|bottom-left|bottom-right> · \

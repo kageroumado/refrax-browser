@@ -724,6 +724,9 @@ public extension ControlRequest {
             case titles
             /// Move `island` so its top-left corner is at `x`,`y`.
             case move
+            /// Show only the rows a quick filter keeps: `direction` is unread, playingAudio,
+            /// microphone or camera; none shows every row.
+            case filter
         }
 
         public let action: Action
@@ -2798,13 +2801,22 @@ public enum CTL {
         public let cards: [FloatingTileInfo]
         /// The current tab's panes.
         public let panes: PanesInfo?
-        public init(isRevealed: Bool, isHeld: Bool, currentTabID: String?, islands: [IslandInfo], cards: [FloatingTileInfo], panes: PanesInfo? = nil) {
+        /// The quick filter in force, by its raw name.
+        public let filter: String?
+        /// The row the keyboard has chosen while browsing the islands.
+        public let keyboardTabID: String?
+        public init(
+            isRevealed: Bool, isHeld: Bool, currentTabID: String?, islands: [IslandInfo], cards: [FloatingTileInfo], panes: PanesInfo? = nil,
+            filter: String? = nil, keyboardTabID: String? = nil,
+        ) {
             self.isRevealed = isRevealed
             self.isHeld = isHeld
             self.currentTabID = currentTabID
             self.islands = islands
             self.cards = cards
             self.panes = panes
+            self.filter = filter
+            self.keyboardTabID = keyboardTabID
         }
     }
 

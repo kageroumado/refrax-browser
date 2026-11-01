@@ -297,6 +297,9 @@ class Check:
 
 
 def load_scenarios() -> None:
+    # Scenario files `import drive`; run as a script this module is `__main__`, so the name
+    # must resolve to it, or they would register into a second copy.
+    sys.modules.setdefault("drive", sys.modules[__name__])
     for path in sorted((HERE / "scenarios").glob("*.py")):
         spec = importlib.util.spec_from_file_location(f"drive_scenarios.{path.stem}", path)
         module = importlib.util.module_from_spec(spec)
