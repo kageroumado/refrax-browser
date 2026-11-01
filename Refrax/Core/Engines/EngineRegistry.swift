@@ -122,26 +122,39 @@ final class EngineRegistry {
             ?? descriptors.first { $0.displayName.lowercased() == needle }?.id
     }
 
-    /// Checks every installed engine's code signature at background priority, so an engine's
-    /// first page doesn't wait on it. Called once Refrax has finished launching.
+    /// Checks every installed engine's code signature ahead of use, so an engine's first page
+    /// doesn't wait on it. Called once Refrax has finished launching.
     func verifyInstalledEngines() {
         for bundle in bundles.values {
-            _ = signatureCheck(for: bundle, priority: .background)
+            _ = signatureCheck(for: bundle)
         }
     }
 
-    /// The signature check of `bundle`, started at `priority` unless already under way. Awaiting
-    /// it from higher-priority work raises its priority.
-    private func signatureCheck(for bundle: EngineBundle, priority: TaskPriority) -> Task<Void, any Error> {
+    /// The signature check of `bundle`, started unless already under way.
+    ///
+    /// The check runs on its own dispatch queue at user-initiated priority, never on the Swift
+    /// concurrency pool: `SecStaticCodeCheckValidity` blocks its thread on a dispatch group
+    /// while it validates nested code, and on a background-priority pool thread that wait does
+    /// not end for a bundle the size of the Chromium engine (450 MB). A page waiting on the
+    /// check can't raise a dispatch thread's priority, so the check starts at the priority a
+    /// waiting page needs; it takes about a second.
+    private func signatureCheck(for bundle: EngineBundle) -> Task<Void, any Error> {
         if let check = signatureChecks[bundle] {
             return check
         }
-        let check = Task.detached(name: "Verify \(bundle.descriptor.displayName) signature", priority: priority) {
-            try bundle.verifySignature()
+        let check = Task(name: "Verify \(bundle.descriptor.displayName) signature") {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                Self.signatureQueue.async {
+                    continuation.resume(with: Result { try bundle.verifySignature() })
+                }
+            }
         }
         signatureChecks[bundle] = check
         return check
     }
+
+    /// Where engine signatures are checked, off the Swift concurrency pool.
+    private static let signatureQueue = DispatchQueue(label: "website.refrax.engines.signature", qos: .userInitiated)
 
     /// The running host for an installed engine, started on first use.
     func host(for id: EngineID) async throws -> ExternalEngineHost {
@@ -153,7 +166,7 @@ final class EngineRegistry {
         if let floor = securityFloor(blocking: id) {
             throw EngineError.belowSecurityFloor(engine: bundle.descriptor.displayName, floor: floor.description)
         }
-        try await signatureCheck(for: bundle, priority: .userInitiated).value
+        try await signatureCheck(for: bundle).value
         if let host = hosts[id] {
             try await host.start()
             return host
