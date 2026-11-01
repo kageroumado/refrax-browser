@@ -374,19 +374,24 @@ final class FloatingTourManager {
         return item
     }
 
-    /// Whether the rail lights its whole glass: the step moves the panel, or points at a row
-    /// that customization has hidden.
+    /// Whether the rail lights its grip: the step moves the panel and the rail shows the grip.
+    var highlightsGrip: Bool {
+        currentStep == .movePanel && !windowState.controlIsland.gripFrame.isEmpty
+    }
+
+    /// Whether the rail lights its whole glass: the step moves the panel and the grip is out of
+    /// view, or points at a row that customization has hidden.
     var highlightsRail: Bool {
         guard let step = currentStep else { return false }
-        return step == .movePanel || (railItem != nil && highlightedItem == nil)
+        return (step == .movePanel && !highlightsGrip) || (railItem != nil && highlightedItem == nil)
     }
 
     /// The areas the current step lights, in window content coordinates, each with the corner
     /// radius of what it surrounds.
     ///
-    /// Rail rows come from the control island's reported frames; floating pages from the
-    /// canvas; the empty page's lens from the page itself. A step whose control is hidden
-    /// by customization lights the whole rail. While the Command Lens is up over the page,
+    /// Rail rows and the grip come from the control island's reported frames; islands from
+    /// the island controller; the empty page's lens from the page itself. A step whose control
+    /// is hidden by customization lights the whole rail. While the Command Lens is up over the page,
     /// the lens is the one lit area, wherever the step points.
     func spotlights(in _: CGRect) -> [TourSpotlight] {
         guard let step = currentStep else { return [] }
@@ -411,13 +416,18 @@ final class FloatingTourManager {
             return []
         case .revealPages, .visitNeighbor:
             return row(.floatingTabs)
-        case .floatPage, .pinIsland:
+        case .floatPage:
             guard let islands = windowState.islandController, islandsShown else { return row(.floatingTabs) }
             return islands.visibleIslands.map { FloatingTourLayout.spotlight(around: islands.frame(of: $0), of: .island) }
+        case .pinIsland:
+            // The pin sits in the header above the rows, so the lit area takes the header in.
+            guard let islands = windowState.islandController, islandsShown else { return row(.floatingTabs) }
+            return islands.visibleIslands.map { FloatingTourLayout.spotlight(around: islands.fullFrame(of: $0), of: .island) }
         case .pageCard:
             return row(.page) + (pageCardSpotlight.map { [$0] } ?? [])
         case .movePanel:
-            return rail
+            let grip = island.gripFrame
+            return grip.isEmpty ? rail : [FloatingTourLayout.spotlight(around: grip, of: .railRow)]
         case .done:
             return []
         }
@@ -568,16 +578,16 @@ extension FloatingTourManager.Step {
             return "Hold \(context.revealKey.glyph) and scroll down: the page below slides in. Scroll up to come back."
         case .floatPage:
             return context.islandsVisible
-                ? "Drag a row out of its island onto the page. It floats there as a live page. Hover its toolbar and click Return to island to send it back."
-                : "Click the islands button on the controls, then drag a row out of its island onto the page."
+                ? "Hold ⇧ while you drag a row out of its island onto the page. It opens there as a card, a live page of its own. Hover the card's toolbar and click Return to island to send it back."
+                : "Click the islands button on the controls, then hold ⇧ while you drag a row out of its island onto the page."
         case .pinIsland:
             return context.islandsVisible
-                ? "Click the pin beside an island's name. The island stays after you release \(context.revealKey.glyph)."
+                ? "Point at an island to show its name, then click the pin beside it. The island stays after you release \(context.revealKey.glyph)."
                 : "Click the islands button on the controls, then pin an island so it stays."
         case .pageCard:
             return "Hover the page's icon on the controls for its card: title, address, reload, favorite, and actions."
         case .movePanel:
-            return "Drag the controls' grip, under the spaces, somewhere else. They rest while you work and wake as you approach."
+            return "Drag the six dots at the foot of the controls to move them somewhere else. They rest while you work and wake as you approach."
         case .done:
             return "The rest is in Command Lens. Type what you want."
         }

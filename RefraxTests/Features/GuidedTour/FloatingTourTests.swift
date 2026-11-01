@@ -431,8 +431,48 @@ struct FloatingTourTests {
         stage.canvas.toggleFloatingTabs()
         #expect(!stage.canvas.isMomentaryNavigation)
         let arranging = FloatingTourManager.Step.Context(revealKey: .control, hasPage: true, lensIsOpen: false, islandsVisible: true)
-        #expect(FloatingTourManager.Step.floatPage.instruction(in: arranging).contains("Drag a row"))
+        // A plain drag makes a new island; the card needs ⇧ held at the drop.
+        #expect(FloatingTourManager.Step.floatPage.instruction(in: arranging).contains("Hold ⇧"))
+        #expect(FloatingTourManager.Step.floatPage.instruction(in: navigating).contains("hold ⇧"))
         stage.tour.endTour()
+    }
+
+    @Test
+    func `the pin step lights each island with its header, where the pin is`() throws {
+        let stage = try Stage()
+        let tour = stage.tour
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
+        stage.reportRail()
+        try stage.advance(to: .pinIsland)
+        #expect(tour.currentStep == .pinIsland)
+        stage.canvas.releaseFloatingTabs()
+        stage.canvas.toggleFloatingTabs()
+        let islands = stage.table.visibleIslands
+        #expect(!islands.isEmpty)
+        #expect(tour.spotlights(in: bounds) == islands.map { FloatingTourLayout.spotlight(around: stage.table.fullFrame(of: $0), of: .island) })
+        #expect(islands.allSatisfy { stage.table.fullFrame(of: $0).minY < stage.table.frame(of: $0).minY })
+        tour.endTour()
+    }
+
+    @Test
+    func `the move step lights the grip, or the whole rail while the grip is out of view`() throws {
+        let stage = try Stage()
+        let tour = stage.tour
+        let bounds = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
+        stage.reportRail()
+        try stage.advance(to: .movePanel)
+        #expect(tour.currentStep == .movePanel)
+        #expect(!tour.highlightsGrip)
+        #expect(tour.highlightsRail)
+        #expect(tour.spotlights(in: bounds) == [FloatingTourLayout.spotlight(around: Stage.rail, of: .rail)])
+
+        let grip = CGRect(x: 16, y: 560, width: 40, height: 32)
+        stage.window.controlIsland.reportGripFrame(grip)
+        #expect(tour.highlightsGrip)
+        #expect(!tour.highlightsRail)
+        #expect(tour.spotlights(in: bounds) == [FloatingTourLayout.spotlight(around: grip, of: .railRow)])
+        #expect(tour.passThroughRegions(in: bounds) == [FloatingTourLayout.spotlight(around: grip)])
+        tour.endTour()
     }
 
     @Test

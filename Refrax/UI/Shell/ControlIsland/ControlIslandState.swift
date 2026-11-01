@@ -33,6 +33,8 @@ final class ControlIslandState {
     @ObservationIgnored var companionIsEngaged = false
     /// Each visible control's frame in window content coordinates.
     private(set) var itemFrames: [ControlIslandItem: CGRect] = [:]
+    /// The grip's control row in window content coordinates; zero while the rail does not show it.
+    private(set) var gripFrame: CGRect = .zero
     /// The page card's frame in window content coordinates while it is unfolded; zero while it is away.
     var pageCardFrame: CGRect = .zero
     @ObservationIgnored var hitRegions: [CGRect] = []
@@ -145,10 +147,16 @@ final class ControlIslandState {
         itemFrames[item] = frame
     }
 
+    func reportGripFrame(_ frame: CGRect) {
+        guard gripFrame != frame else { return }
+        gripFrame = frame
+    }
+
     func clearFrames() {
         railFrame = .zero
         railLayoutFrame = .zero
         itemFrames = [:]
+        gripFrame = .zero
         pageCardFrame = .zero
     }
 

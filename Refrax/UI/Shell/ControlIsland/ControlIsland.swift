@@ -163,7 +163,7 @@ struct ControlIsland: View {
 
     /// The tour points at the rail or one of its rows, which the rail lights above its glass.
     private var tourLightsRail: Bool {
-        tour.highlightsRail || tour.highlightedItem != nil
+        tour.highlightsRail || tour.highlightedItem != nil || tour.highlightsGrip
     }
 
     /// At rest the glass is clear rather than frosted; the symbols stay opaque and step back one shade.
@@ -370,6 +370,7 @@ struct ControlIsland: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: showsShortcut)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightedItem)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsRail)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: tour.highlightsGrip)
         .onAppear {
             state.wake()
             flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
@@ -438,6 +439,15 @@ struct ControlIsland: View {
                             draggableBackground(Color.clear.frame(height: Layout.sectionGap).contentShape(Rectangle()))
                         case .grip:
                             grip
+                                .background {
+                                    if tour.highlightsGrip {
+                                        rowHighlight
+                                    }
+                                }
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("browserControls")) } action: {
+                                    state.reportGripFrame($0)
+                                }
+                                .onDisappear { state.reportGripFrame(.zero) }
                         }
                     }
                 }
