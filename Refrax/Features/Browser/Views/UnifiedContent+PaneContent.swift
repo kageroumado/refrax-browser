@@ -85,7 +85,8 @@ struct PaneContentWrapper: View {
             PaneWebViewAdapter(
                 page: webPage,
                 isActive: isOwner,
-                isSnapshotMode: isLayoutMode && isOwner,
+                holdsPageSize: isLayoutMode,
+                passesHitsThrough: isLayoutMode,
                 expectedFrame: frame,
                 cornerRadius: cornerRadius,
                 ignoresAllEvents: shouldIgnoreAllEvents,

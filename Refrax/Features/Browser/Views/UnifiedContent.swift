@@ -22,6 +22,8 @@ struct UnifiedContentView: View {
     @State var dividerDrag: DividerDrag?
     /// A pane dragged in layout mode.
     @State var paneDrag: PaneDragState?
+    /// What the pointer is over on the layout-mode surface.
+    @State var hoveredRegion: PaneEditingRegion?
 
     struct DividerDrag: Equatable {
         let axis: PaneDivider.Axis
@@ -38,8 +40,14 @@ struct UnifiedContentView: View {
         /// Where a pointer takes hold of a divider: this wide across the line.
         static let dividerReach: CGFloat = 9
         static let dragSpring = Animation.spring(response: 0.35, dampingFraction: 0.75)
+        static let hoverAnimation = Animation.easeOut(duration: 0.15)
         static let shadowRadius: CGFloat = 10
-        static let shadowOpacity = 0.18
+        static let shadowOpacity = 0.3
+        /// A pane at rest in layout mode is dimmed this much, so it reads as a thing to arrange.
+        static let restingDim = 0.3
+        static let hoveredDim = 0.06
+        /// A hovered pane rises by this scale.
+        static let hoverLift: CGFloat = 1.012
         /// How far a pane moves before it is dragged rather than clicked.
         static let dragThreshold: CGFloat = 6
     }
@@ -95,13 +103,17 @@ struct UnifiedContentView: View {
         let geometry = geometry(for: session)
         let frames = frames(grid: grid, geometry: geometry)
         ZStack(alignment: .topLeading) {
-            if let session {
-                emptyCells(session: session, geometry: geometry)
+            if session != nil {
+                layoutModeBackdrop
             }
             ForEach(tab.pages) { page in
                 if let frame = frames[page.id] {
                     pane(page, frame: frame, metrics: geometry.metrics, isEditing: session != nil)
                 }
+            }
+            if let session {
+                layoutModeSurface(grid: grid, geometry: geometry)
+                emptyCells(session: session, geometry: geometry)
             }
             if grid.count > 1 {
                 dividers(grid: grid, geometry: geometry, isEditing: session != nil)
@@ -112,6 +124,12 @@ struct UnifiedContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .onChange(of: session == nil) { _, ended in
+            if ended {
+                hoveredRegion = nil
+                paneDrag = nil
+            }
+        }
         .transaction { transaction in
             // A tab's panes move with animation only into, out of, and within layout mode.
             if session == nil, !windowState.isAnimatingLayoutTransition {
@@ -130,6 +148,7 @@ struct UnifiedContentView: View {
 
     private func pane(_ page: TabPage, frame: CGRect, metrics: PaneGridMetrics, isEditing: Bool) -> some View {
         let isDragged = paneDrag?.pageID == page.id
+        let isHovered = isEditing && (isDragged || hoveredRegion == .pane(page.id))
         let shape = RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
         return PaneContentWrapper(
             tabPage: page,
@@ -146,18 +165,17 @@ struct UnifiedContentView: View {
             }
         }
         .overlay {
+            // In layout mode the frozen page is dimmed and framed, lighter and outlined in the
+            // accent color while the pointer is on it: a thing to arrange, never to browse.
             if isEditing {
-                PaneGlassRim(cornerRadius: metrics.cornerRadius)
+                shape.fill(Color.black.opacity(isHovered ? Layout.hoveredDim : Layout.restingDim))
+                    .allowsHitTesting(false)
+                shape.strokeBorder(isHovered ? Color.appAccentColor : Color.white.opacity(0.35), lineWidth: isHovered ? 2 : 1)
+                    .allowsHitTesting(false)
             }
         }
-        .overlay {
-            // Takes the pane's drag in layout mode, where the frozen page ignores the pointer.
-            Color.clear
-                .contentShape(.rect)
-                .allowsHitTesting(isEditing)
-                .gesture(paneDragGesture(for: page.id))
-        }
-        .shadow(color: .black.opacity(isEditing ? Layout.shadowOpacity : 0), radius: isDragged ? Layout.shadowRadius * 2 : Layout.shadowRadius, y: 4)
+        .scaleEffect(isHovered ? Layout.hoverLift : 1)
+        .shadow(color: .black.opacity(isEditing ? Layout.shadowOpacity : 0), radius: isHovered ? Layout.shadowRadius * 2 : Layout.shadowRadius, y: isHovered ? 8 : 4)
         .modifier(PaneDragEffect(offset: isDragged ? paneDrag?.translation ?? .zero : .zero))
         .offset(x: frame.minX, y: frame.minY)
         .zIndex(isDragged ? 1 : 0)
@@ -171,29 +189,5 @@ struct UnifiedContentView: View {
         if tab.pages.count > 1, tab.activePage.id != page.id {
             tabManager.setActivePage(in: tab, page: page)
         }
-    }
-}
-
-/// The light along a lifted pane's rim.
-struct PaneGlassRim: View {
-    let cornerRadius: CGFloat
-
-    private static let gradient = LinearGradient(
-        stops: [
-            .init(color: .white.opacity(0.7), location: 0.0),
-            .init(color: .white.opacity(0.3), location: 0.15),
-            .init(color: .clear, location: 0.5),
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing,
-    )
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .strokeBorder(Self.gradient, lineWidth: 1)
-            .blendMode(.plusLighter)
-            .compositingGroup()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }

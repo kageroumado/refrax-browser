@@ -20,12 +20,13 @@ struct PaneWebViewAdapter: NSViewRepresentable {
     /// Only relevant when page is non-nil.
     let isActive: Bool
 
-    /// Whether the adapter should display a GPU snapshot instead of live content.
-    ///
-    /// When true, the adapter captures the current content as a static snapshot
-    /// and removes the WKWebView. This prevents WebKit from re-laying out content
-    /// during layout mode animations.
-    var isSnapshotMode: Bool = false
+    /// Whether the page keeps its laid-out size while the pane changes size around it
+    /// (layout mode): WebKit never re-lays it out at a tile's size or at the animation's
+    /// in-between sizes, and the pane clips it at its top-leading corner.
+    var holdsPageSize: Bool = false
+
+    /// The pointer passes through the pane to the views over it (layout mode).
+    var passesHitsThrough: Bool = false
 
     /// Expected frame size hint for zero-bounds scenarios.
     let expectedFrame: CGRect
@@ -91,24 +92,6 @@ struct PaneWebViewAdapter: NSViewRepresentable {
             if case .active = adapter.displayMode {
                 adapter.setSnapshotMode(for: page)
             }
-        } else if isSnapshotMode {
-            // Snapshot mode: freeze current content as GPU snapshot for layout mode.
-            // This prevents WebKit from re-laying out content at the tile size.
-            switch adapter.displayMode {
-            case let .snapshot(webPageID) where webPageID == page.id:
-                break
-            case let .active(current) where current === webView:
-                adapter.setSnapshotMode(for: page)
-            default:
-                // Nothing of this page is rendered here yet (fresh adapter, or a pane
-                // swap while frozen), so there is nothing to capture: show it live at
-                // tile size instead.
-                adapter.setActiveMode(
-                    webView: webView,
-                    expectedFrame: expectedFrame,
-                    preferExpectedFrame: pageChanged,
-                )
-            }
         } else if isActive {
             // Leaving snapshot mode on the same page: bring the webView back with the
             // snapshot held as a cover until WebKit paints. A snapshot of a different
@@ -125,6 +108,7 @@ struct PaneWebViewAdapter: NSViewRepresentable {
                     preferExpectedFrame: pageChanged,
                 )
             }
+            adapter.holdWebViewSize(holdsPageSize, targetSize: expectedFrame.size)
         } else {
             if let layer = webView.layer {
                 adapter.setPortalMode(sourceLayer: layer)
@@ -134,6 +118,7 @@ struct PaneWebViewAdapter: NSViewRepresentable {
         }
 
         adapter.setCornerRadius(cornerRadius)
+        adapter.passesHitsThrough = passesHitsThrough
 
         // Apply dynamic properties AFTER display mode is set.
         // This ensures the adapter is in active mode when topContentInset triggers applyTopContentInset().
