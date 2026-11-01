@@ -3,18 +3,43 @@ import CoreGraphics
 /// The spacing of a pane grid: how far the panes stand from each other and from the page's
 /// edges, and how round their corners are.
 nonisolated struct PaneGridMetrics: Equatable, Sendable {
-    /// Between two panes; on the page the divider line fills it.
+    /// The margins between the panes and the page's edges.
+    nonisolated struct Insets: Equatable, Sendable {
+        let top: CGFloat
+        let leading: CGFloat
+        let bottom: CGFloat
+        let trailing: CGFloat
+
+        static let zero = Insets(top: 0, leading: 0, bottom: 0, trailing: 0)
+    }
+
+    /// Between two panes; on the page the divider line fills it, in layout mode it is the bar
+    /// a resize takes hold of.
     let gap: CGFloat
     /// Between the panes and the page's edges.
-    let inset: CGFloat
+    let insets: Insets
     /// The panes' own corners; the window's corners round the page's.
     let cornerRadius: CGFloat
 
     /// The page as people use it: panes edge to edge, a one-point divider between them.
-    static let page = PaneGridMetrics(gap: 1, inset: 0, cornerRadius: 0)
+    static let page = PaneGridMetrics(gap: 1, insets: .zero, cornerRadius: 0)
 
-    /// Layout mode: panes lifted apart, their corners concentric with the window's.
-    static let editing = PaneGridMetrics(gap: 8, inset: 8, cornerRadius: WindowCorner.radius - 8)
+    /// Layout mode: panes set apart on the editing surface, gaps wide enough to take hold of,
+    /// and a margin at the bottom for the bar that ends the mode.
+    static let editing = PaneGridMetrics(
+        gap: 20,
+        insets: Insets(top: 24, leading: 24, bottom: LayoutModeBarMetrics.reserve, trailing: 24),
+        cornerRadius: 12,
+    )
+}
+
+/// The bar at the foot of layout mode, in the editing surface's bottom margin.
+nonisolated enum LayoutModeBarMetrics {
+    static let height: CGFloat = 40
+    /// From the bar to the page's bottom edge, and from the panes to the bar.
+    static let spacing: CGFloat = 16
+    /// The editing surface's bottom margin: the bar with its spacing above and below.
+    static let reserve: CGFloat = height + spacing * 2
 }
 
 /// The line between two columns or two rows of panes, drawn in the gap between them.
@@ -77,10 +102,11 @@ nonisolated struct PaneGridGeometry: Equatable, Sendable {
 
     /// The area the panes share, in whole points.
     var content: CGRect {
-        let minX = (bounds.minX + metrics.inset).rounded()
-        let minY = (bounds.minY + metrics.inset).rounded()
-        let maxX = max(minX, (bounds.maxX - metrics.inset).rounded(.down))
-        let maxY = max(minY, (bounds.maxY - metrics.inset).rounded(.down))
+        let insets = metrics.insets
+        let minX = (bounds.minX + insets.leading).rounded()
+        let minY = (bounds.minY + insets.top).rounded()
+        let maxX = max(minX, (bounds.maxX - insets.trailing).rounded(.down))
+        let maxY = max(minY, (bounds.maxY - insets.bottom).rounded(.down))
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 

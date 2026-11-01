@@ -405,6 +405,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         snapshotExitWork?.cancel()
         snapshotExitWork = nil
         isHoldingWebViewFrame = false
+        forgetHeldWebViewSize()
 
         // Check if this is a cross-window move BEFORE cleaning up.
         let isMovingWindows = webView.window != nil && webView.window !== window
@@ -944,6 +945,75 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         return r > 250 && g > 250 && b > 250
     }
 
+    /// The size the web view keeps while its pane changes size around it (layout mode), pinned
+    /// to the pane's top-leading corner and clipped by it; nil while it fills the pane.
+    private var heldWebViewSize: CGSize?
+    /// Lets the web view fill the pane again once the pane has grown back to its size.
+    private var heldSizeRelease: DispatchWorkItem?
+
+    private enum HeldSize {
+        /// How long a pane takes to settle at its size when layout mode ends.
+        static let release: TimeInterval = 0.6
+    }
+
+    /// Keeps the web view at its laid-out size while `holds` is true, so the page neither
+    /// reflows nor takes events while its pane is edited; the pane clips it.
+    ///
+    /// While held, the size only grows: a pane edited larger than the page shows more of it.
+    /// When `holds` turns false the web view takes `targetSize` (the pane's size once it
+    /// settles) and keeps it while the pane grows to it, then fills the pane again.
+    func holdWebViewSize(_ holds: Bool, targetSize: CGSize) {
+        guard case let .active(webView) = displayMode, webView.superview === self else { return }
+        if holds {
+            heldSizeRelease?.cancel()
+            heldSizeRelease = nil
+            let current = heldWebViewSize ?? webView.frame.size
+            let size = CGSize(width: max(current.width, targetSize.width), height: max(current.height, targetSize.height))
+            guard heldWebViewSize != size else { return }
+            heldWebViewSize = size
+            webView.autoresizingMask = []
+            needsLayout = true
+            return
+        }
+        guard heldWebViewSize != nil, heldSizeRelease == nil else { return }
+        if targetSize.width > 0, targetSize.height > 0 {
+            heldWebViewSize = targetSize
+            needsLayout = true
+        }
+        let release = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            releaseHeldWebViewSize()
+        }
+        heldSizeRelease = release
+        DispatchQueue.main.asyncAfter(deadline: .now() + HeldSize.release, execute: release)
+    }
+
+    /// Drops the held size without touching the web view, which is leaving this adapter.
+    private func forgetHeldWebViewSize() {
+        heldSizeRelease?.cancel()
+        heldSizeRelease = nil
+        heldWebViewSize = nil
+    }
+
+    private func releaseHeldWebViewSize() {
+        heldSizeRelease?.cancel()
+        heldSizeRelease = nil
+        guard heldWebViewSize != nil else { return }
+        heldWebViewSize = nil
+        if case let .active(webView) = displayMode {
+            webView.autoresizingMask = [.width, .height]
+        }
+        needsLayout = true
+    }
+
+    /// Whether the adapter and everything in it are invisible to the pointer, so a click or
+    /// drag reaches the SwiftUI views over it: layout mode edits panes, never the pages in them.
+    var passesHitsThrough = false
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        passesHitsThrough ? nil : super.hitTest(point)
+    }
+
     /// Rounds the adapter's corners on its own layer: Core Animation clips the web view's
     /// remote layers, the portal, and the snapshot to them, which a SwiftUI shape above the
     /// adapter does not do.
@@ -965,6 +1035,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
 
         pendingPortalSourceLayer = nil
         cancelSnapshotExitWork()
+        forgetHeldWebViewSize()
 
         cleanupCurrentMode()
         displayMode = .inactive
@@ -1107,6 +1178,7 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
     func prepareForDismantle() {
         pendingPortalSourceLayer = nil
         cancelSnapshotExitWork()
+        forgetHeldWebViewSize()
 
         // Full cleanup - remove webView from hierarchy
         cleanupCurrentMode()
@@ -1255,7 +1327,10 @@ final class CocoaWebViewAdapter: NSView, WebPageWebView.Delegate {
         // Skip when holding the webView frame during a snapshot exit transition — the webView
         // is pinned at the final target size while the snapshot covers the animation.
         if case let .active(webView) = displayMode, webView.superview === self, !isHoldingWebViewFrame {
-            if isFindBarVisible, let findBarView {
+            if let held = heldWebViewSize {
+                // Pinned to the top-leading corner (the view is unflipped), clipped by the pane.
+                webView.frame = NSRect(x: 0, y: bounds.height - held.height, width: held.width, height: held.height)
+            } else if isFindBarVisible, let findBarView {
                 let findBarHeight = findBarView.fittingSize.height
                 findBarView.frame = NSRect(
                     x: 0,

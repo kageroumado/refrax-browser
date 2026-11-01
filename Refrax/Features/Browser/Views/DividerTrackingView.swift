@@ -16,6 +16,8 @@ struct DividerTrackingView: NSViewRepresentable {
     /// A drag moved a divider's grip to `location`: an x for a column line, a y for a row line.
     let onDrag: (PaneDivider.Axis, CGFloat) -> Void
     let onDragEnded: (PaneDivider.Axis) -> Void
+    /// The pointer came onto a grip, or left the grips (nil).
+    var onHover: (PaneDivider.Axis?) -> Void = { _ in }
 
     func makeNSView(context _: Context) -> DividerTrackingNSView {
         let view = DividerTrackingNSView()
@@ -30,6 +32,7 @@ struct DividerTrackingView: NSViewRepresentable {
     private func apply(to view: DividerTrackingNSView) {
         view.onDrag = onDrag
         view.onDragEnded = onDragEnded
+        view.onHover = onHover
         if view.grips != grips {
             view.grips = grips
             view.window?.invalidateCursorRects(for: view)
@@ -55,11 +58,18 @@ final class DividerTrackingNSView: NSView {
     }
     var onDrag: ((PaneDivider.Axis, CGFloat) -> Void)?
     var onDragEnded: ((PaneDivider.Axis) -> Void)?
+    var onHover: ((PaneDivider.Axis?) -> Void)?
 
     private var trackingAreasByGrip: [NSTrackingArea] = []
     private var activeDrag: PaneDivider.Axis?
     /// The grip the pointer is in, whose cursor is set.
-    private var hoveredAxis: PaneDivider.Axis?
+    private var hoveredAxis: PaneDivider.Axis? {
+        didSet {
+            if hoveredAxis != oldValue {
+                onHover?(hoveredAxis)
+            }
+        }
+    }
 
     override var isFlipped: Bool {
         true

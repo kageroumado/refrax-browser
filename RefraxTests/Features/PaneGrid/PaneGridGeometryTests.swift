@@ -102,10 +102,10 @@ struct PaneGridGeometryTests {
     }
 
     @Test
-    func `Layout mode insets the panes on every side, their corners concentric with the window's`() {
+    func `Layout mode sets the panes in from every side, with room below for its bar`() {
         let geometry = PaneGridGeometry(size: CGSize(width: 1_000, height: 700), columnSplit: 0.5, rowSplit: 0.5, metrics: .editing)
-        #expect(geometry.content == CGRect(x: 8, y: 8, width: 984, height: 684))
-        #expect(PaneGridMetrics.editing.cornerRadius == WindowCorner.radius - PaneGridMetrics.editing.inset)
+        #expect(geometry.content == CGRect(x: 24, y: 24, width: 952, height: 700 - 24 - LayoutModeBarMetrics.reserve))
+        #expect(700 - geometry.content.maxY >= LayoutModeBarMetrics.height + 2 * LayoutModeBarMetrics.spacing)
         let page = PaneGridGeometry(size: CGSize(width: 1_000, height: 700), columnSplit: 0.5, rowSplit: 0.5, metrics: .page)
         #expect(page.frame(of: .whole) == CGRect(x: 0, y: 0, width: 1_000, height: 700))
     }
