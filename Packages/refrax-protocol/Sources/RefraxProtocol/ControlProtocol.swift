@@ -2882,11 +2882,21 @@ public enum CTL {
         public let title: String
         public let isCurrent: Bool
         public let pageCount: Int
-        public init(tabID: String, title: String, isCurrent: Bool, pageCount: Int) {
+        /// The row's frame in the window's content, top-left origin, after the island's scroll;
+        /// nil while the row is scrolled out of the island.
+        public let x: Double?
+        public let y: Double?
+        public let width: Double?
+        public let height: Double?
+        public init(tabID: String, title: String, isCurrent: Bool, pageCount: Int, frame: (x: Double, y: Double, width: Double, height: Double)? = nil) {
             self.tabID = tabID
             self.title = title
             self.isCurrent = isCurrent
             self.pageCount = pageCount
+            self.x = frame?.x
+            self.y = frame?.y
+            self.width = frame?.width
+            self.height = frame?.height
         }
     }
 

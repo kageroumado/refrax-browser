@@ -2705,7 +2705,12 @@ final class RefraxControlServer {
                     isPinned: island.placement.isPinned, isVisible: visible.contains(island.id),
                     x: frame.minX, y: frame.minY, width: frame.width, height: frame.height,
                     rows: island.tabIDs.compactMap { id in
-                        islands.tab(for: id).map { .init(tabID: id.uuidString, title: $0.displayTitle, isCurrent: id == current, pageCount: $0.pages.count) }
+                        islands.tab(for: id).map {
+                            .init(
+                                tabID: id.uuidString, title: $0.displayTitle, isCurrent: id == current, pageCount: $0.pages.count,
+                                frame: islands.windowRowFrame(of: id, in: island),
+                            )
+                        }
                     },
                 )
             },

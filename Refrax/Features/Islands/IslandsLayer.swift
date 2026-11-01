@@ -642,6 +642,9 @@ private struct IslandTabRow: View, Equatable {
         .contextMenu { MenuTreeView(tree: menuTree) }
         .closesOnMiddleClick(tab)
         .help(iconsOnly ? tab.displayTitle : "")
+        // One element per row: the label and actions on a container that isn't an element land
+        // on each of its children, which listed every row twice. Close and the rest are actions.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)
         .accessibilityIdentifier("island-row-\(tab.id.uuidString)")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)

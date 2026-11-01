@@ -363,6 +363,17 @@ final class IslandController {
 
     /// An island's frame in the layer: its corner where it was put, as a share of the area, held
     /// inside the area. The corner stays put as the island grows or shrinks.
+    /// Row `tabID`'s frame in the window's content, after `island`'s scroll; nil while the row
+    /// is scrolled out of the island or the island shows icons only.
+    func windowRowFrame(of tabID: UUID, in island: Island) -> (x: Double, y: Double, width: Double, height: Double)? {
+        guard !island.placement.iconsOnly, let index = island.rows.firstIndex(of: .tab(tabID)) else { return nil }
+        let frame = frame(of: island)
+        let row = geometry(for: island).rowFrame(index)
+            .offsetBy(dx: frame.minX, dy: frame.minY - (scrollOffsets[island.id] ?? 0))
+        guard frame.contains(CGPoint(x: row.midX, y: row.midY)) else { return nil }
+        return (row.minX, row.minY, row.width, row.height)
+    }
+
     func frame(of island: Island) -> CGRect {
         if island.placement.iconsOnly, let rail = iconRailFrames[island.id] {
             let reserve = IslandGeometry.headerReserve
