@@ -70,4 +70,32 @@ struct PaneDropTests {
         #expect(PaneDrop.cell(forDragging: a, by: CGSize(width: 10, height: 300), in: grid, geometry: editing) == nil)
         #expect(PaneDrop.cell(forDragging: a, by: CGSize(width: -2_000, height: 0), in: grid, geometry: editing) == nil)
     }
+
+    /// Dragging a one-cell pane onto a two-cell one did nothing: it trades their spans, the
+    /// third pane keeping its cell, and the landing is the frame the dragged pane will take.
+    @Test
+    func `A one-cell pane dragged onto a two-cell pane trades spans with it`() throws {
+        let example = UUID()
+        let webKit = UUID()
+        let swift = UUID()
+        let grid = PaneGrid(spans: [example: PaneSpan(.topLeft), webKit: Fixtures.rightColumn, swift: PaneSpan(.bottomLeft)])
+        let from = editing.frame(of: GridCell.topLeft)
+        let onto = editing.frame(of: Fixtures.rightColumn)
+        let move = PaneDrop.move(example, by: CGSize(width: onto.midX - from.midX, height: onto.midY - from.midY), in: grid, geometry: editing)
+        let landed = try #require(move.grid)
+        #expect(landed.span(of: example) == Fixtures.rightColumn)
+        #expect(landed.span(of: webKit) == PaneSpan(.topLeft))
+        #expect(landed.span(of: swift) == PaneSpan(.bottomLeft))
+        #expect(landed.isComplete)
+        let back = PaneDrop.move(webKit, by: CGSize(width: from.midX - onto.midX, height: from.midY - onto.midY), in: grid, geometry: editing)
+        #expect(back.grid?.span(of: webKit) == PaneSpan(.topLeft))
+    }
+
+    @Test
+    func `A pane let go over its own cells or off the grid stays`() {
+        let grid = PaneGrid(spans: [a: Fixtures.leftColumn, b: Fixtures.rightColumn])
+        #expect(PaneDrop.move(a, by: CGSize(width: 10, height: 300), in: grid, geometry: editing) == .stays)
+        #expect(PaneDrop.move(a, by: CGSize(width: -2_000, height: 0), in: grid, geometry: editing) == .stays)
+        #expect(PaneDrop.move(a, by: CGSize(width: 500, height: 0), in: grid, geometry: editing).grid?.span(of: a) == Fixtures.rightColumn)
+    }
 }

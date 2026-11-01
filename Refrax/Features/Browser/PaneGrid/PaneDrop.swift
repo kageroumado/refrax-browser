@@ -52,4 +52,31 @@ nonisolated enum PaneDrop {
         guard let cell = geometry.cell(at: center), !span.contains(cell) else { return nil }
         return cell
     }
+
+    /// What letting go of a pane dragged `translation` from where it rests does: it stays
+    /// (over its own cells or off the grid), lands on the cell under its center, trading spans
+    /// with the pane there whatever their sizes, or is refused there.
+    static func move(_ pageID: UUID, by translation: CGSize, in grid: PaneGrid, geometry: PaneGridGeometry) -> PaneMove {
+        guard let cell = cell(forDragging: pageID, by: translation, in: grid, geometry: geometry) else { return .stays }
+        guard let landed = grid.moving(pageID, to: cell) else { return .refused(cell) }
+        return .lands(cell, landed)
+    }
+}
+
+/// Where a pane dragged in layout mode goes when let go.
+nonisolated enum PaneMove: Equatable, Sendable {
+    /// Back where it was: the pointer is over its own cells or off the grid.
+    case stays
+    /// Onto `cell`, making `grid`: the pane there takes the dragged pane's cells.
+    case lands(GridCell, PaneGrid)
+    /// Nowhere: the pane cannot take `cell`.
+    case refused(GridCell)
+
+    /// The grid a release makes, when it moves anything.
+    var grid: PaneGrid? {
+        if case let .lands(_, grid) = self {
+            return grid
+        }
+        return nil
+    }
 }
