@@ -20,7 +20,12 @@ struct ShieldsSettingsSections: View {
         Section {
             Toggle("Block ads and trackers", isOn: $settings.enableContentBlocking)
                 .highlightable(id: "privacy.shields", highlightedItemId: highlightedItemId)
-            status
+            if settings.enableContentBlocking {
+                status
+            } else {
+                Label("Shields is off: nothing is blocked on any site.", systemImage: "shield.slash.fill")
+                    .foregroundStyle(Color.coral)
+            }
         } header: {
             Text("Shields")
         } footer: {
@@ -30,6 +35,27 @@ struct ShieldsSettingsSections: View {
             """)
             .font(.caption)
             .foregroundStyle(.secondary)
+        }
+
+        if !shields.allowlistedHosts.isEmpty {
+            Section {
+                ForEach(shields.allowlistedHosts, id: \.self) { site in
+                    HStack {
+                        Label(site, systemImage: "shield.slash.fill")
+                            .foregroundStyle(Color.coral)
+                        Spacer()
+                        Button("Turn On") {
+                            browserState.siteSettingsCoordinator.setContentBlockersEnabled(true, forSite: site)
+                        }
+                    }
+                }
+            } header: {
+                Text("Sites Where Shields Is Off")
+            } footer: {
+                Text("Ads and trackers load on these sites and their subdomains. An open page is filtered from its next load.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
 
         if extensionManager.isUBlockOriginEnabled {

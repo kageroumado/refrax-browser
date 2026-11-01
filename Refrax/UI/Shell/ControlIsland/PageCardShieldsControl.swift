@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The page card's Shields control: a shield with the number of loads Shields blocked on this
-/// page, and a popover that names them and turns Shields off or on for the site.
+/// page, or a struck-through shield in the warning color while Shields is off for the page, and
+/// a popover that names what was blocked or turns Shields back on.
 struct PageCardShieldsControl: View {
     let page: WebPage?
     @Environment(BrowserState.self) private var browserState
@@ -9,39 +10,26 @@ struct PageCardShieldsControl: View {
     @Environment(WindowState.self) private var windowState
     @State private var showsPopover = false
 
-    private var url: URL? {
-        page?.url
-    }
-
-    private var isOnForSite: Bool {
-        guard let url else { return true }
-        return browserState.siteSettingsCoordinator.contentBlockersEnabled(for: url)
-    }
-
-    private var blockedCount: Int {
-        page?.shieldsLog.blockedCount ?? 0
-    }
-
-    private var title: String {
-        if !settings.enableContentBlocking {
-            return "Shields are off"
-        }
-        if !isOnForSite {
-            return "Shields are off for this site"
-        }
-        return blockedCount == 1 ? "Shields blocked 1 load" : "Shields blocked \(blockedCount) loads"
+    private var state: ShieldsPageState {
+        ShieldsPageState(
+            isEnabled: settings.enableContentBlocking,
+            host: page?.url?.host(),
+            offSites: browserState.shields.allowlistedHosts,
+            blocked: page?.shieldsLog.blockedCount ?? 0,
+        )
     }
 
     var body: some View {
+        let state = state
         Button {
             showsPopover = true
         } label: {
-            Image(systemName: settings.enableContentBlocking && isOnForSite ? "shield.lefthalf.filled" : "shield.slash")
-                .foregroundStyle(settings.enableContentBlocking && isOnForSite ? .primary : .secondary)
+            Image(systemName: state.symbolName)
+                .foregroundStyle(state.isFiltering ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.coral))
                 .frame(width: PageCardPromptControls.Layout.controlSize, height: PageCardPromptControls.Layout.controlSize)
                 .overlay(alignment: .topTrailing) {
-                    if blockedCount > 0, isOnForSite {
-                        Text(blockedCount < 100 ? "\(blockedCount)" : "99+")
+                    if let badge = state.badge {
+                        Text(badge)
                             .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
                             .padding(.horizontal, 3)
                             .background(Capsule().fill(.background.secondary))
@@ -50,13 +38,13 @@ struct PageCardShieldsControl: View {
                 }
                 .contentShape(Rectangle())
         }
-        .disabled(page == nil || url?.isWebURL != true)
-        .help(title)
-        .accessibilityLabel(title)
+        .disabled(page == nil || page?.url?.isWebURL != true)
+        .help(state.title)
+        .accessibilityLabel(state.title)
         .focusEffectDisabled()
         .popover(isPresented: $showsPopover, arrowEdge: .bottom) {
             if let page {
-                ShieldsPagePopover(page: page)
+                ShieldsPagePopover(page: page, state: state)
                     .readablePopoverBackground()
             }
         }
@@ -66,13 +54,14 @@ struct PageCardShieldsControl: View {
     }
 }
 
-/// What Shields did on one page, and the site switch.
+/// What Shields did on one page and the site switch; while Shields is off for the page, it
+/// leads with that and a button that turns it back on.
 private struct ShieldsPagePopover: View {
     let page: WebPage
+    let state: ShieldsPageState
     @Environment(BrowserState.self) private var browserState
     @Environment(BrowserSettings.self) private var settings
     @State private var log: RequestLog?
-    @State private var isOnForSite = true
 
     private enum Layout {
         static let width: CGFloat = 320
@@ -96,42 +85,52 @@ private struct ShieldsPagePopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle(isOn: Binding(get: { isOnForSite }, set: setSite)) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Shields")
-                        .font(.headline)
-                    Text(host)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-            .disabled(!settings.enableContentBlocking)
-
-            Divider()
-
-            if !settings.enableContentBlocking {
-                Text("Shields are off in Settings → Privacy.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else if !isOnForSite {
-                Text("Nothing is filtered on \(host).")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else if let log {
-                summary(log)
+            if let explanation = state.offExplanation {
+                offNotice(explanation)
             } else {
-                ProgressView()
-                    .controlSize(.small)
+                Toggle(isOn: Binding(get: { true }, set: { _ in setSite(enabled: false) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Shields")
+                            .font(.headline)
+                        Text(host)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+
+                Divider()
+
+                if let log {
+                    summary(log)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             }
         }
         .padding(Layout.padding)
         .frame(width: Layout.width, alignment: .leading)
-        .task(id: page.url) {
-            if let url = page.url {
-                isOnForSite = browserState.siteSettingsCoordinator.contentBlockersEnabled(for: url)
-            }
+        .task(id: [page.url?.absoluteString ?? "", "\(state.isFiltering)"]) {
+            guard state.isFiltering else { return }
             log = try? await browserState.shields.requestLog(for: page, attributed: false)
+        }
+    }
+
+    private func offNotice(_ explanation: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(state.title, systemImage: state.symbolName)
+                .font(.headline)
+                .foregroundStyle(Color.coral)
+            Text(explanation)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Turn On") {
+                turnOn()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
     }
 
@@ -164,15 +163,24 @@ private struct ShieldsPagePopover: View {
         }
     }
 
-    /// Turns Shields off or on for the page's site and reloads, since WebKit applies content
-    /// rules per navigation.
-    private func setSite(_ enabled: Bool) {
-        guard let url = page.url,
-              let siteSettings = browserState.siteSettingsManager.settingsOrCreate(for: url)
-        else { return }
-        siteSettings.enableContentBlockers = enabled
-        browserState.siteSettingsManager.save(siteSettings)
-        isOnForSite = enabled
+    /// Turns Shields back on where it is off (everywhere, or for the site that turned it off)
+    /// and reloads, since WebKit applies content rules per navigation.
+    private func turnOn() {
+        switch state {
+        case .off:
+            settings.enableContentBlocking = true
+        case let .offForSite(site):
+            browserState.siteSettingsCoordinator.setContentBlockersEnabled(true, forSite: site)
+        case .on:
+            return
+        }
+        _ = page.reload()
+    }
+
+    /// Turns Shields off for the page's site and reloads.
+    private func setSite(enabled: Bool) {
+        guard let url = page.url else { return }
+        browserState.siteSettingsCoordinator.setContentBlockersEnabled(enabled, for: url)
         _ = page.reload()
     }
 }

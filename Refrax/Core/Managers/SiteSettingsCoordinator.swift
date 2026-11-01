@@ -208,6 +208,24 @@ final class SiteSettingsCoordinator {
         siteSettingsManager.settings(for: url)?.enableContentBlockers ?? true
     }
 
+    /// Turns Shields on or off for the site of a page at `url` (its saved settings, its nearest
+    /// saved parent's, or new ones for its domain).
+    func setContentBlockersEnabled(_ enabled: Bool, for url: URL) {
+        guard let settings = siteSettingsManager.settingsOrCreate(for: url) else { return }
+        setContentBlockersEnabled(enabled, in: settings)
+    }
+
+    /// Turns Shields on or off for `site`, an entry of ``contentBlockingAllowlist``.
+    func setContentBlockersEnabled(_ enabled: Bool, forSite site: String) {
+        setContentBlockersEnabled(enabled, in: siteSettingsManager.settingsOrCreate(for: site))
+    }
+
+    private func setContentBlockersEnabled(_ enabled: Bool, in settings: SiteSettings) {
+        guard settings.enableContentBlockers != enabled else { return }
+        settings.enableContentBlockers = enabled
+        siteSettingsManager.save(settings)
+    }
+
     /// Sites (registrable domains) where Shields is off, each covering its subdomains.
     var contentBlockingAllowlist: [String] {
         enginePolicy.rules.filter { $0.contentBlockingEnabled == false }.map(\.host).sorted()
