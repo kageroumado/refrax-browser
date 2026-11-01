@@ -75,7 +75,14 @@ extension ActionsProvider {
             ))
         }
         actions.append(EverydayAction(
-            action: .openAppearanceSettings,
+            action: .openSettings(nil),
+            title: "Settings",
+            description: "Refrax's settings  ⌘,",
+            icon: "gearshape",
+            terms: ["settings", "preferences", "prefs", "options", "configure", "config", "setup"],
+        ))
+        actions.append(EverydayAction(
+            action: .openSettings(.appearance),
             title: "Appearance Settings",
             description: "Accent color and theme",
             icon: "paintpalette",
@@ -91,8 +98,31 @@ extension ActionsProvider {
             icon: "rectangle.on.rectangle",
             terms: ["tabs", "open tabs", "how many tabs", "how many", "list tabs", "all open tabs", "count tabs", "pages"],
         ))
+        // After Show Open Tabs, so a bare "tabs" still lists the open tabs first.
+        for (category, terms) in Self.settingsCategoryTerms {
+            actions.append(EverydayAction(
+                action: .openSettings(category),
+                title: "\(category.title) Settings",
+                description: "Settings › \(category.title)",
+                icon: category.icon,
+                terms: terms.map { "\($0) settings" } + terms,
+            ))
+        }
         return actions
     }
+
+    /// The settings panes a person asks for by name, with the words that find each.
+    private static let settingsCategoryTerms: [(SettingsCategory, [String])] = [
+        (.general, ["general"]),
+        (.tabs, ["tabs", "tab"]),
+        (.privacy, ["privacy", "shields", "ad blocker", "adblock", "content blocking", "trackers"]),
+        (.search, ["search", "search engine"]),
+        (.extensions, ["extensions", "extension", "add-ons", "addons"]),
+        (.engines, ["engines", "engine", "chromium"]),
+        (.storage, ["storage", "data", "website data"]),
+        (.sync, ["sync", "icloud"]),
+        (.advanced, ["advanced"]),
+    ]
 
     /// "12 tabs in this space"
     private var openTabsDescription: String {

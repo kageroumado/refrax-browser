@@ -125,6 +125,41 @@ struct CommandLensEverydayWordsTests {
         #expect(titles.first == "Appearance Settings")
     }
 
+    @Test(arguments: ["settings", "Settings", "preferences", "prefs"])
+    func `Settings words find Settings`(query: String) async throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+
+        let titles = await actionTitles(query, env: env, windowState: windowState)
+
+        #expect(titles.first == "Settings")
+    }
+
+    @Test(arguments: [("shields", "Privacy Settings"), ("privacy", "Privacy Settings"), ("extensions", "Extensions Settings"), ("engines", "Engines Settings")])
+    func `A pane's name finds that pane's settings`(query: String, title: String) async throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+
+        let titles = await actionTitles(query, env: env, windowState: windowState)
+
+        #expect(titles.first == title)
+    }
+
+    @Test
+    func `Typing settings in the lens puts Settings above a web search`() async throws {
+        let env = try TabManagerTestEnvironment()
+        let space = env.makeSpace()
+        let windowState = env.makeActiveWindowState(with: space)
+        let manager = makeManager(env, windowState: windowState)
+
+        manager.onInputChanged("settings")
+        try await settle(manager)
+
+        #expect(manager.suggestions.first?.text == "Settings")
+    }
+
     @Test(arguments: ["tabs", "open tabs", "how many tabs"])
     func `Tab words find Show Open Tabs first`(query: String) async throws {
         let env = try TabManagerTestEnvironment()

@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Settings Category
 
-enum SettingsCategory: String, CaseIterable, Identifiable {
+nonisolated enum SettingsCategory: String, CaseIterable, Identifiable, Sendable {
     case general
     case appearance
     case tabs
@@ -99,6 +99,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         }
     }
 
+    @MainActor
     var searchableItems: [SearchableSettingItem] {
         // Derive from the registry for this category
         let fromRegistry = BrowserSettingKey.allCases
@@ -116,6 +117,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     }
 
     /// Non-setting searchable items (navigation targets, UI-only elements).
+    @MainActor
     private var additionalItems: [SearchableSettingItem] {
         switch self {
         case .general:
@@ -241,6 +243,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         }
     }
 
+    @MainActor
     func matches(searchText: String) -> Bool {
         guard !searchText.isEmpty else { return true }
         let lowercasedSearch = searchText.lowercased()

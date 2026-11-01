@@ -129,8 +129,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     case downloadCurrentPage
     /// Save the current page to a file in a chosen format.
     case saveCurrentPageAs
-    /// Open Settings at Appearance: accent color, theme.
-    case openAppearanceSettings
+    /// Open Settings, at `category` when one is given.
+    case openSettings(SettingsCategory?)
     /// List this space's open tabs in the lens.
     case showOpenTabs
     /// Keep only the tabs a quick filter matches on the islands, or every tab with `nil`.

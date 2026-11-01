@@ -1725,8 +1725,8 @@ final class CommandLensManager {
                 if let webPage = windowState.focusedWebPage, let window = windowState.window {
                     Task(name: "Save page as from the lens") { await webPage.presentSavePanel(in: window) }
                 }
-            case .openAppearanceSettings:
-                NSApp.typedDelegate.settingsWindowController.showWindow(category: .appearance)
+            case let .openSettings(category):
+                NSApp.typedDelegate.settingsWindowController.showWindow(category: category)
             case .showOpenTabs:
                 showOpenTabs()
                 return
