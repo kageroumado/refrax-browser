@@ -271,9 +271,18 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
                 windowState.recordInteraction(with: tab.activePage.id)
                 return
             }
-            if !windowState.controlIsland.tabInfo.isMenuPresented {
+            // Latched islands go when the press proves a click; a drag from the page keeps them.
+            if let islandController {
+                islandController.windowInput(.pressOnPage)
+            } else if !windowState.controlIsland.tabInfo.isMenuPresented {
                 tabCanvasManager.dismissFloatingTabs()
             }
+        }
+        floatingView.onPointerDragged = { [weak islandController] in
+            islandController?.windowInput(.pointerDragged)
+        }
+        floatingView.onPointerUp = { [weak islandController] in
+            islandController?.windowInput(.pointerUp)
         }
         floatingView.onSecondaryPointerDown = { [weak islandController] point, _ in
             islandController?.clickDirectionLabel(at: point) ?? false

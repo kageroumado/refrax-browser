@@ -17,8 +17,11 @@ final class FileIslandDropView: NSView {
     var state: (() -> FileIslandState?)?
     /// Whether the island and the page drop are live: the floating layout, with no desk or lock over it.
     var isActive: () -> Bool = { false }
-    /// Regions where drops go to what is underneath even when they carry a link: the Control Island.
+    /// Regions where drops go to what is underneath even when they carry a link: the Control
+    /// Island and the tab islands.
     var reservedRegions: () -> [CGRect] = { [] }
+    /// Told when a drag comes over the window, leaves it, or ends, with what it carries.
+    var windowDrag: ((IslandDragReveal.Event) -> Void)?
     var keep: ((ShelfDrop) -> Void)?
     var openLink: ((URL) -> Void)?
 
@@ -58,6 +61,7 @@ final class FileIslandDropView: NSView {
     // MARK: - NSDraggingDestination
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        windowDrag?(.dragEntered(IslandDragReveal.DragKind(types: sender.draggingPasteboard.types ?? [])))
         if session?.sequence != sender.draggingSequenceNumber {
             let startedOnIsland = state?().map { Date().timeIntervalSince($0.outgoingDragStarted) < 1 } ?? false
             session = Session(
@@ -74,6 +78,7 @@ final class FileIslandDropView: NSView {
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        windowDrag?(.dragExited)
         leaveForwardTarget(sender)
         route = nil
         state?()?.setDrop(.none)
@@ -118,6 +123,7 @@ final class FileIslandDropView: NSView {
             (forwardTarget as (any NSDraggingDestination)?)?.draggingEnded?(sender)
         }
         finish()
+        windowDrag?(.dragEnded)
     }
 
     override func updateDraggingItemsForDrag(_ sender: (any NSDraggingInfo)?) {
@@ -192,11 +198,15 @@ final class FileIslandDropView: NSView {
     }
 
     /// The frontmost visible view under `windowPoint` registered for one of `types`, found the
-    /// way AppKit finds a drag destination, skipping this view.
+    /// way AppKit finds a drag destination, skipping this view and any layer that lets the
+    /// point through (`hitTest` nil), such as the islands' layer between its islands.
     private func destination(in view: NSView, at windowPoint: NSPoint, types: Set<NSPasteboard.PasteboardType>) -> NSView? {
         guard view !== self, !view.isHidden else { return nil }
         let local = view.convert(windowPoint, from: nil)
         guard view.isMousePoint(local, in: view.bounds) else { return nil }
+        if let superview = view.superview, view.hitTest(superview.convert(windowPoint, from: nil)) == nil {
+            return nil
+        }
         for subview in view.subviews.reversed() {
             if let found = destination(in: subview, at: windowPoint, types: types) {
                 return found

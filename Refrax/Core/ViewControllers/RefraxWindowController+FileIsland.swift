@@ -16,7 +16,11 @@ extension RefraxWindowController {
             guard let tabCanvasManager else { return false }
             return tabCanvasManager.showsFloatingControls && tabCanvasManager.regionSelection == nil
         }
-        drops.reservedRegions = { [weak windowState] in windowState?.controlIsland.hitRegions ?? [] }
+        drops.reservedRegions = { [weak windowState] in
+            (windowState?.controlIsland.hitRegions ?? []) + (windowState?.islandController?.hitFrames ?? [])
+        }
+        // A drag of links, text, files, or rows over the window brings the islands up to take it.
+        drops.windowDrag = { [weak windowState] event in windowState?.islandController?.windowInput(event) }
         drops.keep = { [weak shelf = environment.shelfManager] drop in
             Task(name: "Keep drop on the shelf") { await shelf?.add(drop) }
         }

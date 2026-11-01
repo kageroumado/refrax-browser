@@ -170,6 +170,7 @@ final class IslandController {
     /// The row the keyboard has chosen while the islands have the keyboard.
     private(set) var keyboardCursorID: UUID?
     @ObservationIgnored private var keyboard: IslandKeyboardNavigator?
+    @ObservationIgnored private var dragReveal = IslandDragReveal()
     /// The quick filter on the islands: only the tabs it matches keep their rows.
     private(set) var filter: IslandFilter?
     /// Rows chosen with ⇧ or ⌘, on one island, for actions on several tabs at once.
@@ -824,6 +825,31 @@ final class IslandController {
         state.islands.removeValue(forKey: islandID)
         groupManager.deleteGroup(group, in: space, deleteContainedTabs: false)
         rebuild()
+    }
+
+    // MARK: - Presses and drags over the window
+
+    /// The pointer or a drag did `event` on the window: a press on the page lets latched islands
+    /// go once it proves a click, and a drag of links, text, files, or rows brings the islands up
+    /// as drop targets until it leaves or ends (``IslandDragReveal``).
+    func windowInput(_ event: IslandDragReveal.Event) {
+        let latched = canvas.floatingVisibility.isLatched
+        switch dragReveal.handle(event, latched: latched) {
+        case .none:
+            break
+        case .dismiss:
+            if !windowState.controlIsland.tabInfo.isMenuPresented {
+                canvas.dismissFloatingTabs()
+            }
+        case .reveal:
+            if !latched {
+                canvas.toggleFloatingTabs()
+            }
+        case .putAway:
+            if canvas.floatingVisibility.isLatched {
+                canvas.dismissFloatingTabs()
+            }
+        }
     }
 
     // MARK: - Quick filters
