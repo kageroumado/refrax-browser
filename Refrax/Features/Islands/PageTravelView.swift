@@ -40,7 +40,7 @@ struct PageTravelView: View {
 
     private enum Layout {
         /// The page's share of the window while the reveal key is held.
-        static let inspectionScale: CGFloat = 0.84
+        static let inspectionScale: CGFloat = 0.95
         static let inspectDuration: TimeInterval = 0.28
         static let slideDuration: TimeInterval = 0.34
         static let labelFade: TimeInterval = 0.12
