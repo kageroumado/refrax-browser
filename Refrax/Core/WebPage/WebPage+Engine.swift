@@ -62,7 +62,7 @@ extension WebPage {
             }
         }
         holdEngineForCurrentNavigation()
-        Logger.info("Page \(tabPage.id) now renders with \(id): \(destination.absoluteString)", category: Logger.engines)
+        Logger.info("Page \(tabPage.id) now renders with \(id): \(loggedHost(destination))", category: Logger.engines)
     }
 
     /// Moves the page to `id` because the user asked, and pins it there unless `id` is the
@@ -118,7 +118,7 @@ extension WebPage {
     /// When `id` can't start, `url` loads in the active engine, held there so the navigation
     /// isn't offered to `id` again.
     func continueNavigation(to url: URL, in id: EngineID, registry: EngineRegistry) {
-        Logger.info("Page \(tabPage.id) follows its site rule to \(id) for \(url.host() ?? url.absoluteString)", category: Logger.engines)
+        Logger.info("Page \(tabPage.id) follows its site rule to \(id) for \(loggedHost(url))", category: Logger.engines)
         // The cancelled navigation never commits here; the next WebKit commit is a fresh one.
         isBackForwardNavigation = false
         Task { [weak self] in
@@ -126,7 +126,7 @@ extension WebPage {
             do {
                 try await switchEngine(to: id, loading: url, registry: registry)
             } catch {
-                Logger.error("Switching to \(id) for \(url.absoluteString) failed: \(error)", category: Logger.engines)
+                Logger.error("Switching to \(id) for \(loggedHost(url)) failed: \(error)", category: Logger.engines)
                 load(url)
                 holdEngineForCurrentNavigation()
             }
@@ -521,5 +521,16 @@ private extension WKWebView {
     /// WebKit's detected page language (private, read through KVC).
     var _pageLanguage: String? {
         value(forKey: "_pageLanguage") as? String
+    }
+}
+
+private extension WebPage {
+    /// What an engine log line names for `url`: its host alone, and nothing in a private space,
+    /// whose browsing leaves no trace.
+    func loggedHost(_ url: URL) -> String {
+        if tabPage.tab?.space?.dataStoreMode.isPrivate == true {
+            return "a private page"
+        }
+        return url.host() ?? url.scheme ?? "a page"
     }
 }
