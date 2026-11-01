@@ -79,8 +79,20 @@ def cursor_allowed(check) -> bool:
 
 
 def drag(start: tuple[float, float], end: tuple[float, float], why: str) -> dict:
-    """A real-cursor drag between two window points, as one plan step."""
+    """A real-cursor drag between two window points, as one plan step.
+
+    Raises when the drag did not complete (declined, or stopped because the person used the
+    mouse or keyboard), so a scenario never reads an undelivered drag as the app's failure.
+    """
     a, b = drive.to_screen(start), drive.to_screen(end)
+    reply = _drag_plan(a, b, why)
+    step = next((t for t in reply.get("transcript", []) if t.get("command") == "drag"), {})
+    if step.get("verdict") != "confirmed":
+        raise drive.DriveError(f"drag not delivered: {step.get('summary') or step.get('error') or reply.get('abortReason')}")
+    return reply
+
+
+def _drag_plan(a, b, why: str) -> dict:
     return drive.plan(
         # A plan's drag takes `start` and `end` ("x,y"); the CLI's --from/--to map onto them.
         # Activate first: an inactive app spends the drag's first click on becoming active.
