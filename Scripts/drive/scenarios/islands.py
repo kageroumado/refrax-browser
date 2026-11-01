@@ -247,15 +247,19 @@ def link_drop(check):
         return
     open_pages(PAGES[:2])
     latch()
+    activate()
+    # A link clear of the page card and the islands: in the article body, right of the rail.
     link = drive.page_exec(
-        "JSON.stringify((()=>{const a=document.querySelector('#bodyContent a[href^=\"/wiki/\"]');"
+        "JSON.stringify((()=>{const a=[...document.querySelectorAll('a[href^=\"/wiki/\"]')].find(a=>{"
+        "const r=a.getBoundingClientRect();return r.top>250&&r.top<700&&r.left>350&&r.width>30});"
         "const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,href:a.href}})())"
     )
     import json
     link = json.loads(link.strip('"').replace('\\"', '"')) if link.startswith('"') else json.loads(link)
+    origin = panes_or_page_origin()
     target = rows()[0]
     before = len(rows())
-    drag((link["x"], link["y"]), (target["x"] + 20, target["y"] + target["height"]), "drag a link onto an island")
+    drag((origin[0] + link["x"], origin[1] + link["y"]), (target["x"] + 20, target["y"] + target["height"]), "drag a link onto an island")
     drive.until(lambda: len(rows()) == before + 1, message="a new row from the dropped link")
     drive.screenshot("dropped")
 
