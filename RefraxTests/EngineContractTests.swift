@@ -462,18 +462,11 @@ struct EngineRegistryTests {
     }
 
     @Test
-    func `A page starts in the engine its tab was moved to, else the default`() throws {
+    func `The registry offers installed engines as usable`() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let registry = EngineRegistry(applicationSupport: root)
-        let example = EngineID(rawValue: "test.engine.example")
-        let missing = EngineID(rawValue: "test.engine.missing")
-        #expect(WebPagePool.startingEngine(pinned: nil, default: .systemWebKit, registry: registry) == .systemWebKit)
-        #expect(WebPagePool.startingEngine(pinned: nil, default: example, registry: registry) == example)
-        #expect(WebPagePool.startingEngine(pinned: EngineID.systemWebKit.rawValue, default: example, registry: registry) == .systemWebKit)
-        #expect(WebPagePool.startingEngine(pinned: example.rawValue, default: .systemWebKit, registry: registry) == example)
-        #expect(WebPagePool.startingEngine(pinned: nil, default: missing, registry: registry) == .systemWebKit)
-        #expect(WebPagePool.startingEngine(pinned: missing.rawValue, default: example, registry: registry) == .systemWebKit)
+        #expect(registry.usableEngines == [.systemWebKit, EngineID(rawValue: "test.engine.example")])
     }
 
     @Test

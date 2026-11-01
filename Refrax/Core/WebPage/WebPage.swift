@@ -1131,6 +1131,12 @@ final class WebPage: Identifiable {
     @ObservationIgnored
     var navigationGeneration: UInt64 = 0
 
+    /// The navigation generation the page last changed engines in; site rules don't switch it
+    /// again until the generation moves on or the user starts a navigation
+    /// (``holdEngineForCurrentNavigation()``).
+    @ObservationIgnored
+    var engineHoldGeneration: UInt64?
+
     // MARK: - History Tracking State
 
     @ObservationIgnored

@@ -87,6 +87,17 @@ final class EngineRegistry {
         return floor
     }
 
+    /// The installed engines that may render pages: every one whose release isn't below its
+    /// security floor.
+    var usableEngines: Set<EngineID> {
+        Set(descriptors.map(\.id).filter { securityFloor(blocking: $0) == nil })
+    }
+
+    /// Which engine renders a page under `settings`' default engine and site rules.
+    func choice(for settings: BrowserSettings) -> EngineChoice {
+        EngineChoice(rules: settings.siteEngineRules, defaultEngine: settings.defaultEngineID, usable: usableEngines)
+    }
+
     /// Downloads and installs engines from the engine catalog.
     @ObservationIgnored private(set) lazy var distribution = EngineDistribution(registry: self)
 

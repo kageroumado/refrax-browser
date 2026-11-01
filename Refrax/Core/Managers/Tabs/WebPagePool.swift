@@ -355,13 +355,14 @@ final class WebPagePool {
         return true
     }
 
-    /// Moves a page onto its engine before WebKit loads anything: the one its tab was moved
-    /// to, else the default engine.
+    /// Moves a page onto its engine before WebKit loads anything: the one the user moved it to,
+    /// else the site rule's for its URL, else the default engine (``EngineChoice``).
     ///
-    /// When that engine is no longer installed, or fails to start, the page loads in WebKit.
+    /// When that engine fails to start, the page loads in WebKit.
     private func restoreEngine(for page: WebPage) {
         guard let engineRegistry else { return }
-        let id = Self.startingEngine(pinned: page.tabPage.engineID, default: state.settings.defaultEngineID, registry: engineRegistry)
+        let pinned = page.tabPage.engineID.map(EngineID.init(rawValue:))
+        let id = engineRegistry.choice(for: state.settings).startingEngine(for: page.tabPage.url, pinned: pinned)
         guard id != .systemWebKit else { return }
         page.initialLoadPending = false
         Task { [weak page] in
@@ -371,15 +372,9 @@ final class WebPagePool {
             } catch {
                 Logger.error("Restoring \(id) for page \(page.tabPage.id) failed: \(error)", category: Logger.engines)
                 page.load(page.tabPage.url)
+                page.holdEngineForCurrentNavigation()
             }
         }
-    }
-
-    /// The engine a page starts in: the one its tab was moved to, else the default; system
-    /// WebKit when that engine isn't installed or its release is below the security floor.
-    static func startingEngine(pinned: String?, default defaultEngine: EngineID, registry: EngineRegistry) -> EngineID {
-        let id = pinned.map(EngineID.init(rawValue:)) ?? defaultEngine
-        return registry.descriptor(for: id) == nil || registry.securityFloor(blocking: id) != nil ? .systemWebKit : id
     }
 
     /// Creates a popup page using the provided WebKit configuration.

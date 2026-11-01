@@ -9,17 +9,27 @@ extension WebPage {
         enginePage?.engine.id ?? .systemWebKit
     }
 
-    /// Moves the page's content to another engine and loads the current URL there.
+    /// Moves the page's content to another engine and loads `target`, or the current URL, there.
     ///
     /// The tab, its history entries, and the chrome stay put; only the content
     /// view and the source of page state change. WebKit's view is kept, paused,
     /// while another engine renders the page, so switching back reuses it.
     ///
+    /// The page's pin (``TabPage/engineID``) is left as it is: ``move(to:registry:)`` sets it
+    /// for a move the user asked for. Navigations that follow before the next user-initiated
+    /// one stay in `id` (``holdEngineForCurrentNavigation()``).
+    ///
     /// - Throws: ``EngineError/webKitOnlyPage`` for an extension page, which only WebKit can render.
-    func switchEngine(to id: EngineID, registry: EngineRegistry) async throws {
-        guard id != activeEngineID else { return }
+    func switchEngine(to id: EngineID, loading target: URL? = nil, registry: EngineRegistry) async throws {
+        guard id != activeEngineID else {
+            if let target {
+                load(target)
+                holdEngineForCurrentNavigation()
+            }
+            return
+        }
         guard extensionBaseURL == nil else { throw EngineError.webKitOnlyPage }
-        let currentURL = url ?? tabPage.url
+        let destination = target ?? url ?? tabPage.url
 
         if id == .systemWebKit {
             let zoom = enginePage == nil ? nil : state.zoom
@@ -28,13 +38,13 @@ extension WebPage {
                 backingWebView.pageZoom = zoom
             }
             state.reset(to: WebKitPageObserver.snapshot(of: backingWebView))
-            load(currentURL)
+            load(destination)
         } else {
             let host = try await registry.host(for: id)
             let page = try host.makePage(EnginePageSpec(
                 id: EnginePageID(),
                 profile: EngineProfileSpec(space: tabPage.tab?.space),
-                initialURL: currentURL.isBlank ? nil : currentURL,
+                initialURL: destination.isBlank ? nil : destination,
                 opener: nil,
             ))
             tearDownEnginePage()
@@ -43,7 +53,7 @@ extension WebPage {
             httpErrorCode = nil
             httpErrorURL = nil
             crashError = nil
-            state.reset(to: PageSnapshot(url: currentURL, title: tabPage.title))
+            state.reset(to: PageSnapshot(url: destination, title: tabPage.title))
             enginePage = page
             observe(page)
             page.perform(.setZoom(factor: backingWebView.pageZoom))
@@ -51,18 +61,89 @@ extension WebPage {
                 UsageLogStore.recordChromiumUse(tier: settingsApplier.settings.telemetryTier)
             }
         }
-        tabPage.engineID = id.rawValue
-        Logger.info("Page \(tabPage.id) now renders with \(id): \(currentURL.absoluteString)", category: Logger.engines)
+        holdEngineForCurrentNavigation()
+        Logger.info("Page \(tabPage.id) now renders with \(id): \(destination.absoluteString)", category: Logger.engines)
+    }
+
+    /// Moves the page to `id` because the user asked, and pins it there unless `id` is the
+    /// engine its site rules and the default engine give it anyway (``EngineChoice/pin(movingTo:at:)``).
+    func move(to id: EngineID, registry: EngineRegistry) async throws {
+        try await switchEngine(to: id, registry: registry)
+        let pin = registry.choice(for: settingsApplier.settings).pin(movingTo: id, at: url ?? tabPage.url)
+        tabPage.engineID = pin?.rawValue
     }
 
     /// Moves the page to `descriptor`'s engine, telling the user when it can't start.
     func reload(in descriptor: EngineDescriptor, registry: EngineRegistry) {
         Task {
             do {
-                try await switchEngine(to: descriptor.id, registry: registry)
+                try await move(to: descriptor.id, registry: registry)
             } catch {
                 Logger.error("Switching to \(descriptor.displayName) failed: \(error)", category: Logger.engines)
                 NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    // MARK: Site Rules
+
+    /// Keeps the active engine for the rest of the current navigation: its redirects and the
+    /// script navigations that follow it never switch engines, so a chain bouncing between
+    /// ruled and unruled hosts switches once. Released by the next navigation Refrax starts
+    /// or the user initiates.
+    func holdEngineForCurrentNavigation() {
+        engineHoldGeneration = navigationGeneration
+    }
+
+    /// The engine a top-level navigation to `url` continues in, or nil to stay in the active one.
+    ///
+    /// - Parameter isUserInitiated: Whether the user started the navigation (a link click, a
+    ///   form, back/forward, a reload), which releases the hold an earlier switch left.
+    func engineSwitch(forNavigationTo url: URL, isUserInitiated: Bool, registry: EngineRegistry) -> EngineID? {
+        if isUserInitiated {
+            engineHoldGeneration = nil
+        }
+        return registry.choice(for: settingsApplier.settings).engineSwitch(for: EngineNavigation(
+            url: url,
+            pageURL: tabPage.url,
+            activeEngine: activeEngineID,
+            isPinned: tabPage.engineID != nil,
+            isExtensionPage: extensionBaseURL != nil,
+            hasSwitched: engineHoldGeneration == navigationGeneration,
+        ))
+    }
+
+    /// Continues a navigation the active engine was told to cancel, loading `url` in `id`.
+    ///
+    /// When `id` can't start, `url` loads in the active engine, held there so the navigation
+    /// isn't offered to `id` again.
+    func continueNavigation(to url: URL, in id: EngineID, registry: EngineRegistry) {
+        Logger.info("Page \(tabPage.id) follows its site rule to \(id) for \(url.host() ?? url.absoluteString)", category: Logger.engines)
+        // The cancelled navigation never commits here; the next WebKit commit is a fresh one.
+        isBackForwardNavigation = false
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await switchEngine(to: id, loading: url, registry: registry)
+            } catch {
+                Logger.error("Switching to \(id) for \(url.absoluteString) failed: \(error)", category: Logger.engines)
+                load(url)
+                holdEngineForCurrentNavigation()
+            }
+        }
+    }
+
+    /// Unpins the page and moves it to the engine its site rules and the default engine give
+    /// its current URL, after the user changed the rule for its site.
+    func followSiteRules(registry: EngineRegistry) {
+        tabPage.engineID = nil
+        let id = registry.choice(for: settingsApplier.settings).automaticEngine(for: url ?? tabPage.url)
+        guard id != activeEngineID, extensionBaseURL == nil else { return }
+        Task { [weak self] in
+            do {
+                try await self?.switchEngine(to: id, registry: registry)
+            } catch {
+                Logger.error("Switching to \(id) failed: \(error)", category: Logger.engines)
             }
         }
     }

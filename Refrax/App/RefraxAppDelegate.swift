@@ -310,6 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.settings = BrowserSettings.fetchOrCreate(in: modelContainer.mainContext)
+        EnginePinMigration.runOnce(in: modelContainer.mainContext, defaultEngine: settings.defaultEngineID)
 
         self.siteSettingsManager = SiteSettingsManager(modelContext: modelContainer.mainContext)
         self.autoFillState = AutoFillState()
