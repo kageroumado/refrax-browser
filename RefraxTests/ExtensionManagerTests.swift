@@ -316,7 +316,13 @@ struct ExtensionManagerInitialStateTests {
     }
 
     @Test("A fresh install has no extension until the person adds one; Shields blocks without uBlock Origin")
-    func freshInstallBundlesNothing() throws {
+    func freshInstallBundlesNothing() async throws {
+        // Extensions persist in the test home across suites; start from none.
+        let earlier = try TabManagerTestEnvironment()
+        for installed in earlier.extensionManager.installedExtensions {
+            try await earlier.extensionManager.uninstall(installed)
+        }
+
         let env = try TabManagerTestEnvironment()
 
         #expect(env.extensionManager.installedExtensions.isEmpty)
