@@ -386,18 +386,46 @@ struct IslandDoorTests {
     }
 
     @Test
-    func `New Island with This Tab sits once under the page's essentials in a row's menu`() throws {
+    func `A row's menu leads with where the page shows, keeps Close Tab inline, and ends with More`() throws {
         let fixture = try IslandFixture()
+        fixture.env.settings.archiveEnabled = true
         _ = fixture.tab("A")
         let b = fixture.tab("B")
         let rows = try fixture.rowMenu(b)
+        #expect(Array(rows.dropLast()) == [
+            "Look, then Return", "Open as Card", "Copy Address", "Copy as Markdown Link", "Share…", "Rename…", "Duplicate Tab", "Favorite",
+            "Close Tab", "Close Other Tabs ▸ (3)", "Archive Tab", "New Island with This Tab",
+        ])
+        #expect(rows.last?.hasPrefix("More ▸") == true)
+
+        let island = try #require(fixture.islands.island(holding: b.id))
+        let tree = IslandRowMenu(
+            tab: b, island: island, islands: fixture.islands, windowState: fixture.window, tabs: fixture.env.tabManager,
+            bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas, sharing: fixture.sharing, area: fixture.bounds,
+        ).tree()
+        #expect(tree.outline.contains("  In This Island"))
+        #expect(tree.outline.contains("  Above This Tab"))
+        #expect(tree.outline.contains("  Below This Tab"))
+        #expect(tree.outline.contains("  Move to New Window"))
+        #expect(tree.outline.contains("  Open Reflected Window"))
+        #expect(tree.outline.contains("  Dock Left"))
+        // A row is no card: card placement has no row in its menu.
+        #expect(!tree.outline.contains { $0.contains("Keep Visible") || $0.contains("Hide Preview") })
+    }
+
+    @Test
+    func `A row's menu lists the other islands and spaces with the arranging verbs`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.env.makeSpace(name: "Research")
+        _ = fixture.tab("A")
+        let b = fixture.tab("B")
+        let c = fixture.tab("C")
+        fixture.islands.makeIsland(from: c.id)
+        let rows = try fixture.rowMenu(b)
         let island = try #require(rows.firstIndex(of: "New Island with This Tab"))
-        let copy = try #require(rows.firstIndex(of: "Copy Address"))
-        let share = try #require(rows.firstIndex(of: "Share…"))
-        #expect(copy < island && share < island)
-        #expect(island <= 4)
-        #expect(rows.filter { $0 == "New Island with This Tab" }.count == 1)
-        #expect(rows.contains("Open as Card") || rows.contains { $0.hasPrefix("Move ▸") })
+        #expect(rows[island + 1].hasPrefix("Move to Island ▸"))
+        #expect(rows[island + 2].hasPrefix("Move to Space ▸"))
+        #expect(try fixture.rowMenu(c).contains("Remove from Island"))
     }
 
     @Test

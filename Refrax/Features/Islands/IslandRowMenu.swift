@@ -2,9 +2,8 @@ import AppKit
 import Foundation
 
 /// The menu of a tab row on an island: the page's actions and the tab's, with what a row can
-/// do within its islands; or, for several chosen rows, what they can do together. Composed
-/// in the cards' group order, so New Island with This Tab sits right under the page's
-/// essentials on every surface.
+/// do within its islands, in a fixed layout (``layout``) that puts the common verbs first and
+/// the rare ones under More; or, for several chosen rows, what they can do together.
 @MainActor
 struct IslandRowMenu {
     let tab: Tab
@@ -29,11 +28,39 @@ struct IslandRowMenu {
             tab: tab, surface: .floatingCard, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
             onRename: onRename,
         )
-        return MenuComposer.compose(page.actions() + object.actions() + islandActions() + paneActions(), groupOrder: PageActionsMenu.groupOrder)
+        return Self.layout.tree(page.actions() + object.actions() + islandActions() + paneActions())
     }
 
-    /// What a row can do within its island: float, move, leave, close around it. New Island
-    /// with This Tab comes with the tab's own actions (``TabActions/tableActions()``).
+    /// Where the page shows, what to copy, the tab's own verbs, closing, arranging, then the
+    /// rare rest. A row in an island is no card, so card placement (Keep Visible, shapes,
+    /// regions) has no row here.
+    static let layout = MenuLayout(
+        sections: [
+            [.action("tab.look"), .action("island.float"), .action("panes.beside"), .action("panes.edit"), .action("panes.separate")],
+            [.action("page.copyAddress"), .action("page.copyMarkdownLink"), .action("page.share")],
+            [.action("tab.rename"), .action("tab.duplicate"), .action("tab.favorite"), .action("tab.unfavorite"), .action("tab.mute")],
+            [
+                .action("tab.close"),
+                .submenu(id: "island.closeOthersMenu", title: "Close Other Tabs", symbol: "xmark.rectangle", actions: [
+                    "island.closeOthers", "island.closeAbove", "island.closeBelow",
+                ]),
+                .action("island.archive"),
+            ],
+            [.action("tab.island.new"), .action("island.moveTo"), .action("tab.moveToSpace"), .action("island.leave")],
+            [
+                .submenu(id: "more", title: "More", symbol: "ellipsis.circle", actions: [
+                    "tab.unread", "page.find", "tab.muteOthers", "tab.goHome", "tab.setHome", "tab.dock.leading", "tab.dock.trailing",
+                    "tab.undock", "tab.moveToNewWindow", "tab.reflectedWindow",
+                ]),
+            ],
+        ],
+        dropped: ["tab.keepVisible", "tab.shape.", "tab.region", "tab.zoom"],
+        overflow: "more",
+    )
+
+    /// What a row can do within its island: float, move, leave, close around it. The closes
+    /// around it are titled for the Close Other Tabs submenu they sit in. New Island with This
+    /// Tab comes with the tab's own actions (``TabActions/tableActions()``).
     func islandActions() -> [MenuAction] {
         let tabID = tab.id
         let islands = islands
@@ -57,9 +84,9 @@ struct IslandRowMenu {
             let tab = tab
             actions.append(MenuAction("island.archive", "Archive Tab", symbol: "archivebox", group: .close) { islands.archive([tab]) })
         }
-        actions.append(MenuAction("island.closeOthers", "Close Other Tabs in Island", symbol: "xmark.rectangle", group: .close) { islands.closeOthers(than: tabID) })
-        actions.append(MenuAction("island.closeAbove", "Close Tabs Above", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tabID) })
-        actions.append(MenuAction("island.closeBelow", "Close Tabs Below", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tabID) })
+        actions.append(MenuAction("island.closeOthers", "In This Island", symbol: "xmark.rectangle", group: .close) { islands.closeOthers(than: tabID) })
+        actions.append(MenuAction("island.closeAbove", "Above This Tab", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tabID) })
+        actions.append(MenuAction("island.closeBelow", "Below This Tab", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tabID) })
         return actions
     }
 

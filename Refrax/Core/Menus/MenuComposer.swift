@@ -129,7 +129,7 @@ nonisolated enum MenuComposer {
 
     /// An action with children is a submenu whose rows keep declaration order, sectioned by
     /// consecutive group.
-    private static func node(_ action: MenuAction) -> MenuTree.Node {
+    static func node(_ action: MenuAction) -> MenuTree.Node {
         guard !action.children.isEmpty else { return .action(action) }
         var sections: [MenuTree.Section] = []
         var previousGroup: MenuGroupID?
