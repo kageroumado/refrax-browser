@@ -22,6 +22,9 @@ enum MenuItemTag: Int {
     /// View menu - rendering engine
     case switchRenderingEngine = 3_010
 
+    /// View menu - Always Open / Stop Opening the page's site in an engine
+    case siteEngineRule = 3_011
+
     /// View menu - sound
     case muteTab = 3_020
 

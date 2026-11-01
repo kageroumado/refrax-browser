@@ -192,6 +192,7 @@ nonisolated enum SettingsCategory: String, CaseIterable, Identifiable, Sendable 
         case .engines:
             [
                 SearchableSettingItem(id: "engines.default", title: "Default engine", keywords: ["engine", "default", "webkit", "chromium", "blink", "renderer"]),
+                SearchableSettingItem(id: "engines.sites", title: "Sites opened in an engine", keywords: ["engine", "site", "sites", "rule", "youtube", "chromium", "webkit", "domain"]),
                 SearchableSettingItem(id: "engines.installed", title: "Installed engines", keywords: ["engine", "engines", "webkit", "chromium", "blink", "renderer"]),
                 SearchableSettingItem(id: "engines.available", title: "Available engines", keywords: ["engine", "download", "install", "update", "chromium"]),
                 SearchableSettingItem(id: "engines.folder", title: "Engines folder", keywords: ["engine", "folder", "install", "location"]),

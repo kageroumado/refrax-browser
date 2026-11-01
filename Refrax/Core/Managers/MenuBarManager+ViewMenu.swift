@@ -77,6 +77,16 @@ extension MenuBarManager {
         switchEngineItem.target = self
         viewMenu.addItem(switchEngineItem)
 
+        // The title names the page's site and engine; see updateViewMenu.
+        let siteEngineItem = NSMenuItem(
+            title: "Always Open Site in Chromium",
+            action: #selector(applySiteEngineRule(_:)),
+            keyEquivalent: "",
+        )
+        siteEngineItem.tag = MenuItemTag.siteEngineRule.rawValue
+        siteEngineItem.target = self
+        viewMenu.addItem(siteEngineItem)
+
         viewMenu.addItem(.separator())
 
         // Zoom controls
@@ -294,6 +304,15 @@ extension MenuBarManager {
         page.reload(in: target, registry: registry)
     }
 
+    /// Adds or removes the site rule for the active page's host, moving the page with it.
+    @objc
+    func applySiteEngineRule(_: Any?) {
+        guard let page = activeWindowController?.windowState.focusedWebPage else { return }
+        let registry = NSApp.typedDelegate.engineRegistry
+        guard let action = page.siteRuleActions(registry: registry).first else { return }
+        page.apply(action, registry: registry)
+    }
+
     /// The engine the switch command moves `page` to.
     private func alternateEngine(for page: WebPage?, in registry: EngineRegistry) -> EngineDescriptor? {
         if let page, page.activeEngineID != .systemWebKit {
@@ -479,6 +498,13 @@ extension MenuBarManager {
             let target = alternateEngine(for: page, in: NSApp.typedDelegate.engineRegistry)
             engineItem.title = "Reload in \(target?.displayName ?? "Another Engine")"
             engineItem.isHidden = target == nil
+        }
+
+        if let siteEngineItem = menu.item(withTag: MenuItemTag.siteEngineRule.rawValue) {
+            let registry = NSApp.typedDelegate.engineRegistry
+            let action = activeWindowController?.windowState.focusedWebPage?.siteRuleActions(registry: registry).first
+            siteEngineItem.title = action?.title(registry: registry) ?? "Always Open Site in Another Engine"
+            siteEngineItem.isHidden = action == nil
         }
 
         if let favoriteItem = menu.item(withTag: MenuItemTag.favoriteCurrentPage.rawValue) {

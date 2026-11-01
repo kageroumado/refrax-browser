@@ -26,8 +26,11 @@ struct EnginesSettingsView: View {
                 }
                 .highlightable(id: "engines.default", highlightedItemId: highlightedItemId)
             } footer: {
-                Text("Pages render with this engine unless their tab was moved to another one with View → Reload in… or the reload button's menu. Open pages switch the next time they load.")
+                Text("Pages render with this engine unless their site opens in another one below, or they were moved with View → Reload in…")
             }
+
+            SiteEngineRulesSection()
+                .highlightable(id: "engines.sites", highlightedItemId: highlightedItemId)
 
             Section {
                 ForEach(registry.descriptors, id: \.id) { descriptor in
@@ -77,7 +80,11 @@ struct EnginesSettingsView: View {
         .formStyle(.grouped)
         .confirmationDialog(
             "Remove \(pendingRemoval?.displayName ?? "engine")?",
-            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            isPresented: Binding(get: { pendingRemoval != nil }, set: {
+                if !$0 {
+                    pendingRemoval = nil
+                }
+            }),
             presenting: pendingRemoval,
         ) { descriptor in
             Button("Remove Engine and Its Data", role: .destructive) { remove(descriptor, removingData: true) }
@@ -86,7 +93,11 @@ struct EnginesSettingsView: View {
         } message: { descriptor in
             Text("\(descriptor.displayName) moves to the Trash. Tabs that used it open in WebKit. Its data holds cookies and site storage from pages it rendered.")
         }
-        .alert("Couldn't Remove Engine", isPresented: Binding(get: { removalError != nil }, set: { if !$0 { removalError = nil } })) {
+        .alert("Couldn't Remove Engine", isPresented: Binding(get: { removalError != nil }, set: {
+            if !$0 {
+                removalError = nil
+            }
+        })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(removalError ?? "")
