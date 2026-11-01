@@ -44,6 +44,10 @@ def open_pages(urls=PAGES) -> None:
     time.sleep(3)
 
 
+def activate() -> None:
+    drive.plan([{"command": "activate", "why": "focus the private test copy"}], profile="visible")
+
+
 def latch() -> None:
     drive.ctl("islands", "show")
     drive.until(lambda: islands()["isRevealed"], message="islands latched")
@@ -55,9 +59,9 @@ def press(label: str, why: str) -> dict:
 
 
 def keys(*sequence: str, why: str = "browse the islands with the keyboard") -> dict:
-    """Keys typed into the private instance, made the active app first: AppKit hands key
-    events to the key window, which an inactive app has none of, so this takes the keyboard."""
-    steps = [{"command": "activate", "why": "type into the private test copy"}]
+    """Keys typed into the private instance, which must be the active app (see `activate`):
+    AppKit hands key events to the key window, which an inactive app has none of."""
+    steps = []
     for item in sequence:
         if item.startswith("text:"):
             steps.append({"command": "type", "text": item[5:], "why": why, "onFail": "continue"})
@@ -127,6 +131,7 @@ def arrows_choose(check):
         return
     open_pages()
     current = islands()["currentTabID"]
+    activate()
     latch()
     keys("down", "down")
     state = islands()
@@ -139,6 +144,7 @@ def arrows_choose(check):
 def type_select(check):
     if not cursor_allowed(check):
         return
+    activate()
     latch()
     keys("down", "text:webk")
     target = row_titled("WebKit")["tabID"]
@@ -149,6 +155,7 @@ def type_select(check):
 def space_previews(check):
     if not cursor_allowed(check):
         return
+    activate()
     latch()
     keys("down", "space")
     drive.screenshot("preview")
@@ -159,6 +166,7 @@ def space_previews(check):
 def return_opens(check):
     if not cursor_allowed(check):
         return
+    activate()
     latch()
     keys("down", "text:webk", "return")
     time.sleep(0.8)
@@ -171,6 +179,7 @@ def return_opens(check):
 def delete_closes(check):
     if not cursor_allowed(check):
         return
+    activate()
     latch()
     before = len(rows())
     keys("down", "delete")
@@ -184,6 +193,7 @@ def form_keys_reach_page(check):
         return
     open_pages(PAGES[:3] + [FORM])
     before = len(rows())
+    activate()
     drive.page_exec("document.getElementById('q').focus(); 'ok'")
     latch()
     keys("text:hello", "delete", "space", "return")

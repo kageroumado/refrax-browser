@@ -315,52 +315,29 @@ struct ExtensionManagerInitialStateTests {
         _ = env.extensionManager.defaultController
     }
 
-    @Test("Bundled extensions are installed")
-    func bundledExtensionsInstalled() throws {
+    @Test("A fresh install has no extension until the person adds one; Shields blocks without uBlock Origin")
+    func freshInstallBundlesNothing() throws {
         let env = try TabManagerTestEnvironment()
 
-        // uBlock Origin is bundled with Refrax and should be auto-installed
-        let ublock = env.extensionManager.installedExtensions.first {
-            if case let .bundled(name) = $0.source {
-                return name == "ublock-origin"
-            }
-            return false
-        }
-
-        #expect(ublock != nil, "uBlock Origin should be installed as a bundled extension")
-        if let ublock {
-            #expect(ublock.displayName == "uBlock Origin")
-            #expect(ublock.isEnabled, "Bundled extensions should be enabled by default")
-        }
+        #expect(env.extensionManager.installedExtensions.isEmpty)
     }
 
-    @Test("Bundled extensions have required permissions granted")
-    func bundledExtensionsHavePermissions() throws {
+    @Test("uBlock Origin installed from the bundle gets the permissions its blocking needs")
+    func bundledUBlockOriginHasPermissions() async throws {
         let env = try TabManagerTestEnvironment()
 
-        // Find the bundled uBlock Origin extension
-        let ublock = env.extensionManager.installedExtensions.first {
+        try await env.extensionManager.installBundledUBlockOrigin()
+
+        let ublock = try #require(env.extensionManager.installedExtensions.first {
             if case let .bundled(name) = $0.source {
                 return name == "ublock-origin"
             }
             return false
-        }
-
-        guard let ublock else {
-            Issue.record("uBlock Origin bundled extension not found")
-            return
-        }
-
-        // Bundled extensions should have their permissions auto-granted
-        #expect(!ublock.grantedPermissions.isEmpty, "Bundled extension should have permissions granted")
-
-        // uBlock Origin requires webRequest permission for ad blocking
-        let hasWebRequest = ublock.grantedPermissions.keys.contains("webRequest")
-        #expect(hasWebRequest, "uBlock Origin should have webRequest permission granted")
-
-        // Should have <all_urls> match pattern for ad blocking
-        let hasAllUrls = ublock.grantedMatchPatterns.keys.contains("<all_urls>")
-        #expect(hasAllUrls, "uBlock Origin should have <all_urls> match pattern granted")
+        })
+        #expect(ublock.displayName == "uBlock Origin")
+        #expect(ublock.isEnabled)
+        #expect(ublock.grantedPermissions.keys.contains("webRequest"))
+        #expect(ublock.grantedMatchPatterns.keys.contains("<all_urls>"))
     }
 }
 
