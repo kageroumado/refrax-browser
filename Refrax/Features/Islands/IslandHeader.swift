@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// An island's header: its icon, which opens the island's editor, its name, which a
-/// double-click renames, then the pin, the menu and the plus, in rounded glass above the
-/// island. Kept visible for latched or pinned islands, and during pointer interaction; laid
-/// out always.
+/// An island's header: its icon and its name, each opening the island's editor (the name
+/// with a double-click), then the pin, the menu and the plus, in rounded glass above the
+/// island. It shows while the pointer is on or near the island, while its controls are in
+/// use, and while it is moved; it is laid out always.
 struct IslandHeader: View {
     let island: Island
 
@@ -97,6 +97,9 @@ struct IslandHeader: View {
             .pointerStyle(.default)
             .help("Edit name, icon, and color")
             .accessibilityLabel("Edit \(island.title)")
+            // A control that comes and goes stays out of the key-view loop: SwiftUI rebuilding
+            // that loop beside the page's views can spin forever.
+            .focusable(false)
         }
     }
 
@@ -111,11 +114,11 @@ struct IslandHeader: View {
                     .font(.system(size: Layout.titleSize))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .onTapGesture(count: 2) { beginRename() }
+                    // The name, icon, and color are edited together, the name in the editor's field.
+                    .onTapGesture(count: 2) { beginEdit() }
                     .contextMenu {
                         if !island.isDefault {
                             Button("Edit Island…") { beginEdit() }
-                            Button("Rename") { beginRename() }
                         }
                     }
             }

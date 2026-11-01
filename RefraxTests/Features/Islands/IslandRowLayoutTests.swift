@@ -186,4 +186,22 @@ struct IslandSectionTests {
         fixture.islands.unnest(inner.id)
         #expect(fixture.islands.island(inner.id)?.tabIDs == [b.id])
     }
+
+    @Test
+    func `With three group islands, each can go inside either other one`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("Loose")
+        let groups = try ["One", "Two", "Three"].map { name in
+            let group = try fixture.env.groupManager.createGroup(in: fixture.space, name: name)
+            _ = fixture.tab("\(name) tab", group: group)
+            return group
+        }
+        for group in groups {
+            let destinations = fixture.islands.islands.filter { fixture.islands.canNest(group.id, in: $0.id) }.map(\.id)
+            #expect(Set(destinations) == Set(groups.map(\.id)).subtracting([group.id]), "\(group.name)")
+        }
+        // The loose tabs' island is no group: it neither goes inside one nor takes one.
+        #expect(!fixture.islands.canNest(fixture.space.id, in: groups[0].id))
+        #expect(!fixture.islands.canNest(groups[0].id, in: fixture.space.id))
+    }
 }

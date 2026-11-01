@@ -123,7 +123,11 @@ struct GroupSettingsPopover: View {
 
     @ViewBuilder
     private var iconPreview: some View {
-        if IslandAppearance.isEmoji(displayIcon) {
+        if selectedIcon == nil {
+            Circle()
+                .fill(selectedColor)
+                .frame(width: 10, height: 10)
+        } else if IslandAppearance.isEmoji(displayIcon) {
             Text(displayIcon)
                 .font(.system(size: 16))
         } else {
@@ -144,7 +148,11 @@ struct GroupSettingsPopover: View {
 
             iconTabPicker
             iconGrid
-            customButton
+            HStack {
+                customButton
+                Spacer()
+                noIconButton
+            }
         }
     }
 
@@ -213,7 +221,7 @@ struct GroupSettingsPopover: View {
     }
 
     private func symbolButton(for symbol: String) -> some View {
-        let isSelected = selectedIcon == symbol || (selectedIcon == nil && symbol == "folder.fill")
+        let isSelected = selectedIcon == symbol
 
         return SelectionItemButton(isSelected: isSelected, accentColor: selectedColor) {
             selectedIcon = symbol
@@ -226,6 +234,22 @@ struct GroupSettingsPopover: View {
             width: SelectionPopoverLayout.itemSize,
             height: SelectionPopoverLayout.itemSize,
         )
+    }
+
+    /// Clears the icon: the group shows its name alone.
+    private var noIconButton: some View {
+        Button {
+            selectedIcon = nil
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: selectedIcon == nil ? "checkmark.circle.fill" : "circle.slash")
+                Text("No Icon")
+            }
+            .font(.caption)
+            .foregroundStyle(selectedIcon == nil ? AnyShapeStyle(Color.appAccentColor) : AnyShapeStyle(.secondary))
+        }
+        .buttonStyle(.plain)
+        .help("Show the name without an icon")
     }
 
     private var customButton: some View {
