@@ -20,24 +20,27 @@ extension UnifiedContentView {
         Color.clear
             .frame(width: size.width, height: size.height)
             .contentShape(.rect)
-            .onContinuousHover(coordinateSpace: .local) { phase in
-                switch phase {
-                case let .active(point):
-                    let region = PaneEditingSurface.region(at: point, in: grid, geometry: geometry)
-                    if hoveredRegion != region {
-                        withAnimation(Layout.hoverAnimation) { hoveredRegion = region }
-                    }
-                case .ended:
-                    // Over a divider's grip the AppKit grip view has the pointer and reports it.
-                    if case .divider = hoveredRegion {
-                        return
-                    }
-                    withAnimation(Layout.hoverAnimation) { hoveredRegion = nil }
-                }
-            }
+            .onContinuousHover(coordinateSpace: .named(Layout.surfaceSpace)) { trackHover($0, grid: grid, geometry: geometry) }
             .pointerStyle(surfacePointer)
             .gesture(paneDragGesture(grid: grid, geometry: geometry))
             .accessibilityHidden(true)
+    }
+
+    /// Marks the pane or bar under the pointer.
+    func trackHover(_ phase: HoverPhase, grid: PaneGrid, geometry: PaneGridGeometry) {
+        switch phase {
+        case let .active(point):
+            let region = PaneEditingSurface.region(at: point, in: grid, geometry: geometry)
+            if hoveredRegion != region {
+                withAnimation(Layout.hoverAnimation) { hoveredRegion = region }
+            }
+        case .ended:
+            // Over a divider's grip the AppKit grip view has the pointer and reports it.
+            if case .divider = hoveredRegion {
+                return
+            }
+            withAnimation(Layout.hoverAnimation) { hoveredRegion = nil }
+        }
     }
 
     /// A hand over a pane, closed while one is dragged.
@@ -88,24 +91,23 @@ extension UnifiedContentView {
     /// Each pane's controls, where a dragged pane would land, and the bar that ends the mode.
     func layoutModeControls(grid: PaneGrid, geometry: PaneGridGeometry, frames: [UUID: CGRect]) -> some View {
         ZStack(alignment: .topLeading) {
-            if let paneDrag, let target = paneDrag.target, let span = grid.moving(paneDrag.pageID, to: target)?.span(of: paneDrag.pageID) {
-                let frame = geometry.frame(of: span)
-                RoundedRectangle(cornerRadius: geometry.metrics.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.appAccentColor, lineWidth: 3)
-                    .background(RoundedRectangle(cornerRadius: geometry.metrics.cornerRadius, style: .continuous).fill(Color.appAccentColor.opacity(0.12)))
-                    .frame(width: frame.width, height: frame.height)
-                    .offset(x: frame.minX, y: frame.minY)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            if let paneDrag {
+                PaneLandingFrame(move: paneDrag.move, pageID: paneDrag.pageID, grid: grid, geometry: geometry)
             }
             ForEach(tab.pages) { page in
-                if let frame = frames[page.id], paneDrag == nil {
+                if let frame = frames[page.id] {
+                    // A card is a handle too: a drag that starts on it, off its buttons, moves the
+                    // pane. It stays in place, hidden, while its drag runs, so the drag lives on.
                     PaneEditingControls(
                         page: page,
                         verbs: PaneEditingVerbs(pageID: page.id, grid: grid),
                         style: PaneEditingSurface.controlStyle(for: frame.size),
                         onVerb: { perform($0, on: page) },
                     )
+                    .onContinuousHover(coordinateSpace: .named(Layout.surfaceSpace)) { trackHover($0, grid: grid, geometry: geometry) }
+                    .pointerStyle(paneDrag != nil ? .grabActive : .grabIdle)
+                    .gesture(paneDragGesture(grid: grid, geometry: geometry))
+                    .opacity(paneDrag == nil ? 1 : 0)
                     .frame(width: frame.width, height: frame.height)
                     .offset(x: frame.minX, y: frame.minY)
                     .transition(.opacity)
@@ -131,10 +133,10 @@ extension UnifiedContentView {
         }
     }
 
-    /// A pane moved in layout mode: a drag that starts on a pane carries it, the pane where it
-    /// would land steps aside, and letting go trades the two places.
-    private func paneDragGesture(grid: PaneGrid, geometry: PaneGridGeometry) -> some Gesture {
-        DragGesture(minimumDistance: Layout.dragThreshold)
+    /// A pane moved in layout mode: a drag that starts on a pane (or its card) carries it, the
+    /// pane where it would land steps aside, and letting go trades their places.
+    func paneDragGesture(grid: PaneGrid, geometry: PaneGridGeometry) -> some Gesture {
+        DragGesture(minimumDistance: Layout.dragThreshold, coordinateSpace: .named(Layout.surfaceSpace))
             .onChanged { value in
                 let pageID: UUID
                 if let dragged = paneDrag?.pageID {
@@ -144,18 +146,18 @@ extension UnifiedContentView {
                 } else {
                     return
                 }
-                let target = PaneDrop.cell(forDragging: pageID, by: value.translation, in: grid, geometry: geometry)
-                if paneDrag?.target != target || paneDrag == nil {
+                let move = PaneDrop.move(pageID, by: value.translation, in: grid, geometry: geometry)
+                if paneDrag?.move != move || paneDrag == nil {
                     withAnimation(Layout.dragSpring) {
-                        paneDrag = PaneDragState(pageID: pageID, translation: value.translation, target: target)
+                        paneDrag = PaneDragState(pageID: pageID, translation: value.translation, move: move)
                     }
                 } else {
                     paneDrag?.translation = value.translation
                 }
             }
             .onEnded { _ in
-                if let paneDrag, let target = paneDrag.target {
-                    windowState.editLayout { $0.move(paneDrag.pageID, to: target) }
+                if let paneDrag, case let .lands(cell, _) = paneDrag.move {
+                    windowState.editLayout { $0.move(paneDrag.pageID, to: cell) }
                 }
                 withAnimation(Layout.dragSpring) {
                     paneDrag = nil
@@ -303,6 +305,50 @@ struct PaneEditingControls: View {
         } else {
             Color.clear.frame(width: size, height: size)
         }
+    }
+}
+
+/// Where a dragged pane would land: the frame it takes, outlined in the accent color, or, over
+/// a cell it cannot take, that cell outlined in red with why.
+struct PaneLandingFrame: View {
+    let move: PaneMove
+    let pageID: UUID
+    let grid: PaneGrid
+    let geometry: PaneGridGeometry
+
+    var body: some View {
+        switch move {
+        case .stays:
+            EmptyView()
+        case let .lands(_, landed):
+            if let span = landed.span(of: pageID) {
+                outline(geometry.frame(of: span), color: Color.appAccentColor, message: nil)
+            }
+        case let .refused(cell):
+            let span = grid.page(at: cell).flatMap(grid.span(of:)) ?? PaneSpan(cell)
+            outline(geometry.frame(of: span), color: .red, message: "This pane can’t go here")
+        }
+    }
+
+    private func outline(_ frame: CGRect, color: Color, message: String?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: geometry.metrics.cornerRadius, style: .continuous)
+        return shape
+            .strokeBorder(color, lineWidth: 3)
+            .background(shape.fill(color.opacity(0.12)))
+            .overlay {
+                if let message {
+                    Label(message, systemImage: "nosign")
+                        .font(.headline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular, in: .capsule)
+                }
+            }
+            .frame(width: frame.width, height: frame.height)
+            .offset(x: frame.minX, y: frame.minY)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+            .accessibilityLabel(message ?? "Drop here")
     }
 }
 

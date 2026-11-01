@@ -33,10 +33,14 @@ struct UnifiedContentView: View {
     struct PaneDragState: Equatable {
         let pageID: UUID
         var translation: CGSize
-        var target: GridCell?
+        /// What letting go here does.
+        var move: PaneMove
     }
 
     enum Layout {
+        /// The page's own coordinates, shared by every gesture of the editing surface, so a
+        /// drag reads the same whichever view it began on.
+        static let surfaceSpace = "paneSurface"
         /// Where a pointer takes hold of a divider: this wide across the line.
         static let dividerReach: CGFloat = 9
         static let dragSpring = Animation.spring(response: 0.35, dampingFraction: 0.75)
@@ -87,7 +91,7 @@ struct UnifiedContentView: View {
     func frames(grid: PaneGrid, geometry: PaneGridGeometry) -> [UUID: CGRect] {
         guard size != .zero else { return [:] }
         var frames = geometry.frames(for: grid)
-        if let paneDrag, let target = paneDrag.target, let preview = grid.moving(paneDrag.pageID, to: target) {
+        if let paneDrag, let preview = paneDrag.move.grid {
             for (id, frame) in geometry.frames(for: preview) where id != paneDrag.pageID {
                 frames[id] = frame
             }
@@ -123,6 +127,7 @@ struct UnifiedContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .coordinateSpace(.named(Layout.surfaceSpace))
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onChange(of: session == nil) { _, ended in
             if ended {
