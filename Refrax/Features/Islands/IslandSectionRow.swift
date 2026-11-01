@@ -1,7 +1,10 @@
+import AppKit
 import SwiftUI
 
-/// A group nested in the island's group: a disclosure chevron, its icon, its name, and while
-/// folded its tab count. A click folds or unfolds it; its menu edits it or takes it out.
+/// A group nested in the island's group: a disclosure chevron, its icon (or a dot of its
+/// color), its name, while folded its tab count, and under the pointer a menu button. A
+/// click folds or unfolds it; its menu, or a right-click, edits it or makes it its own
+/// island again.
 struct IslandSectionRow: View {
     let section: IslandSection
     let island: Island
@@ -9,18 +12,26 @@ struct IslandSectionRow: View {
     let index: Int
 
     @Environment(IslandController.self) private var islands
+    @Environment(WindowState.self) private var windowState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
     @State private var isEditing = false
+    @State private var editAfterMenu = false
+    /// The menu button's bounds in the islands layer.
+    @State private var menuButtonFrame: CGRect = .zero
 
     enum Layout {
         /// How far a section's tab rows sit in from the island's own.
         static let indent: CGFloat = 12
+        /// Where a section's guide runs: under the header's chevron.
+        static let guideOffset: CGFloat = 14
         static let chevronSize: CGFloat = 9
         static let glyphSize: CGFloat = 11
         static let titleSize: CGFloat = 12
         static let countSize: CGFloat = 11
         static let slot: CGFloat = 16
+        static let dotSize: CGFloat = 7
+        static let menuButtonSize: CGFloat = 20
     }
 
     private var iconsOnly: Bool {
@@ -60,6 +71,9 @@ struct IslandSectionRow: View {
                         .font(.system(size: Layout.countSize).monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
+                if isHovering {
+                    menuButton
+                }
             }
         }
         .padding(.horizontal, iconsOnly ? 0 : 6)
@@ -83,13 +97,68 @@ struct IslandSectionRow: View {
         .onChange(of: isEditing) { _, editing in
             islands.holdControls(island.id, editing)
         }
-        .help(iconsOnly ? section.title : "")
+        .help("“\(section.title)” is a group inside \(island.title). Click to fold or unfold it.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(section.title), \(section.tabIDs.count) tabs")
         .accessibilityValue(section.isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { islands.toggleSection(section.id) }
         .accessibilityIdentifier("island-section-\(section.id.uuidString)")
+    }
+
+    /// The section's menu, under the pointer: fold, edit, or make the group its own island.
+    private var menuButton: some View {
+        Button {
+            showMenu()
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: Layout.glyphSize))
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.menuButtonSize, height: Layout.menuButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.default)
+        // A control that comes and goes stays out of the key-view loop: SwiftUI rebuilding
+        // that loop beside the page's views can spin forever.
+        .focusable(false)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("islands")) } action: { menuButtonFrame = $0 }
+        .help("Section options")
+        .accessibilityLabel("Options for \(section.title)")
+    }
+
+    /// An AppKit menu under the menu button; the island's controls stay while it tracks.
+    private func showMenu() {
+        guard let content = windowState.window?.contentView else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        editAfterMenu = false
+        func add(_ title: String, _ execute: @escaping @MainActor () -> Void) {
+            let target = MenuActionTarget(execute)
+            let item = NSMenuItem(title: title, action: #selector(MenuActionTarget.performAction(_:)), keyEquivalent: "")
+            item.target = target
+            item.representedObject = target
+            menu.addItem(item)
+        }
+        let id = section.id
+        add(section.isCollapsed ? "Expand" : "Collapse") { islands.toggleSection(id) }
+        add("Edit…") { editAfterMenu = true }
+        menu.addItem(.separator())
+        add("Make Its Own Island") { islands.unnest(id) }
+        // The layer is top-down; AppKit's content coordinates are bottom-up.
+        let point = NSPoint(x: menuButtonFrame.minX, y: content.bounds.height - menuButtonFrame.maxY - 2)
+        islands.holdControls(island.id, true)
+        // The button's action completes before AppKit's menu tracking loop begins.
+        DispatchQueue.main.async {
+            if content.window != nil {
+                menu.popUp(positioning: nil, at: point, in: content)
+            }
+            islands.holdControls(island.id, false)
+            if editAfterMenu {
+                editAfterMenu = false
+                isEditing = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -105,6 +174,12 @@ struct IslandSectionRow: View {
                 }
             }
             .frame(width: Layout.slot, height: Layout.slot)
+        } else {
+            // Without an icon, the group's color marks it as a group.
+            Circle()
+                .fill(section.colorString.map(Color.resolveStoredColor) ?? .secondary)
+                .frame(width: Layout.dotSize, height: Layout.dotSize)
+                .frame(width: Layout.slot, height: Layout.slot)
         }
     }
 }

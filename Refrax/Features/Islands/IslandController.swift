@@ -460,10 +460,16 @@ final class IslandController {
 
     // MARK: - An Island's Header
 
-    /// Latched and pinned islands keep their names visible; other headers follow interaction.
+    /// An island's pill shows while the pointer is on the island or near it, while its
+    /// controls are in use, and while it is moved; latched or pinned, it rests out of sight.
     func showsHeader(of islandID: UUID) -> Bool {
-        canvas.floatingVisibility.isLatched || island(islandID)?.placement.isPinned == true
-            || hoveredIslandID == islandID || nearIslandID == islandID || heldControlsIslandID == islandID || draggedIslandID == islandID
+        hoveredIslandID == islandID || nearIslandID == islandID || heldControlsIslandID == islandID || draggedIslandID == islandID
+    }
+
+    /// Where the islands layer takes clicks and drops: every island on screen, its pill's room
+    /// included, and the filter's word. Everywhere else they reach the page.
+    var hitFrames: [CGRect] {
+        visibleIslands.map(fullFrame(of:)) + [filterBadgeFrame].compactMap(\.self)
     }
 
     /// The pointer moved over the page: the island it is near shows its header.
@@ -819,6 +825,15 @@ final class IslandController {
         rebuild()
     }
 
+    /// The filter word's size as drawn; until it is measured, the room it is placed with.
+    @ObservationIgnored var filterBadgeSize: CGSize?
+
+    /// The filter word's frame in the layer, while it shows.
+    var filterBadgeFrame: CGRect? {
+        let size = filterBadgeSize ?? IslandFilterBadge.Layout.size
+        return filterBadgeOrigin(size: IslandFilterBadge.Layout.size, gap: IslandFilterBadge.Layout.gap).map { CGRect(origin: $0, size: size) }
+    }
+
     /// Where the word on the filter stands, `size` big: beside the first island on screen, else
     /// at the islands' first place, right of the rail; `nil` while no filter is on or no
     /// island could show.
@@ -879,6 +894,10 @@ final class IslandController {
         let columns = keyboardColumns
         let covered = windowState.isDetailTrayVisible || windowState.showsCenteredLens || windowState.isSpaceLocked
         guard !columns.isEmpty, IslandKeyRouting.takes(key, browsing: keyboard != nil, responder: responder, covered: covered) else {
+            Logger.debug(
+                "Islands leave \(key) to the page: browsing \(keyboard != nil), islands \(columns.count), covered \(covered), responder \(responder)",
+                category: Logger.tabs,
+            )
             return false
         }
         if keyboard == nil {
@@ -1065,7 +1084,7 @@ final class IslandController {
             if let joins = drop.joins {
                 join(tabID, with: joins)
             } else {
-                moveTab(tabID, to: drop.row, in: drop.island)
+                moveRows(dragging: tabID, to: drop.row, in: drop.island)
             }
         } else if let sideDrop {
             joinPage(tabID, at: sideDrop)
@@ -1073,6 +1092,26 @@ final class IslandController {
             detach(tabID, at: point)
         } else {
             makeIsland(from: tabID, at: point)
+        }
+    }
+
+    /// Moves the row dragged, `tabID`, with the rest of its selection, to before row `row` of
+    /// island `islandID`, counted as the drag counts it: among the rows without the dragged
+    /// one. The chosen rows keep their order and their selection.
+    func moveRows(dragging tabID: UUID, to row: Int, in islandID: UUID) {
+        let moving = actionTabs(for: tabID)
+        guard moving.count > 1, let target = island(islandID) else {
+            moveTab(tabID, to: row, in: islandID)
+            return
+        }
+        // Back to the rows as they stand: a slot past the lifted row sits one further down.
+        let lifted = target.layout.row(of: tabID)
+        let full = lifted.map { row > $0 ? row + 1 : row } ?? row
+        let slot = target.layout.insertion(beforeRow: full, moving: Set(moving.map(\.id)))
+        var after = slot.after
+        for tab in moving {
+            moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: target)
+            after = tab.id
         }
     }
 
@@ -1285,8 +1324,15 @@ final class IslandController {
     func dropTarget(at point: CGPoint, reach: CGFloat = IslandGeometry.padding) -> IslandDrop? {
         guard let island = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else { return nil }
         let frame = frame(of: island)
-        let local = rowPoint(CGPoint(x: point.x - frame.minX, y: point.y - frame.minY), in: island)
-        return IslandDrop(island: island.id, row: geometry(for: island).insertion(at: local, count: island.rows.count))
+        return dropTarget(on: island.id, local: CGPoint(x: point.x - frame.minX, y: point.y - frame.minY))
+    }
+
+    /// The row a drop at `local`, a point in island `islandID`'s glass as drawn, goes before:
+    /// the rows as scrolled, the row under the pointer.
+    func dropTarget(on islandID: UUID, local: CGPoint) -> IslandDrop? {
+        guard let island = visibleIslands.first(where: { $0.id == islandID }) else { return nil }
+        let point = rowPoint(local, in: island)
+        return IslandDrop(island: island.id, row: geometry(for: island).insertion(at: point, count: island.rows.count))
     }
 
     /// Something from outside is held at `point`: the island under it shows where it would
@@ -1296,6 +1342,12 @@ final class IslandController {
         let target = dropTarget(at: point)
         update(\.drop, to: target)
         return target != nil
+    }
+
+    /// Something from outside is held at `local` on island `islandID`: the island shows
+    /// where it would go.
+    func updateExternalDrop(on islandID: UUID, local: CGPoint) {
+        update(\.drop, to: dropTarget(on: islandID, local: local))
     }
 
     /// The drop from outside left the islands, or was let go.
@@ -1309,9 +1361,19 @@ final class IslandController {
     /// tabs, the first one shown. Returns whether an island took it.
     @discardableResult
     func performDrop(_ payload: IslandDropPayload, at point: CGPoint) -> Bool {
+        guard let target = dropTarget(at: point) else {
+            endExternalDrop()
+            return false
+        }
+        return performDrop(payload, at: target)
+    }
+
+    /// Takes in `payload` at `target`, an island and the row the drop goes before, counted
+    /// among the rows as they stand.
+    @discardableResult
+    func performDrop(_ payload: IslandDropPayload, at target: IslandDrop) -> Bool {
         defer { endExternalDrop() }
-        guard !payload.isEmpty, let target = dropTarget(at: point), let island = island(target.island),
-              let space = windowState.activeSpace else { return false }
+        guard !payload.isEmpty, let island = island(target.island), let space = windowState.activeSpace else { return false }
         let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id }
         // The slot is read once, off the rows as they are, the moving tabs counted out of
         // its neighbors: each later tab goes after the one before it.

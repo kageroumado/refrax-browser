@@ -58,15 +58,25 @@ struct IslandControllerTests {
     }
 
     @Test
-    func `Latched and pinned islands keep their names and add buttons reachable`() throws {
+    func `An island's pill shows on hover, nearness, or a hold, and rests while latched or pinned`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("Page")
-        #expect(fixture.islands.showsHeader(of: fixture.space.id) == false)
+        let id = fixture.space.id
+        #expect(!fixture.islands.showsHeader(of: id))
         fixture.canvas.toggleFloatingTabs()
-        #expect(fixture.islands.showsHeader(of: fixture.space.id))
-        fixture.canvas.dismissFloatingTabs()
-        fixture.islands.togglePin(fixture.space.id)
-        #expect(fixture.islands.showsHeader(of: fixture.space.id))
+        #expect(!fixture.islands.showsHeader(of: id))
+        fixture.islands.togglePin(id)
+        #expect(!fixture.islands.showsHeader(of: id))
+        let island = try #require(fixture.islands.island(id))
+        fixture.islands.pointerMoved(CGPoint(x: fixture.islands.fullFrame(of: island).midX, y: fixture.islands.fullFrame(of: island).minY - 10))
+        #expect(fixture.islands.showsHeader(of: id))
+        fixture.islands.pointerMoved(CGPoint(x: 1_400, y: 1_000))
+        #expect(!fixture.islands.showsHeader(of: id))
+        fixture.islands.holdControls(id, true)
+        #expect(fixture.islands.showsHeader(of: id))
+        fixture.islands.holdControls(id, false)
+        fixture.islands.setHovered(id, true)
+        #expect(fixture.islands.showsHeader(of: id))
     }
 
     @Test

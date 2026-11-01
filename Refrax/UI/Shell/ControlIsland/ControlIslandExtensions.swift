@@ -82,7 +82,6 @@ struct ControlIslandExtensions: View {
 struct ControlIslandExtensionsControl: View {
     let item: ControlIslandItem
     let opensLeft: Bool
-    var focusedControl: FocusState<String?>.Binding
     @Environment(WindowState.self) private var windowState
     @Environment(ExtensionManager.self) private var extensions
     @State private var isPresented = false
@@ -109,9 +108,10 @@ struct ControlIslandExtensionsControl: View {
                     }
             }
         }
-        .focusable()
-        .focused(focusedControl, equals: item.title)
-        .focusEffectDisabled()
+        // The row appears only while an extension has an action: a focusable view that comes
+        // and goes beside the window's AppKit views and the page makes SwiftUI rebuild its
+        // key-view loop, a walk that can spin forever, so it stays out of that loop.
+        .focusable(false)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rowFrame = $0 }
         .popover(isPresented: $isPresented, arrowEdge: opensLeft ? .leading : .trailing) {
             ControlIslandExtensions(isPresented: $isPresented, anchor: rowFrame)

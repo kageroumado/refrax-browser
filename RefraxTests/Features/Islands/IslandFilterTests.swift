@@ -139,6 +139,23 @@ struct IslandFilterTests {
     }
 
     @Test
+    func `The filter's word takes clicks, so Show All can be pressed, and gives them up with the filter`() throws {
+        let fixture = try IslandFixture()
+        fixture.tab("A").isUnread = true
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.filterBadgeFrame == nil)
+        fixture.islands.setFilter(.unread)
+        fixture.islands.filterBadgeSize = CGSize(width: 320, height: 28)
+        let badge = try #require(fixture.islands.filterBadgeFrame)
+        #expect(badge.width == 320)
+        #expect(fixture.islands.hitFrames.contains(badge))
+        let showAll = CGPoint(x: badge.maxX - 20, y: badge.midY)
+        #expect(fixture.islands.hitFrames.contains { $0.contains(showAll) })
+        fixture.islands.setFilter(nil)
+        #expect(!fixture.islands.hitFrames.contains { $0.contains(showAll) })
+    }
+
+    @Test
     func `With nothing matching and the islands up, the word still shows where they would be`() throws {
         let fixture = try IslandFixture()
         fixture.tab("A").isUnread = false

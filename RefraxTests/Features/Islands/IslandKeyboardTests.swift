@@ -288,6 +288,38 @@ struct IslandKeyboardTests {
     }
 
     @Test
+    func `After an arrow starts browsing, letters, Space, and Return reach the islands, not the page`() throws {
+        let (fixture, _, grouped, _) = try fixtureWithTwoIslands()
+        fixture.canvas.toggleFloatingTabs()
+        let parent = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 900, height: 700), styleMask: .titled, backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        defer { parent.close() }
+        let page = FocusablePage()
+        parent.contentView = page
+        parent.makeFirstResponder(page)
+        let gestures = CanvasPageGestures(
+            window: parent, canvas: fixture.canvas, floatingEligible: { true }, floatingContains: { _ in false }, floatingHasKeyboardFocus: { false },
+        )
+        gestures.islands = fixture.islands
+        func key(_ keyCode: UInt16, _ characters: String) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode,
+            ))
+        }
+        #expect(try gestures.handle(key(125, "\u{F701}")) == nil)
+        #expect(fixture.islands.keyboardCursorID != nil)
+        #expect(try gestures.handle(key(2, "d")) == nil)
+        #expect(try gestures.handle(key(14, "e")) == nil)
+        #expect(fixture.islands.keyboardCursorID == grouped[1].id)
+        #expect(try gestures.handle(key(49, " ")) == nil)
+        #expect(fixture.islands.previewedTabID == grouped[1].id)
+        #expect(try gestures.handle(key(36, "\r")) == nil)
+        #expect(fixture.window.activeTabID == grouped[1].id)
+        #expect(!fixture.canvas.floatingVisibility.isRevealed)
+    }
+
+    @Test
     func `With the library drawer over the islands, keys pass through`() throws {
         let (fixture, _, _, _) = try fixtureWithTwoIslands()
         fixture.canvas.toggleFloatingTabs()

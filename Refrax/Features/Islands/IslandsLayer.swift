@@ -42,6 +42,8 @@ struct IslandsLayer: View {
                                 DragWord("Combine into split view")
                             } else if islands.dropsAsCard {
                                 DragWord("Drop to open as a card")
+                            } else if islands.drop != nil, islands.actionTabs(for: ghost.tabID).count > 1 {
+                                DragWord("Moving \(islands.actionTabs(for: ghost.tabID).count) tabs")
                             }
                         }
                         .position(ghost.point)
@@ -129,8 +131,8 @@ struct IslandView: View {
                     .padding(.horizontal, geometry.horizontalPadding)
                     .frame(width: frame.width, height: frame.height, alignment: .top)
                     .clipShape(shape)
-                    // Links, files, and text from other apps land on the row under the pointer.
-                    .overlay { IslandDropReceiver() }
+                    // Links, files, text, and rows from other windows land on the row under the pointer.
+                    .onDrop(of: IslandPasteboard.dropTypes, delegate: IslandDropDelegate(islandID: island.id, islands: islands))
                     // Empty glass moves the island within the browser.
                     .background {
                         IslandDragSurface(islandID: island.id)
@@ -430,12 +432,17 @@ struct IslandFilterBadge: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(Color.appAccentColor)
                 .pointerStyle(.default)
+                // The badge comes and goes with the filter: kept out of the key-view loop, whose
+                // rebuild beside the page's views can spin forever.
+                .focusable(false)
                 .help("Show every tab")
             }
             .padding(.horizontal, 12)
             .frame(height: Layout.size.height)
             .fixedSize()
             .glassEffect(.regular, in: .capsule)
+            // Its drawn size is where the layer takes its clicks.
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { islands.filterBadgeSize = $0 }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(text)
         }
@@ -502,6 +509,11 @@ private struct IslandTabRow: View, Equatable {
         islands.selectedTabIDs.contains(tab.id)
     }
 
+    /// The row is a tab of a group nested in the island's, drawn indented under its header.
+    private var isInSection: Bool {
+        !iconsOnly && island.layout.section(of: tab.id) != nil
+    }
+
     /// The keyboard has chosen this row while the islands are latched open.
     private var isKeyboardChoice: Bool {
         islands.keyboardCursorID == tab.id && canvas.floatingVisibility.isLatched
@@ -561,14 +573,27 @@ private struct IslandTabRow: View, Equatable {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    // Shown under the pointer only, so kept out of the key-view loop.
+                    .focusable(false)
                     .help("Close Tab")
                 }
             }
         }
         .padding(.horizontal, iconsOnly ? 0 : 8)
-        .padding(.leading, iconsOnly || island.layout.section(of: tab.id) == nil ? 0 : IslandSectionRow.Layout.indent)
+        .padding(.leading, isInSection ? IslandSectionRow.Layout.indent : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: iconsOnly ? .center : .leading)
         .background(rowFill, in: shape)
+        // A section's rows hang from its header on a thin guide.
+        .overlay(alignment: .leading) {
+            if isInSection {
+                Rectangle()
+                    .fill(.separator)
+                    .frame(width: 1)
+                    .padding(.vertical, 3)
+                    .offset(x: IslandSectionRow.Layout.guideOffset)
+                    .allowsHitTesting(false)
+            }
+        }
         .offset(y: shift)
         .animation(.snappy(duration: 0.2), value: islands.drop)
         .overlay {

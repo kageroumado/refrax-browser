@@ -285,3 +285,42 @@ struct IslandExternalDropTests {
         #expect(fixture.islands.dropTarget(at: point(onRow: 0, of: island, in: fixture)) == nil)
     }
 }
+
+/// Chosen rows dragged together within the islands.
+@Suite("Dragging a selection", .serialized)
+@MainActor
+struct IslandSelectionDragTests {
+    @Test
+    func `A drag keeps the selection, and its rows land together in order`() throws {
+        let fixture = try IslandFixture()
+        for title in ["A", "B", "X", "Y"] {
+            _ = fixture.tab(title)
+        }
+        fixture.canvas.toggleFloatingTabs()
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        let rows = island.tabIDs
+        let (a, b, x, y) = (rows[0], rows[1], rows[2], rows[3])
+        fixture.islands.select(a, extending: false, toggling: false)
+        fixture.islands.select(b, extending: false, toggling: true)
+        let frame = fixture.islands.frame(of: island)
+        fixture.islands.updateRowDrag(a, at: CGPoint(x: frame.midX, y: frame.minY + IslandGeometry.padding + 2.5 * IslandGeometry.rowHeight))
+        #expect(fixture.islands.selectedTabIDs == [a, b])
+        // Two rows down among the rows without the dragged one: between X and Y.
+        fixture.edit { fixture.islands.moveRows(dragging: a, to: 2, in: island.id) }
+        #expect(fixture.islands.island(fixture.space.id)?.tabIDs == [x, a, b, y])
+        #expect(fixture.islands.selectedTabIDs == [a, b])
+        fixture.islands.cancelRowDrag()
+    }
+
+    @Test
+    func `A row dragged alone moves alone`() throws {
+        let fixture = try IslandFixture()
+        for title in ["A", "B", "X"] {
+            _ = fixture.tab(title)
+        }
+        let rows = try #require(fixture.islands.island(fixture.space.id)?.tabIDs)
+        fixture.islands.select(rows[1], extending: false, toggling: false)
+        fixture.edit { fixture.islands.moveRows(dragging: rows[0], to: 2, in: fixture.space.id) }
+        #expect(fixture.islands.island(fixture.space.id)?.tabIDs == [rows[1], rows[2], rows[0]])
+    }
+}

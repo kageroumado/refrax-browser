@@ -531,7 +531,7 @@ struct ControlIsland: View {
         case .updates:
             updateControl(item)
         case .extensions:
-            ControlIslandExtensionsControl(item: item, opensLeft: opensLeft, focusedControl: $focusedControl)
+            ControlIslandExtensionsControl(item: item, opensLeft: opensLeft)
         }
     }
 

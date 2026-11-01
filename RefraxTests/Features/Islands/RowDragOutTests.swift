@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+import UniformTypeIdentifiers
 @testable import Refrax
 
 /// A row's drag leaving the browser window.
@@ -64,17 +65,28 @@ struct TabDragPromiseTests {
     }
 
     @Test
-    func `What a dragged tab writes is read back as that tab`() throws {
+    func `A dragged row is read back as that tab and its address`() async throws {
         let id = UUID()
         let url = try #require(URL(string: "https://example.com/page"))
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("TabDragPromiseTests.\(UUID().uuidString)"))
-        defer { pasteboard.releaseGlobally() }
-        pasteboard.clearContents()
-        let item = NSPasteboardItem()
-        item.setString(id.uuidString, forType: IslandPasteboard.tabIDs)
-        item.setString(url.absoluteString, forType: .URL)
-        pasteboard.writeObjects([item])
-        #expect(IslandPasteboard.payload(from: pasteboard) == IslandDropPayload(tabIDs: [id], urls: [url]))
+        let row = NSItemProvider(object: url as NSURL)
+        row.registerDataRepresentation(forTypeIdentifier: IslandPasteboard.tabIDType.identifier, visibility: .all) { completion in
+            completion(Data(id.uuidString.utf8), nil)
+            return nil
+        }
+        let payload = await IslandPasteboard.payload(from: [row])
+        #expect(payload == IslandDropPayload(tabIDs: [id], urls: [url]))
+    }
+
+    @Test
+    func `A link dragged from a page, a file from Finder, and text each bring what they hold`() async throws {
+        let link = try #require(URL(string: "https://swift.org/blog"))
+        let file = URL(filePath: "/tmp/paper.pdf")
+        let fromPage = await IslandPasteboard.payload(from: [NSItemProvider(object: link as NSURL)])
+        #expect(fromPage.urls == [link])
+        let fromFinder = await IslandPasteboard.payload(from: [NSItemProvider(object: file as NSURL)])
+        #expect(fromFinder.urls == [file])
+        let fromText = await IslandPasteboard.payload(from: [NSItemProvider(object: "read example.com today" as NSString)])
+        #expect(fromText.urls.map(\.absoluteString) == ["https://example.com"])
     }
 }
 

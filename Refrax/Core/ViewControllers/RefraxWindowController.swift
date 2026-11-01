@@ -264,7 +264,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
             if (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions).contains(where: { $0.contains(point) }) {
                 return
             }
-            if let islandController, islandController.visibleIslands.contains(where: { islandController.fullFrame(of: $0).contains(point) }) {
+            if let islandController, islandController.hitFrames.contains(where: { $0.contains(point) }) {
                 return
             }
             if let tab = tabCanvasManager.dockedTab(at: point, in: floatingView.bounds) {
@@ -283,8 +283,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
             guard let floatingView, let tabCanvasManager, let islandController else { return [] }
-            return tabCanvasManager.dockHitRegions(in: floatingView.bounds)
-                + islandController.visibleIslands.map { islandController.fullFrame(of: $0) }
+            return tabCanvasManager.dockHitRegions(in: floatingView.bounds) + islandController.hitFrames
         }
         contentView.addSubview(floatingView)
         floatingView.translatesAutoresizingMaskIntoConstraints = false
@@ -307,7 +306,7 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
             let topLeft = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
             return tabCanvasManager.showsFloatingControls
                 && (windowState.controlIsland.hitRegions + windowState.fileIsland.hitRegions
-                    + islandController.visibleIslands.map { islandController.fullFrame(of: $0) }).contains(where: { $0.contains(topLeft) })
+                    + islandController.hitFrames).contains(where: { $0.contains(topLeft) })
         }, floatingHasKeyboardFocus: { [unowned self] in
             guard let focused = window.firstResponder as? NSView else { return false }
             return tabCanvasManager.visibleFloatingTabs.contains { tab in
