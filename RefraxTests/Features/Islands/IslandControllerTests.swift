@@ -441,7 +441,7 @@ struct IslandDoorTests {
     }
 
     @Test
-    func `The page card's menu shows New Island once, near the top`() throws {
+    func `The page card's menu shows New Island once, with the arranging verbs after Close Tab`() throws {
         let fixture = try IslandFixture()
         let active = try fixture.env.createActiveTab(url: #require(URL(string: "https://example.com/active")), in: fixture.space, for: fixture.window)
         fixture.islands.refresh()
@@ -451,7 +451,8 @@ struct IslandDoorTests {
         )
         let rows = tree.outline.filter { !$0.hasPrefix(" ") && $0 != "——" }
         let island = try #require(rows.firstIndex(of: "New Island with This Tab"))
-        #expect(island <= 4)
+        let close = try #require(rows.firstIndex(of: "Close Tab"))
+        #expect(close < island)
         #expect(tree.outline.filter { $0.contains("New Island") }.count == 1)
     }
 }

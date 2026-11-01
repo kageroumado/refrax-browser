@@ -50,19 +50,20 @@ struct PageActionsMenuTests {
     }
 
     @Test
-    func `a floating card offers the page, Look, placement, selection, and the tab`() throws {
+    func `a floating card leads with Look and placement, keeps Close Tab inline, and ends with More`() throws {
         let fixture = try Fixture()
         let tree = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Keep Visible", "Dock Left",
-            "Dock Right", "——", "Favorite", "Tab ▸ (3)",
-            "  Rename…", "  Mark as Read", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——",
-            "Close Tab",
+            "Look, then Return", "Keep Visible", "Preview ▸ (2)", "  Dock Left", "  Dock Right", "——",
+            "Copy Address", "Copy as Markdown Link", "Share…", "——",
+            "Rename…", "Duplicate Tab", "Favorite", "——",
+            "Close Tab", "——",
+            "Move to New Window", "——",
+            "More ▸ (2)", "  Mark as Read", "  Open Reflected Window",
         ])
         #expect(tree.ids == [
-            "page.copyAddress", "page.copyMarkdownLink", "page.share", "tab.look", "tab.keepVisible", "tab.dock.leading",
-            "tab.dock.trailing", "tab.favorite", "group.tab", "tab.moveToNewWindow",
-            "tab.reflectedWindow", "tab.close",
+            "tab.look", "tab.keepVisible", "group.preview", "page.copyAddress", "page.copyMarkdownLink", "page.share",
+            "tab.rename", "tab.duplicate", "tab.favorite", "tab.close", "tab.moveToNewWindow", "more",
         ])
     }
 
@@ -72,9 +73,12 @@ struct PageActionsMenuTests {
         _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
         let tree = fixture.tree(for: fixture.active, surface: .pageCard)
         #expect(tree.outline == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Find on Page…", "——", "Keep Visible", "Preview ▸ (4)",
-            "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Favorite", "Tab ▸ (3)", "  Rename…", "  Mark as Unread", "  Duplicate Tab", "——",
-            "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——",
+            "Copy Address", "Copy as Markdown Link", "Share…", "Find on Page…", "——",
+            "Rename…", "Duplicate Tab", "Favorite", "——",
+            "Close Tab", "——",
+            "Move to New Window", "——",
+            "More ▸ (2)", "  Mark as Unread", "  Open Reflected Window",
         ])
         #expect(!tree.ids.contains("tab.look"))
         #expect(tree.outline.contains("  Show Live Page"))
@@ -98,9 +102,8 @@ struct PageActionsMenuTests {
         fixture.env.settings.floatingTabRegionsEnabled = true
         let floating = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(topLevel(floating) == [
-            "Copy Address", "Copy as Markdown Link", "——", "Share…", "Look, then Return", "——", "Hide Preview", "Preview ▸ (4)",
-            "——", "Favorite", "Tab ▸ (3)", "——", "Move to New Window",
-            "Open Reflected Window", "——", "Close Tab",
+            "Look, then Return", "Hide Preview", "Preview ▸ (4)", "——", "Copy Address", "Copy as Markdown Link", "Share…", "——",
+            "Rename…", "Duplicate Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——", "More ▸ (2)",
         ])
 
         try fixture.keepRegion(on: fixture.active)
@@ -126,14 +129,14 @@ struct PageActionsMenuTests {
             .toggleFavorite()
         let favorite = try #require(fixture.env.tabManager.state.favoriteTabs.first)
         let tree = fixture.tree(for: favorite, surface: .floatingCard)
-        #expect(tree.outline.contains("  Remove from Favorites"))
+        #expect(tree.outline.contains("Remove from Favorites"))
         #expect(!tree.ids.contains("tab.select"))
         #expect(!tree.ids.contains("tab.moveToSpace"))
         #expect(!tree.ids.contains("tab.moveToNewWindow"))
     }
 
     @Test
-    func `the page card's options popover lists the tab actions as the page card menu ends`() throws {
+    func `the page card's options popover lists the tab actions in the page card menu's layout`() throws {
         let fixture = try Fixture()
         _ = try #require(fixture.env.pagePool.page(for: fixture.active.activePage))
         let rows = PageCardOptionsPopover.tabTree(
@@ -141,12 +144,14 @@ struct PageActionsMenuTests {
             bookmarks: fixture.env.bookmarksManager, canvas: fixture.canvas,
         )
         #expect(rows.outline == [
-            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——", "Favorite", "Tab ▸ (3)", "  Rename…",
-            "  Mark as Unread", "  Duplicate Tab", "——", "Move to New Window", "Open Reflected Window", "——", "Close Tab",
+            "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——",
+            "Rename…", "Duplicate Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——",
+            "More ▸ (2)", "  Mark as Unread", "  Open Reflected Window",
         ])
+        // The same layout as the page card's menu, without the page's rows the popover lists above it.
         let card = fixture.tree(for: fixture.active, surface: .pageCard)
-        #expect(Array(card.outline.suffix(rows.outline.count)) == rows.outline)
-        #expect(rows.ids.allSatisfy { $0.hasPrefix("tab.") || $0.hasPrefix("group.") })
+        #expect(card.ids.filter { !$0.hasPrefix("page.") } == rows.ids)
+        #expect(rows.ids.allSatisfy { $0.hasPrefix("tab.") || $0.hasPrefix("group.") || $0 == "more" })
     }
 
     @Test

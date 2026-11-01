@@ -5,10 +5,34 @@ import SwiftUI
 /// composed and shown as a native menu so the card's hover and "menu is up" state hold while
 /// it tracks. The page card beside the rail opens ``PageCardOptionsPopover`` instead.
 struct PageActionsMenu: NSViewRepresentable {
-    /// Group order on the cards and island rows: the page's own verbs first, then making an
-    /// island (the one island door in the menu, kept near the top), then placement, then the
-    /// tab as an object.
+    /// Group order of a selection's menu on the islands.
     static let groupOrder: [MenuGroupID] = [.copy, .share, .read, .open, .island, .preview, .move, .tab, .window, .close]
+
+    /// The cards' menus in the island rows' skeleton (``IslandRowMenu/layout``): where the page
+    /// shows, what to copy, the tab's own verbs, Close Tab, arranging, then the rare rest.
+    /// Placement beyond Keep Visible folds into Preview.
+    static let cardLayout = MenuLayout(
+        sections: [
+            [
+                .action("tab.look"), .action("tab.keepVisible"),
+                .submenu(
+                    id: "group.preview", title: MenuGroupID.preview.title, symbol: MenuGroupID.preview.symbol,
+                    actions: FloatingCardShape.allCases.map { "tab.shape.\($0.rawValue)" }
+                        + ["tab.dock.leading", "tab.dock.trailing", "tab.undock", "tab.region", "tab.zoom"],
+                ),
+            ],
+            [.action("page.copyAddress"), .action("page.copyMarkdownLink"), .action("page.share"), .action("page.find")],
+            [.action("tab.rename"), .action("tab.duplicate"), .action("tab.favorite"), .action("tab.unfavorite"), .action("tab.mute")],
+            [.action("tab.close")],
+            [.action("tab.island.new"), .action("tab.moveToSpace"), .action("tab.moveToNewWindow")],
+            [
+                .submenu(id: "more", title: "More", symbol: "ellipsis.circle", actions: [
+                    "tab.unread", "tab.muteOthers", "tab.goHome", "tab.setHome", "tab.reflectedWindow",
+                ]),
+            ],
+        ],
+        overflow: "more",
+    )
 
     let tab: Tab
     let surface: MenuSurface
@@ -60,7 +84,7 @@ struct PageActionsMenu: NSViewRepresentable {
             tab: tab, surface: surface, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
             onRename: editsInPlace ? { canvas.renamingTabID = tab.id } : nil,
         )
-        return MenuComposer.compose(page.actions() + object.actions(), groupOrder: groupOrder)
+        return cardLayout.tree(page.actions() + object.actions())
     }
 }
 

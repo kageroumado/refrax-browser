@@ -3,8 +3,8 @@ import SwiftUI
 /// The page card's ⋯ popover: the page menu, then the tab's own actions under a divider.
 ///
 /// The page menu is ``PageMenuContent`` bound to the card's page; the tab rows are
-/// ``TabActions`` on the page card surface, composed in the cards' group order and drawn as
-/// popover rows. Every row closes the popover before its action runs, except Rename…, which
+/// ``TabActions`` on the page card surface, in the cards' layout (``PageActionsMenu/cardLayout``)
+/// and drawn as popover rows. Every row closes the popover before its action runs, except Rename…, which
 /// turns the popover into the name field.
 struct PageCardOptionsPopover: View {
     let tab: Tab
@@ -87,7 +87,7 @@ struct PageCardOptionsPopover: View {
             tab: tab, surface: .pageCard, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas, area: area,
             onRename: onRename,
         )
-        return MenuComposer.compose(object.actions(), groupOrder: PageActionsMenu.groupOrder)
+        return PageActionsMenu.cardLayout.tree(object.actions())
     }
 }
 
