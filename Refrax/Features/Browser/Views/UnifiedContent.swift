@@ -126,7 +126,10 @@ struct UnifiedContentView: View {
                 layoutModeControls(grid: grid, geometry: geometry, frames: frames)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Exactly the proposed size. The zero minimums are load-bearing: with only maximums a
+        // flexible frame is never smaller than its content, and the panes are sized from this
+        // measurement, so the page would keep its largest size and a shrinking window crop it.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         .coordinateSpace(.named(Layout.surfaceSpace))
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onChange(of: session == nil) { _, ended in
