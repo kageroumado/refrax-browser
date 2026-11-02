@@ -44,6 +44,7 @@ struct PageCardPromptControls: View {
 
 /// Save Password: opens the prompt by itself when a login is submitted, and again on click.
 private struct PageCardSavePasswordControl: View {
+    @Environment(WindowState.self) private var windowState
     @State private var popoverController: SavePasswordPopoverController?
 
     var body: some View {
@@ -57,7 +58,11 @@ private struct PageCardSavePasswordControl: View {
         .help("Save password")
         .accessibilityLabel("Save password")
         .focusEffectDisabled()
-        .savePasswordPrompt(controller: $popoverController)
+        // The card stays while the prompt points from it: the pointer going into the prompt
+        // leaves the card, which would otherwise fold and take the prompt's anchor with it.
+        .savePasswordPrompt(controller: $popoverController) { [tabInfo = windowState.controlIsland.tabInfo] presented in
+            tabInfo.isPromptPresented = presented
+        }
     }
 }
 

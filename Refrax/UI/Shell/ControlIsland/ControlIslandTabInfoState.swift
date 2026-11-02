@@ -10,9 +10,12 @@ final class ControlIslandTabInfoState {
     private(set) var isShownBriefly = false
     var isHovered = false
     var isMenuPresented = false
+    /// A prompt the page asked for is open from the card (a login to save). It stays until it
+    /// is answered, so the card it points from stays too; only the prompt clears this.
+    var isPromptPresented = false
 
     var isVisible: Bool {
-        isHeld || isLatched || isShownBriefly || isHovered || isMenuPresented
+        isHeld || isLatched || isShownBriefly || isHovered || isMenuPresented || isPromptPresented
     }
 
     /// How long a briefly shown card waits for the pointer before folding back into the rail.
@@ -41,6 +44,7 @@ final class ControlIslandTabInfoState {
         isShownBriefly = false
     }
 
+    /// Folds the card unless a prompt still points from it.
     func dismiss() {
         isHeld = false
         isLatched = false

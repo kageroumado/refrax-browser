@@ -5,19 +5,24 @@ extension View {
     /// Anchors the save-password prompt to this view: it opens when a save request arrives,
     /// on appear if one is already waiting, and closes when the request is answered.
     ///
-    /// `controller` is the prompt's popover, for a button that toggles it.
-    func savePasswordPrompt(controller: Binding<SavePasswordPopoverController?>) -> some View {
-        modifier(SavePasswordPromptModifier(controller: controller))
+    /// `controller` is the prompt's popover, for a button that toggles it. `onPresentedChange`
+    /// hears the popover open and close, so the view it points from can stay while it is up.
+    func savePasswordPrompt(
+        controller: Binding<SavePasswordPopoverController?>,
+        onPresentedChange: @escaping (Bool) -> Void = { _ in },
+    ) -> some View {
+        modifier(SavePasswordPromptModifier(controller: controller, onPresentedChange: onPresentedChange))
     }
 }
 
 private struct SavePasswordPromptModifier: ViewModifier {
     @Binding var controller: SavePasswordPopoverController?
+    let onPresentedChange: (Bool) -> Void
     @Environment(AutoFillState.self) private var autoFillState
 
     func body(content: Content) -> some View {
         content
-            .background(SavePasswordPopoverAnchor(controller: $controller, autoFillState: autoFillState))
+            .background(SavePasswordPopoverAnchor(controller: $controller, autoFillState: autoFillState, onPresentedChange: onPresentedChange))
             .onAppear {
                 guard autoFillState.pendingSaveRequest != nil else { return }
                 // The anchor creates its controller on the next turn of the run loop.
@@ -32,6 +37,8 @@ private struct SavePasswordPromptModifier: ViewModifier {
                     controller?.hide()
                 }
             }
+            // A popover left behind would point at nothing; the prompt opens again on appear.
+            .onDisappear { controller?.hide() }
     }
 }
 
@@ -41,6 +48,7 @@ private struct SavePasswordPromptModifier: ViewModifier {
 private struct SavePasswordPopoverAnchor: NSViewRepresentable {
     @Binding var controller: SavePasswordPopoverController?
     let autoFillState: AutoFillState
+    let onPresentedChange: (Bool) -> Void
 
     func makeNSView(context _: Context) -> NSView {
         let view = FlippedAnchorView()
@@ -51,8 +59,10 @@ private struct SavePasswordPopoverAnchor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context _: Context) {
         if let controller {
             controller.anchorView = nsView
+            controller.onPresentedChange = onPresentedChange
         } else {
             let newController = SavePasswordPopoverController(anchorView: nsView, autoFillState: autoFillState)
+            newController.onPresentedChange = onPresentedChange
             DispatchQueue.main.async {
                 controller = newController
             }
@@ -74,8 +84,16 @@ private final class FlippedAnchorView: NSView {
 /// It uses `.applicationDefined` behavior, so a click outside leaves it open; it closes only
 /// when the person answers it (Save, Not Now, Never) or the request goes away.
 final class SavePasswordPopoverController: NSObject, NSPopoverDelegate {
-    private var popover: NSPopover?
+    private var popover: NSPopover? {
+        didSet {
+            if (oldValue != nil) != (popover != nil) {
+                onPresentedChange(popover != nil)
+            }
+        }
+    }
     var anchorView: NSView
+    /// Hears the prompt open and close.
+    var onPresentedChange: (Bool) -> Void = { _ in }
 
     private let autoFillState: AutoFillState
 
@@ -123,7 +141,9 @@ final class SavePasswordPopoverController: NSObject, NSPopoverDelegate {
 
     // MARK: - NSPopoverDelegate
 
-    func popoverDidClose(_: Notification) {
+    /// A prompt replaced by a newer one closes after the newer one opened; only the current one clears.
+    func popoverDidClose(_ notification: Notification) {
+        guard notification.object as? NSPopover === popover else { return }
         popover = nil
     }
 }

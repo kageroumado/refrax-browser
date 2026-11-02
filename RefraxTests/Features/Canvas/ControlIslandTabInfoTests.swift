@@ -87,6 +87,26 @@ struct ControlIslandTabInfoTests {
     }
 
     @Test
+    func `an open prompt keeps the card through the pointer leaving, outside clicks, and dismissal`() {
+        let controls = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
+        controls.hitRegions = [CGRect(x: 10, y: 10, width: 48, height: 500), CGRect(x: 66, y: 10, width: 304, height: 136)]
+        controls.tabInfo.showBriefly()
+        controls.tabInfo.isPromptPresented = true
+        controls.tabInfo.foldBriefShow()
+        controls.tabInfo.isHovered = false
+        #expect(controls.tabInfo.isVisible)
+        #expect(controls.isEngaged)
+        controls.dismissIfOutside(CGPoint(x: 800, y: 600))
+        #expect(controls.tabInfo.isVisible)
+        // Another popover from the card opening and closing leaves the prompt's hold alone.
+        controls.tabInfo.isMenuPresented = true
+        controls.tabInfo.isMenuPresented = false
+        #expect(controls.tabInfo.isVisible)
+        controls.tabInfo.isPromptPresented = false
+        #expect(!controls.tabInfo.isVisible)
+    }
+
+    @Test
     func `outside clicks dismiss the card while menu tracking preserves it`() {
         let controls = ControlIslandState(defaults: nil, configuration: .init(defaults: nil))
         controls.hitRegions = [CGRect(x: 10, y: 10, width: 48, height: 500), CGRect(x: 66, y: 10, width: 304, height: 136)]
