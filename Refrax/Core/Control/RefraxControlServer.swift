@@ -2840,6 +2840,10 @@ final class RefraxControlServer {
         client: ClientIdentity?,
     ) async throws -> ControlResponse {
         let (space, pageHost) = try resolveCookieSpace(params)
+        if let domain = params.domain,
+           !ControlCookieAccess.isSpecificDomainFilter(domain, isPublicSuffix: PublicSuffixList.shared.isPublicSuffix) {
+            throw ControlError.invalidParams("--domain must name one site, such as example.com; '\(domain)' spans many")
+        }
         let grant: ControlCookieAccess.Grant
         do {
             grant = try ControlCookieAccess.authorizeRead(reveal: params.reveal ?? false, gate: cookieGate(for: space))

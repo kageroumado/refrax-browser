@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import RefraxProtocol
 
 /// Rules for reading a space's cookie store over the control server.
@@ -55,6 +56,19 @@ nonisolated enum ControlCookieAccess {
     }
 
     // MARK: - Filtering
+
+    /// Whether a `--domain` filter names one site: a registrable domain or a subdomain of one,
+    /// or an IP address. A single label such as `localhost` and a public suffix such as `com`
+    /// or `co.uk` are refused, since they span every site under them.
+    static func isSpecificDomainFilter(_ filter: String, isPublicSuffix: (String) -> Bool) -> Bool {
+        let host = normalizedHost(filter).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard !host.isEmpty else { return false }
+        if IPv4Address(host) != nil || IPv6Address(host) != nil {
+            return true
+        }
+        guard host.contains("."), !isPublicSuffix(host) else { return false }
+        return true
+    }
 
     /// RFC 6265 domain matching against a filter such as `example.com`.
     ///
