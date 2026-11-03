@@ -106,6 +106,22 @@ private final class PromptRecorder {
     }
 }
 
+/// Answers prompts with a decision the test sets, and counts them.
+@MainActor
+private final class ScriptedPrompt {
+    var answer: AuthorizationDecision
+    private(set) var prompts = 0
+
+    init(_ answer: AuthorizationDecision) {
+        self.answer = answer
+    }
+
+    func ask() -> AuthorizationDecision {
+        prompts += 1
+        return answer
+    }
+}
+
 /// A clock the test advances by hand.
 private final class ManualClock: @unchecked Sendable {
     private let lock = NSLock()
@@ -340,6 +356,20 @@ struct ControlPromptGateTests {
         #expect(gate.admit(key: "app", pid: 1, now: now) == .allowed)
         #expect(gate.admit(key: "app", pid: 2, now: now) == .prompt)
     }
+
+    @Test
+    func `Always Allow leaves no session behind, and revoking ends Allow Once`() {
+        var gate = ControlPromptGate()
+        let now = ContinuousClock.now
+
+        _ = gate.admit(key: "app", pid: 1, now: now)
+        gate.record(.alwaysAllow, key: "app", pid: 1, now: now)
+        #expect(gate.admit(key: "app", pid: 1, now: now) == .prompt)
+
+        gate.record(.allowOnce, key: "app", pid: 1, now: now)
+        gate.revoke(key: "app")
+        #expect(gate.admit(key: "app", pid: 1, now: now) == .prompt)
+    }
 }
 
 // MARK: - Access Manager
@@ -450,6 +480,62 @@ struct ControlAccessManagerTests {
         let manager = ControlAccessManager(store: store)
         manager.setMode(.off)
         #expect(store.load()?.mode == .off)
+    }
+
+    @Test
+    func `An always-allowed app is asked again on its next connection after it is removed`() async throws {
+        let manager = ControlAccessManager(store: InMemoryControlAccessStore())
+        let prompt = ScriptedPrompt(.alwaysAllow)
+        manager.onAuthorizationPrompt = { _ in prompt.ask() }
+        let client = identity(host: Self.editor)
+
+        #expect(await manager.authorize(client))
+        #expect(await manager.authorize(client))
+        #expect(prompt.prompts == 1)
+
+        prompt.answer = .deny
+        manager.removeClient(try #require(manager.allowedClients.first))
+
+        #expect(!(await manager.authorize(client)))
+        #expect(prompt.prompts == 2)
+    }
+
+    @Test
+    func `Removing an app also ends an Allow Once held by another of its processes`() async throws {
+        let manager = ControlAccessManager(store: InMemoryControlAccessStore())
+        let prompt = ScriptedPrompt(.allowOnce)
+        manager.onAuthorizationPrompt = { _ in prompt.ask() }
+        let first = identity(host: Self.editor, pid: 500)
+        let second = identity(host: Self.editor, pid: 501)
+
+        #expect(await manager.authorize(first))
+        prompt.answer = .alwaysAllow
+        #expect(await manager.authorize(second))
+        #expect(prompt.prompts == 2)
+
+        prompt.answer = .deny
+        manager.removeClient(try #require(manager.allowedClients.first))
+
+        #expect(!(await manager.authorize(first)))
+        #expect(prompt.prompts == 3)
+    }
+
+    @Test
+    func `Turning the server Off forgets every Allow Once`() async {
+        let manager = ControlAccessManager(store: InMemoryControlAccessStore())
+        let prompt = ScriptedPrompt(.allowOnce)
+        manager.onAuthorizationPrompt = { _ in prompt.ask() }
+        let client = identity(host: Self.editor)
+
+        #expect(await manager.authorize(client))
+        #expect(await manager.authorize(client))
+        #expect(prompt.prompts == 1)
+
+        manager.setMode(.off)
+        manager.setMode(.prompt)
+
+        #expect(await manager.authorize(client))
+        #expect(prompt.prompts == 2)
     }
 }
 

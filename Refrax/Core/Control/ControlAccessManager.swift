@@ -60,14 +60,15 @@ nonisolated struct ControlPromptGate: Sendable {
     static let denialCooldown: Duration = .seconds(60)
 
     private var deniedUntil: [String: ContinuousClock.Instant] = [:]
-    private var allowedSessions: Set<String> = []
+    /// Processes allowed once, by host key.
+    private var allowedSessions: [String: Set<pid_t>] = [:]
     private var pending: Set<String> = []
 
     /// Admits a connection from the host `key`, running as process `pid`.
     ///
     /// A `.prompt` result marks the host pending until ``record(_:key:pid:now:)``.
     mutating func admit(key: String, pid: pid_t, now: ContinuousClock.Instant) -> Admission {
-        if allowedSessions.contains(Self.sessionKey(key, pid)) {
+        if allowedSessions[key]?.contains(pid) == true {
             return .allowed
         }
         if let until = deniedUntil[key] {
@@ -84,23 +85,29 @@ nonisolated struct ControlPromptGate: Sendable {
     }
 
     /// Records the answer to the prompt for `key`.
+    ///
+    /// Always Allow leaves no session behind: the allow list alone admits that host, so
+    /// removing it from the list takes effect on its next connection.
     mutating func record(_ decision: AuthorizationDecision, key: String, pid: pid_t, now: ContinuousClock.Instant) {
         pending.remove(key)
         switch decision {
-        case .allowOnce, .alwaysAllow:
-            allowedSessions.insert(Self.sessionKey(key, pid))
+        case .allowOnce:
+            allowedSessions[key, default: []].insert(pid)
+        case .alwaysAllow:
+            break
         case .deny:
             deniedUntil[key] = now + Self.denialCooldown
         }
     }
 
-    /// Forgets every host allowed once, as when the mode changes.
-    mutating func reset() {
-        self = ControlPromptGate()
+    /// Forgets every process of the host `key` that was allowed once.
+    mutating func revoke(key: String) {
+        allowedSessions[key] = nil
     }
 
-    private static func sessionKey(_ key: String, _ pid: pid_t) -> String {
-        "\(pid)|\(key)"
+    /// Forgets every host allowed once and every recent denial, as when the mode changes.
+    mutating func reset() {
+        self = ControlPromptGate()
     }
 }
 
@@ -203,6 +210,7 @@ final class ControlAccessManager {
 
     // MARK: Settings
 
+    /// Changes the mode. Every change, Off included, forgets the hosts allowed once.
     func setMode(_ newMode: ControlAccessMode) {
         guard newMode != mode else { return }
         mode = newMode
@@ -237,8 +245,11 @@ final class ControlAccessManager {
         return true
     }
 
+    /// Removes an app from the always-allow list, along with any Allow Once it holds, so its
+    /// next connection is asked about again.
     func removeClient(_ client: AllowedClient) {
         allowedClients.removeAll { $0 == client }
+        gate.revoke(key: client.requirement)
         save()
     }
 
