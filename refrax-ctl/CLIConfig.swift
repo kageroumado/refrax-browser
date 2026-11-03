@@ -16,47 +16,22 @@ enum CLIConfig {
     /// Parsed arguments with global flags stripped (for ArgumentParser).
     nonisolated(unsafe) static var remainingArgs: [String] = []
 
-    /// Extracts global flags from the process arguments and stores the
-    /// cleaned argument list for ArgumentParser to process.
+    /// Reads the global flags that precede the subcommand (see ``CLIGlobalFlags``) and
+    /// stores the rest for ArgumentParser.
     static func parseGlobalFlags() {
-        var args = Array(CommandLine.arguments.dropFirst())
+        let flags = CLIGlobalFlags.parse(Array(CommandLine.arguments.dropFirst()))
 
-        // --version (print and exit immediately)
-        if args.contains("--version") {
+        if flags.printVersion {
             let v = ControlProtocolVersion.current.rawValue
             print("refrax-ctl v\(v) (protocol: \(v))")
             _Exit(0)
         }
 
-        // --quiet / -q
-        if let idx = args.firstIndex(of: "--quiet") { args.remove(at: idx); quiet = true }
-        if let idx = args.firstIndex(of: "-q") { args.remove(at: idx); quiet = true }
-
-        // --verbose / -v
-        if let idx = args.firstIndex(of: "--verbose") { args.remove(at: idx); verbose = true }
-        if let idx = args.firstIndex(of: "-v") { args.remove(at: idx); verbose = true }
-
-        // --timeout N
-        if let idx = args.firstIndex(of: "--timeout"), idx + 1 < args.count {
-            timeout = Int(args[idx + 1]) ?? 30
-            args.remove(at: idx + 1)
-            args.remove(at: idx)
-        }
-
-        // --retry N
-        if let idx = args.firstIndex(of: "--retry"), idx + 1 < args.count {
-            retry = Int(args[idx + 1]) ?? 0
-            args.remove(at: idx + 1)
-            args.remove(at: idx)
-        }
-
-        // --retry-delay SECONDS
-        if let idx = args.firstIndex(of: "--retry-delay"), idx + 1 < args.count {
-            retryDelay = Double(args[idx + 1]) ?? 1.0
-            args.remove(at: idx + 1)
-            args.remove(at: idx)
-        }
-
-        remainingArgs = args
+        quiet = flags.quiet
+        verbose = flags.verbose
+        timeout = flags.timeout
+        retry = flags.retry
+        retryDelay = flags.retryDelay
+        remainingArgs = flags.remainingArguments
     }
 }

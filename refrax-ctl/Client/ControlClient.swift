@@ -51,8 +51,21 @@ nonisolated enum ControlClient {
     }
 
     static let maxMessageBytes = 64 * 1_024 * 1_024 // 64MB
-    static var timeoutSec: TimeInterval {
-        TimeInterval(CLIConfig.timeout)
+
+    /// Seconds to wait for the answer to `request`: the global `--timeout`, or longer when the
+    /// request gives the server its own deadline, as `exec --timeout` and `fetch --timeout` do.
+    static func responseTimeout(for request: ControlRequest) -> TimeInterval {
+        let serverDeadline: Int? = switch request {
+        case let .execProgram(params): params.timeout ?? 60
+        case let .fetch(params): params.timeout
+        case let .navigateAndWait(params): params.timeout
+        case let .navigateAndRead(params): params.timeout
+        case let .navigateNewTab(params): params.timeout
+        case let .tabWaitLoaded(params): params.timeout
+        default: nil
+        }
+        let margin = 5
+        return TimeInterval(max(CLIConfig.timeout, (serverDeadline ?? 0) + margin))
     }
 
     /// Sends a request and waits for a response (blocking).
@@ -62,6 +75,7 @@ nonisolated enum ControlClient {
     static func send(_ request: ControlRequest) throws -> ControlResponse {
         let encoder = JSONEncoder()
         let requestData = try encoder.encode(request)
+        let timeout = responseTimeout(for: request)
         let maxAttempts = CLIConfig.retry + 1
 
         var lastError: any Error = ControlClientError.notRunning
@@ -69,7 +83,7 @@ nonisolated enum ControlClient {
 
         for attempt in 1 ... maxAttempts {
             do {
-                let responseData = try sendRaw(requestData)
+                let responseData = try sendRaw(requestData, timeout: timeout)
                 let decoder = JSONDecoder()
                 return try decoder.decode(ControlResponse.self, from: responseData)
             } catch ControlClientError.notRunning where !didAutoLaunch {
@@ -142,7 +156,11 @@ nonisolated enum ControlClient {
     }
 
     /// Low-level: sends raw bytes and returns raw response bytes.
-    static func sendRaw(_ data: Data) throws -> Data {
+    ///
+    /// The request is written only after ``verifyServer(fd:)`` confirms the socket belongs to
+    /// Refrax: a request can carry page text and the answer cookie values, and any process
+    /// running as the user could have bound the socket path.
+    static func sendRaw(_ data: Data, timeout: TimeInterval) throws -> Data {
         // 1. Create socket
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
@@ -185,14 +203,32 @@ nonisolated enum ControlClient {
             }
         }
 
-        // 3. Write request
+        // 3. Check that Refrax is on the other end
+        try verifyServer(fd: fd)
+
+        // 4. Write request
         try writeAll(fd: fd, data: data)
 
-        // 4. Half-close (signal end of request)
+        // 5. Half-close (signal end of request)
         shutdown(fd, SHUT_WR)
 
-        // 5. Read response with timeout
-        return try readAll(fd: fd, maxBytes: maxMessageBytes, timeoutSec: timeoutSec)
+        // 6. Read response with timeout
+        return try readAll(fd: fd, maxBytes: maxMessageBytes, timeoutSec: timeout)
+    }
+
+    /// Confirms the process that owns the socket is ``bundleID``'s app, signed by the team that
+    /// signed this copy of `refrax-ctl`. The kernel names that process by the audit token it
+    /// recorded when the server listened.
+    private static func verifyServer(fd: Int32) throws {
+        guard let teamID = RefraxCodeSigning.ownTeamID else {
+            throw ControlClientError.cliUnsigned
+        }
+        guard let requirement = RefraxCodeSigning.appRequirement(bundleIdentifier: bundleID, teamID: teamID),
+              let peer = SocketPeer(fileDescriptor: fd),
+              peer.satisfies(requirement)
+        else {
+            throw ControlClientError.untrustedServer(teamID: teamID)
+        }
     }
 
     private static func writeAll(fd: Int32, data: Data) throws {
@@ -259,6 +295,8 @@ enum ControlClientError: LocalizedError {
     case readFailed(Int32)
     case timeout
     case responseTooLarge
+    case cliUnsigned
+    case untrustedServer(teamID: String)
 
     var errorDescription: String? {
         switch self {
@@ -268,8 +306,14 @@ enum ControlClientError: LocalizedError {
         case let .connectFailed(e): "Failed to connect: \(String(cString: strerror(e)))"
         case let .writeFailed(e): "Failed to write: \(String(cString: strerror(e)))"
         case let .readFailed(e): "Failed to read: \(String(cString: strerror(e)))"
-        case .timeout: "Request timed out (\(CLIConfig.timeout)s). The operation may still be in progress."
+        case .timeout: "Request timed out. The operation may still be in progress."
         case .responseTooLarge: "Response exceeds maximum size"
+        case .cliUnsigned:
+            "This refrax-ctl is not signed by a developer team, so it cannot verify that the socket belongs to Refrax. "
+                + "Sign refrax-ctl and Refrax with your team."
+        case let .untrustedServer(teamID):
+            "untrusted server: the process listening on \(ControlClient.socketPath) is not \(ControlClient.bundleID) signed by team \(teamID). "
+                + "Quit whatever is listening there and start Refrax."
         }
     }
 
