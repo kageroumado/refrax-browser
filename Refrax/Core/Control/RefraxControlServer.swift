@@ -137,7 +137,7 @@ final class RefraxControlServer {
         case let .scroll(params):
             try await handleScroll(params)
         case let .navigate(params):
-            handleNavigate(params)
+            try handleNavigate(params)
         case let .navigateAndWait(params):
             try await handleNavigateAndWait(params)
         case let .tabList(params):
@@ -402,10 +402,8 @@ final class RefraxControlServer {
         let activeTabID = windowState?.activeTabID
         let activeSpaceID = windowState?.activeSpaceID
 
-        let tabs = browserState.spaces.flatMap { space in
-            space.tabs.map { tab in
-                buildTabInfo(tab, activeTabID: activeTabID)
-            }
+        let tabs = lockGate.visibleTabs(in: browserState.spaces).map { tab in
+            buildTabInfo(tab, activeTabID: activeTabID)
         }
 
         let spaces = browserState.spaces.map { space in
@@ -1081,26 +1079,15 @@ final class RefraxControlServer {
 
     // MARK: - Navigate
 
-    private func handleNavigate(_ params: ControlRequest.NavigateParams) -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
-        }
-
-        do {
-            let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
-            webPage.load(url)
-            return .actionResult(CTL.ActionResultInfo(success: true, message: "Navigating to \(params.url)"))
-        } catch let error as ControlError {
-            return .error(CTL.ErrorInfo(code: error.errorCode, message: error.localizedDescription))
-        } catch {
-            return .error(CTL.ErrorInfo(code: "internal", message: error.localizedDescription))
-        }
+    private func handleNavigate(_ params: ControlRequest.NavigateParams) throws -> ControlResponse {
+        let url = try navigableURL(params.url)
+        let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
+        webPage.load(url)
+        return .actionResult(CTL.ActionResultInfo(success: true, message: "Navigating to \(url.absoluteString)"))
     }
 
     private func handleNavigateAndWait(_ params: ControlRequest.NavigateAndWaitParams) async throws -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
-        }
+        let url = try navigableURL(params.url)
 
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
         webPage.load(url)
@@ -1114,6 +1101,18 @@ final class RefraxControlServer {
         return .actionResult(CTL.ActionResultInfo(success: true, message: "Navigated to \(finalURL)"))
     }
 
+    /// Parses a URL a client asked to open, refusing schemes outside ``ControlURLPolicy``.
+    private func navigableURL(_ string: String) throws(ControlError) -> URL {
+        do {
+            return try ControlURLPolicy.navigableURL(from: string)
+        } catch {
+            switch error {
+            case let .invalid(value): throw .invalidURL(value)
+            case let .scheme(scheme): throw .schemeNotAllowed(scheme)
+            }
+        }
+    }
+
     // MARK: - Tab Operations
 
     private func handleTabList(_ params: ControlRequest.TabListParams) throws -> ControlResponse {
@@ -1124,9 +1123,7 @@ final class RefraxControlServer {
             let space = try resolveSpace(spaceReference)
             tabs = space.tabs.map { buildTabInfo($0, activeTabID: activeTabID) }
         } else {
-            tabs = browserState.spaces.flatMap { space in
-                space.tabs.map { buildTabInfo($0, activeTabID: activeTabID) }
-            }
+            tabs = lockGate.visibleTabs(in: browserState.spaces).map { buildTabInfo($0, activeTabID: activeTabID) }
         }
 
         return .tabs(tabs)
@@ -1139,9 +1136,7 @@ final class RefraxControlServer {
     }
 
     private func handleTabOpen(_ params: ControlRequest.TabOpenParams) throws -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            return .error(CTL.ErrorInfo(code: "invalid_url", message: "Invalid URL: \(params.url)"))
-        }
+        let url = try navigableURL(params.url)
 
         let space: Space? = if let spaceReference = params.spaceID {
             try resolveSpace(spaceReference)
@@ -1183,7 +1178,8 @@ final class RefraxControlServer {
     }
 
     private func handleSpaceSwitch(_ params: ControlRequest.SpaceSwitchParams) throws -> ControlResponse {
-        let space = try resolveSpace(params.id)
+        // A locked space can be switched to; Refrax shows its lock screen until the user unlocks it.
+        let space = try findSpace(params.id)
         guard let windowState = windowManager.activeWindowController?.windowState else {
             return .error(CTL.ErrorInfo(code: "no_window", message: "No active window"))
         }
@@ -1816,7 +1812,7 @@ final class RefraxControlServer {
             let space = try resolveSpace(spaceReference)
             groups = groupManager.groups(in: space, spaceID: space.id)
         } else {
-            groups = browserState.spaces.flatMap { space in
+            groups = browserState.spaces.filter { !lockGate.isLocked($0) }.flatMap { space in
                 groupManager.groups(in: space, spaceID: space.id)
             }
         }
@@ -2899,7 +2895,7 @@ final class RefraxControlServer {
             return try (resolveSpace(spaceReference), nil)
         }
         if let pageID = params.pageID {
-            guard let page = findTabPage(byID: pageID), let space = page.tab?.space else {
+            guard let page = try findTabPage(byID: pageID), let space = page.tab?.space else {
                 throw ControlError.pageNotFound(pageID)
             }
             return (space, page.url.host)
@@ -3182,7 +3178,7 @@ final class RefraxControlServer {
     private func resolveWebPage(tabID: String?, pageID: String?) throws -> WebPage {
         // Direct page resolution takes priority
         if let pageID {
-            guard let tabPage = findTabPage(byID: pageID) else {
+            guard let tabPage = try findTabPage(byID: pageID) else {
                 throw ControlError.pageNotFound(pageID)
             }
             guard let webPage = pagePool.page(for: tabPage) else {
@@ -3220,122 +3216,33 @@ final class RefraxControlServer {
     /// - `"title:..."`: case-insensitive substring match on tab title
     /// - `"url:..."`: case-insensitive substring match on tab URL
     /// - Any other string: fuzzy match against both title and URL
+    ///
+    /// Tabs in locked spaces are left out of every search, and naming one by ID, or the
+    /// active tab when its space is locked, throws ``ControlError/spaceLocked(_:)``.
     private func resolveTabRef(_ ref: String) throws -> Tab {
-        let allTabs = browserState.spaces.flatMap(\.tabs)
-        let activeSpace = windowManager.activeWindowController?.windowState.activeSpace
-        let spaceTabs = activeSpace?.tabs ?? []
-
-        // 1. Special keywords
-        switch ref.lowercased() {
-        case "active":
-            guard let tab = windowManager.activeWindowController?.windowState.activeTab else {
-                throw ControlError.noActiveTab
-            }
-            return tab
-
-        case "first":
-            guard let tab = spaceTabs.first else { throw ControlError.noTabs }
-            return tab
-
-        case "last":
-            guard let tab = spaceTabs.last else { throw ControlError.noTabs }
-            return tab
-
-        case "next":
-            guard let activeTab = windowManager.activeWindowController?.windowState.activeTab else {
-                throw ControlError.noActiveTab
-            }
-            guard let idx = spaceTabs.firstIndex(where: { $0.id == activeTab.id }),
-                  idx + 1 < spaceTabs.count
-            else {
-                throw ControlError.tabNotFound("next (no tab after active)")
-            }
-            return spaceTabs[idx + 1]
-
-        case "prev", "previous":
-            guard let activeTab = windowManager.activeWindowController?.windowState.activeTab else {
-                throw ControlError.noActiveTab
-            }
-            guard let idx = spaceTabs.firstIndex(where: { $0.id == activeTab.id }),
-                  idx > 0
-            else {
-                throw ControlError.tabNotFound("previous (no tab before active)")
-            }
-            return spaceTabs[idx - 1]
-
-        default:
-            break
-        }
-
-        // 2. UUID match (exact)
-        if let tab = allTabs.first(where: { ref == "\($0.id)" }) {
-            return tab
-        }
-
-        // 3. A prefix of the id, as the CLI prints ids; four characters or more, so a
-        // short number still reads as an index
-        if ref.count >= 4, ref.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
-            let prefix = ref.lowercased()
-            let byID = allTabs.filter { $0.id.uuidString.lowercased().hasPrefix(prefix) }
-            if !byID.isEmpty {
-                return try uniqueMatch(byID, ref: ref)
-            }
-        }
-
-        // 4. 1-based index in current space
-        if let index = Int(ref) {
-            let zeroIndex = index - 1
-            guard zeroIndex >= 0, zeroIndex < spaceTabs.count else {
-                throw ControlError.tabNotFound("\(ref) (index out of range, space has \(spaceTabs.count) tabs)")
-            }
-            return spaceTabs[zeroIndex]
-        }
-
-        // 5. Prefix-based matching
-        if ref.lowercased().hasPrefix("title:") {
-            let query = String(ref.dropFirst(6))
-            let matches = allTabs.filter { $0.activePage.title.localizedCaseInsensitiveContains(query) }
-            return try uniqueMatch(matches, ref: ref)
-        }
-
-        if ref.lowercased().hasPrefix("url:") {
-            let query = String(ref.dropFirst(4))
-            let matches = allTabs.filter { $0.activePage.url.absoluteString.localizedCaseInsensitiveContains(query) }
-            return try uniqueMatch(matches, ref: ref)
-        }
-
-        // 6. Fuzzy match on title or URL
-        let matches = allTabs.filter {
-            $0.activePage.title.localizedCaseInsensitiveContains(ref) ||
-                $0.activePage.url.absoluteString.localizedCaseInsensitiveContains(ref)
-        }
-        return try uniqueMatch(matches, ref: ref)
+        let windowState = windowManager.activeWindowController?.windowState
+        return try ControlTabResolver(
+            allTabs: browserState.spaces.flatMap(\.tabs),
+            spaceTabs: windowState?.activeSpace?.tabs ?? [],
+            activeTab: windowState?.activeTab,
+            gate: lockGate,
+        ).resolve(ref)
     }
 
-    /// Returns the single match or throws an appropriate error.
-    private func uniqueMatch(_ matches: [Tab], ref: String) throws -> Tab {
-        if matches.count == 1 {
-            return matches[0]
-        }
-        if matches.isEmpty {
-            throw ControlError.tabNotFound(ref)
-        }
-        throw ControlError.ambiguousTabRef(
-            ref: ref,
-            matches: matches.map { (id: "\($0.id)", title: $0.activePage.title, url: $0.activePage.url.absoluteString) },
-        )
-    }
-
-    /// Legacy compatibility — wraps resolveTabRef for simple ID lookups.
-    private func findTab(byID stringID: String) -> Tab? {
-        try? resolveTabRef(stringID)
+    /// Keeps clients out of spaces that are locked and not unlocked.
+    private var lockGate: ControlLockGate {
+        let lockManager = browserState.spaceLockManager
+        return ControlLockGate { lockManager.requiresAuth(for: $0) }
     }
 
     /// Finds a tab page by its string ID representation across all tabs in all spaces.
-    private func findTabPage(byID stringID: String) -> TabPage? {
+    ///
+    /// - Throws: ``ControlError/spaceLocked(_:)`` when the page's space is locked.
+    private func findTabPage(byID stringID: String) throws(ControlError) -> TabPage? {
         for space in browserState.spaces {
             for tab in space.tabs {
                 if let page = tab.pages.first(where: { stringID == "\($0.id)" }) {
+                    try lockGate.ensureUnlocked(space)
                     return page
                 }
             }
@@ -3343,8 +3250,16 @@ final class RefraxControlServer {
         return nil
     }
 
-    /// Resolves a space from a UUID or a name. See ``SpaceManager/findSpace(byReference:)``.
+    /// Resolves a space a client acts on from a UUID or a name, refusing a locked one.
     private func resolveSpace(_ reference: String) throws(ControlError) -> Space {
+        let space = try findSpace(reference)
+        try lockGate.ensureUnlocked(space)
+        return space
+    }
+
+    /// Finds a space from a UUID or a name, locked or not. See
+    /// ``SpaceManager/findSpace(byReference:)``.
+    private func findSpace(_ reference: String) throws(ControlError) -> Space {
         do {
             return try spaceManager.findSpace(byReference: reference)
         } catch {
@@ -3360,7 +3275,7 @@ final class RefraxControlServer {
     /// Finds a tab group by its string ID representation across all spaces.
     private func findGroup(byID stringID: String) -> TabGroup? {
         guard let uuid = UUID(uuidString: stringID) else { return nil }
-        for space in browserState.spaces {
+        for space in browserState.spaces where !lockGate.isLocked(space) {
             let groups = groupManager.groups(in: space, spaceID: space.id)
             if let group = groups.first(where: { $0.id == uuid }) {
                 return group
@@ -3389,7 +3304,7 @@ final class RefraxControlServer {
     /// the page identity without requiring an active web page.
     private func resolveTabPage(tabID: String?, pageID: String?) throws -> TabPage {
         if let pageID {
-            guard let tabPage = findTabPage(byID: pageID) else {
+            guard let tabPage = try findTabPage(byID: pageID) else {
                 throw ControlError.pageNotFound(pageID)
             }
             return tabPage
@@ -3410,13 +3325,7 @@ final class RefraxControlServer {
 
     /// Resolves a ``Tab`` from an optional tab ref string, falling back to the active tab.
     private func resolveTab(tabID: String?) throws -> Tab {
-        if let tabIDString = tabID {
-            return try resolveTabRef(tabIDString)
-        }
-        guard let tab = windowManager.activeWindowController?.windowState.activeTab else {
-            throw ControlError.noActiveTab
-        }
-        return tab
+        try resolveTabRef(tabID ?? "active")
     }
 
     /// Parses a color string (palette name, hex, or system name) into a SwiftUI Color.
@@ -3530,9 +3439,7 @@ final class RefraxControlServer {
 
 extension RefraxControlServer {
     private func handleNavigateAndRead(_ params: ControlRequest.NavigateAndReadParams) async throws -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            throw ControlError.invalidURL(params.url)
-        }
+        let url = try navigableURL(params.url)
 
         let webPage = try resolveWebPage(tabID: params.tabID, pageID: params.pageID)
         webPage.load(url)
@@ -3717,9 +3624,7 @@ extension RefraxControlServer {
     // MARK: - Headless Fetch
 
     private func handleFetch(_ params: ControlRequest.FetchParams) async throws -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            throw ControlError.invalidURL(params.url)
-        }
+        let url = try navigableURL(params.url)
 
         let timeout = params.timeout ?? 30
         let scope = params.scope ?? .viewport
@@ -3744,9 +3649,7 @@ extension RefraxControlServer {
     }
 
     private func handleNavigateNewTab(_ params: ControlRequest.NavigateNewTabParams) async throws -> ControlResponse {
-        guard let url = URL(string: params.url) else {
-            throw ControlError.invalidURL(params.url)
-        }
+        let url = try navigableURL(params.url)
 
         let space: Space? = if let spaceReference = params.spaceID {
             try resolveSpace(spaceReference)
@@ -4009,6 +3912,7 @@ extension RefraxControlServer {
         case spaceNotFound(String)
         case ambiguousSpace(ref: String, candidateIDs: [String])
         case spaceLocked(String)
+        case schemeNotAllowed(String)
         case cookiesNotExposed(String)
         case cookiesMissing(names: [String], space: String)
 
@@ -4039,6 +3943,8 @@ extension RefraxControlServer {
                 "'\(ref)' matches \(candidateIDs.count) spaces. Use an ID:\n" +
                     candidateIDs.map { "  \($0)" }.joined(separator: "\n")
             case let .spaceLocked(name): "Space '\(name)' is locked. Unlock it in Refrax first."
+            case let .schemeNotAllowed(scheme):
+                "refrax-ctl opens only http, https and about URLs, not \(scheme):"
             case let .cookiesNotExposed(name):
                 "Space '\(name)' does not allow command-line tools to read its cookies. " +
                     "Turn it on in the space's settings in Refrax."
@@ -4066,6 +3972,7 @@ extension RefraxControlServer {
             case .spaceNotFound: "not_found"
             case .ambiguousSpace: "ambiguous"
             case .spaceLocked: "space_locked"
+            case .schemeNotAllowed: "scheme_not_allowed"
             case .cookiesNotExposed: "cookies_not_exposed"
             case .cookiesMissing: "not_found"
             }
