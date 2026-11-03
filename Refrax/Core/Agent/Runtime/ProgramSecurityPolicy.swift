@@ -130,7 +130,7 @@ nonisolated enum ProgramSecurityAnalyzer {
         guard let url = URL(string: urlString), let host = url.host else { return }
 
         if let blockedDomains = policy.blockedDomains {
-            if blockedDomains.contains(where: { host.hasSuffix($0) }) {
+            if blockedDomains.contains(where: { host.isHost(inDomain: $0) }) {
                 violations.append(SecurityViolation(
                     kind: .blockedDomain,
                     message: "Domain '\(host)' is blocked by policy",
@@ -140,7 +140,7 @@ nonisolated enum ProgramSecurityAnalyzer {
         }
 
         if let allowedDomains = policy.allowedDomains {
-            if !allowedDomains.contains(where: { host.hasSuffix($0) }) {
+            if !allowedDomains.contains(where: { host.isHost(inDomain: $0) }) {
                 violations.append(SecurityViolation(
                     kind: .domainNotAllowed,
                     message: "Domain '\(host)' is not in the allowed domain list",

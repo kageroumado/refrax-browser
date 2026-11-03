@@ -16,13 +16,19 @@ struct ExecCommand: AsyncParsableCommand {
         If the program uses `request_human`, execution pauses and you'll be \
         prompted to press Enter after performing the requested action.
         
+        Programs run under the default security policy: 10 navigations, 50 \
+        interactions, 20 page reads, 60 seconds, no `page_exec`, and a \
+        confirmation before filling a sensitive field. --permissive raises \
+        the limits and allows JavaScript and sensitive fields; use it only \
+        for programs you wrote or read.
+        
         Examples:
           refrax-ctl exec 'emit "hello"'
           refrax-ctl exec --file program.txt
           echo 'emit "hello"' | refrax-ctl exec
           refrax-ctl exec --verbose --file workflow.txt
           refrax-ctl exec --dry-run --file workflow.txt
-          refrax-ctl exec --timeout 120 --file long-task.txt
+          refrax-ctl exec --permissive --timeout 120 --file long-task.txt
         """,
     )
 
@@ -38,8 +44,11 @@ struct ExecCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Validate program without executing")
     var dryRun = false
 
-    @Option(name: .long, help: "Maximum execution time in seconds")
+    @Option(name: .long, help: "Maximum execution time in seconds, capped by the policy (60, or 300 with --permissive)")
     var timeout: Int = 60
+
+    @Flag(name: .long, help: "Run under the permissive policy: higher limits, page_exec, and sensitive fields allowed")
+    var permissive = false
 
     @Option(name: .long, help: "Tab ref (ID, index, title, URL, active/first/last/next/prev)")
     var tab: String?
@@ -83,6 +92,7 @@ struct ExecCommand: AsyncParsableCommand {
             dryRun: dryRun,
             tabID: tab,
             pageID: page,
+            policy: permissive ? .permissive : nil,
         )))
 
         while case let .humanRequested(info) = response {

@@ -31,6 +31,17 @@ extension String {
 
         return result
     }
+
+    /// Whether this host is `domain` or one of its subdomains, matched on label boundaries:
+    /// `www.example.com` is in `example.com`, `notexample.com` is not. Case and leading or
+    /// trailing dots are ignored; an empty domain contains nothing.
+    nonisolated func isHost(inDomain domain: String) -> Bool {
+        let dots = CharacterSet(charactersIn: ".")
+        let host = lowercased().trimmingCharacters(in: dots)
+        let domain = domain.lowercased().trimmingCharacters(in: dots)
+        guard !host.isEmpty, !domain.isEmpty else { return false }
+        return host == domain || host.hasSuffix("." + domain)
+    }
 }
 
 /// Quote style for JavaScript string escaping.

@@ -10,7 +10,8 @@ refrax-ctl exec --file program.txt                    # From file
 echo 'emit "hello"' | refrax-ctl exec                # From stdin
 refrax-ctl exec --verbose --file workflow.txt         # Show all steps
 refrax-ctl exec --dry-run --file workflow.txt         # Validate without executing
-refrax-ctl exec --timeout 120 --file long-task.txt   # Custom timeout (default: 60s)
+refrax-ctl exec --timeout 45 --file task.txt         # Custom timeout (default and cap: 60s)
+refrax-ctl exec --permissive --file trusted.txt       # Permissive policy: page_exec, higher limits, 300s cap
 ```
 
 ## Variables
@@ -127,7 +128,7 @@ Suspends the interpreter and asks the human for help. Shows a UI banner ("Agent 
 Blocked by default security policy:
 
 ```
-page_exec "script"                               # Execute JS on page
+page_exec "script"                               # Execute JS on page (needs exec --permissive)
 ```
 
 ### Output

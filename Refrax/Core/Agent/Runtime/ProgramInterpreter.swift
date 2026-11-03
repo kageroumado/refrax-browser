@@ -60,7 +60,7 @@ final class ProgramInterpreter {
     ///   - dryRun: If true, count steps without executing.
     ///   - tabID: Default tab ID for commands.
     ///   - pageID: Default page ID for commands.
-    ///   - policy: Security policy to enforce. nil defaults to `.permissive`.
+    ///   - policy: Security policy to enforce. See ``effectivePolicy(_:)``.
     /// - Returns: Execution result with output, success status, and step counts.
     func execute(
         program: String,
@@ -71,7 +71,7 @@ final class ProgramInterpreter {
         pageID: String? = nil,
         policy: ProgramSecurityPolicy? = nil,
     ) async -> CTL.ExecResultInfo {
-        let effectivePolicy = policy ?? .permissive
+        let effectivePolicy = Self.effectivePolicy(policy)
         self.policy = effectivePolicy
         variables = [:]
         output = []
@@ -1423,18 +1423,24 @@ final class ProgramInterpreter {
         }
     }
 
+    /// The policy a program runs under: the one its client asked for, else the restrictive
+    /// default. A client asks for ``ProgramSecurityPolicy/permissive`` with `exec --permissive`.
+    nonisolated static func effectivePolicy(_ requested: ProgramSecurityPolicy?) -> ProgramSecurityPolicy {
+        requested ?? .default
+    }
+
     /// Checks a URL string against the policy's domain allow/block lists.
     private func checkDomainPolicy(urlString: String) throws {
         guard let url = URL(string: urlString), let host = url.host else { return }
 
         if let blockedDomains = policy.blockedDomains {
-            if blockedDomains.contains(where: { host.hasSuffix($0) }) {
+            if blockedDomains.contains(where: { host.isHost(inDomain: $0) }) {
                 throw ProgramError("Security policy: domain '\(host)' is blocked")
             }
         }
 
         if let allowedDomains = policy.allowedDomains {
-            if !allowedDomains.contains(where: { host.hasSuffix($0) }) {
+            if !allowedDomains.contains(where: { host.isHost(inDomain: $0) }) {
                 throw ProgramError("Security policy: domain '\(host)' is not in the allowed list")
             }
         }
