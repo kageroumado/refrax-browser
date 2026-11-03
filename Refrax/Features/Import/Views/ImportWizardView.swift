@@ -6,7 +6,7 @@ import SwiftUI
 /// The wizard guides users through:
 /// 1. Selecting a source browser
 /// 2. Selecting a profile (if multiple exist)
-/// 3. Selecting data types to import (bookmarks, history, passwords, extensions)
+/// 3. Selecting data types to import (spaces, bookmarks, history, passwords, extensions)
 /// 4. Configuring import options (e.g., history date range)
 /// 5. Viewing progress
 /// 6. Resolving credential conflicts
@@ -330,7 +330,7 @@ final class ImportWizardViewModel {
 
     /// Proceeds from data type selection to options or import.
     func proceedFromDataTypeSelection() {
-        if importOptions.importHistory {
+        if importOptions.includes(.history) {
             if let safariExport = safariExportContents, let historyURL = safariExport.historyURL {
                 loadSafariExportHistoryDateRange(historyURL: historyURL)
             } else if let browser = selectedBrowser, let profile = selectedProfile {

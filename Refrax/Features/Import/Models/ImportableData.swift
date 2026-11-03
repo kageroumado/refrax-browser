@@ -242,6 +242,9 @@ struct ImportedExtension: Identifiable, Sendable, Equatable {
 ///
 /// Contains statistics for each data type imported and any errors encountered.
 struct ComprehensiveImportResult: Sendable, Equatable {
+    // Spaces
+    var spaces = SpaceImportResult()
+
     // Bookmarks
     var bookmarksImported: Int = 0
     var foldersCreated: Int = 0
@@ -271,6 +274,53 @@ struct ComprehensiveImportResult: Sendable, Equatable {
             foldersCreated: foldersCreated,
             duplicatesSkipped: bookmarkDuplicatesSkipped,
             failedBookmarks: failedBookmarks,
+        )
+    }
+}
+
+// MARK: - Space Import Result
+
+/// What an import of another browser's spaces made, and what it found already there.
+struct SpaceImportResult: Sendable, Equatable {
+    /// Spaces made by the import.
+    var spacesCreated = 0
+
+    /// Spaces an earlier import made, or of the same name, that the import added to.
+    var spacesMerged = 0
+
+    /// Islands (root tab groups) made by the import.
+    var islandsCreated = 0
+
+    /// Sections (nested tab groups) made by the import.
+    var sectionsCreated = 0
+
+    /// Tabs made by the import.
+    var tabsImported = 0
+
+    /// Tabs left out because their space already had the address.
+    var tabsSkipped = 0
+
+    /// Favorites made by the import.
+    var favoritesImported = 0
+
+    /// Favorites left out because they were favorites already or the favorites were full.
+    var favoritesSkipped = 0
+
+    /// Whether the import found any space.
+    var hasSpaces: Bool {
+        spacesCreated + spacesMerged > 0
+    }
+
+    static func + (lhs: Self, rhs: Self) -> Self {
+        Self(
+            spacesCreated: lhs.spacesCreated + rhs.spacesCreated,
+            spacesMerged: lhs.spacesMerged + rhs.spacesMerged,
+            islandsCreated: lhs.islandsCreated + rhs.islandsCreated,
+            sectionsCreated: lhs.sectionsCreated + rhs.sectionsCreated,
+            tabsImported: lhs.tabsImported + rhs.tabsImported,
+            tabsSkipped: lhs.tabsSkipped + rhs.tabsSkipped,
+            favoritesImported: lhs.favoritesImported + rhs.favoritesImported,
+            favoritesSkipped: lhs.favoritesSkipped + rhs.favoritesSkipped,
         )
     }
 }

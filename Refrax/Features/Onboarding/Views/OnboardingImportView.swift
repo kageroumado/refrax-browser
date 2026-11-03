@@ -10,6 +10,9 @@ import SwiftUI
 ///
 /// Only browsers with detectable profiles (actual data on disk)
 /// are shown — Launch Services registration alone is not sufficient.
+///
+/// When Arc's sidebar is on disk, the screen leads with a single step that brings its
+/// spaces over as Refrax spaces and islands (``ArcSpaceImporter``).
 struct OnboardingImportView: View {
     let onCompleted: () -> Void
 
@@ -19,6 +22,7 @@ struct OnboardingImportView: View {
 
     @State private var phase: Phase = .selection
     @State private var installedBrowsers: [ThirdPartyBrowser] = []
+    @State private var arcProfile: BrowserProfile?
     @State private var expandedBrowsers: Set<ThirdPartyBrowser> = []
     @State private var browserProfiles: [ThirdPartyBrowser: BrowserProfile] = [:]
     @State private var browserOptions: [ThirdPartyBrowser: ImportOptions] = [:]
@@ -46,6 +50,9 @@ struct OnboardingImportView: View {
         }
         .onAppear {
             installedBrowsers = BrowserDetector.detectInstalledBrowsers()
+            arcProfile = installedBrowsers.contains(.arc)
+                ? BrowserDetector.detectProfiles(for: .arc).first { ArcSidebar.sidebarFile(for: $0) != nil }
+                : nil
         }
     }
 }
@@ -74,6 +81,10 @@ private extension OnboardingImportView {
                             .multilineTextAlignment(.center)
                     }
 
+                    if let arcProfile {
+                        arcSpacesCard(arcProfile)
+                    }
+
                     if installedBrowsers.isEmpty {
                         Text("No other browsers detected.")
                             .font(.subheadline)
@@ -94,6 +105,41 @@ private extension OnboardingImportView {
                 .padding(.horizontal, 40)
                 .padding(.vertical, 16)
         }
+    }
+
+    /// The one-step Arc import: its spaces, folders, pinned tabs, and favorites.
+    func arcSpacesCard(_ profile: BrowserProfile) -> some View {
+        HStack(spacing: 12) {
+            if let icon = ThirdPartyBrowser.arc.iconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 36, height: 36)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bring your Arc spaces")
+                    .font(.body)
+                    .fontWeight(.medium)
+
+                Text("Spaces, folders, pinned tabs, and favorites become Refrax spaces and islands.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Bring Spaces") {
+                bringArcSpaces(from: profile)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.appAccentColor.opacity(0.08))
+        )
     }
 
     var browserList: some View {
@@ -196,6 +242,7 @@ private extension OnboardingImportView {
             get: {
                 let options = browserOptions[browser] ?? ImportOptions()
                 switch dataType {
+                case .spaces: return options.importSpaces
                 case .bookmarks: return options.importBookmarks
                 case .history: return options.importHistory
                 case .passwords: return options.importPasswords
@@ -205,6 +252,7 @@ private extension OnboardingImportView {
             set: { newValue in
                 var options = browserOptions[browser] ?? ImportOptions()
                 switch dataType {
+                case .spaces: options.importSpaces = newValue
                 case .bookmarks: options.importBookmarks = newValue
                 case .history: options.importHistory = newValue
                 case .passwords: options.importPasswords = newValue
@@ -356,6 +404,21 @@ private extension OnboardingImportView {
 
     var resultStats: some View {
         VStack(spacing: 10) {
+            if importResult.spaces.hasSpaces {
+                let spaces = importResult.spaces
+                statRow(
+                    icon: ImportDataType.spaces.iconName,
+                    color: .indigo,
+                    text: "\(spaces.spacesCreated + spaces.spacesMerged) spaces with \(spaces.tabsImported) tabs in \(spaces.islandsCreated) islands"
+                )
+                if spaces.favoritesImported > 0 {
+                    statRow(
+                        icon: "star.fill",
+                        color: .yellow,
+                        text: "\(spaces.favoritesImported) favorites imported"
+                    )
+                }
+            }
             if importResult.bookmarksImported > 0 || importResult.foldersCreated > 0 {
                 statRow(
                     icon: "bookmark.fill",
@@ -436,6 +499,7 @@ private extension OnboardingImportView {
 
         if browserOptions[browser] == nil {
             var options = ImportOptions()
+            options.importSpaces = false
             options.importBookmarks = false
             options.importHistory = false
             options.importPasswords = false
@@ -457,11 +521,34 @@ private extension OnboardingImportView {
     }
 
     func startImport() {
-        let browsersToImport = expandedBrowsers.filter { browser in
-            guard let options = browserOptions[browser], options.hasSelection else { return false }
-            return browserProfiles[browser] != nil
+        let jobs = expandedBrowsers.compactMap { browser -> ImportJob? in
+            guard let options = browserOptions[browser], options.hasSelection,
+                  let profile = browserProfiles[browser]
+            else { return nil }
+            return ImportJob(browser: browser, profile: profile, options: options)
         }
-        guard !browsersToImport.isEmpty else { return }
+        run(jobs)
+    }
+
+    /// Imports Arc's spaces and nothing else.
+    func bringArcSpaces(from profile: BrowserProfile) {
+        var options = ImportOptions()
+        options.importBookmarks = false
+        options.importHistory = false
+        options.importPasswords = false
+        options.importExtensions = false
+        options.availableDataTypes = ThirdPartyBrowser.arc.supportedImportTypes
+        run([ImportJob(browser: .arc, profile: profile, options: options)])
+    }
+
+    struct ImportJob {
+        let browser: ThirdPartyBrowser
+        let profile: BrowserProfile
+        let options: ImportOptions
+    }
+
+    func run(_ jobs: [ImportJob]) {
+        guard !jobs.isEmpty else { return }
 
         withAnimation(.easeInOut(duration: 0.3)) {
             phase = .importing
@@ -471,14 +558,12 @@ private extension OnboardingImportView {
         progressMessage = "Preparing import..."
 
         Task {
-            let totalBrowsers = Double(browsersToImport.count)
+            let totalBrowsers = Double(jobs.count)
             var combinedResult = ComprehensiveImportResult()
             var lastError: ImportError?
 
-            for (index, browser) in browsersToImport.enumerated() {
-                guard let profile = browserProfiles[browser],
-                      let options = browserOptions[browser]
-                else { continue }
+            for (index, job) in jobs.enumerated() {
+                let browser = job.browser
 
                 let baseProgress = Double(index) / totalBrowsers
                 let browserWeight = 1.0 / totalBrowsers
@@ -487,8 +572,8 @@ private extension OnboardingImportView {
 
                 let importer = ComprehensiveImporter(
                     browser: browser,
-                    profile: profile,
-                    options: options,
+                    profile: job.profile,
+                    options: job.options,
                     bookmarksManager: bookmarksManager,
                     passwordsManager: passwordsManager,
                     modelContainer: modelContext.container
@@ -499,6 +584,7 @@ private extension OnboardingImportView {
                     self.progressMessage = "\(browser.displayName): \(message)"
                 }
 
+                combinedResult.spaces = combinedResult.spaces + result.result.spaces
                 combinedResult.bookmarksImported += result.result.bookmarksImported
                 combinedResult.foldersCreated += result.result.foldersCreated
                 combinedResult.historyEntriesImported += result.result.historyEntriesImported

@@ -127,6 +127,12 @@ final class Space {
     /// Retained in the SwiftData schema so existing stores can open with their saved fields.
     var tableLayoutData: Data?
 
+    // MARK: - Import
+
+    /// The identifier of the space in another browser that an import made this one from (an
+    /// Arc space's `id`), so importing again adds to this space instead of making another.
+    var importedSourceID: String?
+
     /// Whether control-server clients may read this space's HttpOnly cookies and cookie values.
     ///
     /// A shared-store (`.global`) space never does: its store is the one every other shared

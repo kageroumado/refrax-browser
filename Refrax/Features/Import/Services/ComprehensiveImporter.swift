@@ -4,6 +4,7 @@ import SwiftData
 /// Service that orchestrates comprehensive data import from external browsers.
 ///
 /// This service handles the async import pipeline for all supported data types:
+/// - Spaces (Arc's spaces, folders, and tabs as spaces and islands; see ``ArcSpaceImporter``)
 /// - Bookmarks (with folder hierarchy and duplicate detection)
 /// - History (with date range filtering)
 /// - Passwords (with conflict detection)
@@ -171,8 +172,18 @@ final class ComprehensiveImporter: Sendable {
         var completedSteps = 0
 
         do {
+            if options.includes(.spaces) {
+                progressReporter(
+                    Double(completedSteps) / Double(totalSteps),
+                    "Importing spaces...",
+                )
+                comprehensiveResult.spaces = try await importSpaces()
+                completedSteps += 1
+                progressReporter(Double(completedSteps) / Double(totalSteps), "Spaces imported")
+            }
+
             // Import bookmarks
-            if options.importBookmarks {
+            if options.includes(.bookmarks) {
                 progressReporter(
                     Double(completedSteps) / Double(totalSteps),
                     "Importing bookmarks...",
@@ -192,7 +203,7 @@ final class ComprehensiveImporter: Sendable {
             }
 
             // Import history
-            if options.importHistory {
+            if options.includes(.history) {
                 progressReporter(
                     Double(completedSteps) / Double(totalSteps),
                     "Importing history...",
@@ -204,7 +215,7 @@ final class ComprehensiveImporter: Sendable {
             }
 
             // Import passwords
-            if options.importPasswords {
+            if options.includes(.passwords) {
                 progressReporter(
                     Double(completedSteps) / Double(totalSteps),
                     "Importing passwords...",
@@ -217,7 +228,7 @@ final class ComprehensiveImporter: Sendable {
             }
 
             // Scan extensions
-            if options.importExtensions {
+            if options.includes(.extensions) {
                 progressReporter(
                     Double(completedSteps) / Double(totalSteps),
                     "Scanning extensions...",
@@ -247,12 +258,19 @@ final class ComprehensiveImporter: Sendable {
     // MARK: - Import Type Count
 
     private func countSelectedImportTypes() -> Int {
-        var count = 0
-        if options.importBookmarks { count += 1 }
-        if options.importHistory { count += 1 }
-        if options.importPasswords { count += 1 }
-        if options.importExtensions { count += 1 }
-        return max(1, count)
+        max(1, options.selectedDataTypes.count)
+    }
+}
+
+// MARK: - Space Import
+
+private extension ComprehensiveImporter {
+    func importSpaces() async throws -> SpaceImportResult {
+        guard browser == .arc, let profile else {
+            throw ImportError.unsupportedFormat
+        }
+        let sidebar = try await ArcSidebar.load(from: profile)
+        return ArcSpaceImporter(tabManager: bookmarksManager.tabManager).importSidebar(sidebar)
     }
 }
 

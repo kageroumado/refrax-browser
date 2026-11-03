@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 /// View for selecting which data types to import from the browser.
 ///
-/// Displays checkboxes for each available data type (bookmarks, history, passwords,
+/// Displays checkboxes for each available data type (spaces, bookmarks, history, passwords,
 /// extensions) with descriptions of what will be imported.
 struct DataTypeSelectionView: View {
     @Bindable var viewModel: ImportWizardViewModel
@@ -76,6 +76,8 @@ private extension DataTypeSelectionView {
 
     func binding(for dataType: ImportDataType) -> Binding<Bool> {
         switch dataType {
+        case .spaces:
+            $viewModel.importOptions.importSpaces
         case .bookmarks:
             $viewModel.importOptions.importBookmarks
         case .history:

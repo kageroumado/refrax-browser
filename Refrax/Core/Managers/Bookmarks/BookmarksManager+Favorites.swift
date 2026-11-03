@@ -13,7 +13,9 @@ extension BookmarksManager {
     /// - Parameters:
     ///   - bookmark: Bookmark to favorite
     ///   - mode: Favorite mode (default: .liveFavorite)
-    func addToFavorites(_ bookmark: Bookmark, mode: FavoriteMode = .liveFavorite) {
+    ///   - loadImmediately: Whether a live favorite starts loading now. Imports pass `false`, so
+    ///     the page loads when the favorite is first shown.
+    func addToFavorites(_ bookmark: Bookmark, mode: FavoriteMode = .liveFavorite, loadImmediately: Bool = true) {
         guard !bookmark.isFavorite else { return }
 
         bookmark.isFavorite = true
@@ -21,7 +23,7 @@ extension BookmarksManager {
         bookmark.favoritePosition = calculateNextFavoritePosition()
 
         if mode == .liveFavorite {
-            createLiveFavoriteTab(for: bookmark)
+            createLiveFavoriteTab(for: bookmark, loadImmediately: loadImmediately)
         }
 
         // Load favicon for shortcuts only if missing.
