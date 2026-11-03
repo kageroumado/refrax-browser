@@ -90,16 +90,6 @@ enum PageContentExtractor {
         return tree
     }
 
-    /// Extracts content, bypassing the cache.
-    static func extractFresh(
-        from webView: WKWebView,
-        url: URL,
-        title: String,
-    ) async throws -> PageContentTree {
-        clearCache(for: url)
-        return try await extract(from: webView, url: url, title: title)
-    }
-
     /// Clears cache for a specific URL.
     static func clearCache(for url: URL) {
         cache.removeValue(forKey: url.absoluteString)

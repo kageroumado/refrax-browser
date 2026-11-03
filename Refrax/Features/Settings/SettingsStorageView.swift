@@ -52,7 +52,7 @@ struct StorageSettingsView: View {
                 Task { await performTieredClear(.allWebsiteData) }
             }
         } message: {
-            Text("Removes all website data (caches, cookies, local storage), offline content, logs, and agent conversations. This cannot be undone.")
+            Text("Removes all website data (caches, cookies, local storage), offline content, and logs. This cannot be undone.")
         }
         .alert("Erase All Content and Settings", isPresented: $showFullResetAlert) {
             Button("Cancel", role: .cancel) {}
@@ -133,7 +133,7 @@ struct StorageSettingsView: View {
                 highlightID: "storage.clearAllData"
             )
         } footer: {
-            Text("Removes all website data, offline content, logs, and agent conversations. Does not delete bookmarks, tabs, history, settings, or extensions.")
+            Text("Removes all website data, offline content, and logs. Does not delete bookmarks, tabs, history, settings, or extensions.")
         }
     }
 
@@ -261,20 +261,6 @@ struct StorageSettingsView: View {
                 clearAction: nil
             ))
 
-            let conversationsSize = Self.directorySize(
-                Directories.appStorage
-                    .appendingPathComponent("agent")
-                    .appendingPathComponent("conversations")
-            )
-            results.append(StorageItem(
-                id: "conversations",
-                name: "Agent Conversations",
-                detail: "Saved AI conversation history",
-                icon: "bubble.left.and.bubble.right",
-                size: conversationsSize,
-                clearAction: { await Self.clearDirectory("agent/conversations") }
-            ))
-
             let dbSize = Self.fileSize(
                 Directories.appStorage.appendingPathComponent("default.store")
             )
@@ -390,7 +376,6 @@ struct StorageSettingsView: View {
         // App storage directories
         await Self.clearDirectory("OfflineContent")
         await Self.clearDirectory("Logs")
-        await Self.clearDirectory("agent/conversations")
         await Self.clearDirectory("Filters")
 
         Logger.info("Cleared all website data (Tier 3)", category: Logger.storage)

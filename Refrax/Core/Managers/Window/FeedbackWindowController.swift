@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Manages the feedback compose window.
 ///
-/// Entry points: Help menu "Send Feedback...", Command Lens, agent tools.
+/// Entry points: the app menu and Help menu "Send Feedback...", and Command Lens.
 final class FeedbackWindowController {
     private var window: NSWindow?
     private let feedbackManager: FeedbackManager

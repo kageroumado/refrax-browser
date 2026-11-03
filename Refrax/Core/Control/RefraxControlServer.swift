@@ -107,7 +107,7 @@ final class RefraxControlServer {
     /// Routes a request.
     ///
     /// - Parameter client: The connected process, named in logs and notices for gated
-    ///   cookie reads. `nil` for requests issued inside Refrax, such as agent programs.
+    ///   cookie reads. `nil` for requests issued inside Refrax, such as `exec` programs.
     func route(_ request: ControlRequest, client: ClientIdentity? = nil) async -> ControlResponse {
         do {
             return try await routeThrows(request, client: client)
@@ -3142,7 +3142,7 @@ final class RefraxControlServer {
         return error.localizedDescription
     }
 
-    /// Builds a ``TabInfo`` from a ``Tab`` model.
+    /// Builds a `CTL.TabInfo` from a ``Tab`` model.
     private func buildTabInfo(_ tab: Tab, activeTabID: Tab.ID?) -> CTL.TabInfo {
         let webPage = pagePool.existingPage(for: tab.activePage)
         return CTL.TabInfo(
@@ -3160,7 +3160,7 @@ final class RefraxControlServer {
         )
     }
 
-    /// Builds a ``SpaceInfo`` from a ``Space`` model.
+    /// Builds a `CTL.SpaceInfo` from a ``Space`` model.
     private func buildSpaceInfo(_ space: Space, activeSpaceID: Space.ID?) -> CTL.SpaceInfo {
         CTL.SpaceInfo(
             id: "\(space.id)",

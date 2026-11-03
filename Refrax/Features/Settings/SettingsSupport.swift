@@ -219,7 +219,6 @@ nonisolated enum SettingsCategory: String, CaseIterable, Identifiable, Sendable 
                 SearchableSettingItem(id: "storage.offline", title: "Offline content", keywords: ["offline", "saved", "pages", "content"]),
                 SearchableSettingItem(id: "storage.logs", title: "Logs", keywords: ["logs", "diagnostic", "debug"]),
                 SearchableSettingItem(id: "storage.extensions", title: "Extensions storage", keywords: ["extensions", "plugins", "addons"]),
-                SearchableSettingItem(id: "storage.conversations", title: "Agent conversations", keywords: ["agent", "conversations", "ai", "chat", "history"]),
                 SearchableSettingItem(id: "storage.database", title: "Database", keywords: ["database", "tabs", "bookmarks", "history", "settings"]),
                 SearchableSettingItem(id: "storage.clearCaches", title: "Clear website caches", keywords: ["website", "cache", "webkit", "clear", "service", "workers"]),
                 SearchableSettingItem(id: "storage.clearCookies", title: "Clear cookies and sessions", keywords: ["cookies", "sessions", "login", "localStorage", "indexedDB", "clear"]),

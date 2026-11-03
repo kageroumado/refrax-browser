@@ -24,7 +24,7 @@ import SwiftUI
 /// ## Visit Tracking
 ///
 /// Visit counts and last visited dates are automatically synchronized from ``HistoryManager``
-/// to track bookmark usage patterns. This data powers AI-based recommendations.
+/// to track bookmark usage patterns.
 ///
 /// ## Offline Reading
 ///

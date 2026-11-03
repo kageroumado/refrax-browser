@@ -92,7 +92,7 @@ struct ScriptPriorityTests {
         let lowPriority = WKUserScript(source: "low", injectionTime: .atDocumentStart, forMainFrameOnly: true)
         let medPriority = WKUserScript(source: "med", injectionTime: .atDocumentStart, forMainFrameOnly: true)
 
-        registry.register(highPriority, source: .agent(sessionID: UUID()), priority: 100)
+        registry.register(highPriority, source: .shields, priority: 100)
         registry.register(lowPriority, source: .system(name: "gpc"), priority: 10)
         registry.register(medPriority, source: .extension(id: "ext"), priority: 50)
 
@@ -132,7 +132,7 @@ struct ScriptPriorityTests {
     @Test("Standard priority constants have correct ordering")
     func standardPriorityOrdering() {
         #expect(ScriptRegistry.Priority.system < ScriptRegistry.Priority.extension)
-        #expect(ScriptRegistry.Priority.extension < ScriptRegistry.Priority.agent)
+        #expect(ScriptRegistry.Priority.extension < ScriptRegistry.Priority.userScript)
     }
 
     @Test("Apply clears existing scripts from controller")
@@ -201,58 +201,6 @@ struct ExtensionHelperTests {
     }
 }
 
-// MARK: - Agent Helper Tests
-
-@Suite("Agent Script Helpers", .tags(.scriptRegistry))
-@MainActor
-struct AgentHelperTests {
-    @Test("registerAgentScript uses agent priority")
-    func agentScriptUsesPriority() {
-        let registry = ScriptRegistry()
-        let sessionID = UUID()
-
-        // Register extension script first
-        let extScript = WKUserScript(source: "extension", injectionTime: .atDocumentStart, forMainFrameOnly: true)
-        registry.registerExtensionScript(extScript, extensionID: "ext")
-
-        // Register agent script
-        let agentScript = WKUserScript(source: "agent", injectionTime: .atDocumentStart, forMainFrameOnly: true)
-        registry.registerAgentScript(agentScript, sessionID: sessionID)
-
-        let controller = WKUserContentController()
-        registry.apply(to: controller)
-
-        // Extension should come before agent
-        let scripts = controller.userScripts
-        #expect(scripts.count == 2)
-        #expect(scripts[0].source == "extension")
-        #expect(scripts[1].source == "agent")
-    }
-
-    @Test("unregisterAgentSession removes all scripts for session")
-    func unregisterAgentSessionRemovesAll() {
-        let registry = ScriptRegistry()
-        let session1 = UUID()
-        let session2 = UUID()
-
-        let script1 = WKUserScript(source: "s1-a", injectionTime: .atDocumentStart, forMainFrameOnly: true)
-        let script2 = WKUserScript(source: "s1-b", injectionTime: .atDocumentEnd, forMainFrameOnly: true)
-        let script3 = WKUserScript(source: "s2", injectionTime: .atDocumentStart, forMainFrameOnly: true)
-
-        registry.registerAgentScript(script1, sessionID: session1)
-        registry.registerAgentScript(script2, sessionID: session1)
-        registry.registerAgentScript(script3, sessionID: session2)
-
-        #expect(registry.count == 3)
-
-        registry.unregisterAgentSession(session1)
-
-        #expect(registry.count == 1)
-        #expect(registry.activeSources.contains(.agent(sessionID: session2)))
-        #expect(!registry.activeSources.contains(.agent(sessionID: session1)))
-    }
-}
-
 // MARK: - Query Tests
 
 @Suite("Script Registry Queries", .tags(.scriptRegistry))
@@ -280,7 +228,6 @@ struct QueryTests {
     @Test("activeSources returns all unique sources")
     func activeSourcesReturnsUnique() {
         let registry = ScriptRegistry()
-        let sessionID = UUID()
 
         let script1 = WKUserScript(source: "1", injectionTime: .atDocumentStart, forMainFrameOnly: true)
         let script2 = WKUserScript(source: "2", injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -288,13 +235,13 @@ struct QueryTests {
 
         registry.register(script1, source: .system(name: "gpc"))
         registry.register(script2, source: .extension(id: "ext1"))
-        registry.register(script3, source: .agent(sessionID: sessionID))
+        registry.register(script3, source: .shields)
 
         let sources = registry.activeSources
         #expect(sources.count == 3)
         #expect(sources.contains(.system(name: "gpc")))
         #expect(sources.contains(.extension(id: "ext1")))
-        #expect(sources.contains(.agent(sessionID: sessionID)))
+        #expect(sources.contains(.shields))
     }
 }
 
@@ -315,11 +262,9 @@ struct ScriptSourceTests {
         #expect(source.description == "extension(my-extension-id)")
     }
 
-    @Test("Agent source description format truncates UUID")
-    func agentSourceDescription() {
-        let sessionID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
-        let source = ScriptRegistry.ScriptSource.agent(sessionID: sessionID)
-        #expect(source.description == "agent(12345678)")
+    @Test("Shields source description format")
+    func shieldsSourceDescription() {
+        #expect(ScriptRegistry.ScriptSource.shields.description == "shields")
     }
 
     @Test("ScriptSource equality")
@@ -337,13 +282,5 @@ struct ScriptSourceTests {
 
         #expect(ext1 == ext2)
         #expect(ext1 != ext3)
-
-        let sessionID = UUID()
-        let agent1 = ScriptRegistry.ScriptSource.agent(sessionID: sessionID)
-        let agent2 = ScriptRegistry.ScriptSource.agent(sessionID: sessionID)
-        let agent3 = ScriptRegistry.ScriptSource.agent(sessionID: UUID())
-
-        #expect(agent1 == agent2)
-        #expect(agent1 != agent3)
     }
 }

@@ -4,7 +4,7 @@ import WebKit
 
 /// Central registry for all user scripts injected into web pages.
 ///
-/// All sources of scripts (GPC, content blocking, extensions, agents)
+/// All sources of scripts (GPC, content blocking, extensions, user scripts)
 /// register through this component to prevent conflicts and ensure
 /// consistent ordering.
 ///
@@ -32,7 +32,7 @@ import WebKit
 /// |----------|-------|-------|
 /// | `.system` | 10 | Core browser scripts (GPC, content blocking) |
 /// | `.extension` | 50 | Browser extension content scripts |
-/// | `.agent` | 100 | MCP agent injected scripts |
+/// | `.userScript` | 100 | User scripts |
 ///
 /// Within the same priority, scripts are applied in registration order.
 @Observable
@@ -46,12 +46,12 @@ final class ScriptRegistry {
         static let system = 10
 
         /// Browser extension content scripts.
-        /// Run after system scripts but before agent scripts.
+        /// Run after system scripts but before user scripts.
         static let `extension` = 50
 
-        /// MCP agent injected scripts.
+        /// User scripts.
         /// Run last to avoid interfering with page/extension behavior.
-        static let agent = 100
+        static let userScript = 100
     }
 
     // MARK: - Types
@@ -75,9 +75,6 @@ final class ScriptRegistry {
 
         /// Browser extension scripts.
         case `extension`(id: String)
-
-        /// MCP agent session scripts.
-        case agent(sessionID: UUID)
 
         /// Shields' scriptlets and procedural filters for WebKit. Other engines apply the same
         /// filters with their own cosmetic layer, so these stay out of ``injectedScripts``.
@@ -108,7 +105,7 @@ final class ScriptRegistry {
     ///
     /// - Parameters:
     ///   - script: The user script to register.
-    ///   - source: The source of the script (system, extension, or agent).
+    ///   - source: The source of the script (system, extension, or Shields).
     ///   - priority: The injection priority (lower values execute first). Default is 100.
     ///   - world: The content world `script` was created in. Default is the page world.
     /// - Returns: A unique identifier for unregistering the script.
@@ -156,31 +153,6 @@ final class ScriptRegistry {
     /// - Parameter extensionID: The extension's unique identifier.
     func unregisterExtension(_ extensionID: String) {
         unregisterAll(for: .extension(id: extensionID))
-    }
-
-    // MARK: - Agent Registration
-
-    /// Registers an MCP agent session script.
-    ///
-    /// Use this method when an agent injects scripts for automation or content access.
-    /// Scripts are registered with `.agent` priority.
-    ///
-    /// - Parameters:
-    ///   - script: The agent's injected script.
-    ///   - sessionID: The agent session's unique identifier.
-    /// - Returns: A unique identifier for unregistering the script.
-    @discardableResult
-    func registerAgentScript(_ script: WKUserScript, sessionID: UUID) -> UUID {
-        register(script, source: .agent(sessionID: sessionID), priority: Priority.agent)
-    }
-
-    /// Unregisters all scripts for a specific agent session.
-    ///
-    /// Call this when an agent session ends.
-    ///
-    /// - Parameter sessionID: The agent session's unique identifier.
-    func unregisterAgentSession(_ sessionID: UUID) {
-        unregisterAll(for: .agent(sessionID: sessionID))
     }
 
     // MARK: - Unregistration
@@ -273,8 +245,6 @@ extension ScriptRegistry.ScriptSource: CustomStringConvertible {
             "system(\(name))"
         case let .extension(id):
             "extension(\(id))"
-        case let .agent(sessionID):
-            "agent(\(sessionID.uuidString.prefix(8)))"
         case .shields:
             "shields"
         }

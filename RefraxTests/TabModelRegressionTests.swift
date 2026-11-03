@@ -7,7 +7,7 @@ import Testing
 // MARK: - Tab Model Regression Tests
 
 /// Tests for Tab model properties that could regress when adding new features
-/// like badges (2.1), timers (2.2), auto-archive (2.3), and agentic description (2.7).
+/// like badges (2.1), timers (2.2), and auto-archive (2.3).
 @Suite("Tab Model Regression", .tags(.tabManager), .serialized)
 @MainActor
 struct TabModelRegressionTests {

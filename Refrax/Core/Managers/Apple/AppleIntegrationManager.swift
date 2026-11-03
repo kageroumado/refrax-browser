@@ -3,8 +3,7 @@ import Observation
 
 /// Coordinates all Apple system integrations in a centralized location.
 ///
-/// This manager serves as the primary interface for Apple framework integrations,
-/// providing a unified API that can be accessed through RefraxAPI for encapsulation.
+/// This manager serves as the primary interface for Apple framework integrations.
 ///
 /// ## Architecture
 ///
@@ -12,7 +11,6 @@ import Observation
 /// ┌─────────────────────────────────────────────────────────────┐
 /// │ AppleIntegrationManager                                      │
 /// │   - Coordinates all Apple integrations                       │
-/// │   - Provides unified API for RefraxAPI                       │
 /// └─────────────────────────────────────────────────────────────┘
 ///          │           │           │           │
 ///          ▼           ▼           ▼           ▼
@@ -29,11 +27,6 @@ import Observation
 /// - **Focus Filter**: Adapts behavior when system Focus changes (SetFocusFilterIntent)
 /// - **Handoff**: Continues browsing across Apple devices (existing)
 /// - **Services**: macOS Services menu integration (existing)
-///
-/// ## Usage
-///
-/// Access through AppDelegate for direct usage, or through RefraxAPI for
-/// external agent access with permission checking.
 @Observable
 final class AppleIntegrationManager {
     // MARK: - Sub-Managers

@@ -242,10 +242,6 @@ final class BrowserState {
     @ObservationIgnored
     let autoFillManager: AutoFillManager
     
-    /// Whether content blocking rules are compiled and ready.
-    @ObservationIgnored
-    private(set) var isContentBlockingReady = false
-
     /// Whether the bundled `refrax-ctl` helper needs an administrator-privileged
     /// install or update (`/usr/local/bin` isn't user-writable and the installed
     /// binary is missing or stale).
@@ -583,11 +579,6 @@ final class BrowserState {
         tabIndex.removeAll()
         spaces.removeAll()
         incrementListVersion()
-    }
-
-    /// Marks content blocking as ready.
-    func setContentBlockingReady(_ ready: Bool) {
-        isContentBlockingReady = ready
     }
 
     // MARK: - Favorite Tab Management

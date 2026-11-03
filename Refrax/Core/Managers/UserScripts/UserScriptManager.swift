@@ -295,7 +295,7 @@ final class UserScriptManager {
         let id = registry.register(
             userScript,
             source: .extension(id: "userscript.shim.\(namespace)"),
-            priority: ScriptRegistry.Priority.agent - 1, // Shim runs before scripts
+            priority: ScriptRegistry.Priority.userScript - 1, // Shim runs before scripts
             world: world,
         )
         registeredScriptIDs.append(id)
@@ -314,7 +314,7 @@ final class UserScriptManager {
         let id = registry.register(
             userScript,
             source: .extension(id: "userscript.\(script.id.uuidString)"),
-            priority: ScriptRegistry.Priority.agent,
+            priority: ScriptRegistry.Priority.userScript,
             world: world,
         )
         registeredScriptIDs.append(id)

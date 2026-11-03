@@ -344,7 +344,6 @@ final class ContentScriptManager {
             }
         }
         await shields.start()
-        state.setContentBlockingReady(true)
     }
 
     private func attachThirdPartyCookieRuleList(_ ruleList: WKContentRuleList) {

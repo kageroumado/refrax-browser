@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Speed presets for agent visual feedback animations.
+/// Speed presets for visual feedback animations.
 enum FeedbackSpeed: Sendable {
     /// Fast animations for experienced users (0.15s).
     case fast
@@ -17,20 +17,6 @@ enum FeedbackSpeed: Sendable {
         case .natural: 0.35
         case .slow: 0.7
         }
-    }
-
-    /// Spring response parameter scaled to speed.
-    var springResponse: Double {
-        switch self {
-        case .fast: 0.2
-        case .natural: 0.35
-        case .slow: 0.6
-        }
-    }
-
-    /// Spring damping fraction.
-    var dampingFraction: Double {
-        0.7
     }
 }
 
