@@ -70,19 +70,19 @@ protocol DataImporter: Sendable {
 enum ImporterFactory {
     /// Creates an importer instance for the specified browser.
     ///
+    /// Arc has none: its sidebar comes over as spaces (``ArcSpaceImporter``), not bookmarks.
+    ///
     /// - Parameter browser: The browser to create an importer for.
-    /// - Returns: An importer instance, or `nil` if the browser is not supported.
+    /// - Returns: An importer instance, or `nil` if the browser has no bookmarks to import.
     static func importer(for browser: ThirdPartyBrowser) -> (any DataImporter)? {
         switch browser {
         case .chrome, .chromeBeta, .chromeCanary, .brave, .edge, .opera, .vivaldi, .helium:
             ChromiumImporter(browser: browser)
-        case .arc:
-            ArcImporter()
         case .firefox, .firefoxDeveloper, .zen:
             FirefoxImporter(browser: browser)
         case .safari:
             SafariImporter()
-        case .htmlFile:
+        case .arc, .htmlFile:
             nil
         }
     }

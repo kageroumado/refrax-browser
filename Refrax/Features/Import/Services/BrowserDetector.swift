@@ -242,7 +242,8 @@ extension BrowserDetector {
 
     /// Detects the Arc browser profile.
     ///
-    /// Arc stores sidebar data (including pinned tabs/bookmarks) in `StorableSidebar.json`.
+    /// Arc stores its sidebar (spaces, folders, pinned tabs, favorites) in `StorableSidebar.json`;
+    /// ``ArcSidebar/sidebarFile(for:)`` finds it from the profile returned here.
     /// The data directory points to `Arc/User Data` but the sidebar file lives in the
     /// parent `Arc/` directory, so we check both locations. Arc also has a standard
     /// Chromium `Default/Bookmarks` inside `User Data/`.

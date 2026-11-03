@@ -2,6 +2,7 @@ import Foundation
 
 /// Types of data that can be imported from browsers.
 enum ImportDataType: String, CaseIterable, Identifiable, Sendable {
+    case spaces
     case bookmarks
     case history
     case passwords
@@ -12,6 +13,8 @@ enum ImportDataType: String, CaseIterable, Identifiable, Sendable {
     /// Display name for the data type.
     var displayName: String {
         switch self {
+        case .spaces:
+            "Spaces and Tabs"
         case .bookmarks:
             "Bookmarks"
         case .history:
@@ -26,6 +29,8 @@ enum ImportDataType: String, CaseIterable, Identifiable, Sendable {
     /// Icon name for the data type.
     var iconName: String {
         switch self {
+        case .spaces:
+            "square.stack.3d.up.fill"
         case .bookmarks:
             "bookmark.fill"
         case .history:
@@ -40,6 +45,8 @@ enum ImportDataType: String, CaseIterable, Identifiable, Sendable {
     /// Description of what will be imported.
     var importDescription: String {
         switch self {
+        case .spaces:
+            "Spaces, folders, pinned tabs, and favorites, as spaces and islands"
         case .bookmarks:
             "Import your saved bookmarks and folders"
         case .history:
@@ -58,6 +65,9 @@ enum ImportDataType: String, CaseIterable, Identifiable, Sendable {
 /// including which data types to import and any type-specific options.
 struct ImportOptions: Sendable, Equatable {
     // MARK: - Data Type Selection
+
+    /// Whether to import spaces with their islands and tabs.
+    var importSpaces: Bool = true
 
     /// Whether to import bookmarks.
     var importBookmarks: Bool = true
@@ -116,19 +126,25 @@ struct ImportOptions: Sendable, Equatable {
 
     // MARK: - Computed Properties
 
-    /// Data types that the user has selected to import.
+    /// Data types that the user has selected to import and the source offers.
     var selectedDataTypes: Set<ImportDataType> {
         var types: Set<ImportDataType> = []
+        if importSpaces { types.insert(.spaces) }
         if importBookmarks { types.insert(.bookmarks) }
         if importHistory { types.insert(.history) }
         if importPasswords { types.insert(.passwords) }
         if importExtensions { types.insert(.extensions) }
-        return types
+        return types.intersection(availableDataTypes)
     }
 
     /// Whether any data type is selected for import.
     var hasSelection: Bool {
-        importBookmarks || importHistory || importPasswords || importExtensions
+        !selectedDataTypes.isEmpty
+    }
+
+    /// Whether a data type is selected and the source offers it.
+    func includes(_ dataType: ImportDataType) -> Bool {
+        selectedDataTypes.contains(dataType)
     }
 
     /// Data types available for the selected browser.
@@ -142,6 +158,7 @@ struct ImportOptions: Sendable, Equatable {
     /// Returns options with all data types enabled.
     static var all: ImportOptions {
         ImportOptions(
+            importSpaces: true,
             importBookmarks: true,
             importHistory: true,
             importPasswords: true,
@@ -152,6 +169,7 @@ struct ImportOptions: Sendable, Equatable {
     /// Returns options with only bookmarks enabled.
     static var bookmarksOnly: ImportOptions {
         ImportOptions(
+            importSpaces: false,
             importBookmarks: true,
             importHistory: false,
             importPasswords: false,
@@ -169,7 +187,7 @@ extension ThirdPartyBrowser {
         case .chrome, .chromeBeta, .chromeCanary, .brave, .edge, .opera, .vivaldi, .helium:
             [.bookmarks, .history, .passwords, .extensions]
         case .arc:
-            [.bookmarks, .history, .passwords, .extensions]
+            [.spaces, .history, .passwords, .extensions]
         case .firefox, .firefoxDeveloper, .zen:
             [.bookmarks, .history, .passwords]
         case .safari:

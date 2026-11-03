@@ -3,7 +3,7 @@ import SwiftUI
 /// View displaying the summary of a completed import operation.
 ///
 /// Shows comprehensive statistics about all imported data types:
-/// bookmarks, history, passwords, and extensions scanned.
+/// spaces, bookmarks, history, passwords, and extensions scanned.
 struct ImportSummaryView: View {
     @Bindable var viewModel: ImportWizardViewModel
 
@@ -82,7 +82,23 @@ private extension ImportSummaryView {
 private extension ImportSummaryView {
     var comprehensiveStats: some View {
         VStack(spacing: Constants.statsSpacing) {
-            if viewModel.importOptions.importBookmarks {
+            if viewModel.importOptions.includes(.spaces) {
+                let spaces = viewModel.comprehensiveResult.spaces
+                statsRow(
+                    title: "Spaces",
+                    icon: ImportDataType.spaces.iconName,
+                    color: .indigo,
+                    stats: [
+                        ("Spaces", spaces.spacesCreated + spaces.spacesMerged),
+                        ("Islands", spaces.islandsCreated),
+                        ("Tabs", spaces.tabsImported),
+                        ("Favorites", spaces.favoritesImported),
+                        ("Skipped", spaces.tabsSkipped + spaces.favoritesSkipped),
+                    ],
+                )
+            }
+
+            if viewModel.importOptions.includes(.bookmarks) {
                 statsRow(
                     title: "Bookmarks",
                     icon: "bookmark.fill",
@@ -95,7 +111,7 @@ private extension ImportSummaryView {
                 )
             }
 
-            if viewModel.importOptions.importHistory {
+            if viewModel.importOptions.includes(.history) {
                 statsRow(
                     title: "History",
                     icon: "clock.fill",
@@ -106,7 +122,7 @@ private extension ImportSummaryView {
                 )
             }
 
-            if viewModel.importOptions.importPasswords {
+            if viewModel.importOptions.includes(.passwords) {
                 statsRow(
                     title: "Passwords",
                     icon: "key.fill",
@@ -118,7 +134,7 @@ private extension ImportSummaryView {
                 )
             }
 
-            if viewModel.importOptions.importExtensions {
+            if viewModel.importOptions.includes(.extensions) {
                 statsRow(
                     title: "Extensions",
                     icon: "puzzlepiece.extension.fill",

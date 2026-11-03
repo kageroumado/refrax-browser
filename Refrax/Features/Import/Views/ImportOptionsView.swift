@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 /// View for configuring import options before starting the import.
 ///
 /// Shows configuration options for each selected data type:
+/// - Spaces: What each part of the source becomes, and how importing again behaves
 /// - History: Date range slider
 /// - Passwords: CSV file selection
 /// - Extensions: Information about what will be scanned
@@ -15,19 +16,23 @@ struct ImportOptionsView: View {
             VStack(alignment: .leading, spacing: Constants.sectionSpacing) {
                 headerSection
 
-                if viewModel.importOptions.importBookmarks {
+                if viewModel.importOptions.includes(.spaces) {
+                    spacesSection
+                }
+
+                if viewModel.importOptions.includes(.bookmarks) {
                     bookmarksSection
                 }
 
-                if viewModel.importOptions.importHistory {
+                if viewModel.importOptions.includes(.history) {
                     historySection
                 }
 
-                if viewModel.importOptions.importPasswords {
+                if viewModel.importOptions.includes(.passwords) {
                     passwordsSection
                 }
 
-                if viewModel.importOptions.importExtensions {
+                if viewModel.importOptions.includes(.extensions) {
                     extensionsSection
                 }
             }
@@ -54,6 +59,27 @@ private extension ImportOptionsView {
             Text("Configure how data should be imported")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Spaces Section
+
+private extension ImportOptionsView {
+    var spacesSection: some View {
+        OptionSection(
+            icon: ImportDataType.spaces.iconName,
+            title: "Spaces and Tabs",
+            color: .indigo,
+        ) {
+            Text("Each space becomes a space. Its folders become islands, folders inside them become sections, and pinned tabs outside a folder go to a Pinned island. Unpinned tabs join the space's Tabs island, and favorites join your favorites.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Importing again adds to the spaces made before and skips tabs already there.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 }

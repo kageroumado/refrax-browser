@@ -32,7 +32,7 @@ import Foundation
 /// | Chromium | JSON | `Bookmarks` file |
 /// | Firefox | SQLite | `places.sqlite` database |
 /// | Safari | Binary plist | `Bookmarks.plist` |
-/// | Arc | JSON | `StorableSidebar.json` |
+/// | Arc | JSON | `StorableSidebar.json`, imported as spaces and islands |
 /// | HTML | Netscape HTML | Standard bookmark interchange format |
 enum ThirdPartyBrowser: String, CaseIterable, Identifiable, Sendable {
     case chrome
