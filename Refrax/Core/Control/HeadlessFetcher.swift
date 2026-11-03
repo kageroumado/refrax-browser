@@ -216,7 +216,13 @@ private final class LoadContinuation: @unchecked Sendable {
         }
     }
 
+    /// Waits for the load to finish, failing with `URLError.timedOut` after `timeout` seconds.
     func wait(timeout: Int) async throws {
+        let timer = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(timeout)) } catch { return }
+            self?.resume(with: .failure(URLError(.timedOut)))
+        }
+        defer { timer.cancel() }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
             lock.lock()
             if let result {

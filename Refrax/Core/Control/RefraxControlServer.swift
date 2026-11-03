@@ -1268,8 +1268,11 @@ final class RefraxControlServer {
 
         keyDown.flags = flags
         keyUp.flags = flags
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        // Delivered to Refrax only, never the HID tap: the system-wide tap would carry the keys
+        // to whichever app is frontmost, under Refrax's Accessibility grant.
+        let pid = ProcessInfo.processInfo.processIdentifier
+        keyDown.postToPid(pid)
+        keyUp.postToPid(pid)
 
         return .actionResult(CTL.ActionResultInfo(success: true, message: "Sent hotkey \(params.keys)"))
     }
@@ -2949,17 +2952,14 @@ final class RefraxControlServer {
             guard let key = params.key, let value = params.value else {
                 return .error(CTL.ErrorInfo(code: "invalid_params", message: "set requires 'key' and 'value'"))
             }
-            let escapedKey = key.replacingOccurrences(of: "'", with: "\\'")
-            let escapedValue = value.replacingOccurrences(of: "'", with: "\\'")
-            try await webPage.callJavaScript("\(storageObj).setItem('\(escapedKey)', '\(escapedValue)')")
+            try await webPage.callJavaScript("\(storageObj).setItem(key, value)", arguments: ["key": key, "value": value])
             return .ok("Storage item set")
 
         case "remove":
             guard let key = params.key else {
                 return .error(CTL.ErrorInfo(code: "invalid_params", message: "remove requires 'key'"))
             }
-            let escapedKey = key.replacingOccurrences(of: "'", with: "\\'")
-            try await webPage.callJavaScript("\(storageObj).removeItem('\(escapedKey)')")
+            try await webPage.callJavaScript("\(storageObj).removeItem(key)", arguments: ["key": key])
             return .ok("Storage item removed")
 
         case "clear":
