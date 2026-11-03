@@ -6,8 +6,8 @@ import RefraxProtocol
 
 /// Manages a Unix domain socket server for the `refrax-ctl` CLI.
 ///
-/// The host listens on `~/Library/Application Support/Refrax/ctl.sock` and accepts
-/// connections from the CLI tool. Each connection follows a half-close protocol:
+/// The host listens on `ctl.sock` in the app's storage directory and accepts connections
+/// from the CLI tool. Each connection follows a half-close protocol:
 ///
 /// 1. Client sends a JSON request and calls `shutdown(SHUT_WR)`
 /// 2. Server reads the full request, processes it, writes the response
@@ -17,25 +17,32 @@ import RefraxProtocol
 ///
 /// Only connections from the same UID are accepted (`getpeereid`). The peer is then
 /// identified by its audit token, and ``ControlAccessManager`` authorizes the app it acts
-/// for (see ``ClientIdentity/derive(peer:ownTeamID:inspector:)``). The socket file is created
-/// with `chmod 0600` (owner-only read/write).
+/// for (see ``ClientIdentity/derive(peer:ownTeamID:inspector:)``). The socket file is created with
+/// `chmod 0600` (owner-only read/write). At most ``maxConnections`` clients are served at
+/// once; further connections are closed on arrival.
 ///
 /// ## Threading
 ///
-/// The accept loop and client handlers run on detached tasks at `.utility` priority
-/// to avoid blocking the main actor. The actual request processing hops to `@MainActor`
-/// via ``RefraxControlServer/decodeAndHandle(_:)``.
+/// A dispatch read source on the listening socket accepts connections off the actor, and
+/// each client is handled on a detached task at `.utility` priority. Request processing hops
+/// to `@MainActor` via ``RefraxControlServer/decodeAndHandle(_:client:)``.
 actor RefraxControlHost {
     private static let logger = OSLog(subsystem: "website.refrax.browser", category: "control-host")
 
+    /// Clients served at once.
+    static let maxConnections = 8
+
+    private nonisolated static let acceptQueue = DispatchQueue(label: "website.refrax.browser.control-accept", qos: .utility)
+
     private var listenFD: Int32 = -1
-    private var acceptTask: Task<Void, Never>?
+    private var acceptSource: (any DispatchSourceRead)?
 
     private let socketPath: String
     private let maxMessageBytes: Int
     private let requestTimeoutSec: TimeInterval
-    private let inspector = SecurityProcessInspector()
     private let server: RefraxControlServer
+    private let inspector = SecurityProcessInspector()
+    private let connectionSlots: ConnectionSlots
     let accessManager: ControlAccessManager
 
     /// Creates a control host bound to the default socket path.
@@ -57,14 +64,14 @@ actor RefraxControlHost {
         self.accessManager = accessManager
         self.maxMessageBytes = maxMessageBytes
         self.requestTimeoutSec = requestTimeoutSec
+        self.connectionSlots = ConnectionSlots(limit: Self.maxConnections)
     }
 
     // MARK: - Lifecycle
 
     /// Starts listening for CLI connections.
     ///
-    /// Creates the Unix domain socket, binds it, and launches the accept loop
-    /// on a detached utility-priority task.
+    /// Creates the Unix domain socket, binds it, and starts accepting on a dispatch source.
     func start() {
         guard listenFD == -1 else {
             os_log("Control host already running", log: Self.logger, type: .info)
@@ -125,17 +132,38 @@ actor RefraxControlHost {
             return
         }
 
-        listenFD = fd
-        os_log("Control host listening on %{public}@", log: Self.logger, type: .info, socketPath)
+        // The read source signals readiness; accept(2) must then never block the queue.
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
 
-        acceptTask = Task.detached(priority: .utility) { [weak self] in
-            await self?.acceptLoop()
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: Self.acceptQueue)
+        source.setEventHandler { [weak self] in
+            self?.acceptPendingConnections(on: fd)
         }
+        source.setCancelHandler {
+            close(fd)
+        }
+        source.resume()
+
+        listenFD = fd
+        acceptSource = source
+        os_log("Control host listening on %{public}@", log: Self.logger, type: .info, socketPath)
+    }
+
+    /// Stops accepting connections, closes the listening socket, and removes its file.
+    func stop() {
+        if listenFD >= 0 {
+            shutdown(listenFD, SHUT_RDWR)
+        }
+        acceptSource?.cancel()
+        acceptSource = nil
+        listenFD = -1
+
+        unlink(socketPath)
+        os_log("Control host stopped", log: Self.logger, type: .info)
     }
 
     // MARK: - CLI Helper Installation
 
-    // Absolute path where the CLI helper is installed for PATH access.
     // Where the CLI helper is installed. A debug build installs its own helper beside the
     // release one, because a debug helper drives only the debug app.
     #if DEBUG
@@ -151,6 +179,17 @@ actor RefraxControlHost {
     private nonisolated static var cliHelperSource: String {
         (Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/Helpers/refrax-ctl")
     }
+
+    /// AppleScript that copies the helper as root. Paths arrive as `argv`, never in the
+    /// script text, and reach the shell through `quoted form of`.
+    private nonisolated static let authorizedInstallScript = """
+    on run argv
+        set sourcePath to quoted form of (item 1 of argv)
+        set destinationPath to quoted form of (item 2 of argv)
+        set directoryPath to quoted form of (item 3 of argv)
+        do shell script "mkdir -p " & directoryPath & " && cp -f " & sourcePath & " " & destinationPath & " && chmod 755 " & destinationPath & " && xattr -dr com.apple.quarantine " & destinationPath with administrator privileges
+    end run
+    """
 
     /// Compares the CLI helper on PATH against the copy bundled with this build.
     nonisolated static func cliHelperStatus() -> CLIHelperStatus {
@@ -206,13 +245,10 @@ actor RefraxControlHost {
             break
         }
 
-        let script = """
-        do shell script "mkdir -p /usr/local/bin && cp -f '\(cliHelperSource)' '\(cliHelperDestination)' && chmod 755 '\(cliHelperDestination)' && xattr -dr com.apple.quarantine '\(cliHelperDestination)'" with administrator privileges
-        """
-
+        let directory = (cliHelperDestination as NSString).deletingLastPathComponent
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
+        process.arguments = ["-e", authorizedInstallScript, cliHelperSource, cliHelperDestination, directory]
 
         do {
             try process.run()
@@ -303,44 +339,44 @@ actor RefraxControlHost {
         }
     }
 
-    /// Stops the control host and cleans up the socket.
-    func stop() {
-        acceptTask?.cancel()
-        acceptTask = nil
+    // MARK: - Accepting
 
-        if listenFD >= 0 {
-            close(listenFD)
-            listenFD = -1
-        }
-
-        unlink(socketPath)
-        os_log("Control host stopped", log: Self.logger, type: .info)
-    }
-
-    // MARK: - Accept Loop
-
-    private func acceptLoop() async {
-        let fd = listenFD
-        while !Task.isCancelled {
-            let clientFD = accept(fd, nil, nil)
+    /// Accepts every connection waiting on the listening socket. Runs on ``acceptQueue``.
+    private nonisolated func acceptPendingConnections(on listenFD: Int32) {
+        while true {
+            let clientFD = accept(listenFD, nil, nil)
             guard clientFD >= 0 else {
-                if Task.isCancelled {
-                    break
-                }
                 if errno == EINTR {
                     continue
                 }
-                os_log("Accept failed: %{public}@", log: Self.logger, type: .error, String(cString: strerror(errno)))
-                continue
+                if errno != EAGAIN, errno != EWOULDBLOCK {
+                    os_log("Accept failed: %{public}@", log: Self.logger, type: .error, String(cString: strerror(errno)))
+                }
+                return
             }
+
+            // An accepted socket inherits O_NONBLOCK; client I/O polls, then blocks.
+            _ = fcntl(clientFD, F_SETFL, fcntl(clientFD, F_GETFL) & ~O_NONBLOCK)
 
             // A client that disconnects mid-request (e.g. CLI timeout) must surface
             // EPIPE from write(2) rather than raise SIGPIPE, which kills the process.
             var nosigpipe: Int32 = 1
             setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
 
+            guard connectionSlots.acquire() else {
+                os_log("Refused connection: %d clients already connected", log: Self.logger, type: .error, Self.maxConnections)
+                close(clientFD)
+                continue
+            }
+
+            let slots = connectionSlots
             Task.detached(priority: .utility) { [weak self] in
-                await self?.handleClient(fd: clientFD)
+                guard let self else {
+                    close(clientFD)
+                    slots.release()
+                    return
+                }
+                await handleClient(fd: clientFD)
             }
         }
     }
@@ -348,7 +384,10 @@ actor RefraxControlHost {
     // MARK: - Client Handling
 
     private nonisolated func handleClient(fd clientFD: Int32) async {
-        defer { close(clientFD) }
+        defer {
+            close(clientFD)
+            connectionSlots.release()
+        }
 
         // Step 1: Verify same-UID (always required)
         var peerUID: uid_t = 0
@@ -482,6 +521,34 @@ actor RefraxControlHost {
                 offset += bytesWritten
             }
             return true
+        }
+    }
+}
+
+// MARK: - Connection Slots
+
+/// Counts clients being served, up to a limit.
+final nonisolated class ConnectionSlots: Sendable {
+    private let state: OSAllocatedUnfairLock<Int>
+    let limit: Int
+
+    init(limit: Int) {
+        self.limit = limit
+        self.state = OSAllocatedUnfairLock(initialState: 0)
+    }
+
+    /// Takes a slot. Returns `false`, taking nothing, when every slot is in use.
+    func acquire() -> Bool {
+        state.withLock { count in
+            guard count < limit else { return false }
+            count += 1
+            return true
+        }
+    }
+
+    func release() {
+        state.withLock { count in
+            count = max(0, count - 1)
         }
     }
 }
