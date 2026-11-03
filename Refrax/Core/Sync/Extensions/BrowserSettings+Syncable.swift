@@ -155,11 +155,6 @@ extension BrowserSettings: Syncable {
 
         record["allowPopups"] = allowPopups as NSNumber
 
-        // MARK: - Advanced: Control Server
-
-        record["controlAccessModeRaw"] = controlAccessModeRaw as NSString
-        record["allowedControlClientsJSON"] = allowedControlClientsJSON as NSString
-
         // MARK: - Advanced: Security
 
         record["allowSSLCertificateBypass"] = allowSSLCertificateBypass as NSNumber
@@ -352,12 +347,6 @@ extension BrowserSettings: Syncable {
         // MARK: - Advanced: Windows
 
         settings.allowPopups = (record["allowPopups"] as? Bool) ?? false
-
-        // MARK: - Advanced: Control Server
-
-        settings.controlAccessModeRaw = record["controlAccessModeRaw"] as? String
-            ?? ControlAccessMode.prompt.rawValue
-        settings.allowedControlClientsJSON = record["allowedControlClientsJSON"] as? String ?? "[]"
 
         // MARK: - Advanced: Security
 

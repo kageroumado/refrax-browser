@@ -64,7 +64,6 @@ enum BrowserSettingKey: String, CaseIterable, Sendable {
     case allowPopups
     case allowSSLCertificateBypass
     case enableAutoCrashRecovery
-    case controlAccessMode
 }
 
 // MARK: - Metadata
@@ -517,16 +516,6 @@ extension BrowserSettingKey {
                 highlightID: "advanced.crashRecovery",
                 valueKind: .toggle,
             )
-        case .controlAccessMode:
-            SettingMetadata(
-                displayName: "Control Server Access",
-                description: "Who can control the browser via CLI",
-                keywords: ["control", "server", "cli", "refrax-ctl", "socket", "access", "security", "automation"],
-                icon: "lock.shield.fill",
-                category: .advanced,
-                highlightID: "advanced.controlAccess",
-                valueKind: .picker(ControlAccessMode.allCases.map(\.displayName)),
-            )
         }
     }
 }
@@ -604,7 +593,6 @@ extension BrowserSettingKey {
         case .allowPopups: .bool(settings.allowPopups)
         case .allowSSLCertificateBypass: .bool(settings.allowSSLCertificateBypass)
         case .enableAutoCrashRecovery: .bool(settings.enableAutoCrashRecovery)
-        case .controlAccessMode: .string(settings.controlAccessMode.displayName)
         }
     }
 
@@ -800,12 +788,6 @@ extension BrowserSettingKey {
             if case let .bool(v) = value {
                 settings.enableAutoCrashRecovery = v
             }
-        case .controlAccessMode:
-            if case let .string(v) = value {
-                if let mode = ControlAccessMode.allCases.first(where: { $0.displayName == v || $0.rawValue == v }) {
-                    settings.controlAccessMode = mode
-                }
-            }
         }
     }
 
@@ -836,12 +818,6 @@ extension BrowserSettingKey {
             case .removeImages: settings.backgroundRemovalMode = .simplify
             case .simplify: settings.backgroundRemovalMode = .transparent
             case .transparent: settings.backgroundRemovalMode = .none
-            }
-        case .controlAccessMode:
-            switch settings.controlAccessMode {
-            case .off: settings.controlAccessMode = .prompt
-            case .prompt: settings.controlAccessMode = .open
-            case .open: settings.controlAccessMode = .off
             }
         case .autoFillMode:
             switch settings.autoFillMode {

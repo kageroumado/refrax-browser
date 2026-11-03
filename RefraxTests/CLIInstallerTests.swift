@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 import Testing
 
 @testable import Refrax
@@ -409,100 +408,5 @@ struct CopyBinaryTests {
         #expect(FileManager.default.fileExists(atPath: dest))
         let destData = try Data(contentsOf: URL(fileURLWithPath: dest))
         #expect(destData.count == 768)
-    }
-}
-
-// MARK: - ControlAccessManager Auto-Allow Tests
-
-/// Keeps the ModelContainer, BrowserSettings, and ControlAccessManager alive together.
-/// BrowserSettings is held `unowned` by ControlAccessManager, so the container
-/// must outlive the manager to avoid dangling references.
-@MainActor
-private struct ControlAccessTestEnvironment {
-    let container: ModelContainer
-    let settings: BrowserSettings
-    let manager: ControlAccessManager
-
-    init() throws {
-        let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        self.container = try ModelContainer(for: schema, configurations: [config])
-        self.settings = BrowserSettings.fetchOrCreate(in: container.mainContext)
-        self.manager = ControlAccessManager(settings: settings)
-    }
-}
-
-@Suite("ControlAccessManager Auto-Allow", .tags(.cliInstaller), .serialized)
-@MainActor
-struct ControlAccessManagerAutoAllowTests {
-    @Test("Includes this build's installed helper in auto-allow list")
-    func includesGlobalBinPath() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        let paths = env.manager.allowedClients.map(\.path)
-        #expect(paths.contains(RefraxControlHost.cliHelperDestination))
-    }
-
-    @Test("Includes App Support bin path in auto-allow list")
-    func includesAppSupportBinPath() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        let paths = env.manager.allowedClients.map(\.path)
-        let expected = (Directories.appStorage.path as NSString).appendingPathComponent("bin/refrax-ctl")
-        #expect(paths.contains(expected))
-    }
-
-    @Test("Includes bundle Helpers path in auto-allow list")
-    func includesBundleHelpersPath() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        let paths = env.manager.allowedClients.map(\.path)
-        let expected = (Bundle.main.bundlePath as NSString).appendingPathComponent("Contents/Helpers/refrax-ctl")
-        #expect(paths.contains(expected))
-    }
-
-    @Test("Includes dev build paths in auto-allow list")
-    func includesDevBuildPaths() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        let paths = env.manager.allowedClients.map(\.path)
-        let releasePath = "\(NSHomeDirectory())/Developer/Refrax/refrax-ctl/.build/release/refrax-ctl"
-        let debugPath = "\(NSHomeDirectory())/Developer/Refrax/refrax-ctl/.build/debug/refrax-ctl"
-        #expect(paths.contains(releasePath))
-        #expect(paths.contains(debugPath))
-    }
-
-    @Test("autoAllowRefraxCTL adds exactly 5 known paths")
-    func addsAllKnownPaths() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        #expect(env.manager.allowedClients.count == 5)
-    }
-
-    @Test("autoAllowRefraxCTL is idempotent")
-    func idempotent() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-        let countAfterFirst = env.manager.allowedClients.count
-
-        env.manager.autoAllowRefraxCTL()
-        let countAfterSecond = env.manager.allowedClients.count
-
-        #expect(countAfterFirst == countAfterSecond)
-    }
-
-    @Test("Auto-allowed clients are named for refrax-ctl, with the debug build's suffix")
-    func displayNames() throws {
-        let env = try ControlAccessTestEnvironment()
-        env.manager.autoAllowRefraxCTL()
-
-        for client in env.manager.allowedClients {
-            #expect(["refrax-ctl", "refrax-ctl-debug"].contains(client.displayName))
-        }
     }
 }

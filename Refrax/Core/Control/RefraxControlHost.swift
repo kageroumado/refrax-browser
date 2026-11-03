@@ -15,9 +15,10 @@ import RefraxProtocol
 ///
 /// ## Security
 ///
-/// Only connections from the same UID are accepted. In prompt mode, unknown
-/// binaries trigger an authorization alert via ``ControlAccessManager``.
-/// The socket file is created with `chmod 0600` (owner-only read/write).
+/// Only connections from the same UID are accepted (`getpeereid`). The peer is then
+/// identified by its audit token, and ``ControlAccessManager`` authorizes the app it acts
+/// for (see ``ClientIdentity/derive(peer:ownTeamID:inspector:)``). The socket file is created
+/// with `chmod 0600` (owner-only read/write).
 ///
 /// ## Threading
 ///
@@ -33,6 +34,7 @@ actor RefraxControlHost {
     private let socketPath: String
     private let maxMessageBytes: Int
     private let requestTimeoutSec: TimeInterval
+    private let inspector = SecurityProcessInspector()
     private let server: RefraxControlServer
     let accessManager: ControlAccessManager
 
@@ -165,6 +167,9 @@ actor RefraxControlHost {
     /// left untouched and the returned status reports what's still needed.
     /// Surface that through the Settings row and let the user
     /// trigger ``installCLIHelperWithAuthorization()`` explicitly.
+    ///
+    /// A user-writable copy can be replaced by any process running as the user. A replaced
+    /// binary is no longer signed by Refrax's team, so the control server refuses it.
     ///
     /// - Returns: The helper status after the attempt.
     @discardableResult
@@ -346,17 +351,33 @@ actor RefraxControlHost {
         defer { close(clientFD) }
 
         // Step 1: Verify same-UID (always required)
-        guard let pid = peerPID(clientFD), peerHasSameUID(pid) else {
+        var peerUID: uid_t = 0
+        var peerGID: gid_t = 0
+        guard getpeereid(clientFD, &peerUID, &peerGID) == 0, peerUID == getuid() else {
             os_log("Rejected connection from different user", log: Self.logger, type: .error)
             return
         }
 
-        // Step 2: Resolve client identity and authorize via access manager
-        let identity = ClientIdentityResolver.resolve(pid: pid)
+        // Step 2: Identify the peer by audit token, derive its host, and authorize the host
+        let identity: ClientIdentity
+        do throws(ClientIdentity.Refusal) {
+            guard let peer = SocketPeer(fileDescriptor: clientFD) else { throw .unidentified }
+            identity = try ClientIdentity.derive(peer: .peer(peer), ownTeamID: RefraxCodeSigning.ownTeamID, inspector: inspector)
+        } catch {
+            os_log("Rejected connection: %{public}@", log: Self.logger, type: .error, error.message)
+            refuse(fd: clientFD, code: "untrusted_client", message: error.message)
+            return
+        }
+
         guard await accessManager.authorize(identity) else {
             os_log(
                 "Rejected unauthorized connection from %{public}@ (%{public}@)",
                 log: Self.logger, type: .error, identity.displayName, identity.path,
+            )
+            refuse(
+                fd: clientFD,
+                code: "unauthorized",
+                message: "Refrax did not allow \(identity.displayName) to control it. Check Settings > Advanced > Control Server.",
             )
             return
         }
@@ -374,27 +395,14 @@ actor RefraxControlHost {
         }
     }
 
-    // MARK: - Peer Verification
-
-    /// Extracts the PID of the connected peer.
-    private nonisolated func peerPID(_ clientFD: Int32) -> pid_t? {
-        var pid: pid_t = 0
-        var pidLen = socklen_t(MemoryLayout<pid_t>.size)
-        guard getsockopt(clientFD, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidLen) == 0 else {
-            return nil
-        }
-        return pid
-    }
-
-    /// Verifies the peer process is running as the same user.
-    private nonisolated func peerHasSameUID(_ pid: pid_t) -> Bool {
-        var info = kinfo_proc()
-        var infoSize = MemoryLayout<kinfo_proc>.size
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        guard sysctl(&mib, 4, &info, &infoSize, nil, 0) == 0 else {
-            return false
-        }
-        return info.kp_eproc.e_ucred.cr_uid == getuid()
+    /// Answers a refused client with an error, after reading its request so the client's
+    /// write completes before the socket closes.
+    private nonisolated func refuse(fd: Int32, code: String, message: String) {
+        _ = readAll(fd: fd)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(ControlResponse.error(CTL.ErrorInfo(code: code, message: message))) else { return }
+        _ = writeAll(fd: fd, data: data)
     }
 
     // MARK: - I/O

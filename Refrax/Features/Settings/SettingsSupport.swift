@@ -228,6 +228,7 @@ nonisolated enum SettingsCategory: String, CaseIterable, Identifiable, Sendable 
         case .advanced:
             [
                 SearchableSettingItem(id: "advanced.javascriptSites", title: "Manage JavaScript sites", keywords: ["javascript", "js", "whitelist", "sites", "domains"]),
+                SearchableSettingItem(id: "advanced.controlAccess", title: "Control Server Access", keywords: ["control", "server", "cli", "refrax-ctl", "socket", "access", "security", "automation"]),
                 SearchableSettingItem(id: "advanced.crashThreshold", title: "Crash threshold", keywords: ["crash", "threshold", "limit", "count"]),
                 SearchableSettingItem(id: "advanced.crashTimeWindow", title: "Crash time window", keywords: ["crash", "time", "window", "seconds"]),
                 SearchableSettingItem(id: "advanced.reset", title: "Reset all settings", keywords: ["reset", "restore", "defaults", "clear"]),

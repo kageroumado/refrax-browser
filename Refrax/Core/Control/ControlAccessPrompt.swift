@@ -1,48 +1,76 @@
 import AppKit
 
-/// Shows an authorization prompt when an unknown binary tries to connect
-/// to the control server in prompt mode.
+/// Asks the user whether a client may control Refrax.
 ///
-/// Uses `NSAlert` to present the binary's identity and let the user choose
-/// whether to allow the connection.
+/// Deny is the default button. "Always Allow" appears only for a host with a verified code
+/// requirement, since only such a host can be recognized again.
 nonisolated enum ControlAccessPrompt {
-    /// Shows an authorization alert for the given client identity.
-    ///
-    /// - Returns: The user's authorization decision.
     @MainActor
     static func prompt(for identity: ClientIdentity) -> AuthorizationDecision {
+        let host = identity.host
         let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Control Server Access Request"
+        alert.alertStyle = .warning
+        alert.messageText = identity.viaCLI
+            ? "Allow “\(host.displayName)” to control Refrax via refrax-ctl?"
+            : "Allow “\(host.displayName)” to control Refrax?"
+        alert.informativeText = informativeText(for: identity)
 
-        var info = "\"\(identity.displayName)\" wants to control Refrax."
-        info += "\n\nPath: \(identity.path)"
-        if let sigId = identity.signingIdentifier {
-            info += "\nSigning ID: \(sigId)"
-        }
-        if let teamID = identity.teamID {
-            info += "\nTeam ID: \(teamID)"
-        }
-        if identity.signingIdentifier == nil {
-            info += "\n\nThis application is not code-signed."
+        if host.kind == .app {
+            alert.icon = NSWorkspace.shared.icon(forFile: host.path)
         }
 
-        alert.informativeText = info
-
-        // Try to get the app icon for the binary
-        if let icon = NSWorkspace.shared.icon(forFile: identity.path) as NSImage? {
-            alert.icon = icon
-        }
-
-        alert.addButton(withTitle: "Always Allow")
-        alert.addButton(withTitle: "Allow Once")
         alert.addButton(withTitle: "Deny")
+        alert.addButton(withTitle: "Allow Once")
+        if host.requirement != nil {
+            alert.addButton(withTitle: "Always Allow")
+        }
 
-        let response = alert.runModal()
-        switch response {
-        case .alertFirstButtonReturn: return .alwaysAllow
-        case .alertSecondButtonReturn: return .allow
+        switch alert.runModal() {
+        case .alertSecondButtonReturn: return .allowOnce
+        case .alertThirdButtonReturn: return .alwaysAllow
         default: return .deny
         }
+    }
+
+    /// The body of the prompt: who signed the host, where it is, and what allowing it grants.
+    static func informativeText(for identity: ClientIdentity) -> String {
+        let host = identity.host
+        var lines: [String] = []
+
+        switch host.kind {
+        case .app:
+            lines.append("Location: \(host.path)")
+        case .process:
+            lines.append("“\(host.displayName)” is a background process outside any app: \(host.path)")
+        }
+
+        if host.requirement == nil {
+            lines.append("Its code has no valid signature from Apple or an identified developer, so Refrax can allow it only once.")
+        } else if host.isApple {
+            lines.append("Signed by Apple.")
+        } else if let teamID = host.teamID {
+            lines.append("Signed by \(signerDisplayName(host.signerName, teamID: teamID)) (team \(teamID)).")
+        }
+
+        if identity.viaCLI {
+            lines.append("It runs refrax-ctl at \(identity.peerPath).")
+        }
+
+        lines.append("Allowed, it can open and read pages, run scripts in them, and use their signed-in sessions.")
+        return lines.joined(separator: "\n\n")
+    }
+
+    /// The developer name in a certificate subject such as
+    /// "Developer ID Application: Name (TEAMID)".
+    static func signerDisplayName(_ subject: String?, teamID: String) -> String {
+        guard var name = subject else { return "an identified developer" }
+        if let colon = name.firstIndex(of: ":") {
+            name = String(name[name.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        }
+        let suffix = " (\(teamID))"
+        if name.hasSuffix(suffix) {
+            name.removeLast(suffix.count)
+        }
+        return name.isEmpty ? "an identified developer" : name
     }
 }

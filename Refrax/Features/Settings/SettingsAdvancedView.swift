@@ -7,6 +7,7 @@ struct AdvancedSettingsView: View {
     @Environment(BrowserSettings.self) private var settings
     @Environment(SiteSettingsManager.self) private var siteSettingsManager
     @Environment(BrowserState.self) private var browserState
+    @Environment(ControlAccessManager.self) private var controlAccessManager
     let highlightedItemId: String?
 
     @State private var cliHelperStatus: CLIHelperStatus?
@@ -14,8 +15,8 @@ struct AdvancedSettingsView: View {
     @State private var showResetAlert = false
     @State private var showJavaScriptSitesSheet = false
     @State private var whitelistedSitesCount: Int = 0
-    @State private var allowedClients: [AllowedClient] = []
     @State private var showAddClientPicker = false
+    @State private var showUnsignedClientAlert = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -121,19 +122,23 @@ struct AdvancedSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             refreshWhitelistCount()
-            loadAllowedClients()
-        }
-        .onChange(of: settings.allowedControlClientsJSON) {
-            loadAllowedClients()
         }
         .fileImporter(
             isPresented: $showAddClientPicker,
             allowedContentTypes: [.unixExecutable, .exe, .application],
             allowsMultipleSelection: false,
         ) { result in
-            if case let .success(urls) = result, let url = urls.first {
-                addClientFromURL(url)
+            if case let .success(urls) = result, let url = urls.first, !controlAccessManager.addClient(at: url) {
+                showUnsignedClientAlert = true
             }
+        }
+        .alert("Can’t Allow This App", isPresented: $showUnsignedClientAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "Refrax remembers apps by their code signature, and this one has no valid signature from Apple or an identified developer. "
+                    + "Run it and choose Allow Once when Refrax asks.",
+            )
         }
         .alert("Reset Settings", isPresented: $showResetAlert) {
             Button("Cancel", role: .cancel) {}
@@ -150,10 +155,7 @@ struct AdvancedSettingsView: View {
 
     // MARK: - Control Server Section
 
-    @ViewBuilder
     private var controlServerSection: some View {
-        @Bindable var settings = settings
-
         Section {
             Text("Refrax includes a command-line tool for controlling the browser from the terminal or AI agents. Run `refrax-ctl -h` for usage.")
                 .font(.callout)
@@ -162,40 +164,24 @@ struct AdvancedSettingsView: View {
 
             cliHelperRow
 
-            Picker("Access Mode", selection: $settings.controlAccessModeRaw) {
-                ForEach(ControlAccessMode.allCases, id: \.rawValue) { mode in
-                    Text(mode.displayName).tag(mode.rawValue)
+            Picker("Access Mode", selection: Binding(
+                get: { controlAccessManager.mode },
+                set: { controlAccessManager.setMode($0) },
+            )) {
+                ForEach(ControlAccessMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
             }
             .highlightable(id: "advanced.controlAccess", highlightedItemId: highlightedItemId)
 
-            if settings.controlAccessMode == .prompt {
-                if allowedClients.isEmpty {
+            if controlAccessManager.mode == .prompt {
+                if controlAccessManager.allowedClients.isEmpty {
                     Text("No allowed apps")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(allowedClients.enumerated()), id: \.offset) { index, client in
-                        HStack {
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: client.path))
-                                .resizable()
-                                .frame(width: 20, height: 20)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(client.displayName)
-                                    .font(.body)
-                                Text(client.path)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer()
-                            Button {
-                                removeAllowedClient(at: index)
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
+                    ForEach(controlAccessManager.allowedClients) { client in
+                        AllowedControlClientRow(client: client) {
+                            controlAccessManager.removeClient(client)
                         }
                     }
                 }
@@ -207,7 +193,7 @@ struct AdvancedSettingsView: View {
         } header: {
             Text("Control Server")
         } footer: {
-            Text(settings.controlAccessMode.description)
+            Text(controlAccessManager.mode.description)
         }
     }
 
@@ -259,38 +245,6 @@ struct AdvancedSettingsView: View {
         }
     }
 
-    private func loadAllowedClients() {
-        guard let data = settings.allowedControlClientsJSON.data(using: .utf8),
-              let clients = try? JSONDecoder().decode([AllowedClient].self, from: data)
-        else {
-            allowedClients = []
-            return
-        }
-        allowedClients = clients
-    }
-
-    private func removeAllowedClient(at index: Int) {
-        guard allowedClients.indices.contains(index) else { return }
-        allowedClients.remove(at: index)
-        saveAllowedClients()
-    }
-
-    private func addClientFromURL(_ url: URL) {
-        let path = url.path
-        let displayName = url.lastPathComponent
-        let client = AllowedClient(path: path, signingIdentifier: nil, displayName: displayName)
-        guard !allowedClients.contains(client) else { return }
-        allowedClients.append(client)
-        saveAllowedClients()
-    }
-
-    private func saveAllowedClients() {
-        if let data = try? JSONEncoder().encode(allowedClients),
-           let json = String(data: data, encoding: .utf8) {
-            settings.allowedControlClientsJSON = json
-        }
-    }
-
     // MARK: - JavaScript
 
     private var javaScriptSitesDescription: String {
@@ -305,6 +259,45 @@ struct AdvancedSettingsView: View {
         whitelistedSitesCount = siteSettingsManager.fetchSitesWithJavaScriptEnabled().count
     }
 }
+// MARK: - Allowed Control Client Row
+
+/// One always-allowed app: its icon when it is an app, its name, and who signed it.
+private struct AllowedControlClientRow: View {
+    let client: AllowedClient
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack {
+            Image(systemName: client.kind == .app ? "app.badge.checkmark" : "terminal")
+                .frame(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(client.displayName)
+                    .font(.body)
+                Text(signerDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(client.displayName)")
+        }
+    }
+
+    private var signerDescription: String {
+        if client.isApple {
+            return "\(client.identifier) · Apple"
+        }
+        guard let teamID = client.teamID else { return client.identifier }
+        return "\(client.identifier) · \(ControlAccessPrompt.signerDisplayName(client.signerName, teamID: teamID)) (\(teamID))"
+    }
+}
+
 
 // MARK: - JavaScript Sites Sheet
 

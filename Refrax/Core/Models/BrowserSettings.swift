@@ -522,29 +522,6 @@ final class BrowserSettings {
     /// Whether pop-up windows are allowed.
     var allowPopups: Bool
 
-    // MARK: - Advanced: Control Server
-
-    /// Raw value for control server access mode.
-    ///
-    /// Use ``controlAccessMode`` computed property for type-safe access.
-    var controlAccessModeRaw: String
-
-    /// JSON-encoded array of allowed control server clients.
-    ///
-    /// Use ``ControlAccessManager`` for programmatic access.
-    var allowedControlClientsJSON: String
-
-    /// Control server access mode.
-    ///
-    /// Controls how the control server handles incoming connections:
-    /// - `.off`: Socket not running, no CLI access
-    /// - `.prompt`: Unknown binaries trigger an allow/deny alert
-    /// - `.open`: Any same-UID process accepted
-    var controlAccessMode: ControlAccessMode {
-        get { ControlAccessMode(rawValue: controlAccessModeRaw) ?? .prompt }
-        set { controlAccessModeRaw = newValue.rawValue }
-    }
-
     // MARK: - Advanced: Security
 
     /// Whether users can bypass SSL certificate errors.
@@ -708,8 +685,6 @@ final class BrowserSettings {
         self.showTimeSpentInTooltips = true
         self.showUnsavedFormIndicator = false
         self.autoPiPOnTabSwitch = true
-        self.controlAccessModeRaw = ControlAccessMode.prompt.rawValue
-        self.allowedControlClientsJSON = "[]"
         self.allowSSLCertificateBypass = false
         self.defaultLockTimeout = 300
         self.contentProtectionBypassEnabled = true
@@ -1022,8 +997,6 @@ final class BrowserSettings {
         showUnsavedFormIndicator = false
         autoPiPOnTabSwitch = true
         allowSSLCertificateBypass = false
-        controlAccessMode = .prompt
-        allowedControlClientsJSON = "[]"
         defaultLockTimeout = 300
         contentProtectionBypassEnabled = true
         disableBeforeUnloadAlerts = false

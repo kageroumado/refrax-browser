@@ -361,7 +361,6 @@ struct SyncRoundTripTests {
         settings.archiveEnabled = true
         settings.archiveClearHours = 48
         settings.aria2ThresholdMB = 512
-        settings.controlAccessModeRaw = ControlAccessMode.open.rawValue
         context.insert(settings)
         try context.save()
 
@@ -386,7 +385,6 @@ struct SyncRoundTripTests {
         #expect(decoded.archiveEnabled == true)
         #expect(decoded.archiveClearHours == 48)
         #expect(decoded.aria2ThresholdMB == 512)
-        #expect(decoded.controlAccessModeRaw == ControlAccessMode.open.rawValue)
     }
 
     // MARK: - RecordMapper Utilities

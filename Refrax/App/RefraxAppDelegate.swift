@@ -181,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             passwordsManager: passwordsManager,
             engineRegistry: engineRegistry,
             telemetry: telemetry,
+            controlAccessManager: controlAccessManager,
         ),
     )
 
@@ -529,7 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             browserSettings: settings,
             humanInterventionManager: humanInterventionManager,
         )
-        self.controlAccessManager = ControlAccessManager(settings: settings)
+        self.controlAccessManager = ControlAccessManager()
         self.controlHost = RefraxControlHost(server: controlServer, accessManager: controlAccessManager)
 
         // Configure user style manager with dependencies
@@ -930,8 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controlAccessManager.onAuthorizationPrompt = { identity in
             ControlAccessPrompt.prompt(for: identity)
         }
-        controlAccessManager.autoAllowRefraxCTL()
-        if settings.controlAccessMode != .off {
+        if controlAccessManager.mode != .off {
             Task { await controlHost.start() }
             CLISkillInstaller.install()
             refreshCLIHelperInstall()
@@ -1053,11 +1053,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Observes control access mode changes to start/stop the socket server at runtime.
     private func observeControlAccessMode() {
-        let modeChanges = Observations { self.settings.controlAccessModeRaw }
+        let modeChanges = Observations { self.controlAccessManager.mode }
         Task { @MainActor [weak self] in
             for await _ in modeChanges {
                 guard let self else { return }
-                let mode = settings.controlAccessMode
+                let mode = controlAccessManager.mode
                 if mode == .off {
                     await controlHost.stop()
                 } else {
