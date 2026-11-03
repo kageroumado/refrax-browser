@@ -4025,6 +4025,13 @@ extension RefraxControlServer {
             return .error(CTL.ErrorInfo(code: "invalid_key", message: "Unknown setting key: \(params.key)"))
         }
 
+        guard key.isSettableOverControlSocket else {
+            return .error(CTL.ErrorInfo(
+                code: "not_settable",
+                message: "\(key.metadata.displayName) can be changed only in Refrax Settings.",
+            ))
+        }
+
         let value = params.value.lowercased()
 
         switch key.metadata.valueKind {

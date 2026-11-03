@@ -531,6 +531,24 @@ extension BrowserSettingKey {
     }
 }
 
+// MARK: - Control Socket
+
+extension BrowserSettingKey {
+    /// Whether a control client may change this setting with `refrax-ctl settings set`.
+    ///
+    /// Protections the user chose stay theirs to turn off: a client acts inside pages already,
+    /// and must not be able to widen what every later page lets it do.
+    var isSettableOverControlSocket: Bool {
+        switch self {
+        case .allowSSLCertificateBypass, .requireAuthForAutoFill, .autoFillMode, .enableContentBlocking,
+             .blockThirdPartyCookies, .enableFingerprintingProtection:
+            false
+        default:
+            true
+        }
+    }
+}
+
 // MARK: - Value Access
 
 extension BrowserSettingKey {
