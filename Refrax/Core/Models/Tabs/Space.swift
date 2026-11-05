@@ -124,8 +124,13 @@ final class Space {
 
     // MARK: - Table
 
-    /// Retained in the SwiftData schema so existing stores can open with their saved fields.
+    /// The islands' layout for this space, an encoded ``IslandState``.
     var tableLayoutData: Data?
+
+    /// The name of the island holding the tabs in no group.
+    var looseTabsTitle: String {
+        IslandState.decode(tableLayoutData).looseTabsAppearance.name
+    }
 
     // MARK: - Import
 

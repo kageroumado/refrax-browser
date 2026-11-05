@@ -13,7 +13,8 @@ struct CommandLensScopeLabel: View {
         } else {
             windowState.activeTab?.groupID
         }
-        return windowState.activeSpace?.groups.first(where: { $0.id == groupID })?.name ?? "Tabs"
+        guard let space = windowState.activeSpace else { return IslandState.looseTabsTitle }
+        return space.groups.first(where: { $0.id == groupID })?.name ?? space.looseTabsTitle
     }
 
     var body: some View {

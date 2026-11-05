@@ -77,6 +77,17 @@ struct IslandStateTests {
         #expect(decoded.detached.contains(tab))
     }
 
+    @Test("The loose tabs' island is named Tabs until renamed, and keeps its new name")
+    func looseTabsName() throws {
+        var state = IslandState()
+        #expect(state.looseTabsAppearance.name == "Tabs")
+        state.looseTabs = state.looseTabsAppearance.applying(IslandAppearance(name: " Reading ", iconName: "📚", colorString: ""))
+        let decoded = IslandState.decode(state.encoded())
+        #expect(decoded.looseTabsAppearance == IslandAppearance(name: "Reading", iconName: "📚", colorString: ""))
+        let older = Data(#"{"islands":{},"detached":[]}"#.utf8)
+        #expect(IslandState.decode(older).looseTabsAppearance.name == "Tabs")
+    }
+
     @Test("Bytes that are not a state decode to an empty one")
     func garbage() {
         #expect(IslandState.decode(Data("not json".utf8)) == IslandState())

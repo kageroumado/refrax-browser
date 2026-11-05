@@ -117,9 +117,7 @@ struct IslandHeader: View {
                     // The name, icon, and color are edited together, the name in the editor's field.
                     .onTapGesture(count: 2) { beginEdit() }
                     .contextMenu {
-                        if !island.isDefault {
-                            Button("Edit Island…") { beginEdit() }
-                        }
+                        Button("Edit Island…") { beginEdit() }
                     }
             }
             Spacer(minLength: 8)
@@ -217,8 +215,8 @@ struct IslandHeader: View {
         let onlyItem = NSMenuItem(title: "Show Only", action: nil, keyEquivalent: "")
         onlyItem.submenu = only
         menu.addItem(onlyItem)
+        add("Edit Island…", to: menu) { editAfterMenu = true }
         if !island.isDefault {
-            add("Edit Island…", to: menu) { editAfterMenu = true }
             let parents = islands.islands.filter { islands.canNest(id, in: $0.id) }
             if !parents.isEmpty {
                 let inside = NSMenu(title: "Put Inside")
@@ -255,7 +253,6 @@ struct IslandHeader: View {
 
     /// Opens the editor of the island's name, icon, and color, anchored to its header.
     private func beginEdit() {
-        guard !island.isDefault else { return }
         if island.placement.iconsOnly {
             islands.setIconsOnly(false, for: island.id)
         }
@@ -263,7 +260,6 @@ struct IslandHeader: View {
     }
 
     private func beginRename() {
-        guard !island.isDefault else { return }
         if island.placement.iconsOnly {
             islands.setIconsOnly(false, for: island.id)
         }

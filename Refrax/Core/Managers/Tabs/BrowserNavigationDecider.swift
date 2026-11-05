@@ -745,7 +745,7 @@ final class BrowserNavigationDecider: WebPage.NavigationDeciding {
     /// Makes background creation visible and offers direct access to the new page.
     private func confirmBackgroundTab(_ tab: Tab, in windowState: WindowState) {
         let tabID = tab.id
-        let destination = tab.group?.name ?? "Tabs"
+        let destination = tab.group?.name ?? tab.space?.looseTabsTitle ?? IslandState.looseTabsTitle
         let manager = tabManager
         windowState.showToast("Opened in background · \(destination)", action: ToastAction(title: "Show Tab") { [weak manager, weak windowState] in
             guard let manager, let windowState, let tab = manager.state.tab(for: tabID), !tab.isArchived else { return }

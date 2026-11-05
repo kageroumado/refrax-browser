@@ -20,12 +20,23 @@ nonisolated struct IslandPlacement: Codable, Equatable, Sendable {
     }
 }
 
-/// What the islands keep for a space: each island's place, and the tabs taken out of their
-/// islands to float as live cards. Membership and order are the tab list itself.
+/// What the islands keep for a space: each island's place, the loose tabs' island's name,
+/// icon, and color, and the tabs taken out of their islands to float as live cards.
+/// Membership and order are the tab list itself.
 nonisolated struct IslandState: Codable, Equatable, Sendable {
+    /// The loose tabs' island's name until the person gives it one.
+    static let looseTabsTitle = "Tabs"
+
     var islands: [UUID: IslandPlacement] = [:]
     var detached: Set<UUID> = []
     var automaticallyArranged = false
+    /// The loose tabs' island's appearance; a group island's lives on its group.
+    var looseTabs: IslandAppearance?
+
+    /// The loose tabs' island's appearance, its default name when the person gave none.
+    var looseTabsAppearance: IslandAppearance {
+        looseTabs ?? IslandAppearance(name: Self.looseTabsTitle, iconName: nil, colorString: "")
+    }
 
     init(islands: [UUID: IslandPlacement] = [:], detached: Set<UUID> = []) {
         self.islands = islands
@@ -36,6 +47,7 @@ nonisolated struct IslandState: Codable, Equatable, Sendable {
         case islands
         case detached
         case automaticallyArranged
+        case looseTabs
     }
 
     init(from decoder: any Decoder) throws {
@@ -43,6 +55,7 @@ nonisolated struct IslandState: Codable, Equatable, Sendable {
         self.islands = try container.decode([UUID: IslandPlacement].self, forKey: .islands)
         self.detached = try container.decode(Set<UUID>.self, forKey: .detached)
         self.automaticallyArranged = try container.decodeIfPresent(Bool.self, forKey: .automaticallyArranged) ?? false
+        self.looseTabs = try container.decodeIfPresent(IslandAppearance.self, forKey: .looseTabs)
     }
 
     /// Forgets tabs and islands no longer present.

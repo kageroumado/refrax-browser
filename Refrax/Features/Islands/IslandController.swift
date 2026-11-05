@@ -13,7 +13,7 @@ struct Island: Identifiable, Equatable {
     var iconName: String?
     var layout: IslandRowLayout
     var placement: IslandPlacement
-    /// The loose tabs' island, named after the space.
+    /// The loose tabs' island: the space's tabs in no group.
     var isDefault: Bool
 
     /// The rows on the island: tabs and section headers.
@@ -605,8 +605,12 @@ final class IslandController {
         func members(of groupID: UUID) -> [UUID] {
             onIslands.filter { $0.group?.id == groupID }.map(\.id)
         }
+        let loose = state.looseTabsAppearance
         var sources: [(id: UUID, title: String, color: String?, icon: String?, layout: IslandRowLayout, isDefault: Bool)] = [
-            (space.id, "Tabs", nil, nil, IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), true),
+            (
+                space.id, loose.name, loose.colorString.isEmpty ? nil : loose.colorString, loose.iconName,
+                IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), true,
+            ),
         ]
         let groups = space.groups.filter { !$0.isArchive }.sorted { $0.position < $1.position }
         let groupIDs = Set(groups.map(\.id))
@@ -789,15 +793,25 @@ final class IslandController {
 
     /// A group island's name, icon, and color; the loose tabs' island has none to edit.
     func appearance(of islandID: UUID) -> IslandAppearance? {
-        group(islandID).map { IslandAppearance(name: $0.name, iconName: $0.iconName, colorString: $0.colorString) }
+        if islandID == windowState.activeSpace?.id {
+            return state.looseTabsAppearance
+        }
+        return group(islandID).map { IslandAppearance(name: $0.name, iconName: $0.iconName, colorString: $0.colorString) }
     }
 
-    /// Takes in an edit of a group island's name, icon, and color: what changed is written,
-    /// a blank name keeps the one there.
+    /// Takes in an edit of an island's name, icon, and color: what changed is written, a
+    /// blank name keeps the one there. The loose tabs' island keeps its own in the space's
+    /// island state; a group island's goes to its group.
     func setAppearance(_ edit: IslandAppearance, of islandID: UUID) {
-        guard let group = group(islandID), let current = appearance(of: islandID) else { return }
+        guard let current = appearance(of: islandID) else { return }
         let next = current.applying(edit)
         guard next != current else { return }
+        guard let group = group(islandID) else {
+            state.looseTabs = next
+            persist()
+            rebuild()
+            return
+        }
         if next.name != current.name {
             groupManager.renameGroup(group, to: next.name)
         }
@@ -1565,7 +1579,7 @@ final class IslandController {
         }
     }
 
-    /// Renames a group's island; the space's own island carries the space's name.
+    /// Renames an island; a blank name keeps the one there.
     func rename(_ islandID: UUID, to name: String) {
         guard var appearance = appearance(of: islandID) else { return }
         appearance.name = name

@@ -1,11 +1,11 @@
 import Foundation
 
-/// What an island looks like: its group's name, icon, and color, edited together.
-nonisolated struct IslandAppearance: Equatable, Sendable {
+/// What an island looks like: its name, icon, and color, edited together.
+nonisolated struct IslandAppearance: Codable, Equatable, Sendable {
     var name: String
     /// An SF Symbol name or a single emoji; `nil` shows no icon.
     var iconName: String?
-    /// A ``GroupColor`` raw value or a tagged P3 string.
+    /// A ``GroupColor`` raw value or a tagged P3 string; empty draws the island uncolored.
     var colorString: String
 
     /// This appearance with `edit` taken in: the name trimmed, a blank name keeping the one

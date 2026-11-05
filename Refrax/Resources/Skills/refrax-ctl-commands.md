@@ -118,7 +118,7 @@ refrax-ctl canvas floating resize --tab TAB --width W --height H     # From the 
 
 ## Islands
 
-The tabs of the front window's space as floating lists over the page: one island per tab group, plus one named "Tabs" for the tabs in no group. Every action prints the islands' state afterwards. An island is named by its id, a prefix of it, its title, or `tabs`; a tab as everywhere else (id, a prefix of it, or part of its title or address).
+The tabs of the front window's space as floating lists over the page: one island per tab group, plus one for the tabs in no group, named "Tabs" until renamed. Every action prints the islands' state afterwards. An island is named by its id, a prefix of it, its title, or `tabs`; a tab as everywhere else (id, a prefix of it, or part of its title or address).
 
 ```bash
 refrax-ctl islands state [--json]                     # Every island with its rows (▸ marks the current page) and every card
