@@ -1080,6 +1080,8 @@ final class IslandController {
     func updateRowDrag(_ tabID: UUID, at point: CGPoint, asCard: Bool = false) {
         // Every write below re-evaluates the whole layer; a value that did not change is not written.
         update(\.draggedTabID, to: tabID)
+        // A row lifted while its page was previewed takes the preview with it.
+        update(\.previewedTabID, to: nil)
         update(\.rowGhost, to: RowGhost(tabID: tabID, point: point))
         let reach = IslandGeometry.padding
         guard let target = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else {
