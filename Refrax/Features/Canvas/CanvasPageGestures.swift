@@ -202,7 +202,7 @@ final class CanvasPageGestures {
         }
         if revealKey.matchesHold(modifiers) {
             guard !canvas.floatingVisibility.isHeld else { return event }
-            if floatingEligible() {
+            if floatingEligible(), !isEditingText(in: event.window) {
                 canvas.revealFloatingTabs()
             }
             return event
@@ -217,6 +217,14 @@ final class CanvasPageGestures {
     private func interruptControl() {
         islandInput?.interrupt()
         canvas.releaseFloatingTabs()
+    }
+
+    /// Text has the keyboard: the address bar, a find field, or an editable element on a page.
+    /// The reveal key is then the text's own modifier (Option moves by word), so it reveals
+    /// nothing; the menu's Floating Tabs shortcut still does. A view has an input context only
+    /// while it takes text: WebKit and Chromium return nil outside editable content.
+    private func isEditingText(in eventWindow: NSWindow?) -> Bool {
+        ((eventWindow ?? window)?.firstResponder as? NSView)?.inputContext != nil
     }
 
     private func revealKeyHeld(_ event: NSEvent) -> Bool {

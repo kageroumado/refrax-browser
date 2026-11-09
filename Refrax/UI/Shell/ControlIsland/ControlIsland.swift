@@ -241,7 +241,7 @@ struct ControlIsland: View {
                     .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
                     .transition(.opacity)
-                    .help("Hold \(revealKey.title) for a glance at your islands; click to keep them up")
+                    .help("Hold \(revealKey.title) for a glance at your islands; click or press ⌘⇧\\ to keep them up")
                     .accessibilityLabel("Show islands: hold \(revealKey.title)")
                 }
                 if isHiddenAtEdge, let edge = state.hiddenEdge {

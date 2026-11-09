@@ -194,7 +194,9 @@ extension MenuBarManager {
         separateItem.target = self
         viewMenu.addItem(separateItem)
 
-        let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "")
+        // ⌘⇧\ is Safari's Show All Tabs.
+        let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "\\")
+        floatingItem.keyEquivalentModifierMask = [.command, .shift]
         floatingItem.target = self
         viewMenu.addItem(floatingItem)
         let currentTabItem = NSMenuItem(title: "Current Tab…", action: #selector(showCurrentTabInfo(_:)), keyEquivalent: "")
