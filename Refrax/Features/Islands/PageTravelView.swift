@@ -421,17 +421,18 @@ private struct SlabChrome: ViewModifier, Animatable {
             }
             .overlay {
                 ZStack {
-                    shape.strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.7), location: 0),
-                                .init(color: .white.opacity(0.18), location: 0.45),
-                                .init(color: .white.opacity(0.35), location: 1),
-                            ],
-                            startPoint: .top, endPoint: .bottom,
-                        ),
-                        lineWidth: 1,
+                    // The gradient stays its own layer under a mask of the stroke, drawn by the
+                    // GPU. A stroke filled with a gradient is drawn on the CPU, over the slab's
+                    // whole area, on every frame its shape changes.
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.7), location: 0),
+                            .init(color: .white.opacity(0.18), location: 0.45),
+                            .init(color: .white.opacity(0.35), location: 1),
+                        ],
+                        startPoint: .top, endPoint: .bottom,
                     )
+                    .mask(shape.strokeBorder(.white, lineWidth: 1))
                     shape.inset(by: -0.5).strokeBorder(.black.opacity(0.14), lineWidth: 0.5)
                 }
                 .opacity(amount)

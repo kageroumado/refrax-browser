@@ -473,8 +473,6 @@ private struct IslandTabRow: View, Equatable {
     @Environment(TabManager.self) private var tabManager
     @Environment(TabCanvasManager.self) private var canvas
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(BookmarksManager.self) private var bookmarks
-    @Environment(SharingCoordinator.self) private var sharing
     @State private var isHovering = false
 
     private enum Layout {
@@ -639,7 +637,7 @@ private struct IslandTabRow: View, Equatable {
             }
         }
         .highPriorityGesture(dragGesture, including: canvas.renamingTabID == tab.id ? .subviews : .all)
-        .contextMenu { MenuTreeView(tree: menuTree) }
+        .contextMenu { IslandRowContextMenu(tab: tab, island: island, area: area) }
         .closesOnMiddleClick(tab)
         .help(iconsOnly ? tab.displayTitle : "")
         // One element per row: the label and actions on a container that isn't an element land
@@ -693,15 +691,6 @@ private struct IslandTabRow: View, Equatable {
             FaviconView(data: tab.activePage.faviconData, url: tab.activePage.url, size: Layout.faviconSize)
                 .overlay { TabLoadingRing(tab: tab, size: Layout.ringSize) }
         }
-    }
-
-    /// The page's actions and the tab's, with a rename that edits the row's title in place
-    /// and the island this row can leave for.
-    private var menuTree: MenuTree {
-        IslandRowMenu(
-            tab: tab, island: island, islands: islands, windowState: windowState, tabs: tabManager, bookmarks: bookmarks, canvas: canvas,
-            sharing: sharing, area: area, onRename: { canvas.renamingTabID = tab.id },
-        ).tree()
     }
 
     /// Where the row would land while it is dragged, and what happens when it is let go. The

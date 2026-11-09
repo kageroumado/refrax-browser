@@ -1,5 +1,29 @@
 import AppKit
 import Foundation
+import SwiftUI
+
+/// A row's context menu, built in its own body: the menu reads the browser's state (the
+/// floating cards, the panes, the selection), and built in the row's body it would redraw
+/// every row whenever any of that changes, as holding the reveal key does.
+struct IslandRowContextMenu: View {
+    let tab: Tab
+    let island: Island
+    let area: CGRect
+
+    @Environment(IslandController.self) private var islands
+    @Environment(WindowState.self) private var windowState
+    @Environment(TabManager.self) private var tabs
+    @Environment(TabCanvasManager.self) private var canvas
+    @Environment(BookmarksManager.self) private var bookmarks
+    @Environment(SharingCoordinator.self) private var sharing
+
+    var body: some View {
+        MenuTreeView(tree: IslandRowMenu(
+            tab: tab, island: island, islands: islands, windowState: windowState, tabs: tabs, bookmarks: bookmarks, canvas: canvas,
+            sharing: sharing, area: area, onRename: { canvas.renamingTabID = tab.id },
+        ).tree())
+    }
+}
 
 /// The menu of a tab row on an island: the page's actions and the tab's, with what a row can
 /// do within its islands, in a fixed layout (``layout``) that puts the common verbs first and
