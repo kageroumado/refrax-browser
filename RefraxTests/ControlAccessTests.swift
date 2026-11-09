@@ -53,6 +53,10 @@ private extension ProcessSigning {
         ProcessSigning(executablePath: path, identifier: nil, teamID: nil, signerName: nil, isApple: false)
     }
 
+    static func adHoc(_ path: String, cdHash: String = "c61b2c8b7af337db8b442c65919ccd6abab9297c") -> ProcessSigning {
+        ProcessSigning(executablePath: path, identifier: nil, teamID: nil, signerName: nil, isApple: false, cdHash: cdHash)
+    }
+
     static let refraxCTL = ProcessSigning.team(
         "/usr/local/bin/refrax-ctl",
         RefraxCodeSigning.cliIdentifier,
@@ -258,7 +262,7 @@ struct ControlClientIdentityTests {
     }
 
     @Test
-    func `Unsigned and ad hoc code gets no requirement`() throws {
+    func `Unsigned code gets no requirement`() throws {
         let inspector = FakeProcessInspector(signings: [300: .unsigned("/tmp/tool")])
 
         let identity = try derive(300, inspector)
@@ -308,6 +312,28 @@ struct ControlClientIdentityTests {
         #expect(text.contains("Location: /Applications/Editor.app"))
         #expect(text.contains("Signed by Someone (team TEAM123456)."))
         #expect(text.contains("It runs refrax-ctl at /usr/local/bin/refrax-ctl."))
+    }
+
+    @Test
+    func `An ad hoc signed host is named by its build's hash`() {
+        let host = identity(host: .adHoc("/opt/homebrew/bin/python3.14")).host
+
+        #expect(host.requirement == #"cdhash H"c61b2c8b7af337db8b442c65919ccd6abab9297c""#)
+        #expect(host.isPinnedToBuild)
+        #expect(!identity(host: .team("/Applications/Editor.app/Contents/MacOS/Editor", "com.example.editor")).host.isPinnedToBuild)
+    }
+
+    @Test(arguments: ["", "c61b2c8b", #"c61b2c8b7af337db8b442c65919ccd6abab92" or anchor apple"#, String(repeating: "g", count: 40)])
+    func `A build requirement takes only a 20-byte hex hash`(cdHash: String) {
+        #expect(ClientIdentity.buildRequirement(cdHash: cdHash) == nil)
+    }
+
+    @Test
+    func `The prompt says Always Allow covers one ad hoc build`() {
+        let text = ControlAccessPrompt.informativeText(for: identity(host: .adHoc("/opt/homebrew/bin/python3.14")))
+
+        #expect(text.contains("ad hoc signed"))
+        #expect(text.contains("this exact build"))
     }
 
     @Test
@@ -430,6 +456,25 @@ struct ControlAccessManagerTests {
     }
 
     @Test
+    func `Always Allow for an ad hoc host remembers that build only`() async {
+        let store = InMemoryControlAccessStore()
+        let manager = ControlAccessManager(store: store)
+        let prompt = ScriptedPrompt(.alwaysAllow)
+        manager.onAuthorizationPrompt = { _ in prompt.ask() }
+        let python = "/opt/homebrew/bin/python3.14"
+
+        #expect(await manager.authorize(identity(host: .adHoc(python))))
+        #expect(await manager.authorize(identity(host: .adHoc(python), pid: 501)))
+        #expect(prompt.prompts == 1)
+        #expect(store.load()?.clients.first?.isPinnedToBuild == true)
+
+        let updated = identity(host: .adHoc(python, cdHash: String(repeating: "a", count: 40)), pid: 502)
+        prompt.answer = .deny
+        #expect(await !(manager.authorize(updated)))
+        #expect(prompt.prompts == 2)
+    }
+
+    @Test
     func `A Deny is not asked again for a minute`() async {
         let clock = ManualClock()
         let manager = ControlAccessManager(store: InMemoryControlAccessStore(), clock: { clock.now })
@@ -459,6 +504,7 @@ struct ControlAccessManagerTests {
 
         #expect(await manager.authorize(identity(host: Self.editor)))
         #expect(await !(manager.authorize(identity(host: .unsigned("/tmp/tool")))))
+        #expect(await !(manager.authorize(identity(host: .adHoc("/tmp/tool")))))
     }
 
     @Test

@@ -136,7 +136,7 @@ struct AdvancedSettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(
-                "Refrax remembers apps by their code signature, and this one has no valid signature from Apple or an identified developer. "
+                "Refrax remembers apps by their code signature, and this one has no valid signature. "
                     + "Run it and choose Allow Once when Refrax asks.",
             )
         }
@@ -290,6 +290,9 @@ private struct AllowedControlClientRow: View {
     }
 
     private var signerDescription: String {
+        if client.isPinnedToBuild {
+            return "This build only · ad hoc signed"
+        }
         if client.isApple {
             return "\(client.identifier) · Apple"
         }

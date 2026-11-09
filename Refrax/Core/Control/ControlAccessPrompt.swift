@@ -3,7 +3,8 @@ import AppKit
 /// Asks the user whether a client may control Refrax.
 ///
 /// Deny is the default button. "Always Allow" appears only for a host with a verified code
-/// requirement, since only such a host can be recognized again.
+/// requirement, since only such a host can be recognized again: by its signer, or, for ad hoc
+/// signed code, by the hash of that one build.
 nonisolated enum ControlAccessPrompt {
     @MainActor
     static func prompt(for identity: ClientIdentity) -> AuthorizationDecision {
@@ -45,7 +46,12 @@ nonisolated enum ControlAccessPrompt {
         }
 
         if host.requirement == nil {
-            lines.append("Its code has no valid signature from Apple or an identified developer, so Refrax can allow it only once.")
+            lines.append("Its code has no valid signature, so Refrax can allow it only once.")
+        } else if host.isPinnedToBuild {
+            lines.append(
+                "Its code is ad hoc signed, with no signature from Apple or an identified developer. "
+                    + "Always Allow remembers this exact build; Refrax asks again after it is updated or rebuilt.",
+            )
         } else if host.isApple {
             lines.append("Signed by Apple.")
         } else if let teamID = host.teamID {

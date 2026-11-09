@@ -25,12 +25,17 @@ nonisolated struct AllowedClient: Codable, Equatable, Sendable, Identifiable {
         requirement
     }
 
+    /// The requirement names one build by its hash, because the code is ad hoc signed.
+    var isPinnedToBuild: Bool {
+        ClientIdentity.isBuildRequirement(requirement)
+    }
+
     init?(host: ControlHost) {
-        guard let requirement = host.requirement, let identifier = host.identifier else { return nil }
+        guard let requirement = host.requirement else { return nil }
         self.requirement = requirement
         self.kind = host.kind
         self.displayName = host.displayName
-        self.identifier = identifier
+        self.identifier = host.identifier ?? host.displayName
         self.teamID = host.teamID
         self.signerName = host.signerName
         self.isApple = host.isApple

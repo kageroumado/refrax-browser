@@ -150,7 +150,7 @@ final class ControlAccessManager {
         case .off:
             return false
         case .open:
-            guard identity.host.requirement != nil else {
+            guard identity.host.requirement != nil, !identity.host.isPinnedToBuild else {
                 os_log("Open mode refused unsigned client %{public}@", log: Self.logger, type: .info, identity.host.path)
                 return false
             }
@@ -218,15 +218,13 @@ final class ControlAccessManager {
         save()
     }
 
-    /// Adds the signed app or tool at `url` to the always-allow list.
+    /// Adds the signed app or tool at `url` to the always-allow list. Ad hoc signed code is
+    /// added as the build on disk now.
     ///
-    /// - Returns: `false` when the code at `url` carries no valid signature from Apple or an
-    ///   identified developer.
+    /// - Returns: `false` when the code at `url` carries no valid signature.
     @discardableResult
     func addClient(at url: URL) -> Bool {
-        guard let (signing, requirement) = SecurityProcessInspector.signing(ofFileAt: url),
-              let identifier = signing.identifier
-        else { return false }
+        guard let (signing, requirement) = SecurityProcessInspector.signing(ofFileAt: url) else { return false }
 
         let bundlePath = url.pathExtension == "app" ? url.path : nil
         let host = ControlHost(
@@ -234,7 +232,7 @@ final class ControlAccessManager {
             pid: 0,
             path: url.path,
             displayName: url.deletingPathExtension().lastPathComponent,
-            identifier: identifier,
+            identifier: signing.identifier,
             teamID: signing.teamID,
             signerName: signing.signerName,
             isApple: signing.isApple,

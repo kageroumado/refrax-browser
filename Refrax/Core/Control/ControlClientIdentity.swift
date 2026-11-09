@@ -34,6 +34,9 @@ nonisolated struct ProcessSigning: Sendable, Equatable {
     let signerName: String?
     /// Whether Apple itself signed the code (`anchor apple`).
     let isApple: Bool
+    /// The code directory hash, in hex, of validly ad hoc signed code: it names this exact
+    /// build, so the build can be recognized again where its signer cannot.
+    var cdHash: String? = nil
 }
 
 /// Reads code-signing facts and process relationships. The real implementation is
@@ -71,10 +74,16 @@ nonisolated struct ControlHost: Sendable, Equatable {
     /// The signing certificate's subject, shown in the prompt.
     let signerName: String?
     let isApple: Bool
-    /// Requirement text this host's running code was verified against. `nil` when the host
-    /// is unsigned, ad hoc signed, or failed validation; such a host can be allowed once but
-    /// never remembered.
+    /// Requirement text this host's running code was verified against. Ad hoc signed code is
+    /// named by its code directory hash, so remembering it covers that build only. `nil` when
+    /// the host is unsigned or failed validation; such a host can be allowed once but never
+    /// remembered.
     let requirement: String?
+
+    /// The requirement names this exact build by its hash, because the code is ad hoc signed.
+    var isPinnedToBuild: Bool {
+        requirement.map(ClientIdentity.isBuildRequirement) ?? false
+    }
 }
 
 /// A connected control client: the peer process, and the host it acts for.
@@ -222,14 +231,30 @@ nonisolated extension ClientIdentity {
     }
 
     /// The requirement that names code with these signing facts: Apple's own code by
-    /// identifier, a developer's by identifier and team.
+    /// identifier, a developer's by identifier and team, ad hoc signed code by its hash.
     static func requirementText(for signing: ProcessSigning) -> String? {
+        if let cdHash = signing.cdHash {
+            return buildRequirement(cdHash: cdHash)
+        }
         guard let identifier = signing.identifier else { return nil }
         if signing.isApple {
             return RefraxCodeSigning.appleRequirement(identifier: identifier)
         }
         guard let teamID = signing.teamID else { return nil }
         return RefraxCodeSigning.teamRequirement(identifier: identifier, teamID: teamID)
+    }
+
+    /// Requirement text that only the code with the code directory hash `cdHash` satisfies.
+    ///
+    /// - Returns: `nil` unless `cdHash` is 40 hex digits, the 20 bytes macOS names code by.
+    static func buildRequirement(cdHash: String) -> String? {
+        guard cdHash.count == 40, cdHash.allSatisfy(\.isHexDigit) else { return nil }
+        return "cdhash H\"\(cdHash.lowercased())\""
+    }
+
+    /// Whether `requirement` names one build by its hash, as ``buildRequirement(cdHash:)`` makes.
+    static func isBuildRequirement(_ requirement: String) -> Bool {
+        requirement.hasPrefix("cdhash ")
     }
 
     /// The `.app` bundle whose main executable is at `path`, as in
@@ -275,7 +300,11 @@ nonisolated struct SecurityProcessInspector: ProcessInspector {
         let flags = (info[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
         let isAdHoc = flags & SecCodeSignatureFlags.adhoc.rawValue != 0
         guard !isAdHoc else {
-            return ProcessSigning(executablePath: path, identifier: nil, teamID: nil, signerName: nil, isApple: false)
+            // An ad hoc identifier is whatever the linker chose; only the hash names the code.
+            return ProcessSigning(
+                executablePath: path, identifier: nil, teamID: nil, signerName: nil, isApple: false,
+                cdHash: Self.cdHash(in: info),
+            )
         }
 
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate]
@@ -321,18 +350,27 @@ nonisolated struct SecurityProcessInspector: ProcessInspector {
               let info = info as? [String: Any]
         else { return nil }
 
+        let flags = (info[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
+        let isAdHoc = flags & SecCodeSignatureFlags.adhoc.rawValue != 0
+        let executablePath = (info[kSecCodeInfoMainExecutable as String] as? URL)?.path ?? url.path
+
         var appleRequirement: SecRequirement?
         SecRequirementCreateWithString("anchor apple" as CFString, [], &appleRequirement)
         let isApple = appleRequirement.map { SecStaticCodeCheckValidity(staticCode, [], $0) == errSecSuccess } ?? false
 
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate]
-        let signing = ProcessSigning(
-            executablePath: (info[kSecCodeInfoMainExecutable as String] as? URL)?.path ?? url.path,
-            identifier: info[kSecCodeInfoIdentifier as String] as? String,
-            teamID: info[kSecCodeInfoTeamIdentifier as String] as? String,
-            signerName: certificates?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? },
-            isApple: isApple,
-        )
+        let signing = isAdHoc
+            ? ProcessSigning(
+                executablePath: executablePath, identifier: nil, teamID: nil, signerName: nil, isApple: false,
+                cdHash: cdHash(in: info),
+            )
+            : ProcessSigning(
+                executablePath: executablePath,
+                identifier: info[kSecCodeInfoIdentifier as String] as? String,
+                teamID: info[kSecCodeInfoTeamIdentifier as String] as? String,
+                signerName: certificates?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? },
+                isApple: isApple,
+            )
         guard let text = ClientIdentity.requirementText(for: signing) else { return nil }
 
         var requirement: SecRequirement?
@@ -359,6 +397,12 @@ nonisolated struct SecurityProcessInspector: ProcessInspector {
 
     private static func code(_ code: SecCode, satisfies requirement: String) -> Bool {
         SocketPeer.code(code, satisfies: requirement)
+    }
+
+    /// The code directory hash in signing information, in hex.
+    private static func cdHash(in info: [String: Any]) -> String? {
+        guard let unique = info[kSecCodeInfoUnique as String] as? Data, !unique.isEmpty else { return nil }
+        return unique.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func signingInformation(of code: SecCode) -> [String: Any]? {
