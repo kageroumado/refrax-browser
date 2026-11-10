@@ -50,7 +50,8 @@ nonisolated enum ControlAccessPrompt {
         } else if host.isPinnedToBuild {
             lines.append(
                 "Its code is ad hoc signed, with no signature from Apple or an identified developer. "
-                    + "Always Allow remembers this exact build; Refrax asks again after it is updated or rebuilt.",
+                    + "Always Allow remembers this exact build, but any program you run can use it to control Refrax. "
+                    + "Refrax asks again after it is updated or rebuilt.",
             )
         } else if host.isApple {
             lines.append("Signed by Apple.")

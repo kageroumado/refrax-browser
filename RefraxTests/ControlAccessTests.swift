@@ -334,6 +334,7 @@ struct ControlClientIdentityTests {
 
         #expect(text.contains("ad hoc signed"))
         #expect(text.contains("this exact build"))
+        #expect(text.contains("any program you run can use it to control Refrax"))
     }
 
     @Test
