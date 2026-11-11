@@ -743,7 +743,7 @@ final class RefraxControlServer {
             }
 
             if let nativeID = node.nativeID {
-                let interaction = _WKTextExtractionInteraction(action: .click)
+                let interaction = try PageContentExtractor.interaction(.click)
                 interaction.nodeIdentifier = nativeID
                 if Self.supportsScrollToVisible {
                     interaction.scrollToVisible = true
@@ -811,9 +811,9 @@ final class RefraxControlServer {
                 // the click (fullscreen, popups, PiP) survive only if they run
                 // synchronously. Fall back to the JS path if the native
                 // interaction fails (e.g. point outside the visible bounds).
-                let interaction = _WKTextExtractionInteraction(action: .click)
-                interaction.location = CGPoint(x: x, y: y)
                 do {
+                    let interaction = try PageContentExtractor.interaction(.click)
+                    interaction.location = CGPoint(x: x, y: y)
                     try await webPage.performInteraction(interaction)
                 } catch {
                     try await webPage.callJavaScript("document.elementFromPoint(\(x), \(y))?.click()")
@@ -999,7 +999,7 @@ final class RefraxControlServer {
             }
 
             if let nativeID = node.nativeID {
-                let focusInteraction = _WKTextExtractionInteraction(action: .click)
+                let focusInteraction = try PageContentExtractor.interaction(.click)
                 focusInteraction.nodeIdentifier = nativeID
                 if Self.supportsScrollToVisible {
                     focusInteraction.scrollToVisible = true
@@ -1010,7 +1010,7 @@ final class RefraxControlServer {
                     return .error(CTL.ErrorInfo(code: "interaction_failed", message: mapWebKitError(error)))
                 }
 
-                let typeInteraction = _WKTextExtractionInteraction(action: .textInput)
+                let typeInteraction = try PageContentExtractor.interaction(.textInput)
                 typeInteraction.nodeIdentifier = nativeID
                 if Self.supportsScrollToVisible {
                     typeInteraction.scrollToVisible = true
@@ -2168,7 +2168,7 @@ final class RefraxControlServer {
 
         // Perform the click after visual feedback
         if let nativeID = node.nativeID {
-            let interaction = _WKTextExtractionInteraction(action: .click)
+            let interaction = try PageContentExtractor.interaction(.click)
             interaction.nodeIdentifier = nativeID
             try await webPage.performInteraction(interaction)
         } else {
@@ -3111,7 +3111,7 @@ final class RefraxControlServer {
     /// Checked once at runtime since the property exists in WebKit source but may not
     /// have shipped in the current macOS version yet.
     private static let supportsScrollToVisible: Bool = {
-        let probe = _WKTextExtractionInteraction(action: .click)
+        guard let probe = try? PageContentExtractor.interaction(.click) else { return false }
         return probe.responds(to: Selector(("setScrollToVisible:")))
     }()
 
@@ -3712,7 +3712,7 @@ extension RefraxControlServer {
         }
 
         if let nativeID = node.nativeID {
-            let interaction = _WKTextExtractionInteraction(action: .click)
+            let interaction = try PageContentExtractor.interaction(.click)
             interaction.nodeIdentifier = nativeID
             if Self.supportsScrollToVisible {
                 interaction.scrollToVisible = true

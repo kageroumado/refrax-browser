@@ -35,6 +35,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Marks a class that macOS 26.1's WebKit lacks. It is weak-imported, so its class
+/// reference is nil on such systems; Swift checks
+/// `PageContentExtractor.isNativeExtractionAvailable` before using any of them.
+#define REFRAX_TEXT_EXTRACTION_WEAK __attribute__((weak_import))
+
 // MARK: - Public API Types
 
 #pragma mark - Filter Options
@@ -65,6 +70,7 @@ typedef NS_ENUM(NSInteger, _WKTextExtractionOutputFormat) {
 
 #pragma mark - Configuration
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface _WKTextExtractionConfiguration : NSObject
 
 @property (nonatomic, class, copy, readonly) _WKTextExtractionConfiguration *configurationForVisibleTextOnly NS_SWIFT_NAME(visibleTextOnly);
@@ -136,6 +142,7 @@ typedef NS_ENUM(NSInteger, _WKTextExtractionAction) {
 
 #pragma mark - Interaction
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface _WKTextExtractionInteraction : NSObject
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -217,6 +224,7 @@ typedef NS_ENUM(NSInteger, WKTextExtractionEditableType) {
 @property (nonatomic) NSRange selectedRange;
 @end
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface WKTextExtractionLinkItem : WKTextExtractionItem
 @property (nonatomic, readonly) NSString *target;
 @property (nonatomic, readonly, nullable) NSURL *url;
@@ -230,6 +238,7 @@ typedef NS_ENUM(NSInteger, WKTextExtractionEditableType) {
 // WKTextExtractionFormItem is defined in WebKit source but not yet shipped.
 // Detected at runtime via NSStringFromClass in PageContentExtractor.
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface WKTextExtractionTextFormControlItem : WKTextExtractionItem
 @property (nonatomic, readonly) NSString *label;
 @property (nonatomic, readonly) NSString *placeholder;
@@ -246,6 +255,7 @@ typedef NS_ENUM(NSInteger, WKTextExtractionEditableType) {
 @property (nonatomic, readonly) CGSize contentSize;
 @end
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface WKTextExtractionSelectItem : WKTextExtractionItem
 @property (nonatomic, readonly) NSArray<NSString *> *selectedValues;
 @property (nonatomic, readonly) BOOL supportsMultiple;
@@ -254,6 +264,7 @@ typedef NS_ENUM(NSInteger, WKTextExtractionEditableType) {
 // WKTextExtractionIFrameItem is defined in WebKit source but not yet shipped.
 // Detected at runtime via NSStringFromClass in PageContentExtractor.
 
+REFRAX_TEXT_EXTRACTION_WEAK
 @interface WKTextExtractionContentEditableItem : WKTextExtractionItem
 @property (nonatomic, readonly) WKTextExtractionEditableType contentEditableType;
 @property (nonatomic, readonly, getter=isFocused) BOOL focused;

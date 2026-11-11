@@ -44,6 +44,30 @@ enum PageContentExtractor {
 
     private static var cache: [String: CachedContent] = [:]
 
+    // MARK: - Availability
+
+    /// Whether this system's WebKit ships every text-extraction class Refrax uses.
+    ///
+    /// macOS 26.1's WebKit lacks the classes listed here. The header weak-imports them,
+    /// so their class references are nil there and touching one crashes; extraction and
+    /// native interactions throw ``ExtractionError/unavailable`` instead.
+    nonisolated static let isNativeExtractionAvailable: Bool = [
+        "_WKTextExtractionConfiguration",
+        "_WKTextExtractionInteraction",
+        "WKTextExtractionLinkItem",
+        "WKTextExtractionTextFormControlItem",
+        "WKTextExtractionSelectItem",
+        "WKTextExtractionContentEditableItem",
+    ].allSatisfy { NSClassFromString($0) != nil }
+
+    /// Creates a native interaction for `_performInteraction:`.
+    ///
+    /// - Throws: ``ExtractionError/unavailable`` when WebKit lacks the interaction class.
+    static func interaction(_ action: _WKTextExtractionAction) throws -> _WKTextExtractionInteraction {
+        guard isNativeExtractionAvailable else { throw ExtractionError.unavailable }
+        return _WKTextExtractionInteraction(action: action)
+    }
+
     // MARK: - Public API
 
     /// Extracts a structured content tree from a WKWebView.
@@ -53,11 +77,14 @@ enum PageContentExtractor {
     ///   - url: The current page URL (used for caching).
     ///   - title: The current page title.
     /// - Returns: A ``PageContentTree`` representing the page's content.
+    /// - Throws: ``ExtractionError/unavailable`` when WebKit lacks the extraction classes.
     static func extract(
         from webView: WKWebView,
         url: URL,
         title: String,
     ) async throws -> PageContentTree {
+        guard isNativeExtractionAvailable else { throw ExtractionError.unavailable }
+
         let urlString = url.absoluteString
 
         // Check cache
@@ -578,11 +605,13 @@ extension PageContentExtractor {
     enum ExtractionError: LocalizedError {
         case timeout
         case nativeExtractionFailed
+        case unavailable
 
         var errorDescription: String? {
             switch self {
             case .timeout: "Page content extraction timed out"
             case .nativeExtractionFailed: "WebKit text extraction returned no result"
+            case .unavailable: "Reading and acting on page elements needs a newer version of macOS"
             }
         }
     }
