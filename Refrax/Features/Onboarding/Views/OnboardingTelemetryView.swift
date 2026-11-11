@@ -3,8 +3,8 @@ import SwiftUI
 /// The telemetry choice: onboarding's second screen, and the one-time prompt
 /// for installs that finished onboarding without choosing.
 ///
-/// ``TelemetryTier/recommended`` is preselected; the choice is saved when the
-/// user continues.
+/// ``TelemetryTier/off`` is preselected, so continuing without a choice sends
+/// nothing; the choice is saved when the user continues.
 struct OnboardingTelemetryView: View {
     @Environment(BrowserSettings.self) private var settings
 
@@ -12,7 +12,7 @@ struct OnboardingTelemetryView: View {
     var note: String?
     let onNext: () -> Void
 
-    @State private var tier: TelemetryTier = .recommended
+    @State private var tier: TelemetryTier = .off
 
     var body: some View {
         ScrollView {
