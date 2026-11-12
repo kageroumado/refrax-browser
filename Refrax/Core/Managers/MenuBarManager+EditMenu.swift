@@ -35,6 +35,16 @@ extension MenuBarManager {
             keyEquivalent: "c",
         ))
 
+        let copyAddressItem = NSMenuItem(
+            title: "Copy Address",
+            action: #selector(copyPageAddress(_:)),
+            keyEquivalent: "c",
+        )
+        copyAddressItem.keyEquivalentModifierMask = [.command, .shift]
+        copyAddressItem.image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
+        copyAddressItem.target = self
+        menu.addItem(copyAddressItem)
+
         menu.addItem(NSMenuItem(
             title: "Paste",
             action: #selector(NSText.paste(_:)),
@@ -86,6 +96,16 @@ extension MenuBarManager {
         if manager.canRedo {
             manager.redo()
         }
+    }
+
+    /// Copies the focused page's address without its tracking parameters (⌘⇧C).
+    @objc
+    func copyPageAddress(_: Any?) {
+        guard let controller = activeWindowController,
+              let tab = controller.windowState.activeTab else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(controller.tabManager.copyableURL(for: tab), forType: .string)
+        controller.windowState.showToast("Copied address")
     }
 
     @objc

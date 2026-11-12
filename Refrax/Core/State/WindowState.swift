@@ -708,15 +708,27 @@ final class WindowState {
     ///     URL loads in that page instead of a new tab.
     ///   - source: The control that opened a centered lens, in window coordinates, for a ray
     ///     of light from it to the lens. ⌘T passes `nil`: a key needs no pointer guidance.
+    ///   - inGlimpse: Whether the committed page opens in a Glimpse window instead of a tab.
     ///
-    /// On an empty page the start page hosts the lens itself, and either entrance refocuses it.
-    func openCommandLens(prefill: String? = nil, anchor: CGRect? = nil, source: CGRect? = nil) {
-        if activeTab == nil {
+    /// On an empty page the start page hosts the lens itself, and the tab entrances refocus it.
+    /// The Glimpse entrance always opens the centered lens, whose commits leave the page alone.
+    func openCommandLens(
+        prefill: String? = nil,
+        anchor: CGRect? = nil,
+        source: CGRect? = nil,
+        inGlimpse: Bool = false,
+    ) {
+        if activeTab == nil, !inGlimpse {
             startPageLensRequest &+= 1
             return
         }
         webViewsShouldIgnoreAllEvents = true
-        commandLensEntrance = CommandLensEntrance(prefill: prefill, anchor: anchor, source: source)
+        commandLensEntrance = CommandLensEntrance(
+            prefill: prefill,
+            anchor: anchor,
+            source: source,
+            opensInGlimpse: inGlimpse,
+        )
     }
 
     /// ⌘L: the lens beside the page card with the page's address in it, selected.
@@ -1041,6 +1053,10 @@ struct CommandLensEntrance: Equatable, Sendable {
     /// The control that opened a centered lens, in window coordinates, which a ray of light
     /// leaves for the lens; `nil` when a key opened it.
     var source: CGRect?
+
+    /// The lens opened by File → New Glimpse Window (⌥⌘N): whatever it commits opens in a
+    /// Glimpse window, the way ⌥↩ does from the ordinary lens.
+    var opensInGlimpse = false
 
     /// An anchored lens edits the current page's address: a committed URL loads in that page.
     var editsCurrentPage: Bool {

@@ -27,7 +27,7 @@ extension MenuBarManager {
             action: #selector(moveCurrentTabToNewWindow(_:)),
             keyEquivalent: "n",
         )
-        moveTabItem.keyEquivalentModifierMask = [.command, .option]
+        moveTabItem.keyEquivalentModifierMask = [.command, .option, .shift]
         moveTabItem.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: nil)
         moveTabItem.target = self
         windowMenu.addItem(moveTabItem)

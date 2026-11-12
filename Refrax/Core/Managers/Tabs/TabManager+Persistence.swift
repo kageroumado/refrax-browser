@@ -90,9 +90,10 @@ extension TabManager {
 // MARK: - Helpers
 
 extension TabManager {
-    /// Gets copyable URL for a tab.
+    /// The address every copy action puts on the pasteboard: the tab's focused page, with
+    /// tracking parameters (`utm_*`, `fbclid` and the rest of ``LinkProtection``'s list) removed.
     func copyableURL(for tab: Tab) -> String {
-        tab.activePage.url.absoluteString
+        tab.activePage.url.removingTrackingParameters().absoluteString
     }
 
     #if DEBUG

@@ -417,6 +417,13 @@ final class WindowManager {
         controller.openCommandLens()
     }
 
+    /// File → New Glimpse Window: the lens whose search or address opens in a Glimpse, in the
+    /// frontmost window, or in a new one when none is open.
+    func openGlimpseLens() {
+        let controller = activeWindowController ?? createWindow()
+        controller.openGlimpseLens()
+    }
+
     /// Opens the Command Lens beside the page card with the address in it, in the frontmost window.
     func openLocation() {
         guard let controller = activeWindowController else { return }

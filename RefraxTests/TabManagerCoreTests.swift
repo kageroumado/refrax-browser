@@ -275,14 +275,14 @@ struct TabManagerEdgeCaseTests {
         #expect(env.tabManager.hasMultipleSpaces, "Two spaces is multiple")
     }
 
-    @Test("Copyable URL returns absolute string")
-    func copyableURLReturnsAbsoluteString() throws {
+    @Test("Copyable URL keeps the address and drops tracking parameters")
+    func copyableURLDropsTrackingParameters() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
         let tab = env.tabManager.createTab(
-            url: URL(string: "https://example.com/path?query=1")!,
+            url: URL(string: "https://example.com/path?query=1&utm_source=news&fbclid=abc")!,
             in: space,
             makeActive: true,
         )

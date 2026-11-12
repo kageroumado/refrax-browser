@@ -410,6 +410,11 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
         windowState.openCommandLens()
     }
 
+    /// Opens the centered Command Lens with its commits going to a Glimpse window (⌥⌘N).
+    func openGlimpseLens() {
+        windowState.openCommandLens(inGlimpse: true)
+    }
+
     /// Opens the Command Lens beside the page card with the address in it (⌘L).
     func editAddress() {
         windowState.editAddress()

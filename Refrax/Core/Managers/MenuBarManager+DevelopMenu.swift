@@ -64,13 +64,13 @@ extension MenuBarManager {
         timelineItem.tag = DevelopMenuItemTag.timelineRecording.rawValue
         developMenu.addItem(timelineItem)
 
-        // Start Element Selection (Cmd+Shift+C)
+        // Start Element Selection (Cmd+Option+Shift+C); Cmd+Shift+C is Copy Address
         let elementSelectionItem = NSMenuItem(
             title: "Start Element Selection",
             action: #selector(toggleElementSelection(_:)),
             keyEquivalent: "c",
         )
-        elementSelectionItem.keyEquivalentModifierMask = [.command, .shift]
+        elementSelectionItem.keyEquivalentModifierMask = [.command, .option, .shift]
         elementSelectionItem.target = self
         elementSelectionItem.tag = DevelopMenuItemTag.elementSelection.rawValue
         developMenu.addItem(elementSelectionItem)

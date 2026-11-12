@@ -29,6 +29,16 @@ extension MenuBarManager {
         newSpaceItem.target = self
         fileMenu.addItem(newSpaceItem)
 
+        let newGlimpseItem = NSMenuItem(
+            title: "New Glimpse Window",
+            action: #selector(openGlimpseLens(_:)),
+            keyEquivalent: "n",
+        )
+        newGlimpseItem.keyEquivalentModifierMask = [.command, .option]
+        newGlimpseItem.image = NSImage(systemSymbolName: "macwindow.on.rectangle", accessibilityDescription: nil)
+        newGlimpseItem.target = self
+        fileMenu.addItem(newGlimpseItem)
+
         // New Tab
         let newTabItem = NSMenuItem(
             title: "Open Command Lens",
@@ -188,6 +198,11 @@ extension MenuBarManager {
     @objc
     func openNewSpace(_: Any?) {
         activeWindowController?.windowState.controlIsland.spaceRequest = .create
+    }
+
+    @objc
+    func openGlimpseLens(_: Any?) {
+        windowManager.openGlimpseLens()
     }
 
     @objc

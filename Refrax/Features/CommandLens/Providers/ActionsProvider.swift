@@ -198,7 +198,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
                 }
             }
             if matches(["move to new window", "move tab to new window", "tear off tab", "own window"]) {
-                results.append(suggestion(.moveCurrentTabToNewWindow, "Move to New Window", "Current page  ⌥⌘N", "macwindow.badge.plus"))
+                results.append(suggestion(.moveCurrentTabToNewWindow, "Move to New Window", "Current page  ⌥⇧⌘N", "macwindow.badge.plus"))
             }
         }
         results += dockSuggestions(matching: matches, suggestion: suggestion)

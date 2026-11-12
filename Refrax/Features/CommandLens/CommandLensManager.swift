@@ -1783,6 +1783,11 @@ final class CommandLensManager {
 
     // MARK: - Navigation
 
+    /// Whether this commit opens a Glimpse window: ⌥↩, or the lens of New Glimpse Window.
+    private var commitOpensGlimpse: Bool {
+        optionKeyHeldDuringCommit || windowState.commandLensEntrance?.opensInGlimpse == true
+    }
+
     /// The lens opened beside the page card to edit its address: a URL loads in the current page.
     private var isAddressMode: Bool {
         windowState.commandLensEntrance?.editsCurrentPage == true
@@ -1791,8 +1796,8 @@ final class CommandLensManager {
     private func navigateToURL(_ url: URL, makeActive: Bool) {
         // Deep links (sslError, focusBlocked) render in-tab — no special handling needed
 
-        // Option+Enter opens in Glimpse window
-        if optionKeyHeldDuringCommit {
+        // Option+Enter, or any commit from the Glimpse lens, opens in a Glimpse window
+        if commitOpensGlimpse {
             tabManager.windowManager.createGlimpseWindow(url: url)
             closeCurrentLens()
             return
@@ -1840,8 +1845,8 @@ final class CommandLensManager {
         let searchEngine = currentSearchEngine
         guard let url = searchEngine.searchURL(for: query) else { return }
 
-        // Option+Enter opens in Glimpse window
-        if optionKeyHeldDuringCommit {
+        // Option+Enter, or any commit from the Glimpse lens, opens in a Glimpse window
+        if commitOpensGlimpse {
             tabManager.windowManager.createGlimpseWindow(url: url)
             closeCurrentLens()
             return

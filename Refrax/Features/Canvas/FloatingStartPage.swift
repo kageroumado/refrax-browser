@@ -294,6 +294,10 @@ struct FloatingStartPage: View {
                     lensFrame = $0
                     tour.startPageLensFrame = $0
                 }
+                // New Glimpse Window opens the window's own lens over this page; one lens shows.
+                .opacity(windowState.showsCommandLens ? 0 : 1)
+                .allowsHitTesting(!windowState.showsCommandLens)
+                .accessibilityHidden(windowState.showsCommandLens)
             if showHints {
                 lensNote
             }

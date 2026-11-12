@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Keeps the new tab's destination beside the field for the duration of entry.
+/// Keeps the destination of what the lens opens beside the field for the duration of entry.
 struct CommandLensScopeLabel: View {
     @Environment(WindowState.self) private var windowState
     private enum Layout {
@@ -17,8 +17,15 @@ struct CommandLensScopeLabel: View {
         return space.groups.first(where: { $0.id == groupID })?.name ?? space.looseTabsTitle
     }
 
+    private var text: String {
+        if windowState.commandLensEntrance?.opensInGlimpse == true {
+            return "Opens in a Glimpse window"
+        }
+        return "New tab in \(destination)"
+    }
+
     var body: some View {
-        Text("New tab in \(destination)")
+        Text(text)
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

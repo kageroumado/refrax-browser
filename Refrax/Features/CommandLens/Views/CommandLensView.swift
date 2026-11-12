@@ -39,7 +39,8 @@ struct CommandLensView: View {
                 VStack(spacing: 0) {
                     textFieldCapsule
                     suggestionsArea
-                    if !isSmallMode, fieldStyle == nil, windowState.activeTab != nil,
+                    if !isSmallMode, fieldStyle == nil,
+                       windowState.activeTab != nil || windowState.commandLensEntrance?.opensInGlimpse == true,
                        windowState.commandLensEntrance?.editsCurrentPage != true, windowState.newPanePlacement == nil {
                         CommandLensScopeLabel()
                     }

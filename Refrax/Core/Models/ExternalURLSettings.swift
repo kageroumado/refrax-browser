@@ -46,11 +46,13 @@ final class ExternalURLSettings {
     /// Master toggle for custom external URL handling.
     ///
     /// When disabled, all external URLs open in the current window's active space
-    /// using default behavior.
-    var enableCustomHandling: Bool = false
+    /// using default behavior. On by default so a link from another app opens in a
+    /// Glimpse, Arc's Little Arc behavior; the row is created on the first external
+    /// link, so an install that already received one keeps what it stored.
+    var enableCustomHandling: Bool = true
 
     /// Default behavior when no specific rule matches.
-    var defaultBehaviorRaw: String = ExternalURLBehavior.openInCurrentSpace.rawValue
+    var defaultBehaviorRaw: String = ExternalURLBehavior.openInGlimpse.rawValue
 
     /// Default behavior when no rule matches.
     var defaultBehavior: ExternalURLBehavior {
