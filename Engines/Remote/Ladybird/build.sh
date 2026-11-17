@@ -1,18 +1,21 @@
 #!/bin/bash
 # Builds Ladybird.engine: the engine-neutral client (Engines/Remote/Sources) as the bundle's
-# executable, around a Ladybird build that has the Refrax host (UI/Refrax in the fork).
+# executable, around a Ladybird build that has the Refrax host: UI/Refrax on the `refrax` branch
+# of https://github.com/kageroumado/ladybird, built with its `RefraxLadybirdHost` target.
 #
 #   build.sh [--ladybird-build DIR] [--ladybird-source DIR] [--output DIR]
 #
+# The options default to $LADYBIRD_BUILD, $LADYBIRD_SOURCE and $FORGE_ENGINES, and those to
+# ~/Forge/ladybird/Build/release, ~/Forge/ladybird and ~/Forge/engines.
 # The bundle links to the Ladybird build in place, so it runs on this Mac only.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 
-ladybird_build="/Volumes/Ugreen/Build/ladybird/Build/release"
-ladybird_source="$HOME/Developer/clones/ladybird"
-output="/Volumes/Ugreen/Build/refrax/Engines"
+ladybird_build="${LADYBIRD_BUILD:-$HOME/Forge/ladybird/Build/release}"
+ladybird_source="${LADYBIRD_SOURCE:-$HOME/Forge/ladybird}"
+output="${FORGE_ENGINES:-$HOME/Forge/engines}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ladybird-build) ladybird_build="$2"; shift 2 ;;

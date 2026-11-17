@@ -6,6 +6,9 @@
 #   package.sh [--ladybird-build DIR] [--ladybird-source DIR] [--output DIR] [--identity ID]
 #              [--install APPLICATION-SUPPORT-DIR]
 #
+# The first three options default to $LADYBIRD_BUILD, $LADYBIRD_SOURCE and $FORGE_ENGINES/packaged,
+# as in build.sh.
+#
 # --install copies the bundle into <dir>/Engines/website.refrax.engine.ladybird/, where a
 # Refrax whose data lives in <dir> finds it at its next launch.
 set -euo pipefail
@@ -13,9 +16,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 
-ladybird_build="/Volumes/Ugreen/Build/ladybird/Build/release"
-ladybird_source="$HOME/Developer/clones/ladybird"
-output="/Volumes/Ugreen/Build/refrax/Engines/packaged"
+ladybird_build="${LADYBIRD_BUILD:-$HOME/Forge/ladybird/Build/release}"
+ladybird_source="${LADYBIRD_SOURCE:-$HOME/Forge/ladybird}"
+output="${FORGE_ENGINES:-$HOME/Forge/engines}/packaged"
 identity=""
 install_into=""
 while [[ $# -gt 0 ]]; do

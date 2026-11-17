@@ -382,4 +382,4 @@ launched from the frontmost app; otherwise they are skipped.
 - **System WebKit**: built into Refrax (in-process).
 - **Chromium**: `Engines/Chromium/refrax/`, built by `Scripts/forge/forge`. It runs Chromium's browser process as its own app and shows pages through remote layers.
 - **Remote client**: `Engines/Remote/Sources/`, the executable of a bundle whose engine runs in a host process that speaks `Engines/Remote/PROTOCOL.md`. It holds nothing of any engine.
-- **Ladybird**: `Engines/Remote/Ladybird/`, the remote client around a Ladybird build whose `UI/Refrax` host translates the contract to Ladybird's Hub protocol.
+- **Ladybird**: `Engines/Remote/Ladybird/`, the remote client around a Ladybird build whose `UI/Refrax` host translates the contract to Ladybird's Hub protocol (the `refrax` branch of `kageroumado/ladybird`).

@@ -3,13 +3,16 @@
 #
 #   conformance.sh [--active] <path/to/X.engine> [test-name-substring …]
 #
+# The runner is built into $FORGE_ENGINES (~/Forge/engines) and each run's storage goes under
+# $ENGINE_CONFORMANCE_STORAGE (the temporary directory).
+#
 # --active launches the runner through LaunchServices, which makes it the active app and takes
 # the keyboard: the input tests need that, and are skipped without it.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
-build="/Volumes/Ugreen/Build/refrax/Engines"
+build="${FORGE_ENGINES:-$HOME/Forge/engines}"
 
 active=0
 if [[ "${1:-}" == "--active" ]]; then active=1; shift; fi
@@ -42,7 +45,7 @@ PLIST
     codesign --force --sign "${identity:--}" "$app" >/dev/null 2>&1
 fi
 
-storage="/Volumes/Ugreen/Scratch/engine-conformance/$(date +%Y%m%d-%H%M%S)"
+storage="${ENGINE_CONFORMANCE_STORAGE:-${TMPDIR:-/tmp}/engine-conformance}/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$storage"
 status="$storage.status"
 if [[ $active -eq 1 ]]; then
