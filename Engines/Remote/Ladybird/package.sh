@@ -50,7 +50,9 @@ staging="$output/Ladybird.engine.staging"
 mkdir -p "$output"
 [[ -e "$staging" ]] && trash "$staging"
 host="$staging/Contents/Helpers/Refrax Ladybird Host.app/Contents"
-mkdir -p "$staging/Contents/MacOS" "$host/MacOS" "$host/lib"
+mkdir -p "$staging/Contents/MacOS" "$staging/Contents/Resources" "$host/MacOS" "$host/lib"
+# The script that applies Shields' procedural filters to a page, which the host hands to the engine.
+cp "$REPO_ROOT/Engines/Shared/shields/js/procedural.js" "$staging/Contents/Resources/procedural.js"
 
 # The browser's own window and its WebDriver stay behind: Refrax is the window.
 for program in "$installed"/MacOS/*; do

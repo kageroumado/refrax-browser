@@ -26,6 +26,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// The page is closed: nothing more is sent for it.
 - (void)detachFromPage;
 
+/// The page's accessibility tree as the host has it now (PROTOCOL.md §6): `nodes` by their
+/// numbers, under the node numbered `root`.
+- (void)setAccessibilityNodes:(NSArray<NSDictionary<NSString *, id> *> *)nodes root:(nullable NSNumber *)root;
+/// An assistive technology acted on a node: `press` or `focus`.
+- (void)performAccessibilityAction:(NSString *)action onNode:(NSNumber *)node;
+
 @end
 
 NS_ASSUME_NONNULL_END

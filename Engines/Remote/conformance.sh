@@ -45,6 +45,17 @@ PLIST
     codesign --force --sign "${identity:--}" "$app" >/dev/null 2>&1
 fi
 
+# The Shields engine files the contentBlocking policies name, and the tool that predicts the
+# engine's decisions for the parity test.
+shields="$build/conformance-shields"
+datgen="$build/datgen-target/release/shields-datgen"
+mkdir -p "$shields"
+cargo build --release --quiet --manifest-path "$REPO_ROOT/Engines/Conformance/datgen/Cargo.toml" \
+    --target-dir "$build/datgen-target"
+"$datgen" build "$shields/engine.dat" \
+    "$REPO_ROOT/Engines/Conformance/shields/list0.txt" "$REPO_ROOT/Engines/Conformance/shields/list1.txt"
+cp "$REPO_ROOT/Engines/Conformance/shields/resources.json" "$shields/resources.json"
+
 storage="${ENGINE_CONFORMANCE_STORAGE:-${TMPDIR:-/tmp}/engine-conformance}/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$storage"
 status="$storage.status"
@@ -53,11 +64,11 @@ if [[ $active -eq 1 ]]; then
     : >"$log"
     tail -f "$log" &
     tail_pid=$!
-    open -W -n -a "$app" --stdout "$log" --stderr "$storage.engine.log" --args "$engine" --storage "$storage" --status "$status" "$@"
+    open -W -n -a "$app" --stdout "$log" --stderr "$storage.engine.log" --args "$engine" --storage "$storage" --status "$status" --shields "$shields" --datgen "$datgen" "$@"
     sleep 1
     kill "$tail_pid" 2>/dev/null || true
 else
-    "$binary" "$engine" --storage "$storage" --status "$status" "$@" 2>"$storage.engine.log" || true
+    "$binary" "$engine" --storage "$storage" --status "$status" --shields "$shields" --datgen "$datgen" "$@" 2>"$storage.engine.log" || true
 fi
 echo "storage: $storage   engine log: $storage.engine.log"
 [[ -f "$status" ]] && exit "$(cat "$status")"

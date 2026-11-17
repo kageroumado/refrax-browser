@@ -42,6 +42,9 @@
 		<string>snapshots</string>
 		<string>zoom</string>
 		<string>rendererControl</string>
+		<string>notifications</string>
+		<string>contentBlocking</string>
+		<string>requestLog</string>
 	</array>
 </dict>
 </plist>

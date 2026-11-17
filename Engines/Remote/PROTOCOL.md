@@ -30,12 +30,13 @@ Numbers named `id` pair a message with its answer and are unique for the life of
 
 | Message | Fields | Meaning |
 |---|---|---|
-| `start` | `storagePath`, `languages` | The contract's `EngineConfiguration`, with the storage directory as a path. Answered by `started` or `startFailed` |
+| `start` | `storagePath`, `languages`, `supportDirectory` | The contract's `EngineConfiguration`, with the storage directory as a path, and the engine bundle's `Contents/Resources`, where a host finds what the bundle carries for it (`procedural.js`, the script that applies content blocking's procedural filters to a page). Answered by `started` or `startFailed` |
 | `makePage` | `page`, `spec` (the contract's `EnginePageSpec`), `width`, `height`, `scale`, `framesPerSecond` | A new page of that size in points |
 | `closePage` | `page` | Nothing more is sent about the page, either way |
 | `command` | `page`, `command` (a `PageCommand`) | |
 | `evaluate` | `page`, `id`, `request` (a `ScriptRequest`) | Answered by `evaluated` |
 | `snapshot` | `page`, `id` | Answered by `snapshotTaken` |
+| `requestLog` | `page`, `id`, `since` | The page's content-blocking decisions numbered after `since`. Answered by `requestLogged` |
 | `answer` | `page`, `id`, `answer` (a `PageRequestAnswer`) | The answer to `request` `id` |
 | `geometry` | `page`, `width`, `height`, `scale` | The view's size in points and its backing scale |
 | `focusState` | `page`, `focused` | Whether the view is the first responder of the key window |
@@ -43,6 +44,8 @@ Numbers named `id` pair a message with its answer and are unique for the life of
 | `key` | `page`, `id`, `type`, `keyCode`, `characters`, `charactersIgnoringModifiers`, `modifiers`, `repeat`, `commands` | §5. Answered by `keyHandled` or `keyUnhandled` |
 | `edit` | `page`, `action`: `selectAll` \| `copy` \| `cut` \| `paste` \| `undo` \| `redo` | A command from Refrax's Edit menu |
 | `policy` | `update` (a `PolicyUpdate`) | |
+| `accessibility` | `page`, `enabled` | Something read the view's accessibility children: the host builds the page's tree and keeps the client told of it (§6) |
+| `accessibilityAction` | `page`, `node`, `action`: `press` \| `focus` | An assistive technology acted on a node |
 | `scriptReply` | `page`, `id`, `reply` (a `ScriptReply`) | The answer to `scriptMessage` `id`, which settles the script's `postMessage` promise |
 | `engineCommand` | `command` (an `EngineCommand`) | |
 | `removeProfile` | `id`, `profile` (an `EngineProfileSpec`) | Answered by `profileRemoved` once the data is gone |
@@ -60,7 +63,9 @@ Numbers named `id` pair a message with its answer and are unique for the life of
 | `evaluated` | `page`, `id`, and `result` (the value as JSON text) or `error` | |
 | `scriptMessage` | `page`, `id`, `message` (a `ScriptMessage`) | A script Refrax injected posted on one of its channels. Answered by `scriptReply` |
 | `snapshotTaken` | `page`, `id`, and `path`, `width`, `height`, `bytesPerRow` | The frame is in the file at `path`: BGRA, premultiplied alpha, top row first. The client reads and removes it. Without `path`, the page has no frame |
+| `requestLogged` | `page`, `id`, `log` | The contract's request log answer: `{ "entries", "nextSequence" }` |
 | `layer` | `page`, `contextID` | The Core Animation context the page renders into, shown with a `CALayerHost`; 0 for none |
+| `accessibilityTree` | `page`, `root`, `nodes` | The page's whole accessibility tree, each time it changes (§6) |
 | `cursor` | `page`, `name` | `Arrow`, `IBeam`, `Hand`, `Crosshair`, `OpenHand`, `Drag`, `DragCopy`, `Disallowed`, `ResizeHorizontal`, `ResizeVertical`, `ResizeColumn`, `ResizeRow` |
 | `keyHandled` | `page`, `id` | The page used the key |
 | `keyUnhandled` | `page`, `id` | The page left the key alone: Refrax's menus get a key held with Command or Control |
@@ -87,3 +92,20 @@ carries `deltaX` and `deltaY` in points, positive scrolling the content down or 
 `charactersIgnoringModifiers` are `NSEvent`'s. A key held with Control and without Command
 carries `commands`: the selectors the system's key bindings give it, such as
 `moveToBeginningOfParagraph:` or `deleteToEndOfParagraph:`. The engine interprets every other key.
+
+## 6. Accessibility
+
+The client makes the page's accessibility tree out of elements in Refrax's process, under the
+page's view, from what the host sends: nothing is built until something reads the view's
+accessibility children, which sends `accessibility`. Each `accessibilityTree` replaces the tree
+before it. A node of `nodes`:
+
+| Field | Meaning |
+|---|---|
+| `id` | The node's number, the same for as long as the node lives |
+| `role`, `subrole?`, `roleDescription?` | AppKit's names (`AXWebArea`, `AXButton`, `AXStaticText`, …) |
+| `label?`, `title?`, `value?`, `help?`, `url?` | What the element says of itself; `value` is text or a number |
+| `frame` | `[x, y, width, height]` in points from the top left of the view |
+| `children` | The numbers of the nodes under it, in order |
+| `focused?`, `disabled?` | |
+

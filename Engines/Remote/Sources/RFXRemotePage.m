@@ -18,6 +18,7 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
     NSMutableDictionary<NSNumber *, RFXEvaluationCompletion> *_evaluations;
     NSMutableDictionary<NSNumber *, RFXSnapshotCompletion> *_snapshots;
     NSMutableDictionary<NSNumber *, NSValue *> *_snapshotRects;
+    NSMutableDictionary<NSNumber *, void (^)(NSData *)> *_requestLogs;
     BOOL _hostGone;
 }
 
@@ -30,6 +31,7 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
         _evaluations = [NSMutableDictionary dictionary];
         _snapshots = [NSMutableDictionary dictionary];
         _snapshotRects = [NSMutableDictionary dictionary];
+        _requestLogs = [NSMutableDictionary dictionary];
         _view = [[RFXRemotePageView alloc] initWithPage:self];
     }
     return self;
@@ -93,6 +95,23 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
     [self send:@"snapshot" fields:@{@"id": identifier}];
 }
 
+/// A log with no entries, which starts again after `sequence`.
+static NSData *RFXEmptyRequestLog(int64_t sequence) {
+    return [NSJSONSerialization dataWithJSONObject:@{@"entries": @[], @"nextSequence": @(sequence)} options:0 error:NULL];
+}
+
+- (void)requestLogSince:(int64_t)sequence completion:(void (^)(NSData *log))completion {
+    if (_closed || _hostGone) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(RFXEmptyRequestLog(sequence));
+        });
+        return;
+    }
+    NSNumber *identifier = @([self nextRequestID]);
+    _requestLogs[identifier] = [completion copy];
+    [self send:@"requestLog" fields:@{@"id": identifier, @"since": @(MAX(sequence, 0))}];
+}
+
 - (void)close {
     if (_closed) {
         return;
@@ -124,10 +143,15 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
     NSDictionary<NSNumber *, RFXSnapshotCompletion> *snapshots = [_snapshots copy];
     [_snapshots removeAllObjects];
     [_snapshotRects removeAllObjects];
-    if (evaluations.count == 0 && snapshots.count == 0) {
+    NSDictionary<NSNumber *, void (^)(NSData *)> *requestLogs = [_requestLogs copy];
+    [_requestLogs removeAllObjects];
+    if (evaluations.count == 0 && snapshots.count == 0 && requestLogs.count == 0) {
         return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        for (void (^completion)(NSData *) in requestLogs.objectEnumerator) {
+            completion(RFXEmptyRequestLog(0));
+        }
         for (RFXEvaluationCompletion completion in evaluations.objectEnumerator) {
             completion(nil, RFXRemotePageError(reason));
         }
@@ -192,6 +216,14 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
             NSString *message = [fields[@"error"] isKindOfClass:[NSString class]] ? fields[@"error"] : @"The script failed";
             completion(nil, RFXRemotePageError(message));
         }
+    } else if ([name isEqualToString:@"requestLogged"]) {
+        void (^completion)(NSData *) = identifier ? _requestLogs[identifier] : nil;
+        if (!completion) {
+            return;
+        }
+        _requestLogs[identifier] = nil;
+        NSDictionary *log = [fields[@"log"] isKindOfClass:[NSDictionary class]] ? fields[@"log"] : nil;
+        completion(log ? [NSJSONSerialization dataWithJSONObject:log options:0 error:NULL] : RFXEmptyRequestLog(0));
     } else if ([name isEqualToString:@"snapshotTaken"]) {
         RFXSnapshotCompletion completion = identifier ? _snapshots[identifier] : nil;
         if (!completion) {
@@ -205,6 +237,10 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
         CGImageRelease(image);
     } else if ([name isEqualToString:@"layer"]) {
         _view.remoteContextID = [fields[@"contextID"] isKindOfClass:[NSNumber class]] ? [fields[@"contextID"] unsignedIntValue] : 0;
+    } else if ([name isEqualToString:@"accessibilityTree"]) {
+        NSArray *nodes = [fields[@"nodes"] isKindOfClass:[NSArray class]] ? fields[@"nodes"] : @[];
+        NSNumber *root = [fields[@"root"] isKindOfClass:[NSNumber class]] ? fields[@"root"] : nil;
+        [_view setAccessibilityNodes:nodes root:root];
     } else if ([name isEqualToString:@"cursor"]) {
         if ([fields[@"name"] isKindOfClass:[NSString class]]) {
             [_view setCursorNamed:fields[@"name"]];

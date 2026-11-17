@@ -161,7 +161,9 @@ static const NSTimeInterval RFXRemoteShutdownGrace = 5;
     };
 
     NSArray *languages = [parsed[@"languages"] isKindOfClass:[NSArray class]] ? parsed[@"languages"] : @[];
-    [self send:@"start" fields:@{@"storagePath": storage.path, @"languages": languages}];
+    NSMutableDictionary *start = [@{@"storagePath": storage.path, @"languages": languages} mutableCopy];
+    start[@"supportDirectory"] = [NSBundle bundleForClass:[self class]].resourcePath;
+    [self send:@"start" fields:start];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(RFXRemoteStartTimeout * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [weakSelf finishStartingWithError:RFXRemoteError(@"The engine host did not start in time")];

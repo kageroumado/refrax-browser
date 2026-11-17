@@ -31,7 +31,9 @@ app="$ladybird_build/bin/Ladybird.app"
 engine="$output/Ladybird.engine"
 staging="$output/Ladybird.engine.staging"
 [[ -e "$staging" ]] && trash "$staging"
-mkdir -p "$staging/Contents/MacOS" "$staging/Contents/Helpers"
+mkdir -p "$staging/Contents/MacOS" "$staging/Contents/Helpers" "$staging/Contents/Resources"
+# The script that applies Shields' procedural filters to a page, which the host hands to the engine.
+cp "$REPO_ROOT/Engines/Shared/shields/js/procedural.js" "$staging/Contents/Resources/procedural.js"
 
 clang -fobjc-arc -fmodules -O2 -g -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=26.0 -arch arm64 \
     -bundle -o "$staging/Contents/MacOS/RefraxLadybird" \

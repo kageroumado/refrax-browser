@@ -2,6 +2,8 @@
 
 #import "RFXRemotePageView.h"
 
+#import "RFXRemoteAccessibility.h"
+
 #import "RFXRemotePage.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -47,12 +49,17 @@ static const CGFloat RFXWheelLineHeight = 40;
     NSMutableDictionary<NSNumber *, NSEvent *> *_pendingKeys;
     NSMutableArray<NSString *> *_keyCommands;
     BOOL _reportedFocus;
+    /// Whether something has read the view's accessibility children, which is what has the host build the tree.
+    BOOL _accessibilityRequested;
+    NSMutableDictionary<NSNumber *, RFXRemoteAccessibilityElement *> *_accessibilityElements;
+    RFXRemoteAccessibilityElement *_accessibilityRoot;
 }
 
 - (instancetype)initWithPage:(RFXRemotePage *)page {
     if ((self = [super initWithFrame:NSMakeRect(0, 0, 800, 600)])) {
         _page = page;
         _pendingKeys = [NSMutableDictionary dictionary];
+        _accessibilityElements = [NSMutableDictionary dictionary];
         _cursor = NSCursor.arrowCursor;
         self.wantsLayer = YES;
         self.layer.backgroundColor = NSColor.whiteColor.CGColor;
@@ -81,6 +88,8 @@ static const CGFloat RFXWheelLineHeight = 40;
     _page = nil;
     self.remoteContextID = 0;
     [_pendingKeys removeAllObjects];
+    [_accessibilityElements removeAllObjects];
+    _accessibilityRoot = nil;
 }
 
 // MARK: The remote layer
@@ -436,6 +445,82 @@ static NSUInteger RFXOtherButton(NSEvent *event) {
 
 - (void)redo:(id)sender {
     [self sendEdit:@"redo"];
+}
+
+// MARK: Accessibility
+
+- (void)requestAccessibilityTree {
+    if (_accessibilityRequested || !_page) {
+        return;
+    }
+    _accessibilityRequested = YES;
+    [_page send:@"accessibility" fields:@{@"enabled": @YES}];
+}
+
+- (void)setAccessibilityNodes:(NSArray<NSDictionary<NSString *, id> *> *)nodes root:(NSNumber *)root {
+    // An element keeps its identity across updates, so an assistive technology's cursor stays on it.
+    NSMutableDictionary<NSNumber *, RFXRemoteAccessibilityElement *> *elements = [NSMutableDictionary dictionaryWithCapacity:nodes.count];
+    for (NSDictionary<NSString *, id> *node in nodes) {
+        NSNumber *identifier = node[@"id"];
+        if (![node isKindOfClass:[NSDictionary class]] || ![identifier isKindOfClass:[NSNumber class]]) {
+            continue;
+        }
+        RFXRemoteAccessibilityElement *element = _accessibilityElements[identifier]
+            ?: [[RFXRemoteAccessibilityElement alloc] initWithIdentifier:identifier view:self];
+        element.node = node;
+        element.parentElement = nil;
+        elements[identifier] = element;
+    }
+    for (RFXRemoteAccessibilityElement *element in elements.objectEnumerator) {
+        NSMutableArray<RFXRemoteAccessibilityElement *> *children = [NSMutableArray array];
+        NSArray *childIdentifiers = element.node[@"children"];
+        if ([childIdentifiers isKindOfClass:[NSArray class]]) {
+            for (NSNumber *childIdentifier in childIdentifiers) {
+                RFXRemoteAccessibilityElement *child = [childIdentifier isKindOfClass:[NSNumber class]] ? elements[childIdentifier] : nil;
+                // A node has one parent: the first that names it.
+                if (child && child != element && !child.parentElement) {
+                    child.parentElement = element;
+                    [children addObject:child];
+                }
+            }
+        }
+        element.childElements = children;
+    }
+    _accessibilityElements = elements;
+    _accessibilityRoot = root ? elements[root] : nil;
+    _accessibilityRoot.parentElement = nil;
+    NSAccessibilityPostNotification(self, NSAccessibilityLayoutChangedNotification);
+}
+
+- (void)performAccessibilityAction:(NSString *)action onNode:(NSNumber *)node {
+    [_page send:@"accessibilityAction" fields:@{@"node": node, @"action": action}];
+}
+
+- (BOOL)isAccessibilityElement {
+    return NO;
+}
+
+- (NSArray *)accessibilityChildren {
+    [self requestAccessibilityTree];
+    return _accessibilityRoot ? @[_accessibilityRoot] : @[];
+}
+
+- (id)accessibilityHitTest:(NSPoint)point {
+    [self requestAccessibilityTree];
+    if (!_accessibilityRoot || !self.window) {
+        return [super accessibilityHitTest:point];
+    }
+    NSPoint inView = [self convertPoint:[self.window convertPointFromScreen:point] fromView:nil];
+    return [_accessibilityRoot elementAtPoint:inView];
+}
+
+- (id)accessibilityFocusedUIElement {
+    for (RFXRemoteAccessibilityElement *element in _accessibilityElements.objectEnumerator) {
+        if (element.isAccessibilityFocused) {
+            return element;
+        }
+    }
+    return _accessibilityRoot ?: [super accessibilityFocusedUIElement];
 }
 
 @end
