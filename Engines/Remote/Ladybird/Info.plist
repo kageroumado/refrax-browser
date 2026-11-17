@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>RefraxLadybird</string>
+	<key>CFBundleIdentifier</key>
+	<string>website.refrax.engine.ladybird</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Refrax Ladybird</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@LADYBIRD_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@BUNDLE_VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>NSPrincipalClass</key>
+	<string>RFXRemoteEngine</string>
+	<key>RFXRemoteHostExecutable</key>
+	<string>Helpers/Ladybird.app/Contents/MacOS/RefraxLadybirdHost</string>
+	<key>RFXEngineContractVersion</key>
+	<string>2.0</string>
+	<key>RFXEngineDisplayName</key>
+	<string>Ladybird</string>
+	<key>RFXEngineVersion</key>
+	<string>Ladybird @LADYBIRD_VERSION@ (@LADYBIRD_REVISION@)</string>
+	<key>RFXEngineVendor</key>
+	<string>Refrax (Ladybird fork)</string>
+	<key>RFXEngineOutOfProcess</key>
+	<true/>
+	<key>RFXEngineCapabilities</key>
+	<array>
+		<string>javaScriptEvaluation</string>
+		<string>findInPage</string>
+		<string>snapshots</string>
+		<string>zoom</string>
+		<string>rendererControl</string>
+	</array>
+</dict>
+</plist>
