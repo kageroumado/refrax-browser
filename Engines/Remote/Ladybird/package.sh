@@ -35,6 +35,8 @@ fi
 
 # Ladybird's own install step gives its programs library paths relative to themselves.
 prefix="$(dirname "$ladybird_build")/refrax-install"
+# The install step refuses a prefix that holds an earlier install.
+[[ -e "$prefix" ]] && trash "$prefix"
 cmake --install "$ladybird_build" --prefix "$prefix" --component ladybird_Runtime >"$prefix.log" 2>&1 \
     || { echo "cmake --install failed, see $prefix.log" >&2; exit 1; }
 installed="$prefix/bundle/Ladybird.app/Contents"
