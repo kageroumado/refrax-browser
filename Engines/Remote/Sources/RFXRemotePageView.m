@@ -346,11 +346,15 @@ static NSUInteger RFXOtherButton(NSEvent *event) {
         @"repeat": @(event.isARepeat),
     }];
     if (down) {
-        // The system's key bindings name what the key does to text, such as moveWordBackward:.
-        _keyCommands = [NSMutableArray array];
-        [self interpretKeyEvents:@[event]];
-        fields[@"commands"] = _keyCommands;
-        _keyCommands = nil;
+        // The system's key bindings name what a Control key does to text, such as
+        // moveToBeginningOfParagraph: for ^A. Every other key is the engine's to interpret.
+        NSEventModifierFlags flags = event.modifierFlags;
+        if ((flags & NSEventModifierFlagControl) && !(flags & NSEventModifierFlagCommand)) {
+            _keyCommands = [NSMutableArray array];
+            [self interpretKeyEvents:@[event]];
+            fields[@"commands"] = _keyCommands;
+            _keyCommands = nil;
+        }
 
         if (_pendingKeys.count >= RFXMaximumPendingKeys) {
             [_pendingKeys removeAllObjects];

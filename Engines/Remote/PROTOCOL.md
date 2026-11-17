@@ -82,5 +82,6 @@ carries `deltaX` and `deltaY` in points, positive scrolling the content down or 
 `ongoing`, `momentum` or `ended`.
 
 `key` `type` is `down` or `up`. `keyCode` is the macOS virtual key code, and `characters` and
-`charactersIgnoringModifiers` are `NSEvent`'s. `commands` lists the selectors the system's key
-bindings give the key, such as `moveWordBackward:` or `deleteToEndOfParagraph:`.
+`charactersIgnoringModifiers` are `NSEvent`'s. A key held with Control and without Command
+carries `commands`: the selectors the system's key bindings give it, such as
+`moveToBeginningOfParagraph:` or `deleteToEndOfParagraph:`. The engine interprets every other key.
