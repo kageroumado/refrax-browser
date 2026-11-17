@@ -37,6 +37,7 @@
 	<key>RFXEngineCapabilities</key>
 	<array>
 		<string>javaScriptEvaluation</string>
+		<string>userScripts</string>
 		<string>findInPage</string>
 		<string>snapshots</string>
 		<string>zoom</string>

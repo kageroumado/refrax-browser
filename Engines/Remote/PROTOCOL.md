@@ -43,6 +43,7 @@ Numbers named `id` pair a message with its answer and are unique for the life of
 | `key` | `page`, `id`, `type`, `keyCode`, `characters`, `charactersIgnoringModifiers`, `modifiers`, `repeat`, `commands` | §5. Answered by `keyHandled` or `keyUnhandled` |
 | `edit` | `page`, `action`: `selectAll` \| `copy` \| `cut` \| `paste` \| `undo` \| `redo` | A command from Refrax's Edit menu |
 | `policy` | `update` (a `PolicyUpdate`) | |
+| `scriptReply` | `page`, `id`, `reply` (a `ScriptReply`) | The answer to `scriptMessage` `id`, which settles the script's `postMessage` promise |
 | `engineCommand` | `command` (an `EngineCommand`) | |
 | `removeProfile` | `id`, `profile` (an `EngineProfileSpec`) | Answered by `profileRemoved` once the data is gone |
 | `clipboardText` | `id`, `profile`, `text` | The answer to `clipboardRead` |
@@ -57,6 +58,7 @@ Numbers named `id` pair a message with its answer and are unique for the life of
 | `event` | `page`, `event` (a `PageEvent`) | |
 | `request` | `page`, `id`, `request` (a `PageRequestKind`) | Answered by `answer` |
 | `evaluated` | `page`, `id`, and `result` (the value as JSON text) or `error` | |
+| `scriptMessage` | `page`, `id`, `message` (a `ScriptMessage`) | A script Refrax injected posted on one of its channels. Answered by `scriptReply` |
 | `snapshotTaken` | `page`, `id`, and `path`, `width`, `height`, `bytesPerRow` | The frame is in the file at `path`: BGRA, premultiplied alpha, top row first. The client reads and removes it. Without `path`, the page has no frame |
 | `layer` | `page`, `contextID` | The Core Animation context the page renders into, shown with a `CALayerHost`; 0 for none |
 | `cursor` | `page`, `name` | `Arrow`, `IBeam`, `Hand`, `Crosshair`, `OpenHand`, `Drag`, `DragCopy`, `Disallowed`, `ResizeHorizontal`, `ResizeVertical`, `ResizeColumn`, `ResizeRow` |

@@ -165,6 +165,21 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
             answered = YES;
             [weakSelf send:@"answer" fields:@{@"id": identifier, @"answer": parsed}];
         }];
+    } else if ([name isEqualToString:@"scriptMessage"]) {
+        NSData *message = [fields[@"message"] isKindOfClass:[NSDictionary class]] ? [NSJSONSerialization dataWithJSONObject:fields[@"message"] options:0 error:NULL] : nil;
+        if (!message || !identifier) {
+            return;
+        }
+        __weak RFXRemotePage *weakSelf = self;
+        __block BOOL replied = NO;
+        [self.delegate enginePage:self didReceiveScriptMessage:message reply:^(NSData *reply) {
+            NSDictionary *parsed = [NSJSONSerialization JSONObjectWithData:reply options:0 error:NULL];
+            if (replied || ![parsed isKindOfClass:[NSDictionary class]]) {
+                return;
+            }
+            replied = YES;
+            [weakSelf send:@"scriptReply" fields:@{@"id": identifier, @"reply": parsed}];
+        }];
     } else if ([name isEqualToString:@"evaluated"]) {
         RFXEvaluationCompletion completion = identifier ? _evaluations[identifier] : nil;
         if (!completion) {
