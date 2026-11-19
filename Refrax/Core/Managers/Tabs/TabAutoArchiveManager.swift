@@ -14,7 +14,7 @@ import WebKit
 /// Rules are evaluated in priority order (highest first) against all non-exempt tabs.
 /// A tab is exempt if any of these conditions apply:
 ///
-/// - Tab is pinned
+/// - Tab is a favorite, or sits in a pinned group (Arc's pinned tabs and folders import as these)
 /// - Tab is currently active in any window
 /// - Tab is already archived
 /// - Tab has active media playback
@@ -364,7 +364,7 @@ final class TabAutoArchiveManager {
         if tab.isArchived {
             return true
         }
-        if tab.isFavorite {
+        if tab.isFavorite || tab.isInPinnedGroup {
             return true
         }
         if activeTabIDs.contains(tab.id) {
