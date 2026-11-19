@@ -3,7 +3,8 @@ import SwiftUI
 
 /// An island's header: its icon and its name, each opening the island's editor (the name
 /// with a double-click), then the pin, the menu and the plus, in rounded glass above the
-/// island. It shows while the pointer is on or near the island, while its controls are in
+/// island. The favorites island's name and star are fixed, and it has no plus: a tab joins
+/// it by being favorited. It shows while the pointer is on or near the island, while its controls are in
 /// use, and while it is moved; it is laid out always.
 struct IslandHeader: View {
     let island: Island
@@ -95,8 +96,10 @@ struct IslandHeader: View {
             }
             .buttonStyle(.plain)
             .pointerStyle(.default)
-            .help("Edit name, icon, and color")
-            .accessibilityLabel("Edit \(island.title)")
+            // The favorites island's star is its mark, with nothing to edit behind it.
+            .allowsHitTesting(!island.isFavorites)
+            .help(island.isFavorites ? "" : "Edit name, icon, and color")
+            .accessibilityLabel(island.isFavorites ? island.title : "Edit \(island.title)")
             // A control that comes and goes stays out of the key-view loop: SwiftUI rebuilding
             // that loop beside the page's views can spin forever.
             .focusable(false)
@@ -117,13 +120,17 @@ struct IslandHeader: View {
                     // The name, icon, and color are edited together, the name in the editor's field.
                     .onTapGesture(count: 2) { beginEdit() }
                     .contextMenu {
-                        Button("Edit Island…") { beginEdit() }
+                        if !island.isFavorites {
+                            Button("Edit Island…") { beginEdit() }
+                        }
                     }
             }
             Spacer(minLength: 8)
             pinButton
             menuButton
-            newTabButton
+            if !island.isFavorites {
+                newTabButton
+            }
         }
         .padding(.leading, Layout.leadingInset)
         .padding(.trailing, Layout.trailingInset)
@@ -203,7 +210,9 @@ struct IslandHeader: View {
                 islands.arrangeAutomatically()
             }
         }
-        add("New Tab in \(island.title)", to: menu) { islands.addTab(to: id) }
+        if !island.isFavorites {
+            add("New Tab in \(island.title)", to: menu) { islands.addTab(to: id) }
+        }
         add(island.placement.iconsOnly ? "Show Titles" : "Show as Icon Rail", to: menu) { islands.toggleIconsOnly(id) }
         add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
         let only = NSMenu(title: "Show Only")
@@ -215,8 +224,13 @@ struct IslandHeader: View {
         let onlyItem = NSMenuItem(title: "Show Only", action: nil, keyEquivalent: "")
         onlyItem.submenu = only
         menu.addItem(onlyItem)
-        add("Edit Island…", to: menu) { editAfterMenu = true }
-        if !island.isDefault {
+        if island.isFavorites {
+            menu.addItem(.separator())
+            add("All Favorites", to: menu) { windowState.showDetailTray(.favorites) }
+        } else {
+            add("Edit Island…", to: menu) { editAfterMenu = true }
+        }
+        if island.kind == .group {
             let parents = islands.islands.filter { islands.canNest(id, in: $0.id) }
             if !parents.isEmpty {
                 let inside = NSMenu(title: "Put Inside")
@@ -228,9 +242,11 @@ struct IslandHeader: View {
                 menu.addItem(insideItem)
             }
         }
-        menu.addItem(.separator())
-        add("Close All Tabs in Island", to: menu) { islands.closeAll(in: id) }
-        if !island.isDefault {
+        if !island.isFavorites {
+            menu.addItem(.separator())
+            add("Close All Tabs in Island", to: menu) { islands.closeAll(in: id) }
+        }
+        if island.kind == .group {
             add("Ungroup Island", to: menu) { islands.dissolve(id) }
         }
         menu.addItem(.separator())
@@ -253,6 +269,7 @@ struct IslandHeader: View {
 
     /// Opens the editor of the island's name, icon, and color, anchored to its header.
     private func beginEdit() {
+        guard !island.isFavorites else { return }
         if island.placement.iconsOnly {
             islands.setIconsOnly(false, for: island.id)
         }

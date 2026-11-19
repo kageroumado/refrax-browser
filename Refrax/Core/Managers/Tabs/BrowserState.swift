@@ -81,8 +81,8 @@ final class BrowserState {
 
     /// Favorites: tabs that belong to no space and show in every space.
     ///
-    /// Each is linked to a favorited bookmark whose URL is its home. They appear in the
-    /// island's favorites column in every space and use global website data storage
+    /// Each is linked to a favorited bookmark whose URL is its home. They are the
+    /// rows of the Favorites island in every space and use global website data storage
     /// regardless of space settings.
     ///
     /// - Note: Favorites have `status == .favorite` and are indexed in

@@ -6,7 +6,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     case navigation
     case floatingTabs
     case spaces
-    case favoriteTabs
     case reload
     case copyLink
     case favorites
@@ -37,7 +36,7 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
 
     /// The rail's order before anyone customizes it.
     static let defaultOrder: [ControlIslandItem] = [
-        .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs,
+        .windowControls, .navigation, .page, .floatingTabs, .spaces,
         .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .extensions, .nowPlaying, .updates,
     ]
 
@@ -49,7 +48,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "Copy Link"
         case .floatingTabs: "Islands"
         case .spaces: "Spaces"
-        case .favoriteTabs: "Favorite tabs"
         case .reload: "Reload"
         case .favorites: "Favorites"
         case .history: "History"
@@ -69,7 +67,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "link"
         case .floatingTabs: "square.on.square"
         case .spaces: "square.stack"
-        case .favoriteTabs: "star.square.on.square"
         case .reload: "arrow.clockwise"
         case .favorites: "star"
         case .history: "clock"
@@ -89,7 +86,6 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
         case .copyLink: "Copy the page address"
         case .floatingTabs: "Show your islands · ⌘S; Recent tabs with the other modifier held"
         case .spaces: "Switch between spaces or create a new space"
-        case .favoriteTabs: "Favorites as a column of site icons, with the rest a click away"
         case .reload: "Reload the page or stop loading · ⌘R"
         case .favorites: "Open all your favorites"
         case .history: "Browse visited pages"
@@ -102,12 +98,12 @@ nonisolated enum ControlIslandItem: String, CaseIterable, Codable, Identifiable 
     }
 
     var isGroup: Bool {
-        self == .windowControls || self == .spaces || self == .favoriteTabs
+        self == .windowControls || self == .spaces
     }
 
     var section: Section {
         switch self {
-        case .windowControls, .navigation, .page, .floatingTabs, .spaces, .favoriteTabs: .main
+        case .windowControls, .navigation, .page, .floatingTabs, .spaces: .main
         case .reload, .copyLink, .favorites, .history, .bookmarks, .settings, .extensions, .nowPlaying, .updates: .additional
         }
     }

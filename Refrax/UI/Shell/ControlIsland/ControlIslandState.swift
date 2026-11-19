@@ -13,7 +13,6 @@ final class ControlIslandState {
     var isPresenting = false
     var showsAddress = false
     var isDragging = false
-    var isReorderingFavorites = false
     /// The space sheet or confirmation the island shows next: New Space, Edit, Delete, Clear.
     var spaceRequest: ControlIslandSpaceRequest?
     /// The pointer is far from the controls or has been still: the glass clears and the glyphs recede.
@@ -109,7 +108,7 @@ final class ControlIslandState {
     /// Work in progress on the controls, which keeps the glass present and the pointer grace alive.
     var isEngaged: Bool {
         isHovered || hasKeyboardFocus || isPresenting || isDragging || showsAddress || showsCustomization
-            || isReorderingFavorites || tabInfo.isVisible || isHeldAwake()
+            || tabInfo.isVisible || isHeldAwake()
     }
 
     /// Whether a ``holdAwake(for:now:)`` is still running at `now`.

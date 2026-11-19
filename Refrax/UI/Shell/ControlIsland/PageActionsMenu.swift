@@ -22,12 +22,13 @@ struct PageActionsMenu: NSViewRepresentable {
                 ),
             ],
             [.action("page.copyAddress"), .action("page.copyMarkdownLink"), .action("page.share"), .action("page.find")],
+            [.action("tab.goHome"), .action("tab.setHome")],
             [.action("tab.rename"), .action("tab.duplicate"), .action("tab.favorite"), .action("tab.unfavorite"), .action("tab.mute")],
             [.action("tab.close")],
             [.action("tab.island.new"), .action("tab.moveToSpace"), .action("tab.moveToNewWindow")],
             [
                 .submenu(id: "more", title: "More", symbol: "ellipsis.circle", actions: [
-                    "tab.unread", "tab.muteOthers", "tab.goHome", "tab.setHome", "tab.reflectedWindow",
+                    "tab.unread", "tab.muteOthers", "tab.reflectedWindow",
                 ]),
             ],
         ],

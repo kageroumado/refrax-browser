@@ -5,6 +5,8 @@ extension IslandController {
     /// A single page can join a tab with room for another pane.
     func canJoin(_ tabID: UUID, with otherID: UUID) -> Bool {
         guard tabID != otherID, let source = tab(for: tabID), let target = tab(for: otherID) else { return false }
+        // A favorite keeps its own tab in every space: it joins nothing, and nothing joins it.
+        guard !source.isFavorite, !target.isFavorite else { return false }
         return source.pages.count == 1 && !source.isMultiPage && target.pages.count < PaneGrid.capacity
     }
 

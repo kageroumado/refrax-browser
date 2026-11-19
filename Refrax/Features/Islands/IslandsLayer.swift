@@ -453,6 +453,10 @@ struct IslandFilterBadge: View {
 /// pointer its close. A click opens the page; a drag moves the row within its island, into
 /// another, or, let go on empty space, out as a new island of its own (a live card with ⇧).
 /// Its menu is the page's.
+///
+/// A favorite's row shows the way home while the favorite is away from its home address, on
+/// the current row and under the pointer: a house where a tab has its close, and on an
+/// icon-only row a house on the icon's corner, where a click on the current favorite goes home.
 private struct IslandTabRow: View, Equatable {
     let tab: Tab
     let island: Island
@@ -484,6 +488,10 @@ private struct IslandTabRow: View, Equatable {
         static let draggedOpacity: Double = 0.35
         static let previewDelay: Duration = .milliseconds(650)
         static let ringSize: CGFloat = 20
+        /// The house on an icon-only favorite's corner.
+        static let homeBadgeSize: CGFloat = 12
+        static let homeBadgeGlyph: CGFloat = 7
+        static let homeBadgeOffset: CGFloat = 5
     }
 
     private var isCurrent: Bool {
@@ -492,6 +500,11 @@ private struct IslandTabRow: View, Equatable {
 
     private var iconsOnly: Bool {
         island.placement.iconsOnly
+    }
+
+    /// A favorite that has left its home address.
+    private var isAwayFromHome: Bool {
+        tab.isFavorite && tab.hasNavigatedFromHome
     }
 
     private var color: Color {
@@ -549,6 +562,11 @@ private struct IslandTabRow: View, Equatable {
         let shape = ConcentricRectangle(corners: .concentric(minimum: .fixed(IslandGeometry.rowCornerRadius)), isUniform: true)
         HStack(spacing: 8) {
             pages
+                .overlay(alignment: .bottomTrailing) {
+                    if iconsOnly, isAwayFromHome, isHovering || isCurrent {
+                        homeBadge
+                    }
+                }
             if !iconsOnly {
                 FloatingTabTitle(tab: tab, weight: isCurrent ? .semibold : .regular)
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.85)))
@@ -560,20 +578,10 @@ private struct IslandTabRow: View, Equatable {
                 }
                 Spacer(minLength: 0)
                 TabStateSymbols(tab: tab)
-                if isHovering {
-                    Button {
-                        tabManager.requestCloseTab(tab)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: Layout.closeSize, height: Layout.closeSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    // Shown under the pointer only, so kept out of the key-view loop.
-                    .focusable(false)
-                    .help("Close Tab")
+                if isAwayFromHome, isHovering || isCurrent {
+                    hoverButton("house", help: "Go to Home") { tabManager.goHome(tab) }
+                } else if isHovering, !tab.isFavorite {
+                    hoverButton("xmark", help: "Close Tab") { tabManager.requestCloseTab(tab) }
                 }
             }
         }
@@ -631,6 +639,10 @@ private struct IslandTabRow: View, Equatable {
             let flags = NSEvent.modifierFlags
             if flags.contains(.command) || flags.contains(.shift) {
                 islands.select(tab.id, extending: flags.contains(.shift), toggling: flags.contains(.command))
+            } else if iconsOnly, isCurrent, isAwayFromHome {
+                // An icon-only row has no room for the house: on the favorite already shown,
+                // the click that would open it goes home.
+                tabManager.goHome(tab)
             } else {
                 islands.clearSelection()
                 islands.open(tab)
@@ -639,7 +651,7 @@ private struct IslandTabRow: View, Equatable {
         .highPriorityGesture(dragGesture, including: canvas.renamingTabID == tab.id ? .subviews : .all)
         .contextMenu { IslandRowContextMenu(tab: tab, island: island, area: area) }
         .closesOnMiddleClick(tab)
-        .help(iconsOnly ? tab.displayTitle : "")
+        .help(iconsOnly ? (isCurrent && isAwayFromHome ? "\(tab.displayTitle) · Click to go home" : tab.displayTitle) : "")
         // One element per row: the label and actions on a container that isn't an element land
         // on each of its children, which listed every row twice. Close and the rest are actions.
         .accessibilityElement(children: .ignore)
@@ -647,13 +659,46 @@ private struct IslandTabRow: View, Equatable {
         .accessibilityIdentifier("island-row-\(tab.id.uuidString)")
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { islands.open(tab) }
-        .accessibilityAction(named: "Close") { tabManager.requestCloseTab(tab) }
+        .accessibilityAction(named: tab.isFavorite ? "Go to Home" : "Close") {
+            if tab.isFavorite {
+                tabManager.goHome(tab)
+            } else {
+                tabManager.requestCloseTab(tab)
+            }
+        }
         .accessibilityAction(named: "Open as Card") { islands.detach(tab.id, at: CGPoint(x: area.midX, y: area.midY)) }
         .accessibilityAction(named: "New Island with This Tab") { islands.makeIsland(from: tab.id) }
         .accessibilityAction(named: "Move Up") { moveRow(by: -1) }
         .accessibilityAction(named: "Move Down") { moveRow(by: 1) }
         .accessibilityAction(named: "Join with Row Above") { joinNeighbor(offset: -1) }
         .accessibilityAction(named: "Select") { islands.select(tab.id, extending: false, toggling: true) }
+    }
+
+    /// The control at a row's trailing end: Close under the pointer, or a favorite's way home.
+    private func hoverButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.closeSize, height: Layout.closeSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // Shown under the pointer only, so kept out of the key-view loop.
+        .focusable(false)
+        .help(help)
+    }
+
+    /// The house on the corner of an icon-only favorite that is away from home.
+    private var homeBadge: some View {
+        Image(systemName: "house.fill")
+            .font(.system(size: Layout.homeBadgeGlyph, weight: .bold))
+            .foregroundStyle(.primary)
+            .frame(width: Layout.homeBadgeSize, height: Layout.homeBadgeSize)
+            .background(.regularMaterial, in: .circle)
+            .offset(x: Layout.homeBadgeOffset, y: Layout.homeBadgeOffset)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// Moves the row one place up or down its island.

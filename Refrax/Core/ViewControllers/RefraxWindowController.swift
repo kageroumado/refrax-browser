@@ -454,9 +454,9 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The favorites the number keys reach, in the favorites' order: those with a tab.
+    /// The favorites the number keys reach: the favorites island's rows, in order.
     var favoritesByNumber: [FavoriteItem] {
-        bookmarksManager.favorites.filter { $0.tab != nil }
+        bookmarksManager.liveFavorites
     }
 
     /// Opens the favorite at `index` of ``favoritesByNumber`` (⌘1…9).

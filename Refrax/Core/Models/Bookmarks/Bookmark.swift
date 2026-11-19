@@ -337,8 +337,8 @@ final class Bookmark {
 enum FavoriteMode: String, Codable {
     /// A favorite: a tab in every space whose home is this bookmark's URL.
     ///
-    /// Its tab (`status == .favorite`) is stored in `BrowserState.favoriteTabs`. It appears
-    /// in the island's favorites column and, when clicked, switches to that tab while
+    /// Its tab (`status == .favorite`) is stored in `BrowserState.favoriteTabs`. It is a row
+    /// of the Favorites island and, when clicked, switches to that tab while
     /// staying in the current space.
     ///
     /// This is the default mode for favorited bookmarks.

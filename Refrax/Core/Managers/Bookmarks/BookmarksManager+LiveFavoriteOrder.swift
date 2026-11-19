@@ -1,11 +1,17 @@
 import Foundation
 
 extension BookmarksManager {
+    /// The favorites that have a tab, in the favorites' order: the favorites island's rows,
+    /// and the places ⌘1…9 open.
+    var liveFavorites: [FavoriteItem] {
+        favorites.filter { $0.tab != nil }.sorted { $0.position < $1.position }
+    }
+
     /// Moves a live favorite within the live-tab slots of the shared favorites order.
     /// Folder, shortcut, and app destinations keep their saved positions.
     @discardableResult
     func moveLiveFavorite(_ id: UUID, before nextID: UUID?) -> Bool {
-        let slots = favorites.filter { $0.tab != nil }.sorted { $0.position < $1.position }
+        let slots = liveFavorites
         guard let source = slots.firstIndex(where: { $0.id == id }),
               nextID != id,
               nextID == nil || slots.contains(where: { $0.id == nextID }) else { return false }

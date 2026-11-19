@@ -4,15 +4,12 @@ import Foundation
 ///
 /// The main section comes first in its customized order, then the additional controls
 /// in theirs. A gap carries a divider line around a group and at the boundary between
-/// the sections, except between the space picker and the favorites, which share a plain
-/// gap. The grip closes the rail in a full control row.
+/// the sections. The grip closes the rail in a full control row.
 nonisolated struct ControlIslandRailLayout: Equatable {
     enum Element: Equatable, Identifiable {
         case row(ControlIslandItem)
         /// A gap of ``ControlIslandPlacement/sectionGap`` with a divider line.
         case line(before: ControlIslandItem)
-        /// A gap of ``ControlIslandPlacement/sectionGap`` between groups.
-        case gap(before: ControlIslandItem)
         /// The handle that moves the rail, centered in its final control row.
         case grip
 
@@ -20,7 +17,6 @@ nonisolated struct ControlIslandRailLayout: Equatable {
             switch self {
             case let .row(item): item.rawValue
             case let .line(item): "line-\(item.rawValue)"
-            case let .gap(item): "gap-\(item.rawValue)"
             case .grip: "grip"
             }
         }
@@ -45,10 +41,7 @@ nonisolated struct ControlIslandRailLayout: Equatable {
         var elements: [Element] = []
         for (index, row) in rows.enumerated() {
             if index > 0 {
-                let previous = rows[index - 1]
-                if previous == .spaces, row == .favoriteTabs {
-                    elements.append(.gap(before: row))
-                } else if Self.needsLine(between: previous, and: row) {
+                if Self.needsLine(between: rows[index - 1], and: row) {
                     elements.append(.line(before: row))
                 }
             }

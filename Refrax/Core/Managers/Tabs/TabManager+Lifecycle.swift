@@ -108,7 +108,7 @@ extension TabManager {
 
     /// Creates the tab of a favorited bookmark: a favorite at the bookmark's address.
     ///
-    /// Favorites are stored in `BrowserState.favoriteTabs`, appear in the favorites column
+    /// Favorites are stored in `BrowserState.favoriteTabs`, are the Favorites island's rows
     /// in every space, and use global website data storage.
     ///
     /// - Parameters:

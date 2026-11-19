@@ -62,6 +62,7 @@ struct IslandRowMenu {
         sections: [
             [.action("tab.look"), .action("island.float"), .action("panes.beside"), .action("panes.edit"), .action("panes.separate")],
             [.action("page.copyAddress"), .action("page.copyMarkdownLink"), .action("page.share")],
+            [.action("tab.goHome"), .action("tab.setHome")],
             [.action("tab.rename"), .action("tab.duplicate"), .action("tab.favorite"), .action("tab.unfavorite"), .action("tab.mute")],
             [
                 .action("tab.close"),
@@ -73,7 +74,7 @@ struct IslandRowMenu {
             [.action("tab.island.new"), .action("island.moveTo"), .action("tab.moveToSpace"), .action("island.leave")],
             [
                 .submenu(id: "more", title: "More", symbol: "ellipsis.circle", actions: [
-                    "tab.unread", "page.find", "tab.muteOthers", "tab.goHome", "tab.setHome", "tab.dock.leading", "tab.dock.trailing",
+                    "tab.unread", "page.find", "tab.muteOthers", "tab.dock.leading", "tab.dock.trailing",
                     "tab.undock", "tab.moveToNewWindow", "tab.reflectedWindow",
                 ]),
             ],
@@ -86,6 +87,9 @@ struct IslandRowMenu {
     /// around it are titled for the Close Other Tabs submenu they sit in. New Island with This
     /// Tab comes with the tab's own actions (``TabActions/tableActions()``).
     func islandActions() -> [MenuAction] {
+        // A favorite's row has the favorite's own verbs: it is no card, moves by Remove from
+        // Favorites, and its neighbors close by returning home one at a time.
+        guard !island.isFavorites else { return [] }
         let tabID = tab.id
         let islands = islands
         var actions = [
@@ -101,7 +105,7 @@ struct IslandRowMenu {
                 }
             }))
         }
-        if !island.isDefault {
+        if island.kind == .group {
             actions.append(MenuAction("island.leave", "Remove from Island", symbol: "minus.square", group: .move) { islands.removeFromIsland(tabID) })
         }
         if tabs.state.settings.archiveEnabled {

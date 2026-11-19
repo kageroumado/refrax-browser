@@ -2,10 +2,24 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// One island on the window: a tab group, or the space's loose tabs, as a column of rows in
-/// the tab list's order, with its place on the window. A group nested in the island's group
-/// is a section of it, under a header that folds it.
+/// One island on the window: a tab group, the space's loose tabs, or the favorites, as a
+/// column of rows in the tab list's order, with its place on the window. A group nested in
+/// the island's group is a section of it, under a header that folds it.
 struct Island: Identifiable, Equatable {
+    /// What an island's rows are.
+    enum Kind: Equatable {
+        /// The space's tabs in no group.
+        case looseTabs
+        /// A tab group of the space.
+        case group
+        /// The favorites that have a tab, the same in every space.
+        case favorites
+    }
+
+    /// The favorites island's identity, in every space and window.
+    static let favoritesID = UUID(uuidString: "FA7041E5-0000-4000-8000-00000000F0F0")!
+    static let favoritesTitle = "Favorites"
+
     let id: UUID
     var title: String
     var colorString: String?
@@ -13,8 +27,16 @@ struct Island: Identifiable, Equatable {
     var iconName: String?
     var layout: IslandRowLayout
     var placement: IslandPlacement
+    var kind: Kind
+
     /// The loose tabs' island: the space's tabs in no group.
-    var isDefault: Bool
+    var isDefault: Bool {
+        kind == .looseTabs
+    }
+
+    var isFavorites: Bool {
+        kind == .favorites
+    }
 
     /// The rows on the island: tabs and section headers.
     var rows: [IslandRow] {
@@ -136,6 +158,8 @@ final class IslandController {
         var activeTabID: UUID?
         /// The tabs a quick filter keeps, followed as the pages' sound and capture change.
         var filtered: Set<UUID>?
+        /// The favorites island's rows, followed as favorites are added, removed, and reordered.
+        var favorites: [UUID]
     }
 
     // MARK: - State
@@ -167,6 +191,7 @@ final class IslandController {
     private(set) var startHintDismissed: Bool
     @ObservationIgnored private let defaults: UserDefaults
     static let startHintKey = "islands.startHintDismissed"
+    static let favoritesPlacementKey = "islands.favoritesPlacement"
     /// The row the keyboard has chosen while the islands have the keyboard.
     private(set) var keyboardCursorID: UUID?
     @ObservationIgnored private var keyboard: IslandKeyboardNavigator?
@@ -259,7 +284,7 @@ final class IslandController {
         let changes = Observations { [weak self] in
             SyncKey(
                 spaceID: windowState.activeSpaceID, tabListVersion: tabManager.state.tabListVersion, activeTabID: windowState.activeTabID,
-                filtered: self?.filteredTabIDs(),
+                filtered: self?.filteredTabIDs(), favorites: self?.favoriteTabs.map(\.id) ?? [],
             )
         }
         tasks.append(Task(name: "Follow the space's islands") { [weak self] in
@@ -276,7 +301,7 @@ final class IslandController {
 
     /// Reloads placements restored by a browser undo operation.
     func reloadState() {
-        state = IslandState.decode(windowState.activeSpace?.tableLayoutData)
+        state = loadedState(of: windowState.activeSpace)
         rebuild()
     }
 
@@ -350,8 +375,8 @@ final class IslandController {
     /// The loose tabs' island the one-time hint stands beside: while the space has no island
     /// but that one, with tabs enough to pull one out, it shows, and no row is on its way.
     var startHintIsland: Island? {
-        guard !startHintDismissed, filter == nil, draggedTabID == nil, islands.count == 1, let island = visibleIslands.first,
-              island.isDefault, island.tabIDs.count >= 2 else { return nil }
+        guard !startHintDismissed, filter == nil, draggedTabID == nil, !islands.contains(where: { $0.kind == .group }),
+              let island = visibleIslands.first(where: \.isDefault), island.tabIDs.count >= 2 else { return nil }
         return island
     }
 
@@ -424,8 +449,11 @@ final class IslandController {
         return frames
     }
 
+    /// Under the control rail's resting place, whether the rail is on screen or hidden past
+    /// the window's edge: an icon rail put there stays there as the rail comes and goes.
     private func defaultRailPlacement(height: CGFloat) -> ControlIslandPlacement {
-        let rail = windowState.controlIsland.railFrame
+        let controls = windowState.controlIsland
+        let rail = controls.railFrame.isEmpty ? controls.railLayoutFrame : controls.railFrame
         var placement = ControlIslandPlacement()
         if !rail.isEmpty {
             placement.move(to: CGPoint(x: rail.minX, y: rail.maxY + Layout.islandGap), in: bounds, height: height)
@@ -531,7 +559,7 @@ final class IslandController {
     /// Opens the Command Lens; a page it opens goes to the end of `islandID`. The lens opens
     /// on its own, since an anchored lens edits the current page's address instead.
     func addTab(to islandID: UUID) {
-        guard let island = island(islandID) else { return }
+        guard let island = island(islandID), !island.isFavorites else { return }
         windowState.newTabIsland = WindowState.NewTabIsland(groupID: island.isDefault ? nil : island.id)
         windowState.openCommandLens()
     }
@@ -589,27 +617,31 @@ final class IslandController {
         }
         if spaceID != space.id {
             spaceID = space.id
-            state = IslandState.decode(space.tableLayoutData)
+            state = loadedState(of: space)
             lastTab = [:]
             filter = nil
         }
         repairPanes(in: space)
-        // Favorites, docked pages, and tabs floating as cards are not rows; a quick filter
-        // keeps only the tabs it matches.
+        // Docked pages and tabs floating as cards are not rows; a quick filter keeps only the
+        // tabs it matches. Favorites are the rows of their own island.
         let filtered = filteredTabIDs()
-        let onIslands = space.mainTabs.filter {
-            !$0.isFavorite && !state.detached.contains($0.id) && canvas.storedFloatingPlacement(for: $0)?.isDocked != true
-                && filtered?.contains($0.id) != false
+        func isRow(_ tab: Tab) -> Bool {
+            !state.detached.contains(tab.id) && canvas.storedFloatingPlacement(for: tab)?.isDocked != true && filtered?.contains(tab.id) != false
         }
+        let onIslands = space.mainTabs.filter { !$0.isFavorite && isRow($0) }
         let current = windowState.activeTabID
         func members(of groupID: UUID) -> [UUID] {
             onIslands.filter { $0.group?.id == groupID }.map(\.id)
         }
         let loose = state.looseTabsAppearance
-        var sources: [(id: UUID, title: String, color: String?, icon: String?, layout: IslandRowLayout, isDefault: Bool)] = [
+        var sources: [(id: UUID, title: String, color: String?, icon: String?, layout: IslandRowLayout, kind: Island.Kind)] = [
+            (
+                Island.favoritesID, Island.favoritesTitle, nil, "star.fill",
+                IslandRowLayout(ownTabIDs: favoriteTabs.filter(isRow).map(\.id)), .favorites,
+            ),
             (
                 space.id, loose.name, loose.colorString.isEmpty ? nil : loose.colorString, loose.iconName,
-                IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), true,
+                IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), .looseTabs,
             ),
         ]
         let groups = space.groups.filter { !$0.isArchive }.sorted { $0.position < $1.position }
@@ -626,27 +658,30 @@ final class IslandController {
                 )
             }
             let layout = IslandRowLayout(ownTabIDs: members(of: group.id), sections: sections, currentTabID: current)
-            sources.append((group.id, group.name, group.colorString, group.iconName, layout, false))
+            sources.append((group.id, group.name, group.colorString, group.iconName, layout, .group))
         }
         var changed = false
         var built: [Island] = []
         var nextOrigin = firstIslandOrigin
-        // The loose tabs' island folds away while every tab is in a group.
+        // The loose tabs' island folds away while every tab is in a group, and the favorites'
+        // while there is no favorite with a tab.
         for source in sources where !source.layout.allTabIDs.isEmpty {
             if state.islands[source.id] == nil {
                 state.islands[source.id] = IslandPlacement(x: nextOrigin.x, y: nextOrigin.y)
                 changed = true
             }
             let placement = state.islands[source.id]!
-            nextOrigin.x = min(0.9, placement.x + Layout.newIslandOffset)
+            if source.kind != .favorites {
+                nextOrigin.x = min(0.9, placement.x + Layout.newIslandOffset)
+            }
             built.append(Island(
                 id: source.id, title: source.title, colorString: source.color, iconName: source.icon, layout: source.layout,
-                placement: placement, isDefault: source.isDefault,
+                placement: placement, kind: source.kind,
             ))
         }
         let before = state
         // An island that is empty for a while keeps its place; only a group that is gone loses it.
-        state.prune(tabs: space.mainTabs.map(\.id), islands: space.groups.map(\.id) + [space.id])
+        state.prune(tabs: space.mainTabs.map(\.id), islands: space.groups.map(\.id) + [space.id, Island.favoritesID])
         if changed || state != before {
             persist()
         }
@@ -660,14 +695,36 @@ final class IslandController {
             update(\.keyboardCursorID, to: keyboard.cursor)
         }
         // An island exists: the hint has nothing left to teach.
-        if !startHintDismissed, built.contains(where: { !$0.isDefault }) {
+        if !startHintDismissed, built.contains(where: { $0.kind == .group }) {
             dismissStartHint()
         }
+    }
+
+    /// The favorites with a tab, in the favorites' order: the favorites island's rows.
+    private var favoriteTabs: [Tab] {
+        tabManager.bookmarksManager?.liveFavorites.compactMap(\.tab) ?? []
+    }
+
+    /// The favorites island's place and shape, the same in every space: where it was last
+    /// put, or icons only and kept on screen under the control rail.
+    private var favoritesPlacement: IslandPlacement {
+        defaults.data(forKey: Self.favoritesPlacementKey).flatMap { try? JSONDecoder().decode(IslandPlacement.self, from: $0) }
+            ?? IslandPlacement(x: 0, y: 0, isPinned: true, iconsOnly: true)
+    }
+
+    /// A space's island state, with the favorites island where it stands in every space.
+    private func loadedState(of space: Space?) -> IslandState {
+        var state = IslandState.decode(space?.tableLayoutData)
+        state.islands[Island.favoritesID] = favoritesPlacement
+        return state
     }
 
     private func persist() {
         guard let space = windowState.activeSpace else { return }
         space.tableLayoutData = state.encoded()
+        if let placement = state.islands[Island.favoritesID], placement != favoritesPlacement {
+            defaults.set(try? JSONEncoder().encode(placement), forKey: Self.favoritesPlacementKey)
+        }
         tabManager.scheduleSave()
     }
 
@@ -733,7 +790,8 @@ final class IslandController {
     /// ⌘ toggles a row in the selection; ⇧ extends it from the last chosen row through this
     /// one on the same island; a plain choice is the row alone.
     func select(_ tabID: UUID, extending: Bool, toggling: Bool) {
-        guard let island = island(holding: tabID) else { return }
+        // The favorites have no actions for several rows at once.
+        guard let island = island(holding: tabID), !island.isFavorites else { return }
         let onIsland = selectedTabIDs.filter { island.tabIDs.contains($0) }
         if toggling {
             selectedTabIDs = onIsland.symmetricDifference([tabID])
@@ -829,7 +887,7 @@ final class IslandController {
     }
 
     func closeAll(in islandID: UUID) {
-        guard let island = island(islandID) else { return }
+        guard let island = island(islandID), !island.isFavorites else { return }
         tabManager.requestCloseTabs(island.allTabIDs.compactMap(tab(for:)))
     }
 
@@ -1032,6 +1090,9 @@ final class IslandController {
         if let island = island(holding: tab.id) {
             lastTab[island.id] = tab.id
         }
+        if let bookmark = tab.linkedBookmark, tab.isFavorite {
+            tabManager.bookmarksManager?.recordVisit(for: bookmark)
+        }
     }
 
     /// Makes `tab` current with `style`: the outgoing page leaves as its snapshot. A page
@@ -1086,10 +1147,14 @@ final class IslandController {
         let reach = IslandGeometry.padding
         guard let target = visibleIslands.first(where: { frame(of: $0).insetBy(dx: -reach, dy: -reach).contains(point) }) else {
             update(\.drop, to: nil)
+            // A favorite belongs to every space: off the islands it is no card and starts no
+            // island, so it goes back to its row.
+            let staysFavorite = tab(for: tabID)?.isFavorite == true
+            let asCard = asCard && !staysFavorite
             let side = sideZone(at: point, dragging: tabID)
             update(\.sideDrop, to: side)
             update(\.dropsAsCard, to: side == nil && asCard)
-            update(\.islandGhost, to: side == nil && !asCard ? ghost(for: tabID, at: point) : nil)
+            update(\.islandGhost, to: side == nil && !asCard && !staysFavorite ? ghost(for: tabID, at: point) : nil)
             updateJoinDwell(candidate: nil, point: point)
             return
         }
@@ -1141,6 +1206,8 @@ final class IslandController {
             }
         } else if let sideDrop {
             joinPage(tabID, at: sideDrop)
+        } else if tab(for: tabID)?.isFavorite == true {
+            return
         } else if asCard {
             detach(tabID, at: point)
         } else {
@@ -1226,7 +1293,16 @@ final class IslandController {
     }
 
     private func moveTab(_ tabID: UUID, to slot: IslandInsertion, in target: Island) {
-        guard let tab = tab(for: tabID), let space = tab.space else { return }
+        guard let tab = tab(for: tabID) else { return }
+        if target.isFavorites {
+            placeInFavorites(tab, before: slot.before)
+            return
+        }
+        // A favorite put on another island leaves the favorites for this space first.
+        if tab.isFavorite, !toggleFavorite(tab) {
+            return
+        }
+        guard let space = tab.space else { return }
         if let location = location(of: tabID) {
             registerLocationUndo(location, actionName: "Move Tab")
         }
@@ -1241,6 +1317,38 @@ final class IslandController {
         tabManager.placeTab(tab, after: slot.after.flatMap(self.tab(for:)), before: slot.before.flatMap(self.tab(for:)))
         persist()
         rebuild()
+    }
+
+    /// Puts `tab` among the favorites before the favorite `nextID`, or last: a tab of the
+    /// space becomes a favorite first, while the favorites have room, and a favorite moves
+    /// within their order.
+    private func placeInFavorites(_ tab: Tab, before nextID: UUID?) {
+        guard let bookmarks = tabManager.bookmarksManager else { return }
+        if !tab.isFavorite {
+            guard tabManager.state.favoriteTabs.count < bookmarks._maxLiveFavoriteTabs else {
+                windowState.showToast("Favorites holds \(bookmarks._maxLiveFavoriteTabs) tabs")
+                return
+            }
+            guard toggleFavorite(tab) else { return }
+            state.detached.remove(tab.id)
+        }
+        let favorites = bookmarks.liveFavorites
+        if let moving = favorites.first(where: { $0.tab?.id == tab.id }) {
+            bookmarks.moveLiveFavorite(moving.id, before: nextID.flatMap { id in favorites.first { $0.tab?.id == id }?.id })
+        }
+        persist()
+        rebuild()
+    }
+
+    /// Favorite, or Remove from Favorites into this space, as the page card's star does it.
+    /// Returns whether the tab changed sides.
+    private func toggleFavorite(_ tab: Tab) -> Bool {
+        guard let bookmarks = tabManager.bookmarksManager else { return false }
+        let wasFavorite = tab.isFavorite
+        ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).toggleFavorite()
+        // The favorites are read again at once: the rows built next are of the tab's new side.
+        bookmarks.refreshFavoritesCache()
+        return tab.isFavorite != wasFavorite
     }
 
     /// Joins `tabID` to `otherID` as a pane, where the grid has room (``PanePlacement/automatic``).
@@ -1427,7 +1535,7 @@ final class IslandController {
     func performDrop(_ payload: IslandDropPayload, at target: IslandDrop) -> Bool {
         defer { endExternalDrop() }
         guard !payload.isEmpty, let island = island(target.island), let space = windowState.activeSpace else { return false }
-        let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id }
+        let moving = payload.tabIDs.compactMap(tab(for:)).filter { $0.space?.id == space.id || $0.isFavorite }
         // The slot is read once, off the rows as they are, the moving tabs counted out of
         // its neighbors: each later tab goes after the one before it.
         let slot = island.layout.insertion(beforeRow: target.row, moving: Set(moving.map(\.id)))
@@ -1440,6 +1548,9 @@ final class IslandController {
             return true
         }
         guard !payload.urls.isEmpty else { return false }
+        if island.isFavorites {
+            return addFavorites(at: payload.urls)
+        }
         let groupID = slot.section ?? (island.isDefault ? nil : island.id)
         var after = slot.after.flatMap(tab(for:))
         let before = slot.before.flatMap(tab(for:))
@@ -1456,6 +1567,22 @@ final class IslandController {
             open(first)
         }
         return !opened.isEmpty
+    }
+
+    /// Makes each address a favorite, while the favorites have room. Returns whether any was added.
+    private func addFavorites(at urls: [URL]) -> Bool {
+        guard let bookmarks = tabManager.bookmarksManager else { return false }
+        var added = false
+        for url in urls where tabManager.state.favoriteTabs.count < bookmarks._maxLiveFavoriteTabs {
+            bookmarks.addToFavorites(bookmarks.bookmark(at: url) ?? bookmarks.createBookmark(url: url), mode: .liveFavorite, loadImmediately: false)
+            added = true
+        }
+        if !added {
+            windowState.showToast("Favorites holds \(bookmarks._maxLiveFavoriteTabs) tabs")
+        }
+        bookmarks.refreshFavoritesCache()
+        rebuild()
+        return added
     }
 
     func moveIsland(_ islandID: UUID, to origin: CGPoint) {

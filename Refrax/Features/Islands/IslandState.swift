@@ -7,7 +7,7 @@ nonisolated struct IslandPlacement: Codable, Equatable, Sendable {
     var y: Double
     /// A pinned island stays on screen when the reveal key is up.
     var isPinned: Bool = false
-    /// Rows show favicons only, the favorites column's look.
+    /// Rows show favicons only, as the Favorites island does until it is told otherwise.
     var iconsOnly: Bool = false
     /// The compact rail's independent position, using the control island's normalized anchors.
     var railPlacement: ControlIslandPlacement?

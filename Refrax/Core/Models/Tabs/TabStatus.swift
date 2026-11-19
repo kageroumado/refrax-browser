@@ -6,7 +6,7 @@ import Foundation
 ///   automatic cleanup.
 ///
 /// - **Favorite**: a tab that belongs to no space. It has a home address (its linked
-///   ``Bookmark``'s URL), sits in the island's favorites column in every space, keeps its
+///   ``Bookmark``'s URL), is a row of the Favorites island in every space, keeps its
 ///   place on the floating layer in every space, and returns home when closed. Favorites
 ///   use global website data storage and are never cleaned up.
 ///

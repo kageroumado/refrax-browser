@@ -46,19 +46,10 @@ struct ControlIsland: View {
     private var state: ControlIslandState {
         windowState.controlIsland
     }
-    private var favorites: [FavoriteItem] {
-        bookmarks.favorites.filter { $0.tab != nil }
-    }
-    /// The grid holds favorites without a tab (shortcuts, folders, app shortcuts), which the
-    /// column reaches through its chevron.
-    private var favoritesOverflow: Bool {
-        bookmarks.favorites.count > favorites.count
-    }
     private var visibleItems: [ControlIslandItem] {
         state.configuration.visibleItems.filter { item in
             switch item {
             case .spaces: !spaces.spaces.isEmpty
-            case .favoriteTabs: !bookmarks.favorites.isEmpty
             case .page: windowState.activePage != nil
             case .updates: updateIsReady
             case .nowPlaying: mediaControls.hasActiveMedia
@@ -80,9 +71,7 @@ struct ControlIsland: View {
     }
 
     private var height: CGFloat {
-        Layout.railHeight(
-            items: visibleItems, spaceCount: spaces.spaces.count, favoriteCount: favorites.count, favoritesOverflow: favoritesOverflow,
-        )
+        Layout.railHeight(items: visibleItems, spaceCount: spaces.spaces.count)
     }
 
     /// The row keyboard focus lands on from View → Focus Browser Controls: the page icon, then the first focusable row.
@@ -92,7 +81,7 @@ struct ControlIsland: View {
         }
         for item in railLayout.rows {
             switch item {
-            case .windowControls, .spaces, .favoriteTabs, .page: continue
+            case .windowControls, .spaces, .page: continue
             case .navigation: return "Back"
             case .reload: return reloadTitle
             default: return item.title
@@ -131,7 +120,7 @@ struct ControlIsland: View {
         return "Controls, hidden at the \(edge.name) edge"
     }
     /// Something beyond the rail needs it on screen: the tour, the anchored lens, or the
-    /// islands, whose tabs the rail's favorites and spaces complete.
+    /// islands, whose tabs the rail's spaces complete.
     private var railIsNeeded: Bool {
         tour.isActive || tourLightsRail || windowState.showsAnchoredLens || canvas.floatingVisibility.isRevealed
     }
@@ -309,7 +298,7 @@ struct ControlIsland: View {
                 state.hasKeyboardFocus = true
             }
         }
-        .onChange(of: isDraggingWindow || isDraggingPanel || state.isReorderingFavorites) { _, dragging in
+        .onChange(of: isDraggingWindow || isDraggingPanel) { _, dragging in
             state.isDragging = dragging
             railHelp.dismiss()
             if !dragging {
@@ -436,8 +425,6 @@ struct ControlIsland: View {
                                 }
                         case .line:
                             sectionDivider
-                        case .gap:
-                            draggableBackground(Color.clear.frame(height: Layout.sectionGap).contentShape(Rectangle()))
                         case .grip:
                             grip
                                 .background {
@@ -509,10 +496,6 @@ struct ControlIsland: View {
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("browserControls")).midY } action: { shortcutRowMidY = $0 }
         case .spaces:
             ControlIslandSpaces(destinations: spaces.spaces, focusedControl: $focusedControl)
-        case .favoriteTabs:
-            ControlIslandFavoriteTabs(
-                favorites: favorites, overflows: favoritesOverflow, onShowAll: { windowState.toggleDetailTray(.favorites) }, focusedControl: $focusedControl,
-            )
         case .reload:
             control(
                 reloadTitle,
