@@ -26,6 +26,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)send:(NSString *)name fields:(NSDictionary<NSString *, id> *)fields;
 - (uint64_t)nextRequestID;
 
+/// Blocks until the host sends `name` for this page with `token`, or `timeout` seconds pass.
+/// NO when it did not come in time.
+- (BOOL)waitForMessageNamed:(NSString *)name token:(uint64_t)token timeout:(NSTimeInterval)timeout;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -54,6 +54,17 @@ typedef void (^RFXSnapshotCompletion)(CGImageRef _Nullable image, NSError *_Null
     [_engine send:name fields:message];
 }
 
+- (BOOL)waitForMessageNamed:(NSString *)name token:(uint64_t)token timeout:(NSTimeInterval)timeout {
+    if (_closed || _hostGone) {
+        return NO;
+    }
+    NSNumber *page = @(_number);
+    NSNumber *wanted = @(token);
+    return [_engine waitForMessageNamed:name timeout:timeout matching:^BOOL(NSDictionary<NSString *, id> *fields) {
+        return [fields[@"page"] isEqual:page] && [fields[@"token"] isEqual:wanted];
+    }] != nil;
+}
+
 // MARK: RFXEnginePage
 
 - (void)performCommand:(NSData *)command {
@@ -241,6 +252,23 @@ static NSData *RFXEmptyRequestLog(int64_t sequence) {
         NSArray *nodes = [fields[@"nodes"] isKindOfClass:[NSArray class]] ? fields[@"nodes"] : @[];
         NSNumber *root = [fields[@"root"] isKindOfClass:[NSNumber class]] ? fields[@"root"] : nil;
         [_view setAccessibilityNodes:nodes root:root];
+    } else if ([name isEqualToString:@"accessibilityChanges"]) {
+        NSArray *nodes = [fields[@"nodes"] isKindOfClass:[NSArray class]] ? fields[@"nodes"] : @[];
+        NSArray *removed = [fields[@"removed"] isKindOfClass:[NSArray class]] ? fields[@"removed"] : @[];
+        [_view changeAccessibilityNodes:nodes removing:removed];
+    } else if ([name isEqualToString:@"inputMethod"]) {
+        [_view setInputMethodState:fields];
+    } else if ([name isEqualToString:@"contextMenu"]) {
+        NSArray *items = [fields[@"items"] isKindOfClass:[NSArray class]] ? fields[@"items"] : nil;
+        if (items && identifier) {
+            NSPoint point = NSMakePoint([fields[@"x"] isKindOfClass:[NSNumber class]] ? [fields[@"x"] doubleValue] : 0,
+                                        [fields[@"y"] isKindOfClass:[NSNumber class]] ? [fields[@"y"] doubleValue] : 0);
+            [_view showContextMenuWithItems:items identifier:identifier atPoint:point];
+        }
+    } else if ([name isEqualToString:@"dragStarted"]) {
+        NSArray *items = [fields[@"items"] isKindOfClass:[NSArray class]] ? fields[@"items"] : @[];
+        NSString *title = [fields[@"title"] isKindOfClass:[NSString class]] ? fields[@"title"] : @"";
+        [_view beginDragWithItems:items title:title];
     } else if ([name isEqualToString:@"cursor"]) {
         if ([fields[@"name"] isKindOfClass:[NSString class]]) {
             [_view setCursorNamed:fields[@"name"]];

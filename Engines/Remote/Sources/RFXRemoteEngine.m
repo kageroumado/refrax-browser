@@ -59,6 +59,12 @@ static const NSTimeInterval RFXRemoteShutdownGrace = 5;
     [_wire send:name fields:fields];
 }
 
+- (nullable NSDictionary<NSString *, id> *)waitForMessageNamed:(NSString *)name
+                                                        timeout:(NSTimeInterval)timeout
+                                                       matching:(BOOL (^)(NSDictionary<NSString *, id> *fields))matches {
+    return [_wire waitForMessageNamed:name timeout:timeout matching:matches];
+}
+
 // MARK: Starting the host
 
 - (nullable NSString *)hostExecutablePath {

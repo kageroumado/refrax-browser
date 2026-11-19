@@ -91,6 +91,45 @@ enum NavigationTests {
             try expect((forward["url"] as? String)?.hasSuffix("/html/other") == true, "went forward to \(forward["url"] ?? "nil")")
         },
 
+        ConformanceTest(name: "navigation.history-and-reload-ask-refrax") { context in
+            let page = try await context.page("/html/basic")
+            try await page.load(context.url("/html/other"))
+            try await page.waitForEvent("backForwardChanged") { $0["canGoBack"] as? Bool == true }
+
+            let reloadMark = page.requests.count
+            let reloadEvents = page.events.count
+            page.command("reload")
+            let reload = try await page.waitForRequest("navigation", after: reloadMark)
+            try expectEqual(reload["kind"] as? String, "reload", "kind of a reload")
+            try expect((reload["url"] as? String)?.hasSuffix("/html/other") == true, "reload of \(reload["url"] ?? "nil")")
+            try expect(reload["initiatorOrigin"] == nil, "a reload Refrax started named an initiator")
+            try await page.waitForEvent("navigationFinished", after: reloadEvents)
+
+            let backMark = page.requests.count
+            let backEvents = page.events.count
+            page.command("goBack")
+            let back = try await page.waitForRequest("navigation", after: backMark)
+            try expectEqual(back["kind"] as? String, "backForward", "kind of a step back")
+            try expect((back["url"] as? String)?.hasSuffix("/html/basic") == true, "step back to \(back["url"] ?? "nil")")
+            try await page.waitForEvent("navigationCommitted", after: backEvents)
+        },
+
+        ConformanceTest(name: "navigation.cancelled-step-back-keeps-the-page") { context in
+            let page = try await context.page("/html/basic")
+            try await page.load(context.url("/html/other"))
+            try await page.waitForEvent("backForwardChanged") { $0["canGoBack"] as? Bool == true }
+            page.answer = { request in
+                request.name == "navigation" ? ["cancel": [:]] : TestPage.defaultAnswer(request)
+            }
+            let mark = page.requests.count
+            let events = page.events.count
+            page.command("goBack")
+            try await page.waitForRequest("navigation", after: mark)
+            try await pause(1)
+            try expectEqual(try await page.evaluate("document.title") as? String, "other", "the page after a cancelled step back")
+            try expect(!page.events[events...].contains { $0.name == "navigationCommitted" }, "a cancelled step back committed")
+        },
+
         ConformanceTest(name: "navigation.same-document-changes-only-the-url") { context in
             let page = try await context.page("/html/basic")
             let mark = page.events.count

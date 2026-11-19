@@ -82,9 +82,10 @@ enum Fixtures {
         <p id=text>The quick brown fox jumps over the lazy dog, twice over for good measure.</p>
         <img id=pic src="/asset/pic.png" alt="pic">
         <p><a id=link href="/html/basic">a link to drag</a></p>
+        <p><input id=field></p>
         <script>
         window.log = [];
-        for (const type of ['dragstart', 'dragend', 'mousedown', 'mouseup'])
+        for (const type of ['dragstart', 'dragend', 'mousedown', 'mouseup', 'compositionstart', 'compositionend'])
           addEventListener(type, () => log.push(type), true);
         window.__swallow = false;
         addEventListener('keydown', e => {

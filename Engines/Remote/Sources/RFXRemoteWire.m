@@ -14,12 +14,16 @@ static const NSUInteger RFXRemoteWireMaximumMessageSize = 64 * 1024 * 1024;
     int _fileDescriptor;
     dispatch_source_t _readSource;
     NSMutableData *_received;
+    /// Whole messages that have yet to reach `onMessage`, oldest first: each is `@[name, fields]`.
+    NSMutableArray<NSArray *> *_undelivered;
+    BOOL _deliveryIsScheduled;
 }
 
 - (instancetype)initWithFileDescriptor:(int)fileDescriptor {
     if ((self = [super init])) {
         _fileDescriptor = fileDescriptor;
         _received = [NSMutableData data];
+        _undelivered = [NSMutableArray array];
         fcntl(fileDescriptor, F_SETFL, fcntl(fileDescriptor, F_GETFL) | O_NONBLOCK);
         fcntl(fileDescriptor, F_SETFD, FD_CLOEXEC);
 
@@ -101,7 +105,8 @@ static const NSUInteger RFXRemoteWireMaximumMessageSize = 64 * 1024 * 1024;
     }
 }
 
-- (void)readAvailable {
+/// Reads what the socket holds. NO once the host's end has closed or the stream has broken.
+- (BOOL)readIntoBuffer {
     for (;;) {
         uint8_t chunk[64 * 1024];
         ssize_t count = read(_fileDescriptor, chunk, sizeof(chunk));
@@ -112,21 +117,28 @@ static const NSUInteger RFXRemoteWireMaximumMessageSize = 64 * 1024 * 1024;
         if (count < 0 && errno == EINTR) {
             continue;
         }
-        if (count < 0 && errno == EAGAIN) {
-            break;
-        }
-        // Deliver what arrived before the end, then report it.
-        [self dispatchMessages];
-        [self closeFromPeer];
-        return;
+        return count < 0 && errno == EAGAIN;
     }
-    [self dispatchMessages];
 }
 
-- (void)dispatchMessages {
-    // Every whole message leaves the buffer before any is handled: a handler can run a nested
-    // run loop, which reads again.
-    NSMutableArray<NSDictionary *> *messages = [NSMutableArray array];
+- (void)readAvailable {
+    if (_fileDescriptor < 0) {
+        return;
+    }
+    BOOL open = [self readIntoBuffer];
+    // Deliver what arrived before the end, then report it.
+    if (![self parseReceived]) {
+        return;
+    }
+    [self deliverMessages];
+    if (!open) {
+        [self closeFromPeer];
+    }
+}
+
+/// Moves every whole message from the buffer to the undelivered ones. NO when the stream is
+/// broken, which closes the wire.
+- (BOOL)parseReceived {
     NSUInteger offset = 0;
     while (_received.length - offset >= 4) {
         const uint8_t *header = (const uint8_t *)_received.bytes + offset;
@@ -134,7 +146,7 @@ static const NSUInteger RFXRemoteWireMaximumMessageSize = 64 * 1024 * 1024;
         if (length > RFXRemoteWireMaximumMessageSize) {
             [_received setLength:0];
             [self closeFromPeer];
-            return;
+            return NO;
         }
         if (_received.length - offset - 4 < length) {
             break;
@@ -142,22 +154,71 @@ static const NSUInteger RFXRemoteWireMaximumMessageSize = 64 * 1024 * 1024;
         NSData *body = [_received subdataWithRange:NSMakeRange(offset + 4, length)];
         offset += 4 + length;
         id message = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
-        if ([message isKindOfClass:[NSDictionary class]]) {
-            [messages addObject:message];
+        if (![message isKindOfClass:[NSDictionary class]]) {
+            continue;
         }
+        [(NSDictionary *)message enumerateKeysAndObjectsUsingBlock:^(id name, id fields, BOOL *stop) {
+            if ([name isKindOfClass:[NSString class]] && [fields isKindOfClass:[NSDictionary class]]) {
+                [self->_undelivered addObject:@[name, fields]];
+            }
+        }];
     }
     if (offset > 0) {
         [_received replaceBytesInRange:NSMakeRange(0, offset) withBytes:NULL length:0];
     }
+    return YES;
+}
 
-    for (NSDictionary *message in messages) {
+- (void)deliverMessages {
+    _deliveryIsScheduled = NO;
+    // Each message leaves the queue before it is handled: a handler can run a nested run loop,
+    // which reads and delivers again.
+    while (_undelivered.count > 0) {
+        NSArray *message = _undelivered.firstObject;
+        [_undelivered removeObjectAtIndex:0];
         void (^onMessage)(NSString *, NSDictionary *) = self.onMessage;
-        [message enumerateKeysAndObjectsUsingBlock:^(id name, id fields, BOOL *stop) {
-            if (onMessage && [name isKindOfClass:[NSString class]] && [fields isKindOfClass:[NSDictionary class]]) {
-                onMessage(name, fields);
-            }
-        }];
+        if (onMessage) {
+            onMessage(message[0], message[1]);
+        }
     }
+}
+
+- (nullable NSDictionary<NSString *, id> *)waitForMessageNamed:(NSString *)name
+                                                        timeout:(NSTimeInterval)timeout
+                                                       matching:(BOOL (^)(NSDictionary<NSString *, id> *fields))matches {
+    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + timeout;
+    NSDictionary<NSString *, id> *found = nil;
+    NSUInteger searched = 0;
+    while (_fileDescriptor >= 0) {
+        for (; searched < _undelivered.count; searched++) {
+            NSArray *message = _undelivered[searched];
+            if ([message[0] isEqualToString:name] && matches(message[1])) {
+                found = message[1];
+                [_undelivered removeObjectAtIndex:searched];
+                break;
+            }
+        }
+        CFAbsoluteTime remaining = deadline - CFAbsoluteTimeGetCurrent();
+        if (found || remaining <= 0) {
+            break;
+        }
+        struct pollfd descriptor = {.fd = _fileDescriptor, .events = POLLIN};
+        if (poll(&descriptor, 1, (int)ceil(remaining * 1000)) <= 0) {
+            continue;
+        }
+        // The end of the stream is the read source's to report, once the caller is back in the run loop.
+        if (![self readIntoBuffer] || ![self parseReceived]) {
+            break;
+        }
+    }
+    if (_undelivered.count > 0 && !_deliveryIsScheduled) {
+        _deliveryIsScheduled = YES;
+        __weak RFXRemoteWire *weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf deliverMessages];
+        });
+    }
+    return found;
 }
 
 @end

@@ -7,7 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class RFXRemotePage;
 
 /// Shows a page's remote layer and turns AppKit's input into the host's messages.
-@interface RFXRemotePageView : NSView
+@interface RFXRemotePageView : NSView <NSTextInputClient, NSDraggingSource>
 
 - (instancetype)initWithPage:(RFXRemotePage *)page NS_DESIGNATED_INITIALIZER;
 - (instancetype)initWithFrame:(NSRect)frame NS_UNAVAILABLE;
@@ -29,6 +29,20 @@ NS_ASSUME_NONNULL_BEGIN
 /// The page's accessibility tree as the host has it now (PROTOCOL.md §6): `nodes` by their
 /// numbers, under the node numbered `root`.
 - (void)setAccessibilityNodes:(NSArray<NSDictionary<NSString *, id> *> *)nodes root:(nullable NSNumber *)root;
+/// The nodes of `nodes` are new or changed, and the ones numbered in `removed` are gone.
+- (void)changeAccessibilityNodes:(NSArray<NSDictionary<NSString *, id> *> *)nodes removing:(NSArray<NSNumber *> *)removed;
+
+/// What the host says of the page's text input (PROTOCOL.md §7): whether it takes composed text,
+/// where its caret is, and the text around it.
+- (void)setInputMethodState:(NSDictionary<NSString *, id> *)state;
+
+/// Shows a menu of the host's `items` at `point` and tells the host which was chosen (PROTOCOL.md §8).
+- (void)showContextMenuWithItems:(NSArray<NSDictionary<NSString *, id> *> *)items identifier:(NSNumber *)identifier atPoint:(NSPoint)point;
+
+/// The user began dragging something of the page's: the drag continues as the system's, so it
+/// can end on anything that takes its `items` (PROTOCOL.md §9).
+- (void)beginDragWithItems:(NSArray<NSDictionary<NSString *, id> *> *)items title:(NSString *)title;
+
 /// An assistive technology acted on a node: `press` or `focus`.
 - (void)performAccessibilityAction:(NSString *)action onNode:(NSNumber *)node;
 

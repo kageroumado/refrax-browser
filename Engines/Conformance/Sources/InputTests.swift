@@ -126,6 +126,22 @@ enum InputTests {
             try expect(selected.hasPrefix("The quick"), "selected \(selected.prefix(40))")
         },
 
+        ConformanceTest(name: "input.dragging-a-link-offers-its-url") { context in
+            // The drag is the system's, so Refrax and other apps can take what the page dragged.
+            // This is the first test to drag: a session begun from synthesized events has no
+            // button of the mouse to end it, and the system runs one session at a time.
+            let page = try await context.page("/html/input")
+            try await focus(page, context)
+            let pasteboard = NSPasteboard(name: .drag)
+            pasteboard.clearContents()
+            let start = try await center(of: "link", in: page)
+            try await drag(from: start, to: NSPoint(x: start.x + 160, y: start.y - 60), in: page)
+            let offered = try await eventually("the link on the drag pasteboard") {
+                pasteboard.string(forType: .URL) ?? pasteboard.string(forType: .string)
+            }
+            try expect(offered.hasSuffix("/html/basic"), "the drag offered \(offered)")
+        },
+
         ConformanceTest(name: "input.dragging-an-image-starts-a-drag") { context in
             // The browser side builds the drag image in Refrax's process; this crashed when the
             // client never told Chromium its screen scale factors.
@@ -139,6 +155,29 @@ enum InputTests {
             }
             try expect(log.contains("mousedown"), "page log \(log)")
             try expectEqual(try await page.evaluate("document.title") as? String, "input", "the page after the drag")
+        },
+
+        ConformanceTest(name: "input.composed-text-reaches-the-field") { context in
+            // An input method composes through the first responder's NSTextInputClient.
+            let page = try await context.page("/html/input")
+            try await focus(page, context)
+            _ = try await page.evaluate("document.getElementById('field').focus()", gesture: true)
+            let client = try await eventually("a text input client for the focused field") { () -> NSTextInputClient? in
+                guard let responder = page.window.firstResponder as? NSView, responder.inputContext != nil else { return nil }
+                return responder as? NSTextInputClient
+            }
+            let nowhere = NSRange(location: NSNotFound, length: 0)
+            client.setMarkedText("にほん", selectedRange: NSRange(location: 3, length: 0), replacementRange: nowhere)
+            try await eventuallyAsync("the composition in the field") {
+                try await page.evaluate("document.getElementById('field').value") as? String == "にほん" ? true : nil
+            }
+            try expect(client.hasMarkedText(), "the client holds no marked text during a composition")
+            client.insertText("日本", replacementRange: nowhere)
+            try await eventuallyAsync("the committed text in the field") {
+                try await page.evaluate("document.getElementById('field').value") as? String == "日本" ? true : nil
+            }
+            let log = try await page.evaluate("log") as? [String] ?? []
+            try expect(log.contains("compositionstart") && log.contains("compositionend"), "page log \(log)")
         },
 
         ConformanceTest(name: "input.unhandled-command-key-reaches-the-menu-once") { context in

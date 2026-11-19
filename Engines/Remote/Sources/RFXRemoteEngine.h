@@ -23,6 +23,12 @@ extern NSString *const RFXRemoteHostExecutableKey;
 - (void)send:(NSString *)name fields:(NSDictionary<NSString *, id> *)fields;
 /// A number no other request of this engine has, for a message the host answers.
 - (uint64_t)nextRequestID;
+
+/// Blocks until the host sends `name` with fields that `matches`, or `timeout` seconds pass
+/// (see `RFXRemoteWire`). Nil when it did not come in time.
+- (nullable NSDictionary<NSString *, id> *)waitForMessageNamed:(NSString *)name
+                                                        timeout:(NSTimeInterval)timeout
+                                                       matching:(BOOL (^)(NSDictionary<NSString *, id> *fields))matches;
 - (void)pageDidClose:(RFXRemotePage *)page;
 
 @end

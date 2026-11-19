@@ -18,6 +18,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^onClose)(void);
 
 - (void)send:(NSString *)name fields:(NSDictionary<NSString *, id> *)fields;
+
+/// Blocks the main thread until a message named `name` that `matches` arrives, or `timeout`
+/// seconds pass. The message found is returned and never reaches `onMessage`; every other
+/// message keeps its order and is delivered once the caller is back in the run loop.
+- (nullable NSDictionary<NSString *, id> *)waitForMessageNamed:(NSString *)name
+                                                        timeout:(NSTimeInterval)timeout
+                                                       matching:(BOOL (^)(NSDictionary<NSString *, id> *fields))matches;
 - (void)close;
 
 @end
