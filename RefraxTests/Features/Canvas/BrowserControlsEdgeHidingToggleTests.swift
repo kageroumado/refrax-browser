@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import Refrax
 
-/// ⌘S: hides and shows the rail and the File Island together, through Hide at the Edge.
+/// View ▸ Hide Browser Controls: hides and shows the rail and the File Island together, through Hide at the Edge.
 struct BrowserControlsEdgeHidingToggleTests {
     private let area = CGRect(x: 0, y: 0, width: 1_600, height: 1_000)
     private let rail = CGRect(x: 1_540, y: 200, width: 48, height: 500)
@@ -114,7 +114,7 @@ struct BrowserControlsEdgeHidingToggleTests {
     }
 
     @Test @MainActor
-    func `View offers it on ⌘S and Save Page As moves to ⌥⌘S`() throws {
+    func `⌘S belongs to Show Islands, the controls' hiding has no key, and Save Page As is ⌥⌘S`() throws {
         let env = try TabManagerTestEnvironment()
         let menus = MenuBarManager(windowManager: env.windowManager, undoRedoManager: UndoRedoManager())
         let items = [menus.createAppMenu(), menus.createFileMenu(), menus.createEditMenu(), menus.createViewMenu(),
@@ -122,8 +122,11 @@ struct BrowserControlsEdgeHidingToggleTests {
             .compactMap(\.submenu).flatMap(\.items)
         let commandS = items.filter { $0.keyEquivalent == "s" && $0.keyEquivalentModifierMask == [.command] }
         #expect(commandS.count == 1)
-        #expect(commandS.first?.tag == MenuItemTag.browserControlsEdgeHiding.rawValue)
-        #expect(commandS.first?.title == "Hide Browser Controls")
+        #expect(commandS.first?.tag == MenuItemTag.islands.rawValue)
+        #expect(commandS.first?.title == "Show Islands")
+        let hiding = items.first { $0.tag == MenuItemTag.browserControlsEdgeHiding.rawValue }
+        #expect(hiding?.title == "Hide Browser Controls")
+        #expect(hiding?.keyEquivalent.isEmpty == true)
         let saveAs = items.first { $0.title == "Save Page As…" }
         #expect(saveAs?.keyEquivalentModifierMask == [.command, .option])
         #expect(!items.contains { $0 !== saveAs && $0.keyEquivalent == "s" && $0.keyEquivalentModifierMask == [.command, .option] })

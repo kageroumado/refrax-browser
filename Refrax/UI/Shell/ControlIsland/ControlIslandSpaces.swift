@@ -151,17 +151,8 @@ struct ControlIslandSpaces: View {
     private func spaceButton(_ space: Space, selected: Bool) -> some View {
         Button {
             guard !selected else { return }
-            tabSwitcher.cancel()
-            windowState.closeCommandLens()
-            windowState.pageVisit.end()
             Task.immediate(name: "Switch control island space") {
-                if canvas.floatingVisibility.isRevealed {
-                    canvas.spaceToReveal = space.id
-                }
-                await spaces.switchToSpace(space, for: windowState)
-                if windowState.activeSpaceID != space.id {
-                    canvas.spaceToReveal = nil
-                }
+                await spaces.show(space, in: windowState, canvas: canvas, tabSwitcher: tabSwitcher)
             }
         } label: {
             Group {

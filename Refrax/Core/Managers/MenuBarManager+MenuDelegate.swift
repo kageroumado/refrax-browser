@@ -11,6 +11,7 @@ extension MenuBarManager {
         updateWindowMenu(menu)
         updateViewMenu(menu)
         updateAppMenu(menu)
+        updateNumberKeyMenus(menu)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -21,6 +22,7 @@ extension MenuBarManager {
         updateWindowMenu(menu)
         updateViewMenu(menu)
         updateAppMenu(menu)
+        updateNumberKeyMenus(menu)
     }
 
     private func updateAppMenu(_ menu: NSMenu) {

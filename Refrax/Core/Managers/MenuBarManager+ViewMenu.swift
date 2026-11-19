@@ -194,11 +194,20 @@ extension MenuBarManager {
         separateItem.target = self
         viewMenu.addItem(separateItem)
 
-        // ⌘⇧\ is Safari's Show All Tabs.
-        let floatingItem = NSMenuItem(title: "Floating Tabs", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "\\")
-        floatingItem.keyEquivalentModifierMask = [.command, .shift]
-        floatingItem.target = self
-        viewMenu.addItem(floatingItem)
+        // ⌘S is the key an Arc user presses for the tab list. The title tracks the latch; see updateViewMenu.
+        let islandsItem = NSMenuItem(title: "Show Islands", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "s")
+        islandsItem.keyEquivalentModifierMask = [.command]
+        islandsItem.image = NSImage(systemSymbolName: ControlIslandItem.floatingTabs.symbol, accessibilityDescription: nil)
+        islandsItem.tag = MenuItemTag.islands.rawValue
+        islandsItem.target = self
+        viewMenu.addItem(islandsItem)
+        // ⌘⇧\, Safari's Show All Tabs, answers too.
+        let islandsAlternateItem = NSMenuItem(title: "Show Islands", action: #selector(toggleFloatingTabs(_:)), keyEquivalent: "\\")
+        islandsAlternateItem.keyEquivalentModifierMask = [.command, .shift]
+        islandsAlternateItem.isHidden = true
+        islandsAlternateItem.allowsKeyEquivalentWhenHidden = true
+        islandsAlternateItem.target = self
+        viewMenu.addItem(islandsAlternateItem)
         let currentTabItem = NSMenuItem(title: "Current Tab…", action: #selector(showCurrentTabInfo(_:)), keyEquivalent: "")
         currentTabItem.target = self
         viewMenu.addItem(currentTabItem)
@@ -221,6 +230,8 @@ extension MenuBarManager {
             viewMenu.addItem(dockItem)
         }
         viewMenu.addItem(createTableMenuItem())
+        viewMenu.addItem(createGoToSpaceMenuItem())
+        viewMenu.addItem(createGoToFavoriteMenuItem())
         let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
         favoriteItem.target = self
         favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue
@@ -233,9 +244,8 @@ extension MenuBarManager {
         let edgeHidingItem = NSMenuItem(
             title: "Hide Browser Controls",
             action: #selector(toggleBrowserControlsEdgeHiding(_:)),
-            keyEquivalent: "s",
+            keyEquivalent: "",
         )
-        edgeHidingItem.keyEquivalentModifierMask = [.command]
         edgeHidingItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: nil)
         edgeHidingItem.toolTip = "The controls and the File Island slide past the window's edge; the pointer coming to that edge brings them back"
         edgeHidingItem.tag = MenuItemTag.browserControlsEdgeHiding.rawValue
@@ -531,6 +541,11 @@ extension MenuBarManager {
             let isFavorite = activeWindowController?.windowState.focusedPage?.tab?.isFavorite == true
             favoriteItem.title = isFavorite ? "Remove from Favorites" : "Favorite Current Page"
             favoriteItem.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
+        }
+
+        if let islandsItem = menu.item(withTag: MenuItemTag.islands.rawValue) {
+            let stay = activeWindowController?.tabCanvasManager.floatingVisibility.isLatched == true
+            islandsItem.title = stay ? "Hide Islands" : "Show Islands"
         }
 
         if let edgeHidingItem = menu.item(withTag: MenuItemTag.browserControlsEdgeHiding.rawValue) {

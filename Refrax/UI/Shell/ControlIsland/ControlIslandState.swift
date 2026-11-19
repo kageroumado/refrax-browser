@@ -243,7 +243,7 @@ final class ControlIslandState {
         edgeReveal = nil
     }
 
-    /// ⌘S: turns Hide at the Edge on or off for the rail and the File Island together. Turned on,
+    /// Turns Hide at the Edge on or off for the rail and the File Island together. Turned on,
     /// both leave past their edges at once and the edge brings them back as before; turned off,
     /// both come back and stay. Returns whether they hide now.
     @discardableResult

@@ -363,6 +363,23 @@ final class SpaceManager {
         state.incrementListVersion()
     }
 
+    /// Shows `space` in the window because the person asked for it by its icon or its number
+    /// key: the recent-tabs switcher, the lens, and a Look end first, and islands that are
+    /// revealed stay revealed in the space arrived at.
+    func show(_ space: Space, in windowState: WindowState, canvas: TabCanvasManager, tabSwitcher: TabSwitcherManager) async {
+        guard space.id != windowState.activeSpaceID else { return }
+        tabSwitcher.cancel()
+        windowState.closeCommandLens()
+        windowState.pageVisit.end()
+        if canvas.floatingVisibility.isRevealed {
+            canvas.spaceToReveal = space.id
+        }
+        await switchToSpace(space, for: windowState)
+        if windowState.activeSpaceID != space.id {
+            canvas.spaceToReveal = nil
+        }
+    }
+
     /// Switches a window to a space by ID.
     func switchToSpace(id: UUID, for windowState: WindowState, restoreActiveTab: Bool = true) async {
         guard let space = state.space(for: id) else {

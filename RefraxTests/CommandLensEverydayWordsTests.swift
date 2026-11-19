@@ -203,6 +203,39 @@ struct CommandLensEverydayWordsTests {
         #expect(manager.suggestions.count == 2)
         #expect(manager.suggestions.allSatisfy { $0.groupHeader == "2 Open Tabs" })
     }
+
+    @Test(arguments: ["switch to work", "go to work", "work space", "work"])
+    func `Another space's name offers Switch to it`(query: String) async throws {
+        let env = try TabManagerTestEnvironment()
+        let home = env.makeSpace(name: "Home")
+        _ = env.makeSpace(name: "Work")
+        let windowState = env.makeActiveWindowState(with: home)
+
+        let titles = await actionTitles(query, env: env, windowState: windowState)
+
+        #expect(titles.contains("Switch to Work"))
+        #expect(!titles.contains("Switch to Home"), "the space on screen is where the window already is")
+    }
+
+    @Test
+    func `Switch to a space, chosen, shows that space`() async throws {
+        let env = try TabManagerTestEnvironment()
+        let home = env.makeSpace(name: "Home")
+        let work = env.makeSpace(name: "Work")
+        let windowState = env.makeActiveWindowState(with: home)
+        let manager = makeManager(env, windowState: windowState)
+
+        manager.onInputChanged("switch to work")
+        try await settle(manager)
+        let row = try #require(manager.suggestions.first { $0.text == "Switch to Work" })
+        manager.choose(row)
+        manager.commitSelection()
+        for _ in 0 ..< 50 where windowState.activeSpaceID != work.id {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(windowState.activeSpaceID == work.id)
+    }
 }
 
 // MARK: - Move to Space

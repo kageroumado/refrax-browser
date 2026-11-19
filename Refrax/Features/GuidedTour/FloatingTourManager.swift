@@ -573,7 +573,7 @@ extension FloatingTourManager.Step {
         case .openSecondPage:
             return "\(open(.arrivalDetails, lensShown: context.lensIsOpen))."
         case .revealPages:
-            return "Hold \(context.revealKey.glyph) to see your tabs as islands over the page. The islands button on the controls keeps them up."
+            return "Hold \(context.revealKey.glyph) to see your tabs as islands over the page. ⌘S, or the islands button on the controls, keeps them up."
         case .visitNeighbor:
             return "Hold \(context.revealKey.glyph) and scroll down: the page below slides in. Scroll up to come back."
         case .floatPage:

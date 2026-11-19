@@ -445,6 +445,32 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
         tabSwitcherManager.stepThroughRecent(by: -1)
     }
 
+    /// Shows the space at `index` in the spaces' order (⌃1…9).
+    func showSpace(at index: Int) {
+        let spaces = tabManager.spaceManager.spaces
+        guard spaces.indices.contains(index) else { return }
+        Task.immediate(name: "Switch space by number") { [self] in
+            await tabManager.spaceManager.show(spaces[index], in: windowState, canvas: tabCanvasManager, tabSwitcher: tabSwitcherManager)
+        }
+    }
+
+    /// The favorites the number keys reach, in the favorites' order: those with a tab.
+    var favoritesByNumber: [FavoriteItem] {
+        bookmarksManager.favorites.filter { $0.tab != nil }
+    }
+
+    /// Opens the favorite at `index` of ``favoritesByNumber`` (⌘1…9).
+    func openFavorite(at index: Int) {
+        let favorites = favoritesByNumber
+        guard favorites.indices.contains(index), let tab = favorites[index].tab else { return }
+        tabSwitcherManager.cancel()
+        windowState.closeCommandLens()
+        tabCanvasManager.openFloatingTab(tab)
+        if let bookmark = favorites[index].bookmark {
+            bookmarksManager.recordVisit(for: bookmark)
+        }
+    }
+
     /// Opens a file panel to load local files in the browser.
     func openFilePanel() {
         guard let window else { return }

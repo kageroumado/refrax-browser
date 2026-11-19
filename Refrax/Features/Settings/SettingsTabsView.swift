@@ -20,11 +20,11 @@ struct TabsSettingsView: View {
         @Bindable var settings = settings
 
         Form {
-            Section("Floating Tabs") {
+            Section("Islands") {
                 Picker("Reveal key", selection: $revealKey) {
                     ForEach(FloatingRevealKey.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                Text("Hold \(revealKey.title) to see adjacent pages. Use the tabs button to arrange them.")
+                Text("Hold \(revealKey.title) for a glance at your tabs. ⌘S keeps them up.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

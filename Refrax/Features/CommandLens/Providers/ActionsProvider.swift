@@ -108,15 +108,17 @@ struct ActionsProvider: CommandLensSuggestionProvider {
             ))
         }
 
-        // Floating tabs
-        let floatingTerms = [
-            "floating tabs", "all tabs", "show all tabs", "tab overview", "overview", "islands", "see all tabs",
+        // Show or hide the islands
+        let islandsTerms = [
+            "show islands", "hide islands", "islands", "all tabs", "show all tabs", "tab list", "sidebar", "tab overview",
+            "overview", "see all tabs", "floating tabs",
         ]
-        if FuzzyMatcher.match(query: query, against: floatingTerms) >= FuzzyMatcher.minimumMatchScore {
+        if FuzzyMatcher.match(query: query, against: islandsTerms) >= FuzzyMatcher.minimumMatchScore {
+            let canvas = (windowState?.window?.windowController as? RefraxWindowController)?.tabCanvasManager
             results.append(CommandLensSuggestion(
                 type: .appAction(.toggleTabCanvas),
-                text: "Floating Tabs",
-                description: "The tabs of this space as islands over the page",
+                text: canvas?.floatingVisibility.isLatched == true ? "Hide Islands" : "Show Islands",
+                description: "The tabs of this space, over the page  ⌘S",
                 iconName: ControlIslandItem.floatingTabs.symbol,
                 groupHeader: nil,
                 isRemovable: false,
@@ -169,7 +171,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         return results
     }
 
-    /// "move to <space>", "move to new window", and "new space".
+    /// "switch to <space>", "move to <space>", "move to new window", and "new space".
     private func tabPlacementSuggestions(for query: String) -> [CommandLensSuggestion] {
         func matches(_ terms: [String]) -> Bool {
             FuzzyMatcher.match(query: query, against: terms) >= FuzzyMatcher.minimumMatchScore
@@ -190,6 +192,16 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         var results: [CommandLensSuggestion] = []
         // A locked space's name stays out of the suggestions until it is unlocked.
         let lock = tabs.state.spaceLockManager
+        if let windowState {
+            for (index, space) in tabs.spaceManager.spaces.enumerated()
+                where space.id != windowState.activeSpaceID && !lock.requiresAuth(for: space) {
+                let name = space.name.lowercased()
+                if matches(["switch to \(name)", "go to \(name)", "\(name) space", "space \(name)"]) {
+                    let key = NumberKey.space(at: index).map { "  \($0)" } ?? ""
+                    results.append(suggestion(.switchToSpace(space.id), "Switch to \(space.name)", "Space\(key)", "square.stack"))
+                }
+            }
+        }
         if let tab = windowState?.activeTab, !tab.isFavorite, let current = tab.space, !lock.requiresAuth(for: current) {
             for space in tabs.spaceManager.spaces where space.id != current.id && !lock.requiresAuth(for: space) {
                 let name = space.name.lowercased()

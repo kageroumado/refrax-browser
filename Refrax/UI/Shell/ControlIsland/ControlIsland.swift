@@ -39,7 +39,7 @@ struct ControlIsland: View {
     @State private var hoverHasSettled = false
     @State private var railHelp = ControlIslandRailHelp()
     @State private var railHelpSize = CGSize.zero
-    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.control
+    @AppStorage("floatingTabs.revealKey") private var revealKey = FloatingRevealKey.default
     private typealias Layout = ControlIslandPlacement
     private static let escapeKeyCode: UInt16 = 53
 
@@ -130,9 +130,10 @@ struct ControlIsland: View {
         guard isHiddenAtEdge, let edge = state.hiddenEdge else { return "Browser controls" }
         return "Controls, hidden at the \(edge.name) edge"
     }
-    /// Something beyond the rail needs it on screen: the tour or the anchored lens.
+    /// Something beyond the rail needs it on screen: the tour, the anchored lens, or the
+    /// islands, whose tabs the rail's favorites and spaces complete.
     private var railIsNeeded: Bool {
-        tour.isActive || tourLightsRail || windowState.showsAnchoredLens
+        tour.isActive || tourLightsRail || windowState.showsAnchoredLens || canvas.floatingVisibility.isRevealed
     }
     private var opensLeft: Bool {
         effectivePlacement.opensLeft(in: area)
@@ -241,7 +242,7 @@ struct ControlIsland: View {
                     .glassEffectID("shortcut", in: glassNamespace)
                     .offset(x: shortcutFrame.minX, y: shortcutFrame.minY)
                     .transition(.opacity)
-                    .help("Hold \(revealKey.title) for a glance at your islands; click or press ⌘⇧\\ to keep them up")
+                    .help("Hold \(revealKey.title) for a glance at your islands; click or press ⌘S to keep them up")
                     .accessibilityLabel("Show islands: hold \(revealKey.title)")
                 }
                 if isHiddenAtEdge, let edge = state.hiddenEdge {
@@ -494,7 +495,7 @@ struct ControlIsland: View {
                 showsRecent ? "Recent tabs" : item.title,
                 symbol: showsRecent ? "clock.arrow.circlepath" : (canvas.floatingVisibility.isRevealed ? "square.on.square.fill" : item.symbol),
                 enabled: !showsRecent || tabSwitcher.isActive || tabSwitcher.canShowSwitcher,
-                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show your islands · hold \(revealKey.glyph) for a glance · \(revealKey.secondMeaningGlyph) for recent tabs",
+                help: showsRecent ? "Recent tabs · ⌃Tab" : "Show your islands · ⌘S · hold \(revealKey.glyph) for a glance · \(revealKey.secondMeaningGlyph) for recent tabs",
             ) {
                 if optionIsHeld {
                     showRecentTabs()

@@ -1684,6 +1684,8 @@ final class CommandLensManager {
                 if let tab = windowState.activeTab {
                     TabMediaControl.muteOthers(than: tab, in: tabManager.pagePool)
                 }
+            case let .switchToSpace(spaceID):
+                Task(name: "Switch space from the lens") { await tabManager.spaceManager.switchToSpace(id: spaceID, for: windowState) }
             case let .moveCurrentTabToSpace(spaceID):
                 if let tab = windowState.activeTab, !tab.isFavorite,
                    let space = tabManager.spaceManager.spaces.first(where: { $0.id == spaceID }) {
