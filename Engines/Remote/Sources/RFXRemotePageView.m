@@ -784,8 +784,10 @@ static NSImage *RFXDragLabel(NSString *text) {
 }
 
 - (void)beginDragWithItems:(NSArray<NSDictionary<NSString *, id> *> *)items title:(NSString *)title {
+    // A drag is the user's: the primary button is down on the page and the pointer has moved
+    // since it went down. A host that names a drag at any other time starts none.
     NSEvent *origin = _dragOrigin;
-    if (!origin || !(_pressedButtons & 1) || !self.window) {
+    if (origin.type != NSEventTypeLeftMouseDragged || !(_pressedButtons & 1) || !self.window) {
         return;
     }
     NSPasteboardItem *pasteboardItem = [[NSPasteboardItem alloc] init];
