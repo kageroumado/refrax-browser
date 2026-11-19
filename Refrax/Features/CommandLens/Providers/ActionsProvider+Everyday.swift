@@ -115,7 +115,8 @@ extension ActionsProvider {
     private static let settingsCategoryTerms: [(SettingsCategory, [String])] = [
         (.general, ["general"]),
         (.tabs, ["tabs", "tab"]),
-        (.privacy, ["privacy", "shields", "ad blocker", "adblock", "content blocking", "trackers"]),
+        (.privacy, ["privacy", "shields", "ad blocker", "adblock", "content blocking", "trackers", "routing rules", "link rules"]),
+        (.userCustomization, ["user content", "user styles", "user scripts", "css", "userscript", "boosts", "customize site"]),
         (.search, ["search", "search engine"]),
         (.extensions, ["extensions", "extension", "add-ons", "addons"]),
         (.engines, ["engines", "engine", "chromium"]),

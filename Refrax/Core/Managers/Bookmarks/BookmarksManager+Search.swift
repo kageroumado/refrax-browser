@@ -16,6 +16,15 @@ extension BookmarksManager {
         return try? _modelContext.fetch(descriptor).first
     }
 
+    /// The bookmark saved for exactly this address, if one exists.
+    func bookmark(at url: URL) -> Bookmark? {
+        let descriptor = FetchDescriptor<Bookmark>(
+            predicate: #Predicate { $0.url == url },
+        )
+
+        return try? _modelContext.fetch(descriptor).first
+    }
+
     /// Find a bookmark folder by its ID.
     ///
     /// - Parameter id: The folder's UUID.

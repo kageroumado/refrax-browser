@@ -16,14 +16,6 @@ extension MenuBarManager {
 
         helpMenu.addItem(.separator())
 
-        let helpItem = NSMenuItem(
-            title: "Refrax Help",
-            action: #selector(showHelp(_:)),
-            keyEquivalent: "?",
-        )
-        helpItem.target = self
-        helpMenu.addItem(helpItem)
-
         let tourItem = NSMenuItem(
             title: "Refrax Tour",
             action: #selector(startFloatingTour(_:)),
@@ -58,11 +50,6 @@ extension MenuBarManager {
 
         helpMenuItem.submenu = helpMenu
         return helpMenuItem
-    }
-
-    @objc
-    func showHelp(_: Any?) {
-        // TODO: Implement help
     }
 
     /// Walks the active window through opening pages, revealing them, and the control panel.

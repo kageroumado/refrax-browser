@@ -121,7 +121,7 @@ struct TabActions {
     private func windowActions() -> [MenuAction] {
         var actions: [MenuAction] = []
         if !tab.isFavorite, tab.space != nil {
-            actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option]), group: .window) {
+            actions.append(MenuAction("tab.moveToNewWindow", "Move to New Window", symbol: "macwindow.badge.plus", key: .init("n", modifiers: [.command, .option, .shift]), group: .window) {
                 if let canvas {
                     canvas.moveFloatingTabToNewWindow(tab, in: area)
                 } else {

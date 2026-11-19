@@ -8,7 +8,7 @@ extension MenuBarManager {
         let bookmarksMenu = NSMenu(title: "Bookmarks")
 
         let addBookmarkItem = NSMenuItem(
-            title: "Add Bookmark…",
+            title: "Bookmark This Page",
             action: #selector(addBookmark(_:)),
             keyEquivalent: "d",
         )
@@ -75,9 +75,18 @@ extension MenuBarManager {
         return bookmarksMenuItem
     }
 
+    /// ⌘D: bookmarks the focused page, once per address.
     @objc
     func addBookmark(_: Any?) {
-        // TODO: Implement add bookmark
+        guard let controller = activeWindowController, let page = controller.windowState.focusedPage, page.url != .blank else { return }
+        let windowState = controller.windowState
+        let showBookmarks = ToastAction(title: "Show Bookmarks") { windowState.showDetailTray(.bookmarks) }
+        if controller.bookmarksManager.bookmark(at: page.url) != nil {
+            windowState.showToast("Already bookmarked", action: showBookmarks)
+        } else {
+            controller.bookmarksManager.createBookmark(url: page.url, title: page.title)
+            windowState.showToast("Bookmarked", action: showBookmarks)
+        }
     }
 
     @objc
