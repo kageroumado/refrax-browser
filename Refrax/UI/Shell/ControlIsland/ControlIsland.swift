@@ -535,10 +535,10 @@ struct ControlIsland: View {
         NSEvent.modifierFlags.contains(revealKey.secondMeaningFlag)
     }
 
-    /// The recent-tab picker, in place of the lens and the tab layer.
+    /// The recent-tab picker, in place of the lens.
     private func showRecentTabs() {
         windowState.closeCommandLens()
-        canvas.dismissFloatingTabs()
+        canvas.releaseFloatingTabs()
         tabSwitcher.toggle()
     }
 

@@ -75,6 +75,7 @@ struct IslandRowMenu {
                 .action("island.archive"),
             ],
             [.action("tab.island.new"), .action("island.moveTo"), .action("tab.moveToSpace"), .action("island.leave")],
+            [.action("favorites.titles"), .action("favorites.keep"), .action("favorites.all")],
             [
                 .submenu(id: "more", title: "More", symbol: "ellipsis.circle", actions: [
                     "tab.unread", "page.find", "tab.muteOthers", "tab.dock.leading", "tab.dock.trailing",
@@ -92,7 +93,7 @@ struct IslandRowMenu {
     func islandActions() -> [MenuAction] {
         // A favorite's row has the favorite's own verbs: it is no card, moves by Remove from
         // Favorites, and its neighbors close by returning home one at a time.
-        guard !island.isFavorites else { return [] }
+        guard !island.isFavorites else { return favoritesIslandActions() }
         let tabID = tab.id
         let islands = islands
         var actions = [
@@ -119,6 +120,25 @@ struct IslandRowMenu {
         actions.append(MenuAction("island.closeAbove", "Above This Tab", symbol: "arrow.up.to.line", group: .close) { islands.close(below: false, of: tabID) })
         actions.append(MenuAction("island.closeBelow", "Below This Tab", symbol: "arrow.down.to.line", group: .close) { islands.close(below: true, of: tabID) })
         return actions
+    }
+
+    /// The favorites island's own options, on its rows' menus: its icon rail has no header to
+    /// hold them.
+    private func favoritesIslandActions() -> [MenuAction] {
+        let islands = islands
+        let id = island.id
+        let windowState = windowState
+        return [
+            MenuAction(
+                "favorites.titles", island.placement.iconsOnly ? "Show Favorites with Titles" : "Show Favorites as Icons",
+                symbol: island.placement.iconsOnly ? "list.bullet" : "square.grid.2x2", group: .island,
+            ) { islands.toggleIconsOnly(id) },
+            MenuAction(
+                "favorites.keep", "Keep Favorites on Screen", symbol: "eye", group: .island,
+                state: island.placement.isPinned ? .on : .off,
+            ) { islands.togglePin(id) },
+            MenuAction("favorites.all", "All Favorites", symbol: "star", group: .island) { windowState.showDetailTray(.favorites) },
+        ]
     }
 
     /// What several chosen rows can do together, a new island first.

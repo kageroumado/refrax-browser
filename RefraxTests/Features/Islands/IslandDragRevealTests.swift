@@ -5,34 +5,15 @@ import Testing
 /// When presses on the page and drags over the window bring the islands up or let them go.
 struct IslandDragRevealTests {
     @Test
-    func `A click on the page lets latched islands go when the button comes up, not before`() {
+    func `A press on the page keeps latched islands and gives the page the keyboard`() {
         var reveal = IslandDragReveal()
-        #expect(reveal.handle(.pressOnPage, latched: true) == .none)
-        #expect(reveal.handle(.pointerUp, latched: true) == .dismiss)
-    }
-
-    @Test
-    func `A press that moves is a drag, which keeps latched islands`() {
-        var reveal = IslandDragReveal()
-        _ = reveal.handle(.pressOnPage, latched: true)
-        #expect(reveal.handle(.pointerDragged, latched: true) == .none)
-        #expect(reveal.handle(.dragEntered(.droppable), latched: true) == .none)
-        #expect(reveal.handle(.dragEnded, latched: true) == .none)
-        #expect(reveal.handle(.pointerUp, latched: true) == .none)
+        #expect(reveal.handle(.pressOnPage, latched: true) == .returnKeyboard)
     }
 
     @Test
     func `A press with the islands only held lets them go at once`() {
         var reveal = IslandDragReveal()
         #expect(reveal.handle(.pressOnPage, latched: false) == .dismiss)
-        #expect(reveal.handle(.pointerUp, latched: false) == .none)
-    }
-
-    @Test
-    func `A button coming up after a press elsewhere lets nothing go`() {
-        var reveal = IslandDragReveal()
-        #expect(reveal.handle(.pointerDragged, latched: true) == .none)
-        #expect(reveal.handle(.pointerUp, latched: true) == .none)
     }
 
     @Test
@@ -86,7 +67,6 @@ struct IslandWindowDragTests {
         _ = fixture.tab("A")
         fixture.canvas.toggleFloatingTabs()
         fixture.islands.windowInput(.pressOnPage)
-        fixture.islands.windowInput(.pointerDragged)
         fixture.islands.windowInput(.dragEntered(.droppable))
         #expect(fixture.canvas.floatingVisibility.isLatched)
         #expect(!fixture.islands.visibleIslands.isEmpty)
@@ -95,14 +75,44 @@ struct IslandWindowDragTests {
     }
 
     @Test
-    func `A click on the page lets latched islands go on mouse-up`() throws {
+    func `A click on the page keeps latched islands, and the arrows go back to the page`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        _ = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        #expect(fixture.islands.handleKey(.down))
+
+        fixture.islands.windowInput(.pressOnPage)
+
+        #expect(fixture.canvas.floatingVisibility.isLatched)
+        #expect(fixture.islands.keyboardCursorID == nil)
+        #expect(!fixture.islands.handleKey(.down))
+    }
+
+    @Test
+    func `Latching the islands again gives them the arrows`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        _ = fixture.tab("B")
+        fixture.canvas.toggleFloatingTabs()
+        fixture.islands.windowInput(.pressOnPage)
+        fixture.canvas.toggleFloatingTabs()
+        fixture.canvas.toggleFloatingTabs()
+
+        #expect(fixture.islands.handleKey(.down))
+    }
+
+    @Test
+    func `Latched islands stay through a change of space`() async throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("A")
         fixture.canvas.toggleFloatingTabs()
-        fixture.islands.windowInput(.pressOnPage)
+        let other = fixture.env.makeSpace(name: "Other")
+        await fixture.env.spaceManager.switchToSpace(other, for: fixture.window)
+
+        fixture.canvas.floatingSpaceChanged()
+
         #expect(fixture.canvas.floatingVisibility.isLatched)
-        fixture.islands.windowInput(.pointerUp)
-        #expect(!fixture.canvas.floatingVisibility.isRevealed)
     }
 
     @Test

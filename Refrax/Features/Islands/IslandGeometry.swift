@@ -29,6 +29,11 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     static let maximumShare: CGFloat = 0.4
 
     var iconsOnly: Bool
+    /// The rows with a gap under them: an island's last pinned row, above the rows that are
+    /// not pinned. The hairline between the two sits in the gap.
+    var gapRows: [Int] = []
+    /// The room between the pinned rows and the rows under them.
+    static let pinnedGap: CGFloat = 9
 
     var cellHeight: CGFloat { iconsOnly ? ControlIslandPlacement.rowHeight : Self.rowHeight }
     var horizontalPadding: CGFloat { iconsOnly ? ControlIslandPlacement.horizontalInset : Self.padding }
@@ -37,9 +42,37 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
         iconsOnly ? Self.iconWidth : Self.titleWidth
     }
 
-    /// The height of `rows` rows, one at least, and the padding.
+    /// The height of `rows` rows, one at least, with the gaps among them and the padding.
     func contentHeight(rows: Int) -> CGFloat {
-        CGFloat(max(1, rows)) * cellHeight + 2 * Self.padding
+        CGFloat(max(1, rows)) * cellHeight + gaps(above: rows) + 2 * Self.padding
+    }
+
+    /// The height of the gaps above row `index`.
+    private func gaps(above index: Int) -> CGFloat {
+        CGFloat(gapRows.count(where: { $0 < index })) * Self.pinnedGap
+    }
+
+    /// The gap under row `index`.
+    func gap(after index: Int) -> CGFloat {
+        gapRows.contains(index) ? Self.pinnedGap : 0
+    }
+
+    /// Where a drop before row `row` shows its line: at the row's top, or in the middle of
+    /// the gap above it.
+    func insertionLineY(_ row: Int) -> CGFloat {
+        Self.padding + CGFloat(row) * cellHeight + gaps(above: row) - gap(after: row - 1) / 2
+    }
+
+    /// `y` in the island as it would be with no gaps: a point in a gap counts as the top of
+    /// the row under it.
+    private func rowSpaceY(_ y: CGFloat) -> CGFloat {
+        var y = y - Self.padding
+        for row in gapRows.sorted() {
+            let bottom = CGFloat(row + 1) * cellHeight
+            guard y > bottom else { break }
+            y = max(bottom, y - Self.pinnedGap)
+        }
+        return y
     }
 
     /// The island's size on screen: its content, held to the window's share.
@@ -51,7 +84,7 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// Row `index`'s frame in the island, before any scrolling.
     func rowFrame(_ index: Int) -> CGRect {
         CGRect(
-            x: horizontalPadding, y: Self.padding + CGFloat(index) * cellHeight,
+            x: horizontalPadding, y: Self.padding + CGFloat(index) * cellHeight + gaps(above: index),
             width: width - 2 * horizontalPadding, height: cellHeight,
         )
     }
@@ -59,14 +92,14 @@ nonisolated struct IslandGeometry: Equatable, Sendable {
     /// Where a row dropped at `point` goes among `count` rows: before the row whose top half it
     /// is on, after the one whose bottom half, so 0 through `count`.
     func insertion(at point: CGPoint, count: Int) -> Int {
-        let y = point.y - Self.padding
+        let y = rowSpaceY(point.y)
         return min(count, max(0, Int((y / cellHeight).rounded())))
     }
 
     /// The row `point` is on, when it is on one's middle: a drop there joins that row's tab
     /// instead of landing beside it.
     func joinedRow(at point: CGPoint, count: Int) -> Int? {
-        let y = point.y - Self.padding
+        let y = rowSpaceY(point.y)
         guard y >= 0 else { return nil }
         let row = Int(y / cellHeight)
         let within = (y - CGFloat(row) * cellHeight) / cellHeight

@@ -49,7 +49,7 @@ final class CanvasPageGestures {
                 // lens) is a click on the browser, which ends nothing.
                 guard let self, NSApp.keyWindow?.parent !== self.window else { return }
                 self.interruptControl()
-                self.canvas.dismissFloatingTabs()
+                self.canvas.releaseFloatingTabs()
             }
         }
         self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .mouseMoved, .mouseExited, .flagsChanged, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]) { [weak self] event in
@@ -147,7 +147,7 @@ final class CanvasPageGestures {
         }
         if event.keyCode == Constants.tabKeyCode, event.modifierFlags.contains(.control) {
             interruptControl()
-            canvas.dismissFloatingTabs()
+            canvas.releaseFloatingTabs()
             return event
         }
         // Latched open with the reveal key up, an arrow starts browsing the islands' rows; from
@@ -163,11 +163,13 @@ final class CanvasPageGestures {
                 return nil
             }
         }
-        if canvas.floatingVisibility.isRevealed, event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus() {
-            islands?.endKeyboardBrowsing()
+        // Escape ends a row's drag and a held reveal. Islands latched open stay, and the key
+        // is the page's.
+        if event.keyCode == Constants.escapeKeyCode, !floatingHasKeyboardFocus(),
+           canvas.floatingVisibility.isHeld || islands?.draggedTabID != nil {
             islands?.cancelRowDrag()
             interruptControl()
-            canvas.dismissFloatingTabs()
+            canvas.releaseFloatingTabs()
             return nil
         }
         if floatingHasKeyboardFocus(), canvas.floatingVisibility.isHeld {

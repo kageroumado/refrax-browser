@@ -5,15 +5,13 @@ import SwiftUI
 final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     var hitRegions: () -> [CGRect] = { [] }
     var onPointerDown: ((CGPoint) -> Void)?
-    /// The pointer moved with the left button down, after a press anywhere in the window.
-    var onPointerDragged: (() -> Void)?
-    /// The left button came up.
-    var onPointerUp: (() -> Void)?
     /// A right-click at a point; returns whether it was handled, which keeps it from the page.
     var onSecondaryPointerDown: ((CGPoint, NSEvent) -> Bool)?
     var controlState: (() -> ControlIslandState?)?
     /// The pointer over the page, for what shows near it.
     var onPointerMoved: ((CGPoint) -> Void)?
+    /// The pointer left the view.
+    var onPointerExited: (() -> Void)?
     private var pointerMonitor: Any?
     private var pointerTrackingArea: NSTrackingArea?
 
@@ -44,6 +42,7 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         controlState?()?.pointerMoved?(topLeadingPoint(convert(event.locationInWindow, from: nil)))
+        onPointerExited?()
     }
 
     override func viewDidMoveToWindow() {
@@ -55,17 +54,9 @@ final class FloatingTabsHostingView<Content: View>: NSHostingView<Content> {
         guard window != nil else { return }
         window?.acceptsMouseMovedEvents = true
         pointerMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .otherMouseDown, .scrollWheel],
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel],
         ) { [weak self] event in
             guard let self, event.window === window else { return event }
-            if event.type == .leftMouseDragged {
-                onPointerDragged?()
-                return event
-            }
-            if event.type == .leftMouseUp {
-                onPointerUp?()
-                return event
-            }
             let point = topLeadingPoint(convert(event.locationInWindow, from: nil))
             if event.type == .leftMouseDown {
                 onPointerDown?(point)

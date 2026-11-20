@@ -160,6 +160,7 @@ final class TabCanvasManager {
         focusedFloatingTabID = windowState.activeTabID ?? floatingTabs.first?.id
     }
 
+    /// Ends a held reveal; islands latched open stay.
     func releaseFloatingTabs() {
         floatingVisibility.release()
         windowState.controlIsland.tabInfo.release()
@@ -176,8 +177,10 @@ final class TabCanvasManager {
 
     var spaceToReveal: Space.ID?
 
+    /// The window shows another space: a held reveal ends, and islands latched open stay
+    /// latched for the new space's islands.
     func floatingSpaceChanged() {
-        let shouldReveal = spaceToReveal == windowState.activeSpaceID
+        let shouldReveal = spaceToReveal == windowState.activeSpaceID || floatingVisibility.isLatched
         spaceToReveal = nil
         dismissFloatingTabs()
         if shouldReveal {

@@ -263,6 +263,34 @@ struct PinnedRowLayoutTests {
     }
 
     @Test
+    func `A gap parts the pinned rows from the rows under them`() {
+        let layout = IslandRowLayout(ownTabIDs: [a, b, c, d], pinned: [a, b])
+        let plain = IslandGeometry(iconsOnly: false)
+        let geometry = IslandGeometry(iconsOnly: false, gapRows: layout.pinnedGapRows)
+        let gap = IslandGeometry.pinnedGap
+
+        #expect(layout.pinnedGapRows == [1])
+        #expect(geometry.rowFrame(1) == plain.rowFrame(1))
+        #expect(geometry.rowFrame(2).minY == plain.rowFrame(2).minY + gap)
+        #expect(geometry.contentHeight(rows: 4) == plain.contentHeight(rows: 4) + gap)
+        #expect(geometry.insertionLineY(2) == geometry.rowFrame(1).maxY + gap / 2)
+    }
+
+    @Test
+    func `A drop reads the same rows above, in, and under the gap`() {
+        let geometry = IslandGeometry(iconsOnly: false, gapRows: [1])
+        let second = geometry.rowFrame(1)
+        let third = geometry.rowFrame(2)
+
+        #expect(geometry.insertion(at: CGPoint(x: 20, y: second.maxY - 2), count: 4) == 2)
+        #expect(geometry.insertion(at: CGPoint(x: 20, y: second.maxY + IslandGeometry.pinnedGap / 2), count: 4) == 2)
+        #expect(geometry.insertion(at: CGPoint(x: 20, y: third.minY + 2), count: 4) == 2)
+        #expect(geometry.insertion(at: CGPoint(x: 20, y: third.maxY - 2), count: 4) == 3)
+        #expect(geometry.joinedRow(at: CGPoint(x: 20, y: third.midY), count: 4) == 2)
+        #expect(geometry.joinedRow(at: CGPoint(x: 20, y: second.maxY + IslandGeometry.pinnedGap / 2), count: 4) == nil)
+    }
+
+    @Test
     func `An island with no pinned row changes no pin`() {
         let layout = IslandRowLayout(ownTabIDs: [a, b], pinned: [])
 

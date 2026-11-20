@@ -67,6 +67,8 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
     let pinnedTabIDs: Set<UUID>
     /// The pinned rows with an unpinned row right under them: a hairline parts the two.
     let lastPinnedRowIDs: Set<UUID>
+    /// Those rows' places among ``rows``.
+    let pinnedGapRows: [Int]
 
     init(ownTabIDs: [UUID] = [], sections: [IslandSection] = [], currentTabID: UUID? = nil, pinned: Set<UUID> = []) {
         var rows = ownTabIDs.map(IslandRow.tab)
@@ -90,6 +92,7 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
             guard let id = row.tabID, let nextID = next.tabID, pinnedTabIDs.contains(id), !pinnedTabIDs.contains(nextID) else { return nil }
             return id
         })
+        self.pinnedGapRows = rows.indices.filter { [lastPinnedRowIDs] in rows[$0].tabID.map(lastPinnedRowIDs.contains) ?? false }
     }
 
     var count: Int {

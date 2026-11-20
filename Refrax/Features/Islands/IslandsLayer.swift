@@ -96,9 +96,11 @@ struct IslandsLayer: View {
         .environment(\.colorScheme, settings.theme.colorScheme ?? colorScheme)
         .onChange(of: windowState.activeSpaceID) { canvas.floatingSpaceChanged() }
         .onChange(of: windowState.isSpaceLocked) { canvas.dismissFloatingTabs() }
+        // The lens takes the keyboard; islands latched open stay beside it.
         .onChange(of: windowState.showsCommandLens) { _, shown in
             if shown {
-                canvas.dismissFloatingTabs()
+                canvas.releaseFloatingTabs()
+                islands.returnKeyboardToPage()
             }
         }
     }
@@ -124,8 +126,10 @@ struct IslandView: View {
         let fullFrame = islands.fullFrame(of: island)
         GlassEffectContainer {
             VStack(alignment: .leading, spacing: IslandGeometry.headerGap) {
-                IslandHeader(island: island)
-                    .frame(width: fullFrame.width, height: IslandGeometry.headerHeight)
+                if island.hasHeader {
+                    IslandHeader(island: island)
+                        .frame(width: fullFrame.width, height: IslandGeometry.headerHeight)
+                }
                 rows
                     .padding(.vertical, IslandGeometry.padding)
                     .padding(.horizontal, geometry.horizontalPadding)
@@ -146,7 +150,7 @@ struct IslandView: View {
                             Capsule()
                                 .fill(Color.appAccentColor)
                                 .frame(width: frame.width - 2 * geometry.horizontalPadding, height: IslandGeometry.insertionLineHeight)
-                                .offset(x: geometry.horizontalPadding, y: IslandGeometry.padding + CGFloat(drop.row) * geometry.cellHeight - (islands.scrollOffsets[island.id] ?? 0))
+                                .offset(x: geometry.horizontalPadding, y: insertionLineY(drop.row))
                                 .allowsHitTesting(false)
                         }
                     }
@@ -169,6 +173,11 @@ struct IslandView: View {
         static let nudge: CGFloat = 40
     }
 
+    /// Where a drop before row `row` shows its line, after the island's scroll.
+    private func insertionLineY(_ row: Int) -> CGFloat {
+        geometry.insertionLineY(row) - (islands.scrollOffsets[island.id] ?? 0)
+    }
+
     private func nudge(dx: CGFloat, dy: CGFloat) {
         let origin = islands.frame(of: island).origin
         islands.moveIsland(island.id, to: CGPoint(x: origin.x + dx, y: origin.y + dy))
@@ -185,6 +194,7 @@ struct IslandView: View {
                 if let tab = islands.tab(for: tabID) {
                     IslandTabRow(tab: tab, island: island, index: index, area: islands.bounds)
                         .frame(height: geometry.cellHeight)
+                        .padding(.bottom, geometry.gap(after: index))
                 }
             case let .section(sectionID):
                 if let section = island.layout.section(sectionID) {
@@ -497,6 +507,8 @@ private struct IslandTabRow: View, Equatable {
         /// How far the hairline under the pinned rows stops short of the row's ends.
         static let pinnedLineInset: CGFloat = 8
         static let pinnedLineInsetIcons: CGFloat = 4
+        /// From the last pinned row's bottom edge to the hairline, in the middle of the gap.
+        static let pinnedLineDrop: CGFloat = IslandGeometry.pinnedGap / 2 + 0.5
     }
 
     private var isCurrent: Bool {
@@ -616,7 +628,7 @@ private struct IslandTabRow: View, Equatable {
                     .fill(.separator)
                     .frame(height: 1)
                     .padding(.horizontal, iconsOnly ? Layout.pinnedLineInsetIcons : Layout.pinnedLineInset)
-                    .offset(y: 0.5)
+                    .offset(y: Layout.pinnedLineDrop)
                     .allowsHitTesting(false)
             }
         }

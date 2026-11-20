@@ -151,7 +151,7 @@ final class KeyboardShortcutsManager: Sendable {
                 }
             } else if tabSwitcherManager.canShowSwitcher {
                 controller.windowState.closeCommandLens()
-                controller.tabCanvasManager.dismissFloatingTabs()
+                controller.tabCanvasManager.releaseFloatingTabs()
                 tabSwitcherManager.show()
             }
             return nil

@@ -247,6 +247,19 @@ struct IslandKeyboardTests {
     }
 
     @Test
+    func `Return on islands already latched opens the row and keeps them up`() throws {
+        let (fixture, _, _, _) = try fixtureWithTwoIslands()
+        fixture.canvas.toggleFloatingTabs()
+        fixture.islands.handleKey(.down)
+        fixture.islands.handleKey(.down)
+        let chosen = try #require(fixture.islands.keyboardCursorID)
+        fixture.islands.handleKey(.open)
+        #expect(fixture.window.activeTabID == chosen)
+        #expect(fixture.canvas.floatingVisibility.isLatched)
+        #expect(fixture.islands.keyboardCursorID == nil)
+    }
+
+    @Test
     func `Space previews the chosen row, Escape puts the preview away, then leaves`() throws {
         let (fixture, _, _, _) = try fixtureWithTwoIslands()
         fixture.islands.beginKeyboardBrowsing()
@@ -316,7 +329,9 @@ struct IslandKeyboardTests {
         #expect(fixture.islands.previewedTabID == grouped[1].id)
         #expect(try gestures.handle(key(36, "\r")) == nil)
         #expect(fixture.window.activeTabID == grouped[1].id)
-        #expect(!fixture.canvas.floatingVisibility.isRevealed)
+        #expect(fixture.canvas.floatingVisibility.isLatched)
+        #expect(fixture.islands.previewedTabID == nil)
+        #expect(try gestures.handle(key(125, "\u{F701}")) != nil)
     }
 
     @Test

@@ -7,6 +7,22 @@ import Testing
 @MainActor
 struct IslandControllerTests {
     @Test
+    func `An island's header shows while the pointer is near, and goes when the pointer leaves the window`() throws {
+        let fixture = try IslandFixture()
+        _ = fixture.tab("A")
+        fixture.canvas.toggleFloatingTabs()
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        let frame = fixture.islands.fullFrame(of: island)
+        #expect(!fixture.islands.showsHeader(of: island.id))
+
+        fixture.islands.pointerMoved(CGPoint(x: frame.minX - 10, y: frame.midY))
+        #expect(fixture.islands.showsHeader(of: island.id))
+
+        fixture.islands.pointerLeft()
+        #expect(!fixture.islands.showsHeader(of: island.id))
+    }
+
+    @Test
     func `Moving an island clears its header from the control rail`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("Page")
@@ -211,7 +227,11 @@ struct IslandControllerTests {
         let open = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: parent.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
         #expect(gestures.handle(open) == nil)
         #expect(fixture.window.activeTabID == secondID)
-        #expect(!fixture.canvas.floatingVisibility.isRevealed)
+        // The islands stay up, and the keys are the page's again.
+        #expect(fixture.canvas.floatingVisibility.isLatched)
+        #expect(fixture.islands.keyboardCursorID == nil)
+        #expect(gestures.handle(event) === event)
+        fixture.canvas.toggleFloatingTabs()
         fixture.canvas.toggleFloatingTabs()
         let editor = NSTextView()
         parent.contentView = editor

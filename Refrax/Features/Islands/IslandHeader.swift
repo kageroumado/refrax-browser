@@ -4,7 +4,7 @@ import SwiftUI
 /// An island's header: its icon and its name, each opening the island's editor (the name
 /// with a double-click), then the pin, the menu and the plus, in rounded glass above the
 /// island. The favorites island's name and star are fixed, and it has no plus: a tab joins
-/// it by being favorited. It shows while the pointer is on or near the island, while its controls are in
+/// it by being favorited; as an icon rail it has no header at all. It shows while the pointer is on or near the island, while its controls are in
 /// use, and while it is moved; it is laid out always.
 struct IslandHeader: View {
     let island: Island

@@ -271,24 +271,21 @@ final class RefraxWindowController: NSWindowController, NSWindowDelegate {
                 windowState.recordInteraction(with: tab.activePage.id)
                 return
             }
-            // Latched islands go when the press proves a click; a drag from the page keeps them.
+            // Held islands go with the press; latched ones stay and give the page the keyboard.
             if let islandController {
                 islandController.windowInput(.pressOnPage)
             } else if !windowState.controlIsland.tabInfo.isMenuPresented {
                 tabCanvasManager.dismissFloatingTabs()
             }
         }
-        floatingView.onPointerDragged = { [weak islandController] in
-            islandController?.windowInput(.pointerDragged)
-        }
-        floatingView.onPointerUp = { [weak islandController] in
-            islandController?.windowInput(.pointerUp)
-        }
         floatingView.onSecondaryPointerDown = { [weak islandController] point, _ in
             islandController?.clickDirectionLabel(at: point) ?? false
         }
         floatingView.onPointerMoved = { [weak islandController] point in
             islandController?.pointerMoved(point)
+        }
+        floatingView.onPointerExited = { [weak islandController] in
+            islandController?.pointerLeft()
         }
         floatingView.hitRegions = { [weak floatingView, weak tabCanvasManager, weak islandController] in
             guard let floatingView, let tabCanvasManager, let islandController else { return [] }

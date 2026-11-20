@@ -29,6 +29,17 @@ struct Island: Identifiable, Equatable {
     var placement: IslandPlacement
     var kind: Kind
 
+    /// Whether the island has a header above its rows. The favorites' icon rail has none: its
+    /// options are on its rows' menus.
+    var hasHeader: Bool {
+        !(isFavorites && placement.iconsOnly)
+    }
+
+    /// The room the island's header takes above its rows.
+    var headerReserve: CGFloat {
+        hasHeader ? IslandGeometry.headerReserve : 0
+    }
+
     /// The loose tabs' island: the space's tabs in no group.
     var isDefault: Bool {
         kind == .looseTabs
@@ -195,6 +206,11 @@ final class IslandController {
     /// The row the keyboard has chosen while the islands have the keyboard.
     private(set) var keyboardCursorID: UUID?
     @ObservationIgnored private var keyboard: IslandKeyboardNavigator?
+    /// The page took the keyboard back while the islands stay latched: the arrows are the
+    /// page's until the islands are latched anew or browsing is asked for.
+    @ObservationIgnored private var pageHasKeyboard = false
+    /// Browsing latched the islands itself: they go again when it ends.
+    @ObservationIgnored private var latchedForBrowsing = false
     @ObservationIgnored private var dragReveal = IslandDragReveal()
     /// The quick filter on the islands: only the tabs it matches keep their rows.
     private(set) var filter: IslandFilter?
@@ -278,7 +294,11 @@ final class IslandController {
         rebuild()
         canvas.islandDrop = { [weak self] tab, point in self?.attach(tab, at: point) ?? false }
         // Browsing lasts as long as the latch: its choice and preview go with it.
-        canvas.latchEnded = { [weak self] in self?.endKeyboardBrowsing() }
+        canvas.latchEnded = { [weak self] in
+            self?.endKeyboardBrowsing()
+            self?.pageHasKeyboard = false
+            self?.latchedForBrowsing = false
+        }
         let windowState = windowState
         let tabManager = tabManager
         let changes = Observations { [weak self] in
@@ -369,7 +389,7 @@ final class IslandController {
     }
 
     func geometry(for island: Island) -> IslandGeometry {
-        IslandGeometry(iconsOnly: island.placement.iconsOnly)
+        IslandGeometry(iconsOnly: island.placement.iconsOnly, gapRows: island.layout.pinnedGapRows)
     }
 
     /// The loose tabs' island the one-time hint stands beside: while the space has no island
@@ -402,7 +422,7 @@ final class IslandController {
 
     func frame(of island: Island) -> CGRect {
         if island.placement.iconsOnly, let rail = iconRailFrames[island.id] {
-            let reserve = IslandGeometry.headerReserve
+            let reserve = island.headerReserve
             return CGRect(x: rail.minX, y: rail.minY + reserve, width: rail.width, height: rail.height - reserve)
         }
         return titleFrame(of: island)
@@ -424,7 +444,7 @@ final class IslandController {
     /// The header and tab-list bounds in browser coordinates.
     func fullFrame(of island: Island) -> CGRect {
         let frame = frame(of: island)
-        let reserve = IslandGeometry.headerReserve
+        let reserve = island.headerReserve
         let width = island.placement.iconsOnly ? frame.width : max(frame.width, IslandGeometry.titleWidth)
         let x = min(frame.minX, max(area.minX, area.maxX - width))
         return CGRect(x: x, y: frame.minY - reserve, width: width, height: frame.height + reserve)
@@ -439,7 +459,7 @@ final class IslandController {
         var frames: [UUID: CGRect] = [:]
         for island in islands where island.placement.iconsOnly {
             let geometry = geometry(for: island)
-            let height = geometry.size(rows: island.rows.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: island.rows.count, in: bounds.size).height + island.headerReserve
             let placement = island.placement.railPlacement ?? defaultRailPlacement(height: height)
             let frame = draggedIslandID == island.id ? placement.railFrame(in: bounds, height: height)
                 : IconRailLayout.frame(placement: placement, height: height, in: bounds, obstacles: occupied)
@@ -517,6 +537,14 @@ final class IslandController {
         let near = visibleIslands.first { fullFrame(of: $0).insetBy(dx: -Layout.headerReach, dy: -Layout.headerReach).contains(point) }?.id
         if nearIslandID != near {
             nearIslandID = near
+        }
+    }
+
+    /// The pointer left the window: no island is near it, so a rail at the window's edge
+    /// puts its header away.
+    func pointerLeft() {
+        if nearIslandID != nil {
+            nearIslandID = nil
         }
     }
 
@@ -920,6 +948,8 @@ final class IslandController {
             if !windowState.controlIsland.tabInfo.isMenuPresented {
                 canvas.dismissFloatingTabs()
             }
+        case .returnKeyboard:
+            returnKeyboardToPage()
         case .reveal:
             if !latched {
                 canvas.toggleFloatingTabs()
@@ -987,9 +1017,22 @@ final class IslandController {
     func beginKeyboardBrowsing() {
         if !canvas.floatingVisibility.isLatched {
             canvas.toggleFloatingTabs()
+            latchedForBrowsing = true
         }
+        pageHasKeyboard = false
         keyboard = IslandKeyboardNavigator(current: currentTab?.id, columns: keyboardColumns)
         update(\.keyboardCursorID, to: keyboard?.cursor)
+    }
+
+    /// The page takes the keyboard back while the islands stay up: browsing ends, and the
+    /// arrows scroll the page again. Islands that browsing latched go with it.
+    func returnKeyboardToPage() {
+        let latchedHere = latchedForBrowsing
+        endKeyboardBrowsing()
+        pageHasKeyboard = true
+        if latchedHere {
+            canvas.dismissFloatingTabs()
+        }
     }
 
     /// The keyboard goes back to the page: no row is chosen, and the preview it showed goes.
@@ -1004,12 +1047,14 @@ final class IslandController {
     /// Answers `key` while the islands are latched open, with `responder` holding the
     /// window's focus. An arrow starts browsing on the current tab's row; which keys are taken
     /// before and after is ``IslandKeyRouting``'s rule. Returns whether the islands took the
-    /// key: never while no island is on screen.
+    /// key: never while no island is on screen, and never an arrow once the page has taken
+    /// the keyboard back (``returnKeyboardToPage()``).
     @discardableResult
     func handleKey(_ key: IslandKey, responder: IslandKeyResponder = .other) -> Bool {
         let columns = keyboardColumns
         let covered = windowState.isDetailTrayVisible || windowState.showsCenteredLens || windowState.isSpaceLocked
-        guard !columns.isEmpty, IslandKeyRouting.takes(key, browsing: keyboard != nil, responder: responder, covered: covered) else {
+        guard !columns.isEmpty, keyboard != nil || !pageHasKeyboard,
+              IslandKeyRouting.takes(key, browsing: keyboard != nil, responder: responder, covered: covered) else {
             Logger.debug(
                 "Islands leave \(key) to the page: browsing \(keyboard != nil), islands \(columns.count), covered \(covered), responder \(responder)",
                 category: Logger.tabs,
@@ -1031,11 +1076,10 @@ final class IslandController {
         case .none, .moved:
             break
         case let .open(tabID):
-            endKeyboardBrowsing()
             if let tab = tab(for: tabID) {
                 open(tab)
             }
-            canvas.dismissFloatingTabs()
+            returnKeyboardToPage()
         case let .close(tabID):
             if previewedTabID == tabID {
                 previewedTabID = navigator.isPreviewing ? navigator.cursor : nil
@@ -1049,8 +1093,7 @@ final class IslandController {
             }
             previewedTabID = tabID
         case .leave:
-            endKeyboardBrowsing()
-            canvas.dismissFloatingTabs()
+            returnKeyboardToPage()
         }
         return true
     }
@@ -1090,6 +1133,10 @@ final class IslandController {
     /// A row chosen directly: the page switches at once. Only a step moves, because only a
     /// step is a movement.
     func open(_ tab: Tab) {
+        // A row opened by the pointer hands the keyboard to its page.
+        if keyboard == nil {
+            pageHasKeyboard = true
+        }
         guard currentTab?.id != tab.id else { return }
         clearSelection()
         activatedHere = tab.id
@@ -1615,9 +1662,9 @@ final class IslandController {
         guard let index = islands.firstIndex(where: { $0.id == islandID }) else { return }
         if islands[index].placement.iconsOnly {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + islands[index].headerReserve
             var placement = islands[index].placement.railPlacement ?? defaultRailPlacement(height: height)
-            placement.move(to: CGPoint(x: origin.x, y: origin.y - IslandGeometry.headerReserve), in: bounds, height: height)
+            placement.move(to: CGPoint(x: origin.x, y: origin.y - islands[index].headerReserve), in: bounds, height: height)
             islands[index].placement.railPlacement = placement
             state.islands[islandID] = islands[index].placement
             return
@@ -1640,7 +1687,7 @@ final class IslandController {
         if let islandID, let index = islands.firstIndex(where: { $0.id == islandID }),
            var placement = islands[index].placement.railPlacement, islands[index].placement.iconsOnly {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + islands[index].headerReserve
             placement = placement.snapped(in: bounds, height: height)
             islands[index].placement.railPlacement = placement
             state.islands[islandID] = islands[index].placement
@@ -1755,7 +1802,7 @@ final class IslandController {
         islands[index].placement.iconsOnly = compact
         if compact, islands[index].placement.railPlacement == nil {
             let geometry = geometry(for: islands[index])
-            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + IslandGeometry.headerReserve
+            let height = geometry.size(rows: islands[index].rows.count, in: bounds.size).height + islands[index].headerReserve
             islands[index].placement.railPlacement = defaultRailPlacement(height: height)
         }
         state.islands[islandID] = islands[index].placement

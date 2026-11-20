@@ -48,6 +48,26 @@ struct FavoritesIslandTests {
     }
 
     @Test
+    func `As an icon rail it has no header, and its options are on a favorite's menu`() throws {
+        let fixture = try IslandFixture()
+        let mail = fixture.tab("Mail")
+        try favorite(mail, in: fixture)
+        let rail = try favorites(fixture)
+
+        #expect(!rail.hasHeader)
+        #expect(fixture.islands.fullFrame(of: rail) == fixture.islands.frame(of: rail))
+        let menu = try fixture.rowMenu(mail)
+        #expect(menu.contains("Show Favorites with Titles"))
+        #expect(menu.contains("Keep Favorites on Screen"))
+        #expect(menu.contains("All Favorites"))
+
+        fixture.islands.setIconsOnly(false, for: Island.favoritesID)
+        let titled = try favorites(fixture)
+        #expect(titled.hasHeader)
+        #expect(fixture.islands.fullFrame(of: titled).height == fixture.islands.frame(of: titled).height + IslandGeometry.headerReserve)
+    }
+
+    @Test
     func `There is no Favorites island while no favorite has a tab`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("Mail")
