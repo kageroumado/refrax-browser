@@ -57,12 +57,14 @@ struct IslandAppearanceTests {
     }
 
     @Test
-    func `The loose tabs' island has nothing to edit`() throws {
+    func `The loose tabs' island reads Tabs until it is given a name, icon, and color`() throws {
         let fixture = try IslandFixture()
         _ = fixture.tab("Page")
-        #expect(fixture.islands.appearance(of: fixture.space.id) == nil)
+        #expect(fixture.islands.appearance(of: fixture.space.id)?.name == IslandState.looseTabsTitle)
         fixture.islands.setAppearance(base, of: fixture.space.id)
-        #expect(fixture.islands.island(fixture.space.id)?.title == "Tabs")
+        let island = try #require(fixture.islands.island(fixture.space.id))
+        #expect(island.title == "Research")
+        #expect(island.iconName == "book.fill")
     }
 
     @Test
