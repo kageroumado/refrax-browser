@@ -11,7 +11,6 @@ extension TabGroup: Syncable {
         record["name"] = name as NSString
         record["colorString"] = colorString as NSString
         record["position"] = position as NSNumber
-        record["isPinned"] = isPinned as NSNumber
         record["isCollapsed"] = isCollapsed as NSNumber
         record["isArchive"] = isArchive as NSNumber
 
@@ -78,7 +77,6 @@ extension TabGroup: Syncable {
         group.name = record["name"] as? String ?? group.name
         group.colorString = record["colorString"] as? String ?? GroupColor.steel.rawValue
         group.position = (record["position"] as? Int) ?? 0
-        group.isPinned = (record["isPinned"] as? Bool) ?? false
         group.isCollapsed = (record["isCollapsed"] as? Bool) ?? false
         group.isArchive = (record["isArchive"] as? Bool) ?? false
         group.createdAt = record["createdAt"] as? Date ?? group.createdAt

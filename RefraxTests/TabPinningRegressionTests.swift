@@ -41,34 +41,21 @@ struct TabPinningRegressionTests {
         #expect(space.tabs.contains { $0.id == keepTab.id })
         #expect(space.tabs.count == 1)
     }
-}
 
-// MARK: - Pinned Tab Group Tests
-
-@Suite("Pinned Tab in Group", .tags(.tabManager), .serialized)
-@MainActor
-struct PinnedTabGroupTests {
     @Test
-    func `Pinned group can contain tabs`() throws {
+    func `Close other tabs leaves pinned tabs as they are`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
 
-        let pinnedGroup = try env.groupManager.createGroup(
-            in: space,
-            name: "Pinned Group",
-            isPinned: true,
-        )
+        let pinned = try env.tabManager.createTab(url: #require(URL(string: "https://pinned.com")), in: space, makeActive: false)
+        let keep = try env.tabManager.createTab(url: #require(URL(string: "https://keep.com")), in: space, makeActive: false)
+        _ = try env.tabManager.createTab(url: #require(URL(string: "https://close.com")), in: space, makeActive: false)
+        env.tabManager.pin(pinned)
 
-        let tab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://example.com")),
-            in: space,
-            groupID: pinnedGroup.id,
-            makeActive: false,
-        )
+        env.tabManager.closeOtherTabsInSpace(except: keep)
 
-        #expect(pinnedGroup.isPinned)
-        #expect(tab.groupID == pinnedGroup.id)
-        #expect(tab.isInPinnedGroup)
+        #expect(Set(space.mainTabs.map(\.id)) == [pinned.id, keep.id])
+        #expect(pinned.isPinned)
     }
 }

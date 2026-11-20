@@ -239,18 +239,4 @@ extension TabManager {
                 (tab.customName?.localizedCaseInsensitiveContains(query) ?? false)
         }
     }
-
-    /// Tabs in pinned groups in the active space, sorted by position.
-    var pinnedTabs: [Tab] {
-        activeWindowState?.activeSpace?.tabs
-            .filter(\.isInPinnedGroup)
-            .sorted { $0.position < $1.position } ?? []
-    }
-
-    /// Tabs outside pinned groups in the active space, sorted by position.
-    var unpinnedTabs: [Tab] {
-        activeWindowState?.activeSpace?.tabs
-            .filter { !$0.isInPinnedGroup }
-            .sorted { $0.position < $1.position } ?? []
-    }
 }

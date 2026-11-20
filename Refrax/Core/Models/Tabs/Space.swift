@@ -305,22 +305,6 @@ final class Space {
         return result
     }
 
-    /// Tabs in pinned groups, sorted by position.
-    ///
-    /// Uses cached `mainTabs` - already sorted by position.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var pinnedTabs: [Tab] {
-        mainTabs.filter(\.isInPinnedGroup)
-    }
-
-    /// Tabs outside pinned groups, sorted by position.
-    ///
-    /// Uses cached `mainTabs` - already sorted by position.
-    /// - Warning: Avoid reading this value from SwiftUI to avoid creating an observation dependency.
-    var unpinnedTabs: [Tab] {
-        mainTabs.filter { !$0.isInPinnedGroup }
-    }
-
     /// Total number of main tabs.
     ///
     /// Uses cached count to avoid filtering on every access.

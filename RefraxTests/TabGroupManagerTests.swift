@@ -93,29 +93,7 @@ struct TabGroupCreateTests {
     }
 
     @Test
-    func `Create pinned group gets position before pinned items`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let existingGroup = try env.groupManager.createGroup(in: space, name: "Existing", isPinned: true)
-        let pinnedTab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://pinned.com")),
-            in: space,
-            groupID: existingGroup.id,
-            makeActive: false,
-        )
-
-        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned Group", isPinned: true)
-
-        #expect(pinnedGroup.isPinned)
-        // Pinned groups are prepended, so they come before existing pinned items in position order
-        #expect(pinnedGroup.position < existingGroup.position)
-        #expect(pinnedGroup.position < pinnedTab.position)
-    }
-
-    @Test
-    func `Create unpinned group gets position before unpinned tabs`() throws {
+    func `Create group gets position before the space's tabs`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
         _ = env.makeActiveWindowState(with: space)
@@ -134,7 +112,6 @@ struct TabGroupCreateTests {
 
         let group = try env.groupManager.createGroup(in: space, name: "Regular Group")
 
-        #expect(!group.isPinned)
         // Groups are prepended, so they come before existing tabs in position order
         #expect(group.position < tab1.position)
         #expect(group.position < tab2.position)
@@ -321,7 +298,6 @@ struct TabGroupRestoreTests {
             name: "Original",
             color: "#FF0000",
             iconName: "folder.fill",
-            isPinned: true,
         )
         originalGroup.position = 42
 
@@ -337,7 +313,6 @@ struct TabGroupRestoreTests {
         #expect(restored != nil)
         #expect(restored?.colorString == "#FF0000")
         #expect(restored?.iconName == "folder.fill")
-        #expect(restored?.isPinned == true)
         #expect(restored?.position == 42)
     }
 
@@ -597,84 +572,6 @@ struct TabGroupMembershipTests {
 @Suite("TabGroupManager State", .tags(.tabGroupManager), .serialized)
 @MainActor
 struct TabGroupStateTests {
-    @Test
-    func `Toggle pinned reaches all tabs in group`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let group = try env.groupManager.createGroup(in: space, name: "Pinnable Group")
-
-        let tab1 = try env.tabManager.createTab(url: #require(URL(string: "https://tab1.com")), in: space, makeActive: false)
-        let tab2 = try env.tabManager.createTab(url: #require(URL(string: "https://tab2.com")), in: space, makeActive: false)
-        env.groupManager.moveTabToGroup(tab1, group: group, in: space)
-        env.groupManager.moveTabToGroup(tab2, group: group, in: space)
-
-        env.groupManager.toggleGroupPinned(group, in: space)
-
-        #expect(group.isPinned)
-        #expect(tab1.isInPinnedGroup, "Tab1 should be in a pinned group")
-        #expect(tab2.isInPinnedGroup, "Tab2 should be in a pinned group")
-
-        env.groupManager.toggleGroupPinned(group, in: space)
-
-        #expect(!group.isPinned)
-        #expect(!tab1.isInPinnedGroup, "Tab1 should be unpinned")
-        #expect(!tab2.isInPinnedGroup, "Tab2 should be unpinned")
-    }
-
-    @Test
-    func `Toggle pinned cascades to nested groups and their tabs`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
-        let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
-
-        let parentTab = try env.tabManager.createTab(url: #require(URL(string: "https://parent-tab.com")), in: space, makeActive: false)
-        env.groupManager.moveTabToGroup(parentTab, group: parentGroup, in: space)
-
-        let nestedTab = try env.tabManager.createTab(url: #require(URL(string: "https://nested-tab.com")), in: space, makeActive: false)
-        env.groupManager.moveTabToGroup(nestedTab, group: nestedGroup, in: space)
-
-        env.groupManager.toggleGroupPinned(parentGroup, in: space)
-
-        #expect(parentGroup.isPinned)
-        #expect(nestedGroup.isPinned, "Nested group should be pinned")
-        #expect(parentTab.isInPinnedGroup)
-        #expect(nestedTab.isInPinnedGroup, "Nested tab should be pinned")
-    }
-
-    @Test
-    func `Toggle pinned repositions group correctly`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        // Create a pinned group's tab to establish pinned region
-        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
-        let pinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://pinned.com")), in: space, groupID: pinnedGroup.id, makeActive: false)
-        pinnedTab.position = 50
-
-        // Create unpinned tabs
-        let unpinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://unpinned.com")), in: space, makeActive: false)
-        unpinnedTab.position = 1_000
-
-        let group = try env.groupManager.createGroup(in: space, name: "Repositioned Group")
-
-        // Pin the group - should move to after pinned tabs
-        env.groupManager.toggleGroupPinned(group, in: space)
-
-        #expect(group.position > 50, "Pinned group should come after pinned tabs")
-
-        // Unpin the group - should move to unpinned region
-        env.groupManager.toggleGroupPinned(group, in: space)
-
-        // The exact position depends on implementation, but it should be adjusted
-        #expect(!group.isPinned)
-    }
-
     @Test
     func `Toggle collapsed toggles state`() throws {
         let env = try TabManagerTestEnvironment()
@@ -1100,19 +997,6 @@ struct TabGroupEdgeCaseTests {
     }
 
     @Test
-    func `Toggle pinned with empty group works`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let group = try env.groupManager.createGroup(in: space, name: "Empty Pinnable")
-
-        env.groupManager.toggleGroupPinned(group, in: space)
-
-        #expect(group.isPinned)
-    }
-
-    @Test
     func `Create multiple groups maintains unique positions`() throws {
         let env = try TabManagerTestEnvironment()
         let space = env.makeSpace()
@@ -1180,21 +1064,6 @@ struct TabGroupEdgeCaseTests {
         let restoredTab = try #require(restoredTabs.first)
 
         #expect(env.browserState.tab(for: restoredTab.id) != nil, "Restored tab should be indexed")
-    }
-
-    @Test
-    func `Nested group inherits pinned state when deleted with parent that becomes pinned`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let parentGroup = try env.groupManager.createGroup(in: space, name: "Parent")
-        let nestedGroup = try env.groupManager.createGroup(in: space, name: "Nested", parentGroupID: parentGroup.id)
-
-        // Pin the parent - nested should also become pinned
-        env.groupManager.toggleGroupPinned(parentGroup, in: space)
-
-        #expect(nestedGroup.isPinned, "Nested group should inherit pinned state")
     }
 
     @Test

@@ -489,11 +489,6 @@ final class Tab {
         isFavorite || isPinned
     }
 
-    /// Whether this tab sits in a pinned group.
-    var isInPinnedGroup: Bool {
-        group?.isPinned == true
-    }
-
     /// Whether this tab was created as a popup via `window.open()`.
     ///
     /// Popup tabs have an ``TabPage/openerTabPageID`` set on their primary page,

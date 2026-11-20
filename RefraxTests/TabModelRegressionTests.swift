@@ -85,7 +85,7 @@ struct TabModelRegressionTests {
         )
 
         #expect(tab.status == .regular)
-        #expect(!tab.isInPinnedGroup)
+        #expect(!tab.isPinned)
         #expect(!tab.isFavorite)
     }
 

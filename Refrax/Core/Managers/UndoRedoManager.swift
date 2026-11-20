@@ -344,7 +344,6 @@ final class UndoRedoManager {
                 color: info.groupColorHex,
                 iconName: info.groupIconName,
             )
-            group.isPinned = info.isPinned
             group.isCollapsed = info.isCollapsed
 
             // Move tabs back to the restored group
@@ -388,7 +387,6 @@ struct ConvertedGroupToSpaceInfo: Equatable {
     let groupColorHex: String
     let groupIconName: String?
     let position: Int
-    let isPinned: Bool
     let isCollapsed: Bool
     let sourceSpaceID: UUID
     let tabInfos: [ConvertedTabInfo]

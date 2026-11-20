@@ -15,7 +15,7 @@ import Foundation
 ///
 /// - **Tabs**: Sorted by their properties (title, domain, dates)
 /// - **Groups**: Sorted by `group.name` for name/domain sorts, `group.createdAt` for date sorts
-/// - **Hierarchy**: Pinned and unpinned items are sorted separately
+/// - **Hierarchy**: Root items sort together; each group's tabs sort within it
 enum TabSortCriterion: CaseIterable, Sendable {
     /// Sort alphabetically by display title (A → Z)
     case nameAscending

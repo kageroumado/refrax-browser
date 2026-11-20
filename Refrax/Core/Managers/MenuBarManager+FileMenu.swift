@@ -410,7 +410,6 @@ extension MenuBarManager {
                         name: exportedGroup.name,
                         color: exportedGroup.color,
                         iconName: exportedGroup.icon,
-                        isPinned: exportedGroup.isPinned,
                     )
                     group.isCollapsed = exportedGroup.isCollapsed
                     groupIDMap[exportedGroup.name] = group.id
@@ -428,6 +427,9 @@ extension MenuBarManager {
                         tab.customName = exportedTab.customName
                         if !exportedTab.title.isEmpty, exportedTab.title != "New Tab" {
                             tab.activePage.title = exportedTab.title
+                        }
+                        if let home = exportedTab.home.flatMap(URL.init(string:)) {
+                            tabManager.pin(tab, home: home)
                         }
                     }
                 } catch {
@@ -447,6 +449,9 @@ extension MenuBarManager {
                 tab.customName = exportedTab.customName
                 if !exportedTab.title.isEmpty, exportedTab.title != "New Tab" {
                     tab.activePage.title = exportedTab.title
+                }
+                if let home = exportedTab.home.flatMap(URL.init(string:)) {
+                    tabManager.pin(tab, home: home)
                 }
             }
         }

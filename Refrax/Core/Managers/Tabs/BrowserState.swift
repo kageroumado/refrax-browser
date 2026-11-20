@@ -669,7 +669,6 @@ struct ClosedGroupInfo: Identifiable, Equatable {
     let name: String
     let colorString: String
     let iconName: String?
-    let isPinned: Bool
     let position: Int
     let spaceID: UUID
     let parentGroupID: UUID?
@@ -681,7 +680,6 @@ struct ClosedGroupInfo: Identifiable, Equatable {
         self.name = group.name
         self.colorString = group.colorString
         self.iconName = group.iconName
-        self.isPinned = group.isPinned
         self.position = group.position
         self.spaceID = group.space?.id ?? UUID()
         self.parentGroupID = group.parentGroupID

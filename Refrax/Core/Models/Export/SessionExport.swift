@@ -75,9 +75,6 @@ struct ExportedTabGroup: Codable, Sendable, Equatable {
     /// Whether the group is collapsed.
     let isCollapsed: Bool
 
-    /// Whether the group is pinned.
-    let isPinned: Bool
-
     /// Tabs within this group.
     let tabs: [ExportedTab]
 }
@@ -92,6 +89,9 @@ struct ExportedTab: Codable, Sendable, Equatable {
 
     /// User-provided custom name, if any.
     let customName: String?
+
+    /// A pinned tab's home address; `nil` for a tab that is not pinned.
+    let home: String?
 }
 
 // MARK: - Export Helpers
@@ -140,7 +140,6 @@ extension ExportedSpace {
                 color: group.colorString,
                 icon: group.iconName,
                 isCollapsed: group.isCollapsed,
-                isPinned: group.isPinned,
                 tabs: groupTabs,
             )
         }
@@ -157,5 +156,6 @@ extension ExportedTab {
         self.url = tab.activePage.url.absoluteString
         self.title = tab.activePage.title
         self.customName = tab.customName
+        self.home = tab.isPinned ? tab.originURL?.absoluteString : nil
     }
 }

@@ -110,27 +110,6 @@ struct TabManagerNormalizePositionsTests {
 
         #expect(space.tabs.isEmpty)
     }
-
-    @Test
-    func `Normalize positions separates pinned and unpinned`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let unpinnedTab = try env.tabManager.createTab(url: #require(URL(string: "https://unpinned.com")), in: space, makeActive: false)
-        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
-        let pinnedTab = try env.tabManager.createTab(
-            url: #require(URL(string: "https://pinned.com")),
-            in: space,
-            groupID: pinnedGroup.id,
-            makeActive: false,
-        )
-
-        env.tabManager.normalizePositions(in: space)
-
-        // Pinned tabs should have lower positions than unpinned
-        #expect(pinnedTab.position < unpinnedTab.position, "Pinned should have lower position")
-    }
 }
 
 // MARK: - TabManager Initialize Window Tests

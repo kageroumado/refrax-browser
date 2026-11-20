@@ -206,9 +206,23 @@ struct PinnedRowsTests {
     }
 
     @Test
+    func `A session export carries a pinned tab's home`() throws {
+        let fixture = try IslandFixture()
+        let mail = fixture.tab("Mail")
+        let news = fixture.tab("News")
+        let home = mail.activePage.url
+        fixture.env.tabManager.pin(mail)
+        mail.activePage.url = try #require(URL(string: "https://elsewhere.test/inbox"))
+
+        #expect(ExportedTab(tab: mail).home == home.absoluteString)
+        #expect(ExportedTab(tab: news).home == nil)
+    }
+
+    @Test
     func `A pinned group gives its pin to its tabs, once`() throws {
         let fixture = try IslandFixture()
-        let group = try fixture.env.groupManager.createGroup(in: fixture.space, name: "Work", isPinned: true)
+        let group = try fixture.env.groupManager.createGroup(in: fixture.space, name: "Work")
+        group.isPinned = true
         let board = fixture.tab("Board", group: group)
         let outside = fixture.tab("News")
 

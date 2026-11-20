@@ -6,9 +6,8 @@ extension TabManager {
     /// Sorts all tabs and groups in a space by the given criterion.
     ///
     /// This is a one-time operation that updates `position` values to reflect
-    /// the new order. The sort is performed separately on:
-    /// - Pinned items (tabs and groups)
-    /// - Unpinned items (tabs and groups)
+    /// the new order. An island's pinned tabs return to its top when the islands next
+    /// rebuild (``settlePinnedTabs(in:)``).
     ///
     /// Groups are sorted by their own properties (name for alphabetical sorts,
     /// `createdAt` for date sorts). Tabs within groups are also sorted.
@@ -25,20 +24,7 @@ extension TabManager {
         let tabsByGroupID = Dictionary(grouping: space.tabs, by: { $0.groupID })
         let groupsByParentID = Dictionary(grouping: space.groups, by: { $0.parentGroupID })
 
-        sortRootLevelItems(
-            by: criterion,
-            in: space,
-            isPinned: true,
-            tabIndex: tabIndex,
-            groupIndex: groupIndex,
-        )
-        sortRootLevelItems(
-            by: criterion,
-            in: space,
-            isPinned: false,
-            tabIndex: tabIndex,
-            groupIndex: groupIndex,
-        )
+        sortRootLevelItems(by: criterion, in: space, tabIndex: tabIndex, groupIndex: groupIndex)
 
         for group in space.groups {
             sortTabsInGroup(
@@ -56,16 +42,15 @@ extension TabManager {
         Logger.info("Sorted tabs by \(criterion.displayName) in \(space.name)", category: Logger.tabs)
     }
 
-    /// Sorts root-level items (ungrouped tabs and root groups) within a pinned/unpinned section.
+    /// Sorts root-level items (ungrouped tabs and root groups).
     private func sortRootLevelItems(
         by criterion: TabSortCriterion,
         in space: Space,
-        isPinned: Bool,
         tabIndex: [UUID: Tab],
         groupIndex: [UUID: TabGroup],
     ) {
-        var ungroupedTabs = space.tabs.filter { $0.groupID == nil && $0.isInPinnedGroup == isPinned }
-        var rootGroups = space.groups.filter { $0.parentGroupID == nil && $0.isPinned == isPinned }
+        var ungroupedTabs = space.tabs.filter { $0.groupID == nil }
+        var rootGroups = space.groups.filter { $0.parentGroupID == nil }
 
         ungroupedTabs.sort { compareTabs($0, $1, by: criterion) }
         rootGroups.sort { compareGroups($0, $1, by: criterion) }
@@ -91,9 +76,8 @@ extension TabManager {
         }
 
         // Assign positions using pre-built indexes
-        let basePosition = isPinned ? 0 : 1_000_000
         for (index, item) in allItems.enumerated() {
-            let newPosition = basePosition + index
+            let newPosition = index
             if item.isGroup {
                 groupIndex[item.id]?.position = newPosition
             } else {

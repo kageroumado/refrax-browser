@@ -209,22 +209,6 @@ struct SpaceConversionRegressionTests {
         #expect(space.groups.contains { $0.id == group2.id })
     }
 
-    @Test("Space groups includes both pinned and unpinned groups")
-    func spaceGroupsIncludesBoth() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let regularGroup = try env.groupManager.createGroup(in: space, name: "Regular")
-        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
-
-        #expect(space.groups.count == 2)
-        #expect(pinnedGroup.isPinned)
-        #expect(!regularGroup.isPinned)
-        #expect(space.groups.contains { $0.id == pinnedGroup.id })
-        #expect(space.groups.contains { $0.id == regularGroup.id })
-    }
-
     // MARK: - Space Position Tests
 
     @Test("Spaces have sequential positions")

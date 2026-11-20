@@ -24,8 +24,8 @@ extension TabManager {
         // Check if this was the active tab BEFORE we modify state
         let wasActiveLiveFavorite = windowState.activeTab == tab
 
-        // Prepend to the tabs outside pinned groups
-        let firstPosition = activeSpace.unpinnedTabs.first?.position ?? 1_000_000
+        // Prepend to the space's tabs
+        let firstPosition = activeSpace.mainTabs.first?.position ?? 1_000_000
         tab.position = firstPosition - 1
 
         state.convertFavoriteToSpaceTab(tab, in: activeSpace)

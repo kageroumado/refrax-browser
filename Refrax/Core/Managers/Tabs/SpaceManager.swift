@@ -152,7 +152,6 @@ final class SpaceManager {
                 iconName: originalGroup.iconName,
                 parentGroupID: nil, // Will be set in second pass for nested groups
                 position: originalGroup.position,
-                isPinned: originalGroup.isPinned,
             )
             duplicatedGroup.isCollapsed = originalGroup.isCollapsed
 

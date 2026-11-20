@@ -242,10 +242,6 @@ final class WindowState {
         activeSpace?.mainTabs ?? []
     }
     
-    var activeSpacePinnedTabs: [Tab] {
-        activeSpace?.pinnedTabs ?? []
-    }
-    
     var activeSpaceGroups: [TabGroup] {
         activeSpace?.groups ?? []
     }

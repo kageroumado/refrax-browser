@@ -58,47 +58,6 @@ struct TabGroupRegressionTests {
 
     // MARK: - Group Pinning Tests
 
-    @Test("Group can be created pinned")
-    func groupCreatedPinned() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let group = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
-
-        #expect(group.isPinned)
-    }
-
-    @Test("Group can be pinned after creation")
-    func groupPinnedAfterCreation() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        let group = try env.groupManager.createGroup(in: space, name: "Unpinned")
-        #expect(!group.isPinned)
-
-        group.isPinned = true
-        #expect(group.isPinned)
-    }
-
-    @Test("Pinned groups sorted separately")
-    func pinnedGroupsSortedSeparately() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        _ = try env.groupManager.createGroup(in: space, name: "Normal")
-        let pinnedGroup = try env.groupManager.createGroup(in: space, name: "Pinned", isPinned: true)
-
-        let pinnedGroups = space.groups.filter(\.isPinned)
-        let allGroups = space.groups
-
-        #expect(pinnedGroups.count == 1)
-        #expect(pinnedGroups.first?.id == pinnedGroup.id)
-        #expect(allGroups.count == 2)
-    }
-
     // MARK: - Tab Group Membership Tests
 
     @Test("Tab can be added to group")

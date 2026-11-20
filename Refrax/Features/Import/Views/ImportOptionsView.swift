@@ -72,7 +72,7 @@ private extension ImportOptionsView {
             title: "Spaces and Tabs",
             color: .indigo,
         ) {
-            Text("Each space becomes a space. Its folders become islands, folders inside them become sections, and pinned tabs outside a folder go to a Pinned island. Unpinned tabs join the space's Tabs island, and favorites join your favorites.")
+            Text("Each space becomes a space. Its folders become islands, and folders inside them become sections. Pinned tabs stay pinned, the other tabs join the space's Tabs island, and favorites join your favorites.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

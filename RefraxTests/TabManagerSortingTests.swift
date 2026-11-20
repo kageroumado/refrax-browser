@@ -295,67 +295,6 @@ struct TabManagerSortDateTests {
     }
 }
 
-// MARK: - TabManager Sort Pinned/Unpinned Tests
-
-@Suite("TabManager Sort Pinned/Unpinned Separation", .tags(.tabManager), .serialized)
-@MainActor
-struct TabManagerSortPinnedTests {
-    @Test
-    func `Sorting keeps pinned and unpinned tabs separate`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        // Create unpinned tabs
-        let unpinnedZ = try env.tabManager.createTab(url: #require(URL(string: "https://z.com")), in: space, makeActive: false)
-        unpinnedZ.activePage.title = "Zeta"
-
-        let unpinnedA = try env.tabManager.createTab(url: #require(URL(string: "https://a.com")), in: space, makeActive: false)
-        unpinnedA.activePage.title = "Alpha"
-
-        // Create pinned groups
-        let pinnedZ = try env.groupManager.createGroup(in: space, name: "Zulu", isPinned: true)
-        let pinnedA = try env.groupManager.createGroup(in: space, name: "Alfa", isPinned: true)
-
-        env.tabManager.sortTabs(by: .nameAscending, in: space)
-
-        let sorted = space.tabs.sorted { $0.position < $1.position }
-        let unpinnedTabs = sorted.filter { !$0.isInPinnedGroup }
-
-        // Pinned groups should be sorted alphabetically
-        #expect(pinnedA.position < pinnedZ.position)
-
-        // Unpinned tabs should be sorted alphabetically
-        #expect(unpinnedTabs[0].displayTitle == "Alpha")
-        #expect(unpinnedTabs[1].displayTitle == "Zeta")
-
-        // All pinned positions should be less than unpinned positions
-        let maxPinnedPos = max(pinnedA.position, pinnedZ.position)
-        let minUnpinnedPos = unpinnedTabs.map(\.position).min() ?? Int.max
-        #expect(maxPinnedPos < minUnpinnedPos, "Pinned groups should have lower positions")
-    }
-
-    @Test
-    func `Sorting empty pinned section leaves unpinned intact`() throws {
-        let env = try TabManagerTestEnvironment()
-        let space = env.makeSpace()
-        _ = env.makeActiveWindowState(with: space)
-
-        // Only create unpinned tabs
-        let tabC = try env.tabManager.createTab(url: #require(URL(string: "https://c.com")), in: space, makeActive: false)
-        tabC.activePage.title = "Charlie"
-
-        let tabA = try env.tabManager.createTab(url: #require(URL(string: "https://a.com")), in: space, makeActive: false)
-        tabA.activePage.title = "Alpha"
-
-        env.tabManager.sortTabs(by: .nameAscending, in: space)
-
-        let sorted = space.tabs.sorted { $0.position < $1.position }
-        #expect(sorted[0].displayTitle == "Alpha")
-        #expect(sorted[1].displayTitle == "Charlie")
-    }
-}
-
 // MARK: - TabManager Sort Mixed Items Tests
 
 @Suite("TabManager Sort Mixed Tabs and Groups", .tags(.tabManager), .serialized)

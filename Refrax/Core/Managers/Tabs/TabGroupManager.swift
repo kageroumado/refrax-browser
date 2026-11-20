@@ -143,7 +143,6 @@ final class TabGroupManager {
     ///   - color: GroupColor raw value (e.g., `GroupColor.steel.rawValue`).
     ///   - iconName: Optional SF Symbol name.
     ///   - parentGroupID: Parent group for nesting (nil for root).
-    ///   - isPinned: Whether the group is pinned.
     ///   - startEditing: If true, the group will enter inline rename mode after creation.
     /// - Returns: The created TabGroup.
     /// - Throws: `TabGroupError` if nesting is invalid or no space available.
@@ -155,7 +154,6 @@ final class TabGroupManager {
         color: String = GroupColor.steel.rawValue,
         iconName: String? = nil,
         parentGroupID: UUID? = nil,
-        isPinned: Bool = false,
         startEditing: Bool = false,
     ) throws -> TabGroup {
         let targetSpace = try resolveSpace(space, id: spaceID)
@@ -171,28 +169,9 @@ final class TabGroupManager {
         }
 
         // Calculate position - prepend at top of list (like tabs)
-        let position: Int
-        if isPinned {
-            // For pinned groups, insert before first pinned item or use root multiplier
-            let minPinnedTab = targetSpace.tabs.lazy.filter(\.isInPinnedGroup).map(\.position).min()
-            let minPinnedGroup = targetSpace.groups.lazy.filter(\.isPinned).map(\.position).min()
-            let minPinned = [minPinnedTab, minPinnedGroup].compactMap(\.self).min()
-            if let minPinned {
-                position = minPinned / 2
-            } else {
-                position = TabPositioner.rootMultiplier
-            }
-        } else {
-            // For unpinned groups, insert at top of unpinned section
-            let minUnpinnedTab = targetSpace.tabs.lazy.filter { !$0.isInPinnedGroup }.map(\.position).min()
-            let minUnpinnedGroup = targetSpace.groups.lazy.filter { !$0.isPinned }.map(\.position).min()
-            let minUnpinned = [minUnpinnedTab, minUnpinnedGroup].compactMap(\.self).min()
-            if let minUnpinned {
-                position = minUnpinned / 2
-            } else {
-                position = TabPositioner.rootMultiplier
-            }
-        }
+        let firstTab = targetSpace.tabs.lazy.map(\.position).min()
+        let firstGroup = targetSpace.groups.lazy.map(\.position).min()
+        let position = [firstTab, firstGroup].compactMap(\.self).min().map { $0 / 2 } ?? TabPositioner.rootMultiplier
 
         let group = TabGroup(
             space: targetSpace,
@@ -201,7 +180,6 @@ final class TabGroupManager {
             iconName: iconName,
             parentGroupID: parentGroupID,
             position: position,
-            isPinned: isPinned,
         )
 
         targetSpace.groups.append(group)
@@ -291,7 +269,6 @@ final class TabGroupManager {
             iconName: info.iconName,
             parentGroupID: info.parentGroupID,
             position: info.position,
-            isPinned: info.isPinned,
         )
 
         space.groups.append(group)
@@ -476,49 +453,6 @@ final class TabGroupManager {
         Logger.info("Removed all \(allGroups.count) groups", category: Logger.tabs)
     }
 
-    /// Toggles a group's pinned state.
-    ///
-    /// Also pins/unpins all tabs in the group and nested groups.
-    /// Archive groups cannot be pinned.
-    ///
-    /// - Parameters:
-    ///   - group: Group to pin/unpin.
-    ///   - space: Space containing the group (defaults to group's space or active space).
-    ///   - spaceID: Alternative: Space ID to look up.
-    func toggleGroupPinned(_ group: TabGroup, in space: Space? = nil, spaceID: UUID? = nil) {
-        // Archive groups cannot be pinned
-        guard !group.isArchive else {
-            Logger.debug("Cannot pin archive group", category: Logger.tabs)
-            return
-        }
-
-        guard let targetSpace = resolveSpaceWithFallback(space, id: spaceID, entitySpace: group.space) else {
-            Logger.error("Cannot toggle group pinned: no space available", category: Logger.tabs)
-            return
-        }
-
-        group.isPinned.toggle()
-
-        // Nested groups follow; their tabs follow through Tab.isInPinnedGroup
-        let nestedGroups = targetSpace.groups.filter { $0.parentGroupID == group.id }
-        for nestedGroup in nestedGroups {
-            nestedGroup.isPinned = group.isPinned
-        }
-        
-        // Reposition
-        if group.isPinned {
-            let maxPinned = targetSpace.tabs.lazy.filter(\.isInPinnedGroup).map(\.position).max() ?? -1
-            group.position = maxPinned + 1
-        } else {
-            let minUnpinned = targetSpace.tabs.lazy.filter { !$0.isInPinnedGroup }.map(\.position).min() ?? 0
-            group.position = minUnpinned
-        }
-        
-        state.incrementListVersion()
-        scheduleSave()
-        Logger.info("Group '\(group.name)' \(group.isPinned ? "pinned" : "unpinned")", category: Logger.tabs)
-    }
-    
     // MARK: - Group Nesting
     
     /// Nests a group within another group.
@@ -638,7 +572,6 @@ final class TabGroupManager {
             iconName: group.iconName,
             parentGroupID: group.parentGroupID,
             position: newGroupPosition,
-            isPinned: group.isPinned,
         )
         duplicatedGroup.isCollapsed = group.isCollapsed
 
@@ -757,7 +690,6 @@ final class TabGroupManager {
             groupColorHex: group.colorString,
             groupIconName: group.iconName,
             position: group.position,
-            isPinned: group.isPinned,
             isCollapsed: group.isCollapsed,
             sourceSpaceID: sourceSpace.id,
             tabInfos: sourceSpace.tabs.filter { $0.groupID == group.id }.map { tab in

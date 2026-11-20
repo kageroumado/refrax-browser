@@ -79,7 +79,10 @@ final class TabGroup {
     /// Position in the tab list (alongside tabs)
     var position: Int
     
-    /// Whether the group is pinned (like pinned tabs)
+    /// The pin a group carried before tabs had pins of their own.
+    ///
+    /// ``TabManager/migratePinnedGroupsIfNeeded(defaults:)`` reads it once to pin the group's
+    /// tabs, then clears it.
     var isPinned: Bool
 
     /// Whether the group is folded to its header. The fold belongs to the group, so switching
@@ -147,7 +150,6 @@ final class TabGroup {
     ///   - iconName: SF Symbol name (optional).
     ///   - parentGroupID: Parent group ID for nesting (optional).
     ///   - position: Position in the tab list (defaults to 0).
-    ///   - isPinned: Whether the group is pinned (defaults to false).
     ///   - isCollapsed: Whether the group starts collapsed (defaults to false).
     ///   - isArchive: Whether this is the special Archive group (defaults to false).
     init(
@@ -157,7 +159,6 @@ final class TabGroup {
         iconName: String? = nil,
         parentGroupID: UUID? = nil,
         position: Int = 0,
-        isPinned: Bool = false,
         isCollapsed: Bool = false,
         isArchive: Bool = false,
     ) {
@@ -168,7 +169,7 @@ final class TabGroup {
         self.colorString = color
         self.iconName = iconName
         self.position = position
-        self.isPinned = isPinned
+        self.isPinned = false
         self.isCollapsed = isCollapsed
         self.isArchive = isArchive
         self.createdAt = Date()

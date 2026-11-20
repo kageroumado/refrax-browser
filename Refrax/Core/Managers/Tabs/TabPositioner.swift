@@ -44,7 +44,7 @@ struct TabPositioner {
 
     /// Strategy for determining where to insert a new item.
     enum InsertionStrategy {
-        /// Prepend at the beginning of the relevant section (below the pinned groups).
+        /// Prepend at the beginning of the group, or of the space's list.
         case prepend
 
         /// Append at the end of the relevant section.
@@ -127,8 +127,7 @@ struct TabPositioner {
 
     /// Calculates prepend position at the beginning of a section.
     ///
-    /// For ungrouped tabs, this inserts at the top of the list (right after the pinned groups).
-    /// This matches Arc's behavior where new tabs appear at the top of the tab list.
+    /// An ungrouped tab goes to the top of the list, where Arc puts a new tab.
     private func prependPosition(in space: Space, groupID: UUID?) -> (position: Int, index: Int) {
         if let groupID {
             // For grouped tabs, prepend to the beginning of the group
@@ -147,21 +146,9 @@ struct TabPositioner {
             }
         }
 
-        // For regular unpinned tabs, insert at the top (right after pinned section)
-        let pinnedCount = space.pinnedTabs.count
-        let unpinnedTabs = space.unpinnedTabs.filter { $0.groupID == nil }
-            .sorted { $0.position < $1.position }
-
-        let index = pinnedCount
-        let position: Int = if let firstUnpinned = unpinnedTabs.first {
-            // Insert before the first unpinned tab
-            // Use half of the first unpinned position to leave room
-            firstUnpinned.position / 2
-        } else {
-            // No unpinned tabs yet, use root multiplier
-            Self.rootMultiplier
-        }
-        return (position, index)
+        // Half the first ungrouped tab's position leaves room above it.
+        let firstUngrouped = space.mainTabs.first { $0.groupID == nil }
+        return (firstUngrouped.map { $0.position / 2 } ?? Self.rootMultiplier, 0)
     }
 
     // MARK: - Position Normalization
@@ -236,12 +223,7 @@ struct TabPositioner {
             }
         }
 
-        rootItems.sort { lhs, rhs in
-            if lhs.isPinned != rhs.isPinned {
-                return lhs.isPinned
-            }
-            return lhs.position < rhs.position
-        }
+        rootItems.sort { $0.position < $1.position }
 
         for (parentID, nested) in nestedGroupsByParent {
             nestedGroupsByParent[parentID] = nested.sorted { $0.position < $1.position }
@@ -275,13 +257,6 @@ struct TabPositioner {
             switch self {
             case let .tab(tab): tab.position
             case let .group(group): group.position
-            }
-        }
-
-        var isPinned: Bool {
-            switch self {
-            case let .tab(tab): tab.isInPinnedGroup
-            case let .group(group): group.isPinned
             }
         }
     }
@@ -349,30 +324,5 @@ struct TabPositioner {
             return before + gap / 2
         }
         return before + 1
-    }
-
-    /// Validates that positions in a space are in proper order.
-    ///
-    /// - Parameter space: The space to validate.
-    /// - Returns: True if positions are valid, false if normalization is needed.
-    func validatePositions(in space: Space) -> Bool {
-        var lastPinnedPosition = Int.min
-        var lastUnpinnedPosition = Int.min
-
-        for tab in space.tabs.sorted(by: { $0.position < $1.position }) {
-            if tab.isInPinnedGroup {
-                if tab.position <= lastPinnedPosition {
-                    return false
-                }
-                lastPinnedPosition = tab.position
-            } else {
-                if tab.position <= lastUnpinnedPosition {
-                    return false
-                }
-                lastUnpinnedPosition = tab.position
-            }
-        }
-
-        return true
     }
 }
