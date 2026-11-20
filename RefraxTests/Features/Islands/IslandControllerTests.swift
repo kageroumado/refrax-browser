@@ -393,7 +393,7 @@ struct IslandDoorTests {
         let b = fixture.tab("B")
         let rows = try fixture.rowMenu(b)
         #expect(Array(rows.dropLast()) == [
-            "Look, then Return", "Open as Card", "Copy Address", "Copy as Markdown Link", "Share…", "Rename…", "Duplicate Tab", "Favorite",
+            "Look, then Return", "Open as Card", "Copy Address", "Copy as Markdown Link", "Share…", "Rename…", "Duplicate Tab", "Pin Tab", "Favorite",
             "Close Tab", "Close Other Tabs ▸ (3)", "Archive Tab", "New Island with This Tab",
         ])
         #expect(rows.last?.hasPrefix("More ▸") == true)

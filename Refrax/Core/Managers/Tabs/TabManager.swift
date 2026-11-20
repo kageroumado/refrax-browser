@@ -382,7 +382,10 @@ extension TabManager {
         for favorite in tabs where favorite.isFavorite {
             returnFavoriteHome(favorite)
         }
-        let tabs = tabs.filter { !$0.isFavorite }
+        for pinned in tabs where pinned.isPinned {
+            returnPinnedTabHome(pinned)
+        }
+        let tabs = tabs.filter { !$0.keepsHome }
         guard !tabs.isEmpty else { return }
 
         // Separate tabs that should be archived vs permanently closed

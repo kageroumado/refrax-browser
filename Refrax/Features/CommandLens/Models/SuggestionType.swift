@@ -103,6 +103,8 @@ nonisolated enum AppAction: Hashable, Sendable {
     /// Show or hide the floating tabs in this window.
     case toggleTabCanvas
     case favoriteCurrentPage
+    /// Pin or unpin the current tab.
+    case pinCurrentTab
     case returnFromLook
     case keepPartVisible
     /// Mute or unmute the current tab.

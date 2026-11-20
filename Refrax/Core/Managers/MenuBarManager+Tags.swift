@@ -36,4 +36,7 @@ enum MenuItemTag: Int {
 
     /// View menu - Show / Hide Islands (⌘S)
     case islands = 3_050
+
+    /// View menu - Pin Tab / Unpin Tab (⌘D)
+    case pinTab = 3_060
 }

@@ -6,8 +6,8 @@ import SwiftData
 /// | Arc | Refrax |
 /// |-----|--------|
 /// | Space | ``Space``: its name, emoji, and theme color; a space of another Arc profile gets its own website data |
-/// | Pinned tabs outside folders | A pinned island named "Pinned" |
-/// | Pinned folder | A pinned island (a root ``TabGroup``) |
+/// | Pinned tabs outside folders | Pinned tabs at the top of the space's "Tabs" island, each with its Arc address as home |
+/// | Pinned folder | An island (a root ``TabGroup``) of pinned tabs |
 /// | Folder in a folder | A section of that island (a nested ``TabGroup``); deeper folders give their tabs to it |
 /// | Unpinned tabs | The space's loose tabs, shown in its "Tabs" island |
 /// | Favorites | Favorites, as long as there is room |
@@ -20,9 +20,6 @@ import SwiftData
 /// Importing the same sidebar twice changes nothing.
 struct ArcSpaceImporter {
     let tabManager: TabManager
-
-    /// The island that holds a space's pinned tabs that sit in no folder.
-    static let pinnedIslandName = "Pinned"
 
     /// Imports a sidebar and reports what changed.
     @discardableResult
@@ -117,24 +114,14 @@ private struct SpaceWriter {
     }
 
     mutating func add(pinned: [ArcSidebar.Item], unpinned: [ArcSidebar.Item]) {
-        var pinnedIsland: TabGroup?
-        for item in pinned {
-            switch item {
-            case let .tab(tab):
-                if pinnedIsland == nil {
-                    pinnedIsland = group(named: ArcSpaceImporter.pinnedIslandName, in: nil, isPinned: true, iconName: "pin.fill")
+        for (items, isPinned) in [(pinned, true), (unpinned, false)] {
+            for item in items {
+                switch item {
+                case let .tab(tab):
+                    add(tab, to: nil, isPinned: isPinned)
+                case let .folder(folder):
+                    add(folder, isPinned: isPinned)
                 }
-                add(tab, to: pinnedIsland)
-            case let .folder(folder):
-                add(folder, isPinned: true)
-            }
-        }
-        for item in unpinned {
-            switch item {
-            case let .tab(tab):
-                add(tab, to: nil)
-            case let .folder(folder):
-                add(folder, isPinned: false)
             }
         }
         tabManager.normalizePositions(in: space)
@@ -142,34 +129,35 @@ private struct SpaceWriter {
         for group in space.groups {
             group.invalidateTabCache()
         }
+        tabManager.settlePinnedTabs(in: space)
     }
 
     /// A folder becomes an island; its folders become sections, and folders deeper still give
-    /// their tabs to the section that holds them.
+    /// their tabs to the section that holds them. A pinned folder's tabs are pinned.
     private mutating func add(_ folder: ArcSidebar.Folder, isPinned: Bool) {
-        let island = group(named: folder.title, in: nil, isPinned: isPinned)
+        let island = group(named: folder.title, in: nil)
         for item in folder.items {
             switch item {
             case let .tab(tab):
-                add(tab, to: island)
+                add(tab, to: island, isPinned: isPinned)
             case let .folder(subfolder):
-                let section = group(named: subfolder.title, in: island, isPinned: isPinned)
+                let section = group(named: subfolder.title, in: island)
                 for tab in Self.tabs(in: subfolder.items) {
-                    add(tab, to: section)
+                    add(tab, to: section, isPinned: isPinned)
                 }
             }
         }
     }
 
     /// The island or section of that name in its place, made if there is none.
-    private mutating func group(named name: String, in parent: TabGroup?, isPinned: Bool, iconName: String? = nil) -> TabGroup? {
+    private mutating func group(named name: String, in parent: TabGroup?) -> TabGroup? {
         if let existing = space.groups.first(where: {
             !$0.isArchive && $0.parentGroupID == parent?.id && $0.name.caseInsensitiveCompare(name) == .orderedSame
         }) {
             return existing
         }
         guard let group = try? tabManager.groupManager.createGroup(
-            in: space, name: name, iconName: iconName, parentGroupID: parent?.id, isPinned: isPinned,
+            in: space, name: name, parentGroupID: parent?.id,
         ) else {
             return parent
         }
@@ -183,7 +171,8 @@ private struct SpaceWriter {
     }
 
     /// Adds a tab to a group, or as a loose tab, unless the space already has its address.
-    private mutating func add(_ tab: ArcSidebar.Tab, to group: TabGroup?) {
+    /// A pinned tab's home is its Arc address.
+    private mutating func add(_ tab: ArcSidebar.Tab, to group: TabGroup?, isPinned: Bool) {
         guard !openURLs.contains(tab.url) else {
             tabsSkipped += 1
             return
@@ -193,6 +182,7 @@ private struct SpaceWriter {
         )
         created.activePage.title = tab.title
         created.isUnread = false
+        created.originURL = isPinned ? tab.url : nil
         created.position = advance()
         tabsImported += 1
     }

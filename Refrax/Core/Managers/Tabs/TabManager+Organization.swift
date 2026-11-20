@@ -109,16 +109,16 @@ extension TabManager {
 
     // MARK: - Batch Operations
 
-    /// Closes all tabs in the active space.
+    /// Closes all tabs in the active space; pinned tabs stay as they are.
     func closeAllTabs() {
         guard let space = activeWindowState?.activeSpace else { return }
-        closeTabsInBatch(space.tabs, undoActionName: "Close All Tabs")
+        closeTabsInBatch(space.tabs.filter { !$0.isPinned }, undoActionName: "Close All Tabs")
     }
 
-    /// Closes all tabs in the active space except the specified one.
+    /// Closes all tabs in the active space except the specified one; pinned tabs stay as they are.
     func closeOtherTabsInSpace(except tab: Tab) {
         guard let space = tab.space else { return }
-        let tabsToClose = space.tabs.filter { $0.id != tab.id }
+        let tabsToClose = space.tabs.filter { $0.id != tab.id && !$0.isPinned }
         closeTabsInBatch(tabsToClose, undoActionName: "Close Other Tabs")
     }
 

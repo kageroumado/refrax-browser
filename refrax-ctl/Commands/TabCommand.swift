@@ -14,6 +14,7 @@ struct TabCommand: AsyncParsableCommand {
             Activate.self,
             Navigate.self,
             Favorite.self,
+            Pin.self,
             Duplicate.self,
             Rename.self,
             Mute.self,
@@ -266,6 +267,29 @@ struct TabCommand: AsyncParsableCommand {
 
         func run() async throws {
             try sendAndHandle(.tabFavorite(.init(id: id)))
+        }
+    }
+
+    struct Pin: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "pin",
+            abstract: "Pin a tab in its space or unpin it",
+            discussion: """
+            Toggles whether the specified tab is pinned. A pinned tab keeps its \
+            current address as home, sits first on its island, and returns home \
+            when closed.
+
+            Examples:
+              refrax-ctl tab pin active        # Active tab
+              refrax-ctl tab pin "Hacker News" # By title/URL match
+            """,
+        )
+
+        @Argument(help: "Tab ref (ID, index, title, URL, or: active/first/last/next/prev)")
+        var id: String
+
+        func run() async throws {
+            try sendAndHandle(.tabPin(.init(id: id)))
         }
     }
 

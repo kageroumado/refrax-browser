@@ -259,10 +259,9 @@ final class Tab {
     /// - Note: Archived tabs are restored from History › Archived or Command Lens ("archived").
     var archivedAt: Date?
 
-    /// The home address a pinned tab carried.
+    /// A pinned tab's home address; `nil` for a tab that is not pinned.
     ///
-    /// ``FavoriteMigration`` reads it once to give the favorite it becomes a bookmark at
-    /// this address, then clears it. A favorite's home is ``linkedBookmark``'s URL.
+    /// A favorite's home is ``linkedBookmark``'s URL.
     var originURL: URL?
 
     // MARK: - Initialization
@@ -479,6 +478,17 @@ final class Tab {
         status == .favorite
     }
 
+    /// Whether this tab is pinned in its space: it keeps a home address (``originURL``), sits
+    /// at the top of its island, and returns home when closed.
+    var isPinned: Bool {
+        status == .regular && originURL != nil && archivedAt == nil
+    }
+
+    /// Whether this tab keeps a home address: a favorite or a pinned tab.
+    var keepsHome: Bool {
+        isFavorite || isPinned
+    }
+
     /// Whether this tab sits in a pinned group.
     var isInPinnedGroup: Bool {
         group?.isPinned == true
@@ -494,24 +504,25 @@ final class Tab {
         activePage.openerTabPageID != nil
     }
 
-    /// The favorite's home address, its linked bookmark's URL; `nil` for regular tabs.
+    /// The home address of a favorite (its linked bookmark's URL) or a pinned tab
+    /// (``originURL``); `nil` for other tabs.
     ///
-    /// A favorite is kept to its site: cross-domain navigations open in a preview panel
+    /// A tab with a home is kept to its site: cross-domain navigations open in a preview panel
     /// instead of navigating the tab, and closing it returns it here.
     var homeURL: URL? {
         switch status {
         case .favorite:
             linkedBookmark?.url
         case .regular:
-            nil
+            isPinned ? originURL : nil
         }
     }
 
     /// Whether the current URL differs from the home URL.
     ///
-    /// When `true`, Go to Home is offered to return the favorite to its home address.
+    /// When `true`, Go to Home is offered to return the tab to its home address.
     ///
-    /// Returns `false` for regular tabs or when the current page is blank.
+    /// Returns `false` for tabs without a home or when the current page is blank.
     var hasNavigatedFromHome: Bool {
         guard let home = homeURL else { return false }
         let currentURL = activePage.url

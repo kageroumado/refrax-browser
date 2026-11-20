@@ -80,6 +80,8 @@ extension TabManager {
     /// This is how the last space is emptied, since a browser always keeps one.
     func clearSpace(_ space: Space) {
         for tab in state.tabs(in: space) {
+            // A pinned tab closes for good here: unpinned first, or it would return home and stay.
+            tab.originURL = nil
             closeTab(tab)
         }
         for group in state.groups(in: space) {

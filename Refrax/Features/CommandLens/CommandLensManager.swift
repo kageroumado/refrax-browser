@@ -1670,6 +1670,10 @@ final class CommandLensManager {
                 if let tab = windowState.focusedPage?.tab ?? windowState.activeTab, let bookmarks = tabManager.bookmarksManager {
                     ControlIslandTabActions(tab: tab, windowState: windowState, tabs: tabManager, bookmarks: bookmarks).toggleFavorite()
                 }
+            case .pinCurrentTab:
+                if let tab = windowState.activeTab {
+                    tabManager.togglePin(tab)
+                }
             case .returnFromLook:
                 tabManager.returnFromLook(in: windowState)
             case .keepPartVisible:

@@ -56,6 +56,7 @@ public enum ControlRequest: Sendable {
 
     // Tier 1A: Extended Tab Operations
     case tabFavorite(TabIDParams)
+    case tabPin(TabIDParams)
     case tabDuplicate(TabIDParams)
     case tabRename(TabRenameParams)
     case tabMute(TabIDParams)
@@ -1588,6 +1589,7 @@ extension ControlRequest: Codable {
 
         // Tier 1A
         case tabFavorite
+        case tabPin
         case tabDuplicate
         case tabRename
         case tabMute
@@ -1777,6 +1779,7 @@ extension ControlRequest: Codable {
         case .uiAXClick: self = try .uiAXClick(UIAXClickParams(from: decoder))
         // Tier 1A
         case .tabFavorite: self = try .tabFavorite(TabIDParams(from: decoder))
+        case .tabPin: self = try .tabPin(TabIDParams(from: decoder))
         case .tabDuplicate: self = try .tabDuplicate(TabIDParams(from: decoder))
         case .tabRename: self = try .tabRename(TabRenameParams(from: decoder))
         case .tabMute: self = try .tabMute(TabIDParams(from: decoder))
@@ -1973,6 +1976,9 @@ extension ControlRequest: Codable {
             try container.encode("uiAXClick", forKey: .type)
             try params.encode(to: encoder)
         // Tier 1A
+        case let .tabPin(params):
+            try container.encode("tabPin", forKey: .type)
+            try params.encode(to: encoder)
         case let .tabFavorite(params):
             try container.encode("tabFavorite", forKey: .type)
             try params.encode(to: encoder)

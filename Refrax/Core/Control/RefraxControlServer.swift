@@ -176,6 +176,8 @@ final class RefraxControlServer {
         // Tier 1A: Extended Tab Operations
         case let .tabFavorite(params):
             try handleTabFavorite(params)
+        case let .tabPin(params):
+            try handleTabPin(params)
         case let .tabDuplicate(params):
             try handleTabDuplicate(params)
         case let .tabRename(params):
@@ -1546,6 +1548,14 @@ final class RefraxControlServer {
             throw ControlError.invalidParams("Favorites are full")
         }
         return .ok(tab.isFavorite ? "Added to Favorites" : "Removed from Favorites")
+    }
+
+    private func handleTabPin(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {
+        let tab = try resolveTabRef(params.id)
+        guard tabManager.togglePin(tab) else {
+            throw ControlError.invalidParams("Only a tab of a space can be pinned")
+        }
+        return .ok(tab.isPinned ? "Pinned" : "Unpinned")
     }
 
     private func handleTabDuplicate(_ params: ControlRequest.TabIDParams) throws -> ControlResponse {

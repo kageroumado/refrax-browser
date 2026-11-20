@@ -63,8 +63,12 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
     /// The island's own tabs, outside any section.
     let ownTabIDs: [UUID]
     let sections: [IslandSection]
+    /// The island's pinned tabs, which come first among its own tabs and in each section.
+    let pinnedTabIDs: Set<UUID>
+    /// The pinned rows with an unpinned row right under them: a hairline parts the two.
+    let lastPinnedRowIDs: Set<UUID>
 
-    init(ownTabIDs: [UUID] = [], sections: [IslandSection] = [], currentTabID: UUID? = nil) {
+    init(ownTabIDs: [UUID] = [], sections: [IslandSection] = [], currentTabID: UUID? = nil, pinned: Set<UUID> = []) {
         var rows = ownTabIDs.map(IslandRow.tab)
         for section in sections {
             rows.append(.section(section.id))
@@ -81,6 +85,11 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
         self.allTabIDs = ownTabIDs + sections.flatMap(\.tabIDs)
         self.ownTabIDs = ownTabIDs
         self.sections = sections
+        self.pinnedTabIDs = pinned.intersection(allTabIDs)
+        self.lastPinnedRowIDs = Set(zip(rows, rows.dropFirst()).compactMap { [pinnedTabIDs] row, next in
+            guard let id = row.tabID, let nextID = next.tabID, pinnedTabIDs.contains(id), !pinnedTabIDs.contains(nextID) else { return nil }
+            return id
+        })
     }
 
     var count: Int {
@@ -138,6 +147,20 @@ nonisolated struct IslandRowLayout: Equatable, Sendable {
             let next = members.firstIndex(of: tabID).map { $0 + 1 }.flatMap { members.indices.contains($0) ? members[$0] : nil }
             return IslandInsertion(section: group?.id, after: tabID, before: next)
         }
+    }
+
+    /// What a row let go at `slot` becomes: pinned (`true`) among the pinned rows, unpinned
+    /// (`false`) under them, or as it was (`nil`) on the line between the two and wherever
+    /// the slot's group has no pinned row.
+    func pinChange(at slot: IslandInsertion) -> Bool? {
+        if let before = slot.before, pinnedTabIDs.contains(before) {
+            return true
+        }
+        let members = slot.section.flatMap { section($0)?.tabIDs } ?? ownTabIDs
+        if let after = slot.after, !pinnedTabIDs.contains(after), members.contains(where: pinnedTabIDs.contains) {
+            return false
+        }
+        return nil
     }
 
     /// The slot at the end of the island's own tabs, ahead of its sections.

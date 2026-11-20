@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-/// Menu actions on a tab as an object: Favorite and a favorite's home, its floating placement,
+/// Menu actions on a tab as an object: Pin, Favorite and the tab's home, its floating placement,
 /// its sound, its name and unread mark, the space and window it lives in, its duplicate, its
 /// close, and Look.
 ///
@@ -29,7 +29,7 @@ struct TabActions {
             actions += dockActions(canvas: canvas)
             actions += tableActions()
         }
-        actions += favoriteActions(behaviors)
+        actions += pinActions() + favoriteActions(behaviors) + homeActions()
         actions += mediaActions()
         actions += identityActions()
         actions.append(MenuAction("tab.duplicate", "Duplicate Tab", symbol: "plus.square.on.square", group: .tab) { behaviors.duplicate() })
@@ -38,23 +38,35 @@ struct TabActions {
         return actions
     }
 
-    /// Favorite, or for a favorite: Remove from Favorites, Go to Home once it has left home, and
-    /// Set Current Page as Home.
+    /// ⌘D, the menu bar's Pin Tab for the current tab.
+    static let pinKey = MenuAction.KeyEquivalent("d", modifiers: .command)
+
+    /// Pin Tab for a tab of a space, Unpin Tab once it is pinned.
+    private func pinActions() -> [MenuAction] {
+        guard !tab.isFavorite, !tab.isArchived, tab.space != nil else { return [] }
+        let key = tab.id == windowState.activeTabID ? Self.pinKey : nil
+        if tab.isPinned {
+            return [MenuAction("tab.unpin", "Unpin Tab", symbol: "pin.slash", key: key, group: .tab) { tabs.unpin(tab) }]
+        }
+        return [MenuAction("tab.pin", "Pin Tab", symbol: "pin", key: key, group: .tab) { tabs.pin(tab) }]
+    }
+
+    /// Favorite, or for a favorite: Remove from Favorites.
     private func favoriteActions(_ behaviors: ControlIslandTabActions) -> [MenuAction] {
         guard behaviors.isFavorite else {
             guard behaviors.canFavorite else { return [] }
             return [MenuAction("tab.favorite", "Favorite", symbol: "star", group: .tab, isPrimary: true) { behaviors.toggleFavorite() }]
         }
-        var actions = [
-            MenuAction("tab.unfavorite", "Remove from Favorites", symbol: "star.slash", group: .tab) { behaviors.toggleFavorite() },
+        return [MenuAction("tab.unfavorite", "Remove from Favorites", symbol: "star.slash", group: .tab) { behaviors.toggleFavorite() }]
+    }
+
+    /// Go to Home and Set Current Page as Home, once a favorite or a pinned tab has left home.
+    private func homeActions() -> [MenuAction] {
+        guard tab.hasNavigatedFromHome else { return [] }
+        return [
+            MenuAction("tab.goHome", "Go to Home", symbol: "house", group: .go) { tabs.goHome(tab) },
+            MenuAction("tab.setHome", "Set Current Page as Home", symbol: "house", group: .go) { tabs.setCurrentPageAsHome(tab) },
         ]
-        if tab.hasNavigatedFromHome {
-            actions.append(MenuAction("tab.goHome", "Go to Home", symbol: "house", group: .go) { tabs.goHome(tab) })
-            actions.append(MenuAction("tab.setHome", "Set Current Page as Home", symbol: "house", group: .go) {
-                tabs.setCurrentPageAsHome(tab)
-            })
-        }
-        return actions
     }
 
     /// Mute while the tab plays sound or is muted; Mute Other Tabs while another tab plays sound.

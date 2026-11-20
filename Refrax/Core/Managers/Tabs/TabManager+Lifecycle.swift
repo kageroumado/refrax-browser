@@ -166,8 +166,8 @@ extension TabManager {
     /// Closes a tab.
     ///
     /// Removes sessions, updates groups, handles undo registration,
-    /// and activates an adjacent tab if needed. A favorite returns home instead
-    /// (``returnFavoriteHome(_:)``).
+    /// and activates an adjacent tab if needed. A favorite or a pinned tab returns home
+    /// instead (``returnFavoriteHome(_:)``, ``returnPinnedTabHome(_:)``).
     ///
     /// When archive is enabled and `bypassArchive` is false, the tab is moved
     /// to the archive instead of being permanently deleted. Archived tabs can
@@ -182,6 +182,10 @@ extension TabManager {
     func closeTab(_ tab: Tab, registerUndo: Bool = true, bypassArchive: Bool = false) {
         if tab.isFavorite {
             returnFavoriteHome(tab)
+            return
+        }
+        if tab.isPinned {
+            returnPinnedTabHome(tab)
             return
         }
         let spatialReplacementID = spatialReplacement(for: tab)

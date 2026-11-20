@@ -555,7 +555,7 @@ extension FloatingTourManager.Step {
         case .revealPages: "square.on.square"
         case .visitNeighbor: "arrow.left.arrow.right"
         case .floatPage: "rectangle.on.rectangle"
-        case .pinIsland: "pin"
+        case .pinIsland: "eye"
         case .pageCard: "globe"
         case .movePanel: "slider.horizontal.3"
         case .done: "checkmark.seal"
@@ -582,8 +582,8 @@ extension FloatingTourManager.Step {
                 : "Click the islands button on the controls, then hold ⇧ while you drag a row out of its island onto the page."
         case .pinIsland:
             return context.islandsVisible
-                ? "Point at an island to show its name, then click the pin beside it. The island stays after you release \(context.revealKey.glyph)."
-                : "Click the islands button on the controls, then pin an island so it stays."
+                ? "Point at an island to show its name, then click the eye beside it. The island stays after you release \(context.revealKey.glyph)."
+                : "Click the islands button on the controls, then click an island's eye so it stays."
         case .pageCard:
             return "Hover the page's icon on the controls for its card: title, address, reload, favorite, and actions."
         case .movePanel:

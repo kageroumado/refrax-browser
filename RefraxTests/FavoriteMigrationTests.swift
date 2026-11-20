@@ -60,15 +60,15 @@ struct FavoriteMigrationTests {
     }
 
     @Test
-    func `a pinned group's tab stays in its group as a regular tab`() {
+    func `a pin in a group stays in its group as a pinned tab with its home`() {
         let outcome = FavoriteMigration.outcome(for: candidate(status: .favorite, isInGroup: true, originURL: pinHome))
-        #expect(outcome == .regular)
+        #expect(outcome == .pinned(home: pinHome))
     }
 
     @Test
-    func `a pin in a private or locked space stays there as a regular tab`() {
+    func `a pin in a private or locked space stays there as a pinned tab with its home`() {
         let outcome = FavoriteMigration.outcome(for: candidate(status: .favorite, spaceIsShared: false, originURL: pinHome))
-        #expect(outcome == .regular)
+        #expect(outcome == .pinned(home: pinHome))
     }
 
     @Test

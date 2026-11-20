@@ -5,7 +5,7 @@ nonisolated struct IslandPlacement: Codable, Equatable, Sendable {
     /// The island's top-left corner, normalized to the window's area (0 ... 1 on each axis).
     var x: Double
     var y: Double
-    /// A pinned island stays on screen when the reveal key is up.
+    /// The island is kept on screen when the reveal key is up.
     var isPinned: Bool = false
     /// Rows show favicons only, as the Favorites island does until it is told otherwise.
     var iconsOnly: Bool = false

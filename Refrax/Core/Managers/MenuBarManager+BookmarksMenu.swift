@@ -12,6 +12,7 @@ extension MenuBarManager {
             action: #selector(addBookmark(_:)),
             keyEquivalent: "d",
         )
+        addBookmarkItem.keyEquivalentModifierMask = [.command, .shift]
         addBookmarkItem.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
         addBookmarkItem.target = self
         bookmarksMenu.addItem(addBookmarkItem)
@@ -75,7 +76,7 @@ extension MenuBarManager {
         return bookmarksMenuItem
     }
 
-    /// ⌘D: bookmarks the focused page, once per address.
+    /// ⇧⌘D: bookmarks the focused page, once per address.
     @objc
     func addBookmark(_: Any?) {
         guard let controller = activeWindowController, let page = controller.windowState.focusedPage, page.url != .blank else { return }

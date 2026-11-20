@@ -56,14 +56,14 @@ struct PageActionsMenuTests {
         #expect(tree.outline == [
             "Look, then Return", "Keep Visible", "Preview ▸ (2)", "  Dock Left", "  Dock Right", "——",
             "Copy Address", "Copy as Markdown Link", "Share…", "——",
-            "Rename…", "Duplicate Tab", "Favorite", "——",
+            "Rename…", "Duplicate Tab", "Pin Tab", "Favorite", "——",
             "Close Tab", "——",
             "Move to New Window", "——",
             "More ▸ (2)", "  Mark as Read", "  Open Reflected Window",
         ])
         #expect(tree.ids == [
             "tab.look", "tab.keepVisible", "group.preview", "page.copyAddress", "page.copyMarkdownLink", "page.share",
-            "tab.rename", "tab.duplicate", "tab.favorite", "tab.close", "tab.moveToNewWindow", "more",
+            "tab.rename", "tab.duplicate", "tab.pin", "tab.favorite", "tab.close", "tab.moveToNewWindow", "more",
         ])
     }
 
@@ -75,7 +75,7 @@ struct PageActionsMenuTests {
         #expect(tree.outline == [
             "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——",
             "Copy Address", "Copy as Markdown Link", "Share…", "Find on Page…", "——",
-            "Rename…", "Duplicate Tab", "Favorite", "——",
+            "Rename…", "Duplicate Tab", "Pin Tab", "Favorite", "——",
             "Close Tab", "——",
             "Move to New Window", "——",
             "More ▸ (2)", "  Mark as Unread", "  Open Reflected Window",
@@ -103,7 +103,7 @@ struct PageActionsMenuTests {
         let floating = fixture.tree(for: fixture.other, surface: .floatingCard)
         #expect(topLevel(floating) == [
             "Look, then Return", "Hide Preview", "Preview ▸ (4)", "——", "Copy Address", "Copy as Markdown Link", "Share…", "——",
-            "Rename…", "Duplicate Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——", "More ▸ (2)",
+            "Rename…", "Duplicate Tab", "Pin Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——", "More ▸ (2)",
         ])
 
         try fixture.keepRegion(on: fixture.active)
@@ -145,7 +145,7 @@ struct PageActionsMenuTests {
         )
         #expect(rows.outline == [
             "Keep Visible", "Preview ▸ (4)", "  Show as Icon", "  Show Live Page", "  Dock Left", "  Dock Right", "——",
-            "Rename…", "Duplicate Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——",
+            "Rename…", "Duplicate Tab", "Pin Tab", "Favorite", "——", "Close Tab", "——", "Move to New Window", "——",
             "More ▸ (2)", "  Mark as Unread", "  Open Reflected Window",
         ])
         // The same layout as the page card's menu, without the page's rows the popover lists above it.

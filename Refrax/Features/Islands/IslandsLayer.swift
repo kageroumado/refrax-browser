@@ -158,7 +158,7 @@ struct IslandView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(island.title), \(island.tabIDs.count) tabs")
         .accessibilityIdentifier("island-\(island.id.uuidString)")
-        .accessibilityAction(named: island.placement.isPinned ? "Unpin" : "Pin") { islands.togglePin(island.id) }
+        .accessibilityAction(named: island.placement.isPinned ? "Stop Keeping on Screen" : "Keep on Screen") { islands.togglePin(island.id) }
         .accessibilityAction(named: "Move left") { nudge(dx: -Layout.nudge, dy: 0) }
         .accessibilityAction(named: "Move right") { nudge(dx: Layout.nudge, dy: 0) }
         .accessibilityAction(named: "Move up") { nudge(dx: 0, dy: -Layout.nudge) }
@@ -454,9 +454,10 @@ struct IslandFilterBadge: View {
 /// another, or, let go on empty space, out as a new island of its own (a live card with ⇧).
 /// Its menu is the page's.
 ///
-/// A favorite's row shows the way home while the favorite is away from its home address, on
-/// the current row and under the pointer: a house where a tab has its close, and on an
-/// icon-only row a house on the icon's corner, where a click on the current favorite goes home.
+/// The row of a favorite or a pinned tab shows the way home while the tab is away from its
+/// home address, on the current row and under the pointer: a house where a tab has its close,
+/// and on an icon-only row a house on the icon's corner, where a click on the current tab
+/// goes home. A hairline parts an island's pinned rows from the rows under them.
 private struct IslandTabRow: View, Equatable {
     let tab: Tab
     let island: Island
@@ -469,6 +470,7 @@ private struct IslandTabRow: View, Equatable {
     static func == (lhs: IslandTabRow, rhs: IslandTabRow) -> Bool {
         lhs.tab.id == rhs.tab.id && lhs.island.id == rhs.island.id && lhs.index == rhs.index
             && lhs.island.placement.iconsOnly == rhs.island.placement.iconsOnly && lhs.island.rows == rhs.island.rows
+            && lhs.island.layout.lastPinnedRowIDs == rhs.island.layout.lastPinnedRowIDs
             && lhs.island.colorString == rhs.island.colorString && lhs.area == rhs.area
     }
 
@@ -492,6 +494,9 @@ private struct IslandTabRow: View, Equatable {
         static let homeBadgeSize: CGFloat = 12
         static let homeBadgeGlyph: CGFloat = 7
         static let homeBadgeOffset: CGFloat = 5
+        /// How far the hairline under the pinned rows stops short of the row's ends.
+        static let pinnedLineInset: CGFloat = 8
+        static let pinnedLineInsetIcons: CGFloat = 4
     }
 
     private var isCurrent: Bool {
@@ -502,9 +507,14 @@ private struct IslandTabRow: View, Equatable {
         island.placement.iconsOnly
     }
 
-    /// A favorite that has left its home address.
+    /// A favorite or a pinned tab that has left its home address.
     private var isAwayFromHome: Bool {
-        tab.isFavorite && tab.hasNavigatedFromHome
+        tab.hasNavigatedFromHome
+    }
+
+    /// The last of the island's pinned rows, with an unpinned row under it.
+    private var endsPinnedRows: Bool {
+        island.layout.lastPinnedRowIDs.contains(tab.id)
     }
 
     private var color: Color {
@@ -600,6 +610,16 @@ private struct IslandTabRow: View, Equatable {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .bottom) {
+            if endsPinnedRows {
+                Rectangle()
+                    .fill(.separator)
+                    .frame(height: 1)
+                    .padding(.horizontal, iconsOnly ? Layout.pinnedLineInsetIcons : Layout.pinnedLineInset)
+                    .offset(y: 0.5)
+                    .allowsHitTesting(false)
+            }
+        }
         .offset(y: shift)
         .animation(.snappy(duration: 0.2), value: islands.drop)
         .overlay {
@@ -640,8 +660,8 @@ private struct IslandTabRow: View, Equatable {
             if flags.contains(.command) || flags.contains(.shift) {
                 islands.select(tab.id, extending: flags.contains(.shift), toggling: flags.contains(.command))
             } else if iconsOnly, isCurrent, isAwayFromHome {
-                // An icon-only row has no room for the house: on the favorite already shown,
-                // the click that would open it goes home.
+                // An icon-only row has no room for the house: on the tab already shown, the
+                // click that would open it goes home.
                 tabManager.goHome(tab)
             } else {
                 islands.clearSelection()
@@ -674,7 +694,7 @@ private struct IslandTabRow: View, Equatable {
         .accessibilityAction(named: "Select") { islands.select(tab.id, extending: false, toggling: true) }
     }
 
-    /// The control at a row's trailing end: Close under the pointer, or a favorite's way home.
+    /// The control at a row's trailing end: Close under the pointer, or the way home.
     private func hoverButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -689,7 +709,7 @@ private struct IslandTabRow: View, Equatable {
         .help(help)
     }
 
-    /// The house on the corner of an icon-only favorite that is away from home.
+    /// The house on the corner of an icon-only row whose tab is away from home.
     private var homeBadge: some View {
         Image(systemName: "house.fill")
             .font(.system(size: Layout.homeBadgeGlyph, weight: .bold))

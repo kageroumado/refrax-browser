@@ -141,7 +141,7 @@ struct IslandHeader: View {
         Button {
             islands.togglePin(island.id)
         } label: {
-            Image(systemName: island.placement.isPinned ? "pin.fill" : "pin")
+            Image(systemName: island.placement.isPinned ? "eye.fill" : "eye")
                 .font(.system(size: Layout.glyphSize))
                 .foregroundStyle(island.placement.isPinned ? AnyShapeStyle(Color.appAccentColor) : AnyShapeStyle(.secondary))
                 .frame(width: Layout.controlSize, height: Layout.controlSize)
@@ -149,8 +149,9 @@ struct IslandHeader: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.default)
-        .help(island.placement.isPinned ? "Unpin island" : "Pin island")
-        .accessibilityLabel(island.placement.isPinned ? "Unpin island" : "Pin island")
+        .help(island.placement.isPinned ? "Kept on screen" : "Keep on screen")
+        .accessibilityLabel("Keep on Screen")
+        .accessibilityAddTraits(island.placement.isPinned ? .isSelected : [])
     }
 
     private var menuButton: some View {
@@ -214,7 +215,7 @@ struct IslandHeader: View {
             add("New Tab in \(island.title)", to: menu) { islands.addTab(to: id) }
         }
         add(island.placement.iconsOnly ? "Show Titles" : "Show as Icon Rail", to: menu) { islands.toggleIconsOnly(id) }
-        add(island.placement.isPinned ? "Unpin Island" : "Pin Island", to: menu) { islands.togglePin(id) }
+        add("Keep on Screen", to: menu, state: island.placement.isPinned ? .on : .off) { islands.togglePin(id) }
         let only = NSMenu(title: "Show Only")
         add("All Tabs", to: only, state: islands.filter == nil ? .on : .off) { islands.setFilter(nil) }
         only.addItem(.separator())

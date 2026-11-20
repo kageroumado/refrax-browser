@@ -28,7 +28,15 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         } else {
             ("favorite current page star add to favorites every space", "Favorite", "star", .favoriteCurrentPage)
         }
-        let pageActions: [(String, String, String, AppAction)] = [
+        var pageActions: [(String, String, String, AppAction)] = []
+        if let tab = windowState?.activeTab, !tab.isFavorite, tab.space != nil {
+            pageActions.append(
+                tab.isPinned
+                    ? ("unpin tab remove pin forget home", "Unpin Tab", "pin.slash", .pinCurrentTab)
+                    : ("pin tab keep home address stay", "Pin Tab", "pin", .pinCurrentTab),
+            )
+        }
+        pageActions += [
             favorite,
             ("return look go back activity", "Return to Activity", "arrow.uturn.backward", .returnFromLook),
             ("keep part visible crop region", "Keep Part Visible…", "crop", .keepPartVisible),
@@ -39,6 +47,7 @@ struct ActionsProvider: CommandLensSuggestionProvider {
         for (terms, title, icon, action) in pageActions where FuzzyMatcher.match(query: query, against: [terms]) >= FuzzyMatcher.minimumMatchScore {
             let description = switch action {
             case .setCurrentTabMuted: "Current tab  ⌃M"
+            case .pinCurrentTab: "Current tab  ⌘D"
             case .muteOtherTabs: "Silence every other tab"
             default: "Current page"
             }

@@ -59,23 +59,26 @@ struct ArcSpaceImporterTests {
     }
 
     @Test
-    func `folders become pinned islands with sections, and loose pinned tabs a Pinned island`() throws {
+    func `folders become islands with sections, and Arc's pinned tabs are pinned at their addresses`() throws {
         let env = try TabManagerTestEnvironment()
         let result = try importing(Self.workFixture(), into: env)
         let work = try space(named: "Work", in: env)
 
         let islands = work.groups.filter(\.isRoot).sorted { $0.position < $1.position }
-        #expect(islands.map(\.name) == [ArcSpaceImporter.pinnedIslandName, "Projects"])
-        #expect(islands.allSatisfy { $0.isPinned })
-        #expect(titles(islands[0].sortedTabs) == ["Inbox", "Docs"])
-        #expect(titles(islands[1].sortedTabs) == ["Board"])
+        #expect(islands.map(\.name) == ["Projects"])
+        #expect(titles(islands[0].sortedTabs) == ["Board"])
 
-        let section = try #require(work.groups.first { $0.parentGroupID == islands[1].id })
+        let section = try #require(work.groups.first { $0.parentGroupID == islands[0].id })
         #expect(section.name == "Specs")
         #expect(titles(section.sortedTabs) == ["Spec A", "Spec Old"])
-        #expect(work.groups.count == 3)
-        #expect(result.islandsCreated == 2)
+        #expect(work.groups.count == 2)
+        #expect(work.groups.allSatisfy { !$0.isPinned })
+        #expect(result.islandsCreated == 1)
         #expect(result.sectionsCreated == 1)
+
+        let pinned = work.mainTabs.filter(\.isPinned)
+        #expect(Set(titles(pinned)) == ["Inbox", "Docs", "Board", "Spec A", "Spec Old"])
+        #expect(pinned.allSatisfy { $0.homeURL == $0.activePage.url })
     }
 
     @Test
@@ -84,7 +87,8 @@ struct ArcSpaceImporterTests {
         let result = try importing(Self.workFixture(), into: env)
         let work = try space(named: "Work", in: env)
 
-        #expect(titles(work.mainTabs.filter { $0.group == nil }) == ["Article"])
+        #expect(titles(work.mainTabs.filter { $0.group == nil }) == ["Inbox", "Docs", "Article"])
+        #expect(work.mainTabs.first { $0.activePage.title == "Article" }?.isPinned == false)
         #expect(result.tabsImported == 6)
         #expect(work.mainTabs.allSatisfy { !$0.isUnread && env.pagePool.existingPage(for: $0.activePage) == nil })
     }
@@ -137,7 +141,7 @@ struct ArcSpaceImporterTests {
         let renamed = try space(named: "Day Job", in: env)
         #expect(again.spacesCreated == 0)
         #expect(again.tabsImported == 1)
-        #expect(titles(renamed.mainTabs.filter { $0.group == nil }) == ["Article", "New"])
+        #expect(titles(renamed.mainTabs.filter { $0.group == nil }) == ["Inbox", "Docs", "Article", "New"])
     }
 
     @Test

@@ -63,7 +63,10 @@ struct IslandRowMenu {
             [.action("tab.look"), .action("island.float"), .action("panes.beside"), .action("panes.edit"), .action("panes.separate")],
             [.action("page.copyAddress"), .action("page.copyMarkdownLink"), .action("page.share")],
             [.action("tab.goHome"), .action("tab.setHome")],
-            [.action("tab.rename"), .action("tab.duplicate"), .action("tab.favorite"), .action("tab.unfavorite"), .action("tab.mute")],
+            [
+                .action("tab.rename"), .action("tab.duplicate"), .action("tab.pin"), .action("tab.unpin"), .action("tab.favorite"),
+                .action("tab.unfavorite"), .action("tab.mute"),
+            ],
             [
                 .action("tab.close"),
                 .submenu(id: "island.closeOthersMenu", title: "Close Other Tabs", symbol: "xmark.rectangle", actions: [

@@ -86,9 +86,9 @@ final class RefraxExtensionTab: NSObject, WKWebExtensionTab {
         tabPage?.url
     }
 
-    /// Favorites are the browser's pinned tabs.
+    /// Favorites and pinned tabs are the browser's pinned tabs.
     func isPinned(for _: WKWebExtensionContext) -> Bool {
-        tab?.isFavorite ?? false
+        tab?.keepsHome ?? false
     }
 
     func isPlayingAudio(for _: WKWebExtensionContext) -> Bool {

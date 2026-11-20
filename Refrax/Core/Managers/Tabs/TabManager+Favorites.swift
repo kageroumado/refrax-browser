@@ -49,7 +49,7 @@ extension TabManager {
     }
 
     /// Closes a favorite by returning it home: its pages unload, its address resets to its
-    /// home, and it stays in every space.
+    /// home, and it stays in every space. A pinned tab's close is ``returnPinnedTabHome(_:)``.
     func returnFavoriteHome(_ tab: Tab) {
         guard tab.isFavorite else { return }
         pagePool.removePages(for: tab)
@@ -66,7 +66,7 @@ extension TabManager {
         scheduleSave()
     }
 
-    /// Loads a favorite's home address in its page.
+    /// Loads the home address of a favorite or a pinned tab in its page.
     func goHome(_ tab: Tab) {
         guard let home = tab.homeURL else { return }
         if let page = pagePool.existingPage(for: tab.activePage) {
@@ -76,8 +76,14 @@ extension TabManager {
         }
     }
 
-    /// Makes the favorite's current address its home.
+    /// Makes the current address of a favorite or a pinned tab its home.
     func setCurrentPageAsHome(_ tab: Tab) {
+        if tab.isPinned {
+            tab.originURL = tab.activePage.url
+            state.incrementContentVersion()
+            scheduleSave()
+            return
+        }
         guard tab.isFavorite, let bookmark = tab.linkedBookmark else { return }
         bookmark.url = tab.activePage.url
         bookmarksManager.refreshFavoritesCache()
@@ -138,9 +144,9 @@ extension TabManager {
                 switch FavoriteMigration.outcome(for: candidate) {
                 case .unchanged:
                     break
-                case .regular:
+                case let .pinned(home):
                     tab.status = .regular
-                    tab.originURL = nil
+                    tab.originURL = home
                 case let .favorite(home):
                     if !space.dataStoreMode.isGlobal {
                         pagePool.removePages(for: tab)
@@ -163,10 +169,10 @@ extension TabManager {
 ///
 /// Pinned tabs (stored status `pinned`) read as `.favorite` while still sitting in a space;
 /// see ``TabStatus/init(rawValue:)``. Each becomes a favorite with its pin address as home,
-/// except a pin inside a pinned group, which stays in its group as a regular tab (the group
-/// keeps its pin), and a pin in a private or locked space, which stays there as a regular
-/// tab so it never shows in other spaces. A kept-visible card marked to show in every space
-/// becomes a favorite at its current address, under the same private-or-locked rule.
+/// except a pin inside a group, which stays in its group, and a pin in a private or locked
+/// space, which never shows in other spaces: those stay where they are as pinned tabs with
+/// the same home. A kept-visible card marked to show in every space becomes a favorite at
+/// its current address, under the same private-or-locked rule.
 nonisolated enum FavoriteMigration {
     /// The defaults key set once the migration has run.
     static let completedKey = "website.refrax.migration.favorites"
@@ -186,8 +192,8 @@ nonisolated enum FavoriteMigration {
     /// What the migration does to a tab.
     enum Outcome: Equatable, Sendable {
         case unchanged
-        /// Stays in its space as a regular tab.
-        case regular
+        /// Stays in its space as a pinned tab with this home address.
+        case pinned(home: URL)
         /// Becomes a favorite with this home address.
         case favorite(home: URL)
     }
@@ -196,8 +202,9 @@ nonisolated enum FavoriteMigration {
         switch candidate.status {
         case .favorite:
             guard candidate.isInSpace else { return .unchanged }
-            guard !candidate.isInGroup, candidate.spaceIsShared else { return .regular }
-            return .favorite(home: candidate.originURL ?? candidate.currentURL)
+            let home = candidate.originURL ?? candidate.currentURL
+            guard !candidate.isInGroup, candidate.spaceIsShared else { return .pinned(home: home) }
+            return .favorite(home: home)
         case .regular:
             guard candidate.isInSpace, candidate.showsInEverySpace, candidate.spaceIsShared else { return .unchanged }
             return .favorite(home: candidate.currentURL)

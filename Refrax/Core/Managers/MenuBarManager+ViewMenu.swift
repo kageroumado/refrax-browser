@@ -232,6 +232,11 @@ extension MenuBarManager {
         viewMenu.addItem(createTableMenuItem())
         viewMenu.addItem(createGoToSpaceMenuItem())
         viewMenu.addItem(createGoToFavoriteMenuItem())
+        let pinItem = NSMenuItem(title: "Pin Tab", action: #selector(pinCurrentTab(_:)), keyEquivalent: "d")
+        pinItem.image = NSImage(systemSymbolName: "pin", accessibilityDescription: nil)
+        pinItem.target = self
+        pinItem.tag = MenuItemTag.pinTab.rawValue
+        viewMenu.addItem(pinItem)
         let favoriteItem = NSMenuItem(title: "Favorite Current Page", action: #selector(favoriteCurrentPage(_:)), keyEquivalent: "")
         favoriteItem.target = self
         favoriteItem.tag = MenuItemTag.favoriteCurrentPage.rawValue
@@ -506,6 +511,14 @@ extension MenuBarManager {
     }
 
     @objc
+    func pinCurrentTab(_: Any?) {
+        guard let controller = activeWindowController, let tab = controller.windowState.activeTab else { return }
+        let wasPinned = tab.isPinned
+        guard controller.tabManager.togglePin(tab) else { return }
+        controller.windowState.showToast(wasPinned ? "Unpinned" : "Pinned")
+    }
+
+    @objc
     func favoriteCurrentPage(_: Any?) {
         guard let controller = activeWindowController, let tab = controller.windowState.focusedPage?.tab,
               let bookmarks = controller.tabManager.bookmarksManager else { return }
@@ -541,6 +554,12 @@ extension MenuBarManager {
             let isFavorite = activeWindowController?.windowState.focusedPage?.tab?.isFavorite == true
             favoriteItem.title = isFavorite ? "Remove from Favorites" : "Favorite Current Page"
             favoriteItem.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
+        }
+
+        if let pinItem = menu.item(withTag: MenuItemTag.pinTab.rawValue) {
+            let isPinned = activeWindowController?.windowState.activeTab?.isPinned == true
+            pinItem.title = isPinned ? "Unpin Tab" : "Pin Tab"
+            pinItem.image = NSImage(systemSymbolName: isPinned ? "pin.slash" : "pin", accessibilityDescription: nil)
         }
 
         if let islandsItem = menu.item(withTag: MenuItemTag.islands.rawValue) {

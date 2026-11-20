@@ -39,6 +39,7 @@ extension TabManager {
         let space = spaceManager.restoreFromPersistence()
         migrateFloatingShapesIfNeeded()
         migrateFavoritesIfNeeded()
+        migratePinnedGroupsIfNeeded()
         return space
 
         // Disabled the default content setup as the debug build now uses on-disk persistence.

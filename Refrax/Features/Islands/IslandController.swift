@@ -622,6 +622,7 @@ final class IslandController {
             filter = nil
         }
         repairPanes(in: space)
+        tabManager.settlePinnedTabs(in: space)
         // Docked pages and tabs floating as cards are not rows; a quick filter keeps only the
         // tabs it matches. Favorites are the rows of their own island.
         let filtered = filteredTabIDs()
@@ -629,6 +630,7 @@ final class IslandController {
             !state.detached.contains(tab.id) && canvas.storedFloatingPlacement(for: tab)?.isDocked != true && filtered?.contains(tab.id) != false
         }
         let onIslands = space.mainTabs.filter { !$0.isFavorite && isRow($0) }
+        let pinned = Set(onIslands.filter(\.isPinned).map(\.id))
         let current = windowState.activeTabID
         func members(of groupID: UUID) -> [UUID] {
             onIslands.filter { $0.group?.id == groupID }.map(\.id)
@@ -641,7 +643,7 @@ final class IslandController {
             ),
             (
                 space.id, loose.name, loose.colorString.isEmpty ? nil : loose.colorString, loose.iconName,
-                IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id)), .looseTabs,
+                IslandRowLayout(ownTabIDs: onIslands.filter { $0.group == nil }.map(\.id), pinned: pinned), .looseTabs,
             ),
         ]
         let groups = space.groups.filter { !$0.isArchive }.sorted { $0.position < $1.position }
@@ -657,7 +659,7 @@ final class IslandController {
                     isCollapsed: child.isCollapsed,
                 )
             }
-            let layout = IslandRowLayout(ownTabIDs: members(of: group.id), sections: sections, currentTabID: current)
+            let layout = IslandRowLayout(ownTabIDs: members(of: group.id), sections: sections, currentTabID: current, pinned: pinned)
             sources.append((group.id, group.name, group.colorString, group.iconName, layout, .group))
         }
         var changed = false
@@ -818,17 +820,21 @@ final class IslandController {
 
     // MARK: - Acting on rows
 
-    /// Closes every other tab of `tabID`'s island.
+    /// Closes every other tab of `tabID`'s island; pinned tabs stay as they are.
     func closeOthers(than tabID: UUID) {
         guard let island = island(holding: tabID) else { return }
-        tabManager.requestCloseTabs(island.allTabIDs.filter { $0 != tabID }.compactMap(tab(for:)))
+        closeUnpinned(island.allTabIDs.filter { $0 != tabID }, of: island)
     }
 
-    /// Closes the rows above (`below == false`) or below `tabID` on its island.
+    /// Closes the rows above (`below == false`) or below `tabID` on its island; pinned tabs
+    /// stay as they are.
     func close(below: Bool, of tabID: UUID) {
         guard let island = island(holding: tabID), let index = island.allTabIDs.firstIndex(of: tabID) else { return }
-        let ids = below ? Array(island.allTabIDs[(index + 1)...]) : Array(island.allTabIDs[..<index])
-        tabManager.requestCloseTabs(ids.compactMap(tab(for:)))
+        closeUnpinned(below ? Array(island.allTabIDs[(index + 1)...]) : Array(island.allTabIDs[..<index]), of: island)
+    }
+
+    private func closeUnpinned(_ tabIDs: [UUID], of island: Island) {
+        tabManager.requestCloseTabs(tabIDs.filter { !island.layout.pinnedTabIDs.contains($0) }.compactMap(tab(for:)))
     }
 
     /// Archives `tabs`, which the archive keeps and the islands let go.
@@ -886,9 +892,10 @@ final class IslandController {
         windowState.activeSpace?.groups.first { $0.id == islandID && !$0.isArchive }
     }
 
+    /// Closes the island's tabs; pinned tabs stay as they are.
     func closeAll(in islandID: UUID) {
         guard let island = island(islandID), !island.isFavorites else { return }
-        tabManager.requestCloseTabs(island.allTabIDs.compactMap(tab(for:)))
+        closeUnpinned(island.allTabIDs, of: island)
     }
 
     /// Removes the group; its tabs go to the loose tabs' island.
@@ -1228,9 +1235,10 @@ final class IslandController {
         let lifted = target.layout.row(of: tabID)
         let full = lifted.map { row > $0 ? row + 1 : row } ?? row
         let slot = target.layout.insertion(beforeRow: full, moving: Set(moving.map(\.id)))
+        let pins = target.layout.pinChange(at: slot)
         var after = slot.after
         for tab in moving {
-            moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: target)
+            moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: target, pins: pins)
             after = tab.id
         }
     }
@@ -1281,18 +1289,22 @@ final class IslandController {
     /// Puts `tabID` before row `row` of island `islandID`, counted without the row itself, or
     /// after its last row: into the island's group, or the section that slot is in, moving
     /// it between groups when it came from another. A card dropped here becomes a row again.
+    /// A row put among the pinned rows is pinned at its current address, and a pinned row
+    /// put under them is unpinned (``IslandRowLayout/pinChange(at:)``).
     func moveTab(_ tabID: UUID, to row: Int, in islandID: UUID) {
         guard let target = island(islandID) else { return }
-        moveTab(tabID, to: target.layout.insertion(at: row, moving: tabID), in: target)
+        let slot = target.layout.insertion(at: row, moving: tabID)
+        moveTab(tabID, to: slot, in: target, pins: target.layout.pinChange(at: slot))
     }
 
-    /// Puts `tabID` after the last of island `islandID`'s own tabs, ahead of its sections.
+    /// Puts `tabID` in island `islandID` as it is, pinned or not: after the last of the
+    /// island's own tabs, ahead of its sections, or last among its pinned tabs.
     func moveTab(_ tabID: UUID, toEndOf islandID: UUID) {
         guard let target = island(islandID) else { return }
-        moveTab(tabID, to: target.layout.endOfOwnTabs(moving: tabID), in: target)
+        moveTab(tabID, to: target.layout.endOfOwnTabs(moving: tabID), in: target, pins: nil)
     }
 
-    private func moveTab(_ tabID: UUID, to slot: IslandInsertion, in target: Island) {
+    private func moveTab(_ tabID: UUID, to slot: IslandInsertion, in target: Island, pins: Bool?) {
         guard let tab = tab(for: tabID) else { return }
         if target.isFavorites {
             placeInFavorites(tab, before: slot.before)
@@ -1315,6 +1327,11 @@ final class IslandController {
             windowState.clearFocusIfNeeded(for: tab.activePage.id)
         }
         tabManager.placeTab(tab, after: slot.after.flatMap(self.tab(for:)), before: slot.before.flatMap(self.tab(for:)))
+        if pins == true {
+            tabManager.pin(tab)
+        } else if pins == false {
+            tabManager.unpin(tab)
+        }
         persist()
         rebuild()
     }
@@ -1427,6 +1444,7 @@ final class IslandController {
             tabID: tabID, spaceID: space.id, groupID: tab.groupID,
             previousID: index > 0 ? ordered[index - 1].id : nil,
             nextID: index + 1 < ordered.count ? ordered[index + 1].id : nil,
+            home: tab.isPinned ? tab.originURL : nil,
             isDetached: state.detached.contains(tabID), placement: canvas.storedFloatingPlacement(for: tab),
             activeTabID: windowState.activeTabID,
         )
@@ -1455,6 +1473,7 @@ final class IslandController {
         let group = space.groups.first { $0.id == saved.groupID }
         groupManager.moveTabToGroup(tab, group: group, in: space, skipReordering: true)
         tabManager.placeTab(tab, after: saved.previousID.flatMap(self.tab(for:)), before: saved.nextID.flatMap(self.tab(for:)))
+        tab.originURL = saved.home
         windowState.floatingPlacements[tab.id] = saved.placement
         if space.dataStoreMode != .private {
             tab.floatingPlacement = saved.placement
@@ -1539,10 +1558,11 @@ final class IslandController {
         // The slot is read once, off the rows as they are, the moving tabs counted out of
         // its neighbors: each later tab goes after the one before it.
         let slot = island.layout.insertion(beforeRow: target.row, moving: Set(moving.map(\.id)))
+        let pins = island.layout.pinChange(at: slot)
         if !moving.isEmpty {
             var after = slot.after
             for tab in moving {
-                moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: island)
+                moveTab(tab.id, to: IslandInsertion(section: slot.section, after: after, before: slot.before), in: island, pins: pins)
                 after = tab.id
             }
             return true
@@ -1558,6 +1578,9 @@ final class IslandController {
         for url in payload.urls {
             let tab = tabManager.createTab(url: url, in: space, groupID: groupID, makeActive: false, loadImmediately: false)
             tabManager.placeTab(tab, after: after, before: before)
+            if pins == true {
+                tabManager.pin(tab, home: url)
+            }
             after = tab
             opened.append(tab)
         }
