@@ -39,7 +39,7 @@ use crate::bundles::{self, UserScript};
 use crate::syntax;
 
 /// Bumped whenever this pass's output changes for the same input; part of the app's cache key.
-pub const PASS_VERSION: u32 = 3;
+pub const PASS_VERSION: u32 = 4;
 
 /// WebKit's `maxRuleCount` (`ContentExtensionParser.cpp`).
 pub const MAX_RULES_PER_LIST: usize = 150_000;
@@ -457,6 +457,10 @@ impl CosmeticPass {
         if needs_bundle {
             self.bundle_hosts.extend(locations.hostnames);
             self.bundle_hosts.extend(locations.not_hostnames);
+            return;
+        }
+        if locations.names_only_unsupported_places() {
+            // `dl.example.*##td` without its location would hide every page's cells.
             return;
         }
         let Some(selector) = selector else {
