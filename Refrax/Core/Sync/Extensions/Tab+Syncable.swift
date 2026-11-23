@@ -22,7 +22,9 @@ extension Tab: Syncable {
         record["customName"] = customName as NSString?
         record["lastBadgeCount"] = lastBadgeCount as NSNumber?
         record["groupID"] = groupID?.uuidString as NSString?
-        record["originURL"] = originURL?.absoluteString as NSString?
+        // A pinned tab's home (`originURL`) stays out of the record until the production
+        // CloudKit schema is confirmed to declare it: production rejects a whole record that
+        // carries an undeclared field, and that tab would stop syncing.
         record["layoutConfigurationData"] = layoutConfigurationData as NSData?
         record["boardFrameData"] = boardFrameData as NSData?
 
@@ -90,7 +92,6 @@ extension Tab: Syncable {
         tab.customName = record["customName"] as? String
         tab.lastBadgeCount = record["lastBadgeCount"] as? Int
         tab.groupID = (record["groupID"] as? String).flatMap(UUID.init(uuidString:))
-        tab.originURL = (record["originURL"] as? String).flatMap(URL.init(string:))
         tab.layoutConfigurationData = record["layoutConfigurationData"] as? Data
         tab.boardFrameData = record["boardFrameData"] as? Data
 

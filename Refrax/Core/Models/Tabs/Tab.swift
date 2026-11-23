@@ -259,7 +259,8 @@ final class Tab {
     /// - Note: Archived tabs are restored from History › Archived or Command Lens ("archived").
     var archivedAt: Date?
 
-    /// A pinned tab's home address; `nil` for a tab that is not pinned.
+    /// A pinned tab's home address; `nil` for a tab that is not pinned. It is kept on this
+    /// Mac: a pin does not sync.
     ///
     /// A favorite's home is ``linkedBookmark``'s URL.
     var originURL: URL?
