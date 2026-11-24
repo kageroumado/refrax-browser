@@ -106,6 +106,74 @@ struct AppUpdateCheckerParsingTests {
 
 // MARK: - Download URL Policy
 
+@Suite("AppUpdateChecker Conditional Requests")
+struct AppUpdateCheckerCacheTests {
+    private let release = Data("""
+    {
+      "tag_name": "v0.99",
+      "published_at": "2026-08-10T12:00:00Z",
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "Refrax-0.99.dmg",
+          "size": 1,
+          "browser_download_url": "https://github.com/kageroumado/refrax-browser/releases/download/v0.99/Refrax-0.99.dmg"
+        }
+      ]
+    }
+    """.utf8)
+
+    private func cache() throws -> AppUpdateChecker.ReleaseCache {
+        let defaults = try #require(UserDefaults(suiteName: "AppUpdateCheckerCacheTests.\(UUID().uuidString)"))
+        return AppUpdateChecker.ReleaseCache(defaults: defaults)
+    }
+
+    @Test("An update found on one launch is offered again when the next check says nothing changed")
+    func unchangedAnswerOffersTheKeptRelease() throws {
+        let cache = try cache()
+        let first = try AppUpdateChecker.update(status: 200, data: release, etag: "W/\"a\"", cache: cache, currentVersion: "0.1")
+        #expect(first?.version == "0.99")
+        #expect(cache.etag == "W/\"a\"")
+
+        let again = try AppUpdateChecker.update(status: 304, data: Data(), etag: nil, cache: cache, currentVersion: "0.1")
+        #expect(again?.version == "0.99")
+    }
+
+    @Test("An unchanged answer is read against the running version, as the release itself is")
+    func unchangedAnswerFollowsTheRunningVersion() throws {
+        let cache = try cache()
+        _ = try AppUpdateChecker.update(status: 200, data: release, etag: "W/\"a\"", cache: cache, currentVersion: "0.1")
+        for version in ["0.1", "0.99", "1.0"] {
+            let unchanged = try AppUpdateChecker.update(status: 304, data: Data(), etag: nil, cache: cache, currentVersion: version)
+            #expect(try unchanged == AppUpdateChecker.parseRelease(from: release, currentVersion: version))
+        }
+    }
+
+    @Test("An ETag kept without its release is never sent")
+    func loneETagIsNotSent() throws {
+        let cache = try cache()
+        cache.defaults.set("W/\"old\"", forKey: AppUpdateChecker.ReleaseCache.etagKey)
+        #expect(cache.etag == nil)
+    }
+
+    @Test("A response without an ETag keeps nothing")
+    func responseWithoutETagKeepsNothing() throws {
+        let cache = try cache()
+        _ = try AppUpdateChecker.update(status: 200, data: release, etag: "W/\"a\"", cache: cache, currentVersion: "0.1")
+        _ = try AppUpdateChecker.update(status: 200, data: release, etag: nil, cache: cache, currentVersion: "0.1")
+        #expect(cache.release == nil)
+        #expect(cache.etag == nil)
+    }
+
+    @Test("A refused check throws")
+    func refusedCheckThrows() throws {
+        let cache = try cache()
+        #expect(throws: AppUpdateCheckerError.self) {
+            try AppUpdateChecker.update(status: 403, data: Data(), etag: nil, cache: cache, currentVersion: "0.1")
+        }
+    }
+}
+
 @Suite("AppUpdateChecker Download URL Policy")
 struct AppUpdateCheckerURLPolicyTests {
     @Test("GitHub asset hosts are allowed over HTTPS")

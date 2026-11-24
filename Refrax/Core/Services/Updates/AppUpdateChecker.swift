@@ -9,7 +9,9 @@ import Foundation
 /// shape with a top-level `download_url` instead of GitHub's `assets[]`.
 ///
 /// Uses conditional requests (`If-None-Match`) to avoid unnecessary downloads —
-/// 304 responses don't count against GitHub's unauthenticated rate limit.
+/// 304 responses don't count against GitHub's unauthenticated rate limit. A 304 is
+/// answered from the release kept with the ETag (``ReleaseCache``), so an update found
+/// on an earlier launch is still offered on this one.
 ///
 /// ## Version Comparison
 ///
@@ -19,8 +21,38 @@ import Foundation
 /// ``Constants/API/UpdateChannel/forceUpdate`` enabled, in which case any
 /// valid release is returned regardless of version.
 nonisolated enum AppUpdateChecker: Sendable {
-    /// Cached ETag from the last successful response for conditional requests.
-    private static let cachedETagKey = "AppUpdateChecker.lastETag"
+    /// The last release the endpoint sent, with the ETag it carried.
+    ///
+    /// The two are kept and dropped together. Never keep the ETag alone: a 304 then says
+    /// "unchanged" about a release this launch has not seen, and an update found before a
+    /// relaunch is never offered again.
+    struct ReleaseCache {
+        static let etagKey = "AppUpdateChecker.lastETag"
+        static let releaseKey = "AppUpdateChecker.lastRelease"
+
+        var defaults: UserDefaults = .standard
+
+        /// The release JSON the ETag stands for.
+        var release: Data? {
+            defaults.data(forKey: Self.releaseKey)
+        }
+
+        /// The ETag to send, while its release is kept.
+        var etag: String? {
+            release == nil ? nil : defaults.string(forKey: Self.etagKey)
+        }
+
+        /// Keeps `release` under `etag`; a response without an ETag clears both.
+        func store(_ release: Data, etag: String?) {
+            guard let etag else {
+                defaults.removeObject(forKey: Self.etagKey)
+                defaults.removeObject(forKey: Self.releaseKey)
+                return
+            }
+            defaults.set(etag, forKey: Self.etagKey)
+            defaults.set(release, forKey: Self.releaseKey)
+        }
+    }
 
     /// Checks for a newer version than the currently running app.
     ///
@@ -37,7 +69,8 @@ nonisolated enum AppUpdateChecker: Sendable {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        if let etag = UserDefaults.standard.string(forKey: cachedETagKey) {
+        let cache = ReleaseCache()
+        if let etag = cache.etag {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
 
@@ -47,21 +80,26 @@ nonisolated enum AppUpdateChecker: Sendable {
             throw AppUpdateCheckerError.invalidResponse
         }
 
-        switch http.statusCode {
-        case 304:
-            return nil
+        return try update(
+            status: http.statusCode, data: data, etag: http.value(forHTTPHeaderField: "ETag"),
+            cache: cache, currentVersion: currentVersion,
+        )
+    }
 
-        case 403:
-            throw AppUpdateCheckerError.httpError(statusCode: 403)
+    /// Reads the endpoint's answer: a 200 carries the release and is kept with its ETag; a
+    /// 304 stands for the release kept last time, which is read again.
+    static func update(status: Int, data: Data, etag: String?, cache: ReleaseCache, currentVersion: String) throws -> AppUpdate? {
+        switch status {
+        case 304:
+            guard let kept = cache.release else { return nil }
+            return try parseRelease(from: kept, currentVersion: currentVersion)
 
         case 200:
-            if let etag = http.value(forHTTPHeaderField: "ETag") {
-                UserDefaults.standard.set(etag, forKey: cachedETagKey)
-            }
+            cache.store(data, etag: etag)
             return try parseRelease(from: data, currentVersion: currentVersion)
 
         default:
-            throw AppUpdateCheckerError.httpError(statusCode: http.statusCode)
+            throw AppUpdateCheckerError.httpError(statusCode: status)
         }
     }
 
