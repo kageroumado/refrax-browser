@@ -307,6 +307,44 @@ fn a_redirect_without_its_resource_still_blocks() {
 }
 
 #[test]
+fn hides_scoped_only_to_unnameable_places_are_not_made_generic() {
+    let built = Built::new(&[
+        "dl.gamecopyworld.*##td:nth-of-type(2)\n/^example\\.(com|net)$/##.regex-hide\n\
+         www.google.*#@#.ad\n##.ad\n~bing.*##.not-bing\nexample.com,dl.example.*##.named\n",
+    ]);
+    let output = built.compile(webkit::MAX_RULES_PER_LIST);
+    let hides: Vec<&Value> = output
+        .cosmetic
+        .iter()
+        .flatten()
+        .filter(|rule| action(rule) == "css-display-none")
+        .collect();
+    let selectors: Vec<&str> = hides
+        .iter()
+        .filter_map(|rule| rule["action"]["selector"].as_str())
+        .collect();
+    assert!(!selectors.contains(&"td:nth-of-type(2)"), "{selectors:?}");
+    assert!(!selectors.contains(&".regex-hide"), "{selectors:?}");
+    let generic = hides
+        .iter()
+        .find(|rule| rule["action"]["selector"] == ".ad")
+        .expect("the generic hide");
+    assert!(
+        generic["trigger"].get("unless-domain").is_none(),
+        "an exception scoped to www.google.* does not lift the hide everywhere"
+    );
+    assert!(selectors.contains(&".not-bing"));
+    let named = hides
+        .iter()
+        .find(|rule| rule["action"]["selector"] == ".named")
+        .expect("the hide keeps the host it can name");
+    assert_eq!(
+        named["trigger"]["if-domain"],
+        serde_json::json!(["*example.com"])
+    );
+}
+
+#[test]
 fn cosmetic_lists_stay_within_the_rule_cap() {
     let mut list = String::from("@@||news.example^$generichide\n@@||shop.example^$document\n");
     for index in 0..9 {

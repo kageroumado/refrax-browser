@@ -59,6 +59,17 @@ pub struct CosmeticLocations {
     pub entities: Vec<String>,
     /// Negated (`~example.*`), multi-label (`example.co.*`) and regex locations.
     pub unsupported: usize,
+    /// The locations among `unsupported` that are not negated: places the filter applies that
+    /// no domain list can name.
+    pub unsupported_includes: usize,
+}
+
+impl CosmeticLocations {
+    /// Whether every place the filter applies is one no domain list or entity can name
+    /// (`dl.example.*##…`, `/regex/##…`). Dropping such a filter would make it apply everywhere.
+    pub fn names_only_unsupported_places(&self) -> bool {
+        self.unsupported_includes > 0 && self.hostnames.is_empty() && self.entities.is_empty()
+    }
 }
 
 pub fn cosmetic_locations(line: &str) -> CosmeticLocations {
@@ -77,12 +88,16 @@ pub fn cosmetic_locations(line: &str) -> CosmeticLocations {
         };
         if location.contains('/') {
             locations.unsupported += 1;
+            locations.unsupported_includes += usize::from(!negated);
             continue;
         }
         if let Some(label) = location.strip_suffix(".*") {
             match ascii_hostname(label) {
                 Some(label) if !negated && !label.contains('.') => locations.entities.push(label),
-                _ => locations.unsupported += 1,
+                _ => {
+                    locations.unsupported += 1;
+                    locations.unsupported_includes += usize::from(!negated);
+                }
             }
             continue;
         }
@@ -163,5 +178,13 @@ mod tests {
         let odd = cosmetic_locations("~bing.*,google.co.*##.ad");
         assert!(odd.entities.is_empty());
         assert_eq!(odd.unsupported, 2);
+        assert_eq!(odd.unsupported_includes, 1);
+        assert!(odd.names_only_unsupported_places());
+        assert!(cosmetic_locations("dl.gamecopyworld.*##td").names_only_unsupported_places());
+        assert!(cosmetic_locations("/^foo\\.com$/##td").names_only_unsupported_places());
+        assert!(!cosmetic_locations("~bing.*##.ad").names_only_unsupported_places());
+        assert!(
+            !cosmetic_locations("example.com,dl.example.*##.ad").names_only_unsupported_places()
+        );
     }
 }

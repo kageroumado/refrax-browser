@@ -133,7 +133,8 @@ final class DownloadTask: NSObject, Identifiable {
     init(download: Download, originatingURL: URL? = nil) {
         self.id = download.id
         self.download = download
-        self.originatingURL = originatingURL
+        // Resume and retry make a new task from the stored record alone.
+        self.originatingURL = originatingURL ?? download.originatingPageURL
         super.init()
     }
 
@@ -184,7 +185,7 @@ final class DownloadTask: NSObject, Identifiable {
         urlSession = session
 
         // Create data task (not download task - we handle file writing ourselves)
-        var request = URLRequest(url: download.sourceURL)
+        var request = Self.request(for: download.sourceURL, from: originatingURL)
         request.httpShouldHandleCookies = true
 
         // If resuming, add Range header and validation headers
@@ -220,6 +221,55 @@ final class DownloadTask: NSObject, Identifiable {
             "Download started: \(download.sourceURL.lastPathComponent)\(resumeInfo)",
             category: Logger.downloads,
         )
+    }
+
+    /// The request for a download's file, carrying the `Referer` the page's own request had.
+    ///
+    /// Downloads are re-requested here rather than by WebKit, so without this the request
+    /// goes out with no `Referer`. Image hosts that block hotlinking (gelbooru, for one)
+    /// answer that with a redirect to an HTML page, which would be saved in place of the file.
+    nonisolated static func request(for url: URL, from originatingURL: URL?) -> URLRequest {
+        var request = URLRequest(url: url)
+        if let referer = referer(forRequestTo: url, from: originatingURL) {
+            request.setValue(referer, forHTTPHeaderField: "Referer")
+        }
+        return request
+    }
+
+    /// The `Referer` WebKit sends under its default policy, `strict-origin-when-cross-origin`:
+    /// the full page address to the same origin, only its origin to another, nothing from
+    /// HTTPS to HTTP or from a page that isn't on the web.
+    nonisolated static func referer(forRequestTo url: URL, from originatingURL: URL?) -> String? {
+        guard let originatingURL,
+              let pageScheme = originatingURL.scheme?.lowercased(), pageScheme == "http" || pageScheme == "https",
+              var page = URLComponents(url: originatingURL, resolvingAgainstBaseURL: false),
+              page.host?.isEmpty == false
+        else { return nil }
+        let targetScheme = url.scheme?.lowercased()
+        if pageScheme == "https", targetScheme != "https" {
+            return nil
+        }
+
+        page.user = nil
+        page.password = nil
+        page.fragment = nil
+        let target = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let sameOrigin = targetScheme == pageScheme
+            && target?.host?.lowercased() == page.host?.lowercased()
+            && (target?.port ?? defaultPort(for: targetScheme)) == (page.port ?? defaultPort(for: pageScheme))
+        if !sameOrigin {
+            page.path = "/"
+            page.query = nil
+        }
+        return page.string
+    }
+
+    private nonisolated static func defaultPort(for scheme: String?) -> Int? {
+        switch scheme {
+        case "http": 80
+        case "https": 443
+        default: nil
+        }
     }
 
     /// Clears cookies from the dedicated storage for privacy.
